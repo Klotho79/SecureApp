@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Overrides the .NET MAUI Android SDK's own default Maui.MainTheme (bundled inside the MAUI
+      workload, not a file in this project) to fix a real crash hit on a physical device (Samsung
+      Galaxy S23+, dark mode) the first time this app's Android head was ever actually launched —
+      every cold start crashed with:
+
+        java.lang.IllegalArgumentException: This component requires that you specify a valid
+        TextAppearance attribute. Update your app theme to inherit from Theme.MaterialComponents.
+          at com.google.android.material.navigation.NavigationBarView.<init>
+          at com.google.android.material.bottomnavigation.BottomNavigationView.<init>
+          at com.microsoft.maui.PlatformInterop.createNavigationBar
+          at ShellItemRenderer.onCreateView
+
+      Root cause: the SDK default Maui.MainTheme points bottomNavigationViewStyle at the OLD
+      Android Design-support-library style (@style/Widget.Design.BottomNavigationView), which
+      doesn't declare the itemTextAppearanceActive/Inactive attributes the actual widget being
+      created — com.google.android.material.bottomnavigation.BottomNavigationView, used to render
+      AppShell.xaml's TabBar on Android — requires. Fixed by pointing it at the real Material
+      Components equivalent instead. Same resource name ("Maui.MainTheme") as the SDK's own
+      definition, so Android's resource merger lets this project-level override win — standard,
+      supported way to customize it, not a hack.
+    -->
+    <style name="Maui.MainTheme" parent="Maui.MainTheme.Base">
+        <item name="bottomNavigationViewStyle">@style/Widget.MaterialComponents.BottomNavigationView</item>
+    </style>
+</resources>

@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(dotnet workload list *)",
+      "PowerShell(dotnet workload install *)",
+      "PowerShell(dotnet sln *)",
+      "PowerShell(dotnet add *)",
+      "PowerShell(dotnet build *)",
+      "WebSearch",
+      "PowerShell(Remove-Item *)",
+      "PowerShell(Get-Process *)",
+      "PowerShell(\\(Get-Item \"src\\\\SecureApp.Presentation\\\\bin\\\\Debug\\\\net10.0-windows10.0.19041.0\\\\win-x64\\\\Microsoft.WindowsAppRuntime.Bootstrap.dll\"\\).VersionInfo | Format-List FileVersion, ProductVersion)",
+      "PowerShell(Get-WinEvent *)",
+      "PowerShell(dotnet workload update *)",
+      "PowerShell(dotnet run --project \"$env:CLAUDE_JOB_DIR\\\\tmp\\\\CryptoSmokeTest\\\\CryptoSmokeTest.csproj\" -c Debug 2>&1)",
+      "PowerShell(dotnet run --project \"$env:CLAUDE_JOB_DIR\\\\tmp\\\\DbSmokeTest\\\\DbSmokeTest.csproj\" -c Debug 2>&1)",
+      "WebFetch(domain:api.nuget.org)",
+      "WebFetch(domain:azuresearch-usnc.nuget.org)",
+      "PowerShell(dotnet restore *)",
+      "PowerShell(dotnet run --project \"$env:CLAUDE_JOB_DIR\\\\tmp\\\\RepoSmokeTest\\\\RepoSmokeTest.csproj\" -c Debug 2>&1)",
+      "PowerShell(dotnet run --project \"$env:CLAUDE_JOB_DIR\\\\tmp\\\\RepoSmokeTest\\\\RepoSmokeTest.csproj\" -c Debug 2>&1 | Select-Object -Last 15)",
+      "PowerShell(dotnet run --project \"$env:CLAUDE_JOB_DIR\\\\tmp\\\\RepoSmokeTest\\\\RepoSmokeTest.csproj\" -c Debug 2>&1 | Select-Object -Last 25)",
+      "PowerShell(dotnet run --project \"$env:CLAUDE_JOB_DIR\\\\tmp\\\\RepoSmokeTest\\\\RepoSmokeTest.csproj\" -c Debug 2>&1 | Select-Object -Last 5)",
+      "PowerShell(dotnet run --project \"$env:CLAUDE_JOB_DIR\\\\tmp\\\\RepoSmokeTest\\\\RepoSmokeTest.csproj\" -c Debug 2>&1 | Select-Object -Last 20)",
+      "WebFetch(domain:www.nuget.org)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:github.com)",
+      "PowerShell(dotnet run --project \"$env:CLAUDE_JOB_DIR\\\\tmp\\\\ReflectDump\\\\ReflectDump.csproj\" -c Debug 2>&1)",
+      "PowerShell(dotnet run --project \"$env:CLAUDE_JOB_DIR\\\\tmp\\\\ReflectDump\\\\ReflectDump.csproj\" -c Debug 2>&1 | Select-String -Pattern \"TextSize|DrawText|===== SkiaSharp\")",
+      "PowerShell(dotnet run --project \"$env:CLAUDE_JOB_DIR\\\\tmp\\\\ViewModelSmokeTest\\\\ViewModelSmokeTest.csproj\" -c Debug 2>&1)"
+    ]
+  }
+}

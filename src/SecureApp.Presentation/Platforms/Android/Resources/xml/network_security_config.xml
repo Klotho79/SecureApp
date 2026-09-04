@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 9+ (API 28+) blocks all cleartext (non-TLS) app traffic by default — this broke both
+  IMessageTransport's ws:// connection and ISharedLibraryService's http:// calls to the relay on
+  a real device (worked fine on Windows, which has no such restriction; masked until an actual
+  Android phone tried to register — see this project's own session notes).
+
+  The relay deliberately uses ws://not wss:// (see RelayDatabase/Program.cs remarks — the payload
+  is already ML-KEM-ratchet-encrypted, and it's a private home-LAN/WireGuard-only service, never
+  exposed publicly, so a TLS cert/domain was judged not worth the added complexity). Cleartext is
+  allowed here ONLY for the relay's own known host, not app-wide, to keep that trade-off narrowly
+  scoped instead of opening cleartext to every domain this app might ever talk to.
+
+  Keep the domain below in sync with RelayDefaults.DefaultEndpoint (Transport/RelayDefaults.cs) —
+  if the Pi's LAN IP ever changes, both need updating together, or registering from Android breaks
+  again with the same "Connection failure" symptom.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">192.168.50.8</domain>
+    </domain-config>
+</network-security-config>

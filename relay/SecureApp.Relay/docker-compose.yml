@@ -1,0 +1,23 @@
+services:
+  secureapp-relay:
+    build:
+      context: ../..
+      dockerfile: relay/SecureApp.Relay/Dockerfile
+    container_name: secureapp-relay
+    environment:
+      - SECUREAPP_RELAY_ADMIN_SECRET=${SECUREAPP_RELAY_ADMIN_SECRET}
+      - SECUREAPP_RELAY_PORT=8080
+      - SECUREAPP_RELAY_DB_PATH=/data/relay.db3
+      - SECUREAPP_RELAY_LIBRARY_DIR=/data/library-files
+    volumes:
+      - ./data:/data
+    ports:
+      # Bind to the Pi's own LAN IP — never 0.0.0.0/a public interface. wg-easy runs in its own
+      # container (its wg0 interface lives only in that container's network namespace, not on
+      # the host), so a WireGuard client reaches this the same way it reaches any other LAN
+      # device: via the routing wg-easy already sets up back into the home network, not via a
+      # shared "10.8.0.x" address. The router only forwards WireGuard's own port (51820) to the
+      # internet, so this port is never reachable from outside the LAN/VPN either way. Update
+      # this IP if the Pi's wired address ever changes (check with: hostname -I).
+      - "192.168.50.8:8080:8080"
+    restart: unless-stopped

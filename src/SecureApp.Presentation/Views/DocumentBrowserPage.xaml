@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="SecureApp.Presentation.Views.DocumentBrowserPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
+    x:DataType="vm:DocumentBrowserViewModel"
+    Title="{Binding CurrentFolderName}"
+    x:Name="PageRoot">
+
+    <Grid RowDefinitions="Auto,Auto,*" Padding="20" RowSpacing="10">
+
+        <!-- Chats/Library/Settings moved to the app-wide TabBar (AppShell.xaml) — this header
+             is now just the actions specific to browsing documents. -->
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto">
+            <Button
+                Grid.Column="0"
+                Text="⬅ Up"
+                Style="{StaticResource SecondaryButton}"
+                HorizontalOptions="Start"
+                IsVisible="{Binding CanGoUp}"
+                Command="{Binding GoUpCommand}" />
+
+            <Button
+                Grid.Column="2"
+                Text="+ New Folder"
+                Style="{StaticResource SecondaryButton}"
+                IsVisible="{Binding CanModifyContent}"
+                Clicked="OnNewFolderClicked" />
+
+            <Button
+                Grid.Column="3"
+                Text="⬆ Import"
+                IsVisible="{Binding CanModifyContent}"
+                IsEnabled="{Binding CanImport}"
+                Command="{Binding ImportDocumentsCommand}" />
+        </Grid>
+
+        <Grid Grid.Row="1">
+            <ActivityIndicator IsRunning="{Binding IsImporting}" IsVisible="{Binding IsImporting}" HorizontalOptions="Center" />
+            <Label
+                Text="{Binding StatusErrorMessage}"
+                IsVisible="{Binding HasStatusError}"
+                TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}"
+                LineBreakMode="WordWrap" />
+        </Grid>
+
+        <RefreshView Grid.Row="2" IsRefreshing="{Binding IsLoading}" Command="{Binding LoadCommand}">
+            <ScrollView>
+                <VerticalStackLayout Spacing="0">
+
+                    <Label
+                        Text="No folders or documents here yet."
+                        IsVisible="{Binding IsEmpty}"
+                        Margin="0,32"
+                        HorizontalOptions="Center"
+                        TextColor="Gray" />
+
+                    <CollectionView
+                        x:Name="FoldersView"
+                        ItemsSource="{Binding Folders}"
+                        SelectionMode="Single"
+                        SelectionChanged="OnFolderSelected">
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:DocumentFolderItem">
+                                <Border Style="{StaticResource CardBorder}">
+                                    <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                                        <Label Grid.Column="0" Text="📁" FontSize="20" Margin="0,0,12,0" VerticalOptions="Center" />
+                                        <Label Grid.Column="1" Text="{Binding Name}" VerticalOptions="Center" FontSize="16" />
+                                        <Button
+                                            Grid.Column="2"
+                                            Text="✏️"
+                                            Style="{StaticResource SecondaryButton}"
+                                            WidthRequest="44"
+                                            Padding="0"
+                                            IsVisible="{Binding Source={x:Reference PageRoot}, Path=BindingContext.CanModifyContent}"
+                                            Clicked="OnRenameFolderClicked" />
+                                        <Button
+                                            Grid.Column="3"
+                                            Text="🗑️"
+                                            Style="{StaticResource SecondaryButton}"
+                                            WidthRequest="44"
+                                            Padding="0"
+                                            IsVisible="{Binding Source={x:Reference PageRoot}, Path=BindingContext.CanModifyContent}"
+                                            Clicked="OnDeleteFolderClicked" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+
+                    <CollectionView
+                        x:Name="DocumentsView"
+                        ItemsSource="{Binding Documents}"
+                        SelectionMode="Single"
+                        SelectionChanged="OnDocumentSelected">
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:DocumentItem">
+                                <Border Style="{StaticResource CardBorder}">
+                                    <Grid ColumnDefinitions="Auto,*,Auto">
+                                        <Label Grid.Column="0" Text="{Binding Icon}" FontSize="20" Margin="0,0,12,0" VerticalOptions="Center" />
+                                        <Label Grid.Column="1" Text="{Binding Title}" VerticalOptions="Center" FontSize="16" />
+                                        <Label Grid.Column="2" Text="★" TextColor="Goldenrod" IsVisible="{Binding IsFavorite}" VerticalOptions="Center" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+
+                </VerticalStackLayout>
+            </ScrollView>
+        </RefreshView>
+    </Grid>
+</ContentPage>

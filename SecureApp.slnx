@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SecureApp.Data/SecureApp.Data.csproj" />
+    <Project Path="src/SecureApp.Domain/SecureApp.Domain.csproj" />
+    <Project Path="src/SecureApp.Presentation/SecureApp.Presentation.csproj" DefaultStartup="true" />
+  </Folder>
+  <Folder Name="/relay/">
+    <Project Path="relay/SecureApp.Relay/SecureApp.Relay.csproj" />
+  </Folder>
+</Solution>

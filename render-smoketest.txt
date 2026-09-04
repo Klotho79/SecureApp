@@ -1,0 +1,10 @@
+[OK] PlainText spans multiple pages (got 5)
+[OK] PlainText page 0 is a valid, bounded PNG
+[OK] Image reports exactly 1 page (got 1)
+[OK] Image scales down to fit maxWidth/maxHeight preserving aspect
+[OK] Pdf reports exactly 2 pages (got 2)
+[OK] Pdf pages 0/1 are valid PNGs
+[OK] Pdf pages 0 and 1 render visibly different content
+[OK] Pdf out-of-range page index throws
+[OK] Spreadsheet reports 1 page for a small CSV (got 1)
+[OK] Spreadsheet page is a valid, bounded PNG

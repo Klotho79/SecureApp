@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Windows Machine": {
+      "commandName": "Executable",
+      "executablePath": "H:\\Visual Studio\\C#\\Aplikace\\src\\SecureApp.Presentation\\bin\\Debug\\net10.0-windows10.0.19041.0\\win-x64\\SecureApp.Presentation.exe",
+      "workingDirectory": "H:\\Visual Studio\\C#\\Aplikace\\src\\SecureApp.Presentation\\bin\\Debug\\net10.0-windows10.0.19041.0\\win-x64",
+      "nativeDebugging": false
+    }
+  }
+}

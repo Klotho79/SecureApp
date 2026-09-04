@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="SecureApp.Presentation.Views.ChatListPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
+    x:DataType="vm:ChatListViewModel"
+    Title="Chats">
+
+    <Grid RowDefinitions="Auto,*" Padding="20" RowSpacing="10">
+
+        <Button Grid.Row="0" Text="+ New Chat" HorizontalOptions="Start" Command="{Binding NewChatCommand}" />
+
+        <RefreshView Grid.Row="1" IsRefreshing="{Binding IsLoading}" Command="{Binding LoadCommand}">
+            <ScrollView>
+                <VerticalStackLayout Spacing="0">
+
+                    <Label
+                        Text="No chats yet. Tap '+ New Chat' to start one."
+                        IsVisible="{Binding IsEmpty}"
+                        Margin="0,32"
+                        HorizontalOptions="Center"
+                        TextColor="Gray" />
+
+                    <CollectionView
+                        x:Name="SessionsView"
+                        ItemsSource="{Binding Sessions}"
+                        SelectionMode="Single"
+                        SelectionChanged="OnSessionSelected">
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ChatSessionItem">
+                                <Border Style="{StaticResource CardBorder}">
+                                    <Grid ColumnDefinitions="Auto,*">
+                                        <Label Grid.Column="0" Text="💬" FontSize="20" Margin="0,0,12,0" VerticalOptions="Center" />
+                                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+                                            <Label Text="{Binding PeerDisplayName}" FontSize="16" />
+                                            <Label Text="{Binding LastActivityText}" FontSize="12" TextColor="Gray" />
+                                        </VerticalStackLayout>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+
+                </VerticalStackLayout>
+            </ScrollView>
+        </RefreshView>
+    </Grid>
+</ContentPage>

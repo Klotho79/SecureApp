@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Shell
+    x:Class="SecureApp.Presentation.AppShell"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:views="clr-namespace:SecureApp.Presentation.Views"
+    Title="SecureApp">
+
+    <!-- Four top-level sections as real tabs, replacing the old single ShellContent +
+         corner-button navigation (💬📚⚙ buttons on DocumentBrowserPage). Detail/pushed pages
+         (DocumentViewerPage, NewChatPage, ChatPage) are NOT tabs — they're reached via
+         GoToAsync and registered below via Routing.RegisterRoute instead. -->
+    <TabBar>
+        <Tab Title="🗂 Documents">
+            <ShellContent ContentTemplate="{DataTemplate views:DocumentBrowserPage}" Route="DocumentBrowser" />
+        </Tab>
+        <Tab Title="💬 Chats">
+            <ShellContent ContentTemplate="{DataTemplate views:ChatListPage}" Route="ChatListTab" />
+        </Tab>
+        <Tab Title="📚 Library">
+            <ShellContent ContentTemplate="{DataTemplate views:LibraryPage}" Route="LibraryTab" />
+        </Tab>
+        <Tab Title="⚙ Settings">
+            <ShellContent ContentTemplate="{DataTemplate views:SettingsPage}" Route="SettingsTab" />
+        </Tab>
+    </TabBar>
+
+</Shell>

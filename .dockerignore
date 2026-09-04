@@ -1,0 +1,6 @@
+# Keeps Windows-built bin/obj out of the Docker build context (repo root) — a Linux container
+# build must compile from source, not reuse a Windows host's intermediate build artifacts.
+**/bin/
+**/obj/
+**/.vs/
+**/*.user

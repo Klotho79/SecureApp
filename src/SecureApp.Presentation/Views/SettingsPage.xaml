@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="SecureApp.Presentation.Views.SettingsPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
+    x:DataType="vm:SettingsViewModel"
+    Title="Settings">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="20" Spacing="16">
+
+            <Border Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Account" Style="{StaticResource SectionHeader}" Margin="0" />
+
+                    <Label Text="Display name" FontAttributes="Bold" />
+                    <Entry Text="{Binding DisplayName}" Placeholder="Your name" />
+
+                    <Label Text="Role" FontAttributes="Bold" Margin="0,8,0,0" />
+                    <Picker ItemsSource="{Binding AvailableRoles}" SelectedItem="{Binding SelectedRole}" />
+                    <Label
+                        Text="Viewer can browse and open documents but cannot create, rename, move, delete, or import."
+                        FontSize="12"
+                        TextColor="Gray" />
+
+                    <Button Text="Save" Command="{Binding SaveCommand}" />
+                    <Label Text="Saved." IsVisible="{Binding IsSaved}" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" />
+                    <Label Text="{Binding ErrorMessage}" IsVisible="{Binding HasErrorMessage}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Border Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Relay" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Label Text="{Binding ConnectionStatusText}" FontSize="12" TextColor="Gray" />
+                    <Label Text="{Binding RelayErrorMessage}" IsVisible="{Binding HasRelayError}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
+
+                    <Entry Text="{Binding RelayEndpointText}" Placeholder="Relay address, e.g. ws://10.8.0.1:8080" />
+                    <Entry Text="{Binding InviteCodeText}" Placeholder="Invite code" IsVisible="{Binding IsNotRegistered}" />
+
+                    <Button Text="Register" Command="{Binding RegisterWithRelayCommand}" IsVisible="{Binding IsNotRegistered}" IsEnabled="{Binding CanUseRelayControls}" />
+                    <Button Text="Connect" Command="{Binding ConnectToRelayCommand}" IsVisible="{Binding IsNotConnected}" IsEnabled="{Binding CanUseRelayControls}" />
+                    <Button Text="Disconnect" Style="{StaticResource SecondaryButton}" Command="{Binding DisconnectFromRelayCommand}" IsVisible="{Binding IsConnected}" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Border Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="My Contact Card" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Label Text="Share this with someone before they start a chat with you." FontSize="12" TextColor="Gray" />
+                    <Editor Text="{Binding ContactCardText}" IsReadOnly="True" HeightRequest="80" IsVisible="{Binding IsRegistered}" />
+                    <Label Text="Register with a relay first to get a contact card." FontSize="12" TextColor="Gray" IsVisible="{Binding IsNotRegistered}" />
+                    <Button Text="Copy" Style="{StaticResource SecondaryButton}" Command="{Binding CopyContactCardCommand}" IsVisible="{Binding IsRegistered}" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding IsAdmin}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Admin: Invite Codes" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Label Text="Mint an invite code for a new device to register with the relay above — no SSH/curl on the Pi needed." FontSize="12" TextColor="Gray" />
+                    <Label Text="{Binding AdminErrorMessage}" IsVisible="{Binding HasAdminError}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
+
+                    <VerticalStackLayout Spacing="8" IsVisible="{Binding HasNoAdminSecret}">
+                        <Label Text="Relay admin secret (SECUREAPP_RELAY_ADMIN_SECRET)" FontSize="12" TextColor="Gray" />
+                        <Entry Text="{Binding AdminSecretInputText}" Placeholder="Paste the relay's admin secret" IsPassword="True" />
+                        <Button Text="Save admin secret" Command="{Binding SaveAdminSecretCommand}" />
+                    </VerticalStackLayout>
+
+                    <VerticalStackLayout Spacing="8" IsVisible="{Binding HasAdminSecret}">
+                        <Label Text="✓ Admin secret stored on this device." FontSize="12" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" />
+                        <Button Text="Change admin secret" Style="{StaticResource SecondaryButton}" Command="{Binding ChangeAdminSecretCommand}" />
+                        <Entry Text="{Binding InviteDisplayNameHintText}" Placeholder="Display name hint (optional)" />
+                        <Button Text="Generate invite code" Command="{Binding GenerateInviteCommand}" IsEnabled="{Binding CanUseAdminControls}" />
+                        <Editor Text="{Binding GeneratedInviteCodeText}" IsReadOnly="True" HeightRequest="50" IsVisible="{Binding HasGeneratedInviteCode}" />
+                        <Label Text="{Binding GeneratedInviteExpiryText}" FontSize="12" TextColor="Gray" IsVisible="{Binding HasGeneratedInviteCode}" />
+                        <Button Text="Copy" Style="{StaticResource SecondaryButton}" Command="{Binding CopyGeneratedInviteCodeCommand}" IsVisible="{Binding HasGeneratedInviteCode}" />
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+            </Border>
+
+            <Border Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Shared Library Key" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Label Text="One key, shared by everyone in the community, protects every file in the shared library." FontSize="12" TextColor="Gray" />
+                    <Label Text="{Binding SharedLibraryErrorMessage}" IsVisible="{Binding HasSharedLibraryError}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
+                    <Label Text="✓ This device has a shared library key." FontSize="12" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding HasSharedLibraryKey}" />
+
+                    <Button Text="Generate a new key" Command="{Binding GenerateSharedLibraryKeyCommand}" />
+                    <Editor Text="{Binding SharedLibraryKeyBlob}" IsReadOnly="True" HeightRequest="60" IsVisible="{Binding HasSharedLibraryKeyBlob}" />
+                    <Button Text="Copy" Style="{StaticResource SecondaryButton}" Command="{Binding CopySharedLibraryKeyCommand}" IsVisible="{Binding HasSharedLibraryKeyBlob}" />
+
+                    <Entry Text="{Binding SharedLibraryKeyImportText}" Placeholder="Paste a key someone else generated" />
+                    <Button Text="Import" Style="{StaticResource SecondaryButton}" Command="{Binding ImportSharedLibraryKeyCommand}" />
+                </VerticalStackLayout>
+            </Border>
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

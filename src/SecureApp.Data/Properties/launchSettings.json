@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "SecureApp.Data": {
+      "commandName": "Project"
+    },
+    "Profil 1": {
+      "commandName": "Executable",
+      "executablePath": "H:\\Visual Studio\\C#\\Aplikace\\src\\SecureApp.Presentation\\MauiProgram.cs"
+    }
+  }
+}

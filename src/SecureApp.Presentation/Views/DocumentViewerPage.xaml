@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="SecureApp.Presentation.Views.DocumentViewerPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
+    x:DataType="vm:DocumentViewerViewModel"
+    Title="{Binding Title}">
+
+    <Grid RowDefinitions="*,Auto" Padding="20" RowSpacing="10">
+
+        <Grid Grid.Row="0">
+            <ActivityIndicator IsRunning="{Binding IsLoading}" IsVisible="{Binding IsLoading}" HorizontalOptions="Center" VerticalOptions="Center" />
+
+            <Label
+                Text="{Binding ErrorMessage}"
+                IsVisible="{Binding HasError}"
+                HorizontalOptions="Center"
+                VerticalOptions="Center"
+                TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" />
+
+            <ScrollView IsVisible="{Binding HasImage}">
+                <Image Source="{Binding CurrentPageImage}" Aspect="AspectFit" HorizontalOptions="Center" />
+            </ScrollView>
+
+            <!-- Milestone 4, Task 4.4: moving watermark overlay (username + timestamp + IP).
+                 InputTransparent so it never blocks taps on the image/buttons underneath. -->
+            <Label
+                Text="{Binding WatermarkText}"
+                TranslationX="{Binding WatermarkTranslationX}"
+                TranslationY="{Binding WatermarkTranslationY}"
+                IsVisible="{Binding HasImage}"
+                InputTransparent="True"
+                HorizontalOptions="Center"
+                VerticalOptions="Center"
+                FontSize="13"
+                TextColor="Red"
+                Opacity="0.35" />
+        </Grid>
+
+        <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto">
+            <Button Grid.Column="0" Text="⬅ Previous" Command="{Binding PreviousPageCommand}" IsEnabled="{Binding CanGoToPreviousPage}" />
+            <Label
+                Grid.Column="1"
+                Text="{Binding PageIndicatorText}"
+                HorizontalOptions="Center"
+                VerticalOptions="Center" />
+            <Button Grid.Column="2" Text="Next ➡" Command="{Binding NextPageCommand}" IsEnabled="{Binding CanGoToNextPage}" />
+        </Grid>
+    </Grid>
+</ContentPage>

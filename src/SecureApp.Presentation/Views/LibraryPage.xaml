@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="SecureApp.Presentation.Views.LibraryPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
+    x:DataType="vm:LibraryViewModel"
+    Title="Shared Library">
+
+    <Grid RowDefinitions="Auto,Auto,Auto,*" Padding="20" RowSpacing="10">
+
+        <Grid Grid.Row="0" ColumnDefinitions="*,*,*,Auto" ColumnSpacing="8">
+            <Entry Grid.Column="0" Text="{Binding SearchQuery}" Placeholder="Search by name" />
+            <Entry Grid.Column="1" Text="{Binding FolderFilter}" Placeholder="Folder" />
+            <Entry Grid.Column="2" Text="{Binding TagFilter}" Placeholder="Tag" />
+            <Button Grid.Column="3" Text="Search" Style="{StaticResource SecondaryButton}" Command="{Binding SearchCommand}" />
+        </Grid>
+
+        <Label
+            Grid.Row="1"
+            Text="{Binding StatusErrorMessage}"
+            IsVisible="{Binding HasStatusError}"
+            TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}"
+            LineBreakMode="WordWrap" />
+
+        <Border Grid.Row="2" Style="{StaticResource CardBorder}" Margin="0,4,0,4">
+            <Grid ColumnDefinitions="*,*,Auto" ColumnSpacing="8">
+                <Entry Grid.Column="0" Text="{Binding UploadFolderPath}" Placeholder="Upload to folder (optional)" />
+                <Entry Grid.Column="1" Text="{Binding UploadTags}" Placeholder="Tags, comma separated" />
+                <Button Grid.Column="2" Text="⬆ Upload" Command="{Binding UploadCommand}" IsEnabled="{Binding CanUpload}" />
+            </Grid>
+        </Border>
+
+        <RefreshView Grid.Row="3" IsRefreshing="{Binding IsLoading}" Command="{Binding SearchCommand}">
+            <ScrollView>
+                <VerticalStackLayout Spacing="0">
+
+                    <Label
+                        Text="No files found."
+                        IsVisible="{Binding IsEmpty}"
+                        Margin="0,32"
+                        HorizontalOptions="Center"
+                        TextColor="Gray" />
+
+                    <CollectionView
+                        x:Name="ResultsView"
+                        ItemsSource="{Binding Results}"
+                        SelectionMode="Single"
+                        SelectionChanged="OnResultSelected">
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:LibraryFileItem">
+                                <Border Style="{StaticResource CardBorder}">
+                                    <Grid ColumnDefinitions="Auto,*">
+                                        <Label Grid.Column="0" Text="📄" FontSize="20" Margin="0,0,12,0" VerticalOptions="Center" />
+                                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+                                            <Label Text="{Binding FileName}" FontSize="16" />
+                                            <Label Text="{Binding SubtitleText}" FontSize="12" TextColor="Gray" />
+                                        </VerticalStackLayout>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+
+                </VerticalStackLayout>
+            </ScrollView>
+        </RefreshView>
+    </Grid>
+</ContentPage>
