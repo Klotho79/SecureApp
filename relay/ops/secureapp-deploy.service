@@ -1,0 +1,7 @@
+[Unit]
+Description=Rebuild and restart the SecureApp relay container
+
+[Service]
+Type=oneshot
+ExecStart=/home/dvorakv1/SecureApp/relay/ops/deploy.sh
+User=dvorakv1

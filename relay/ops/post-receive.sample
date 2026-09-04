@@ -1,0 +1,7 @@
+#!/bin/bash
+# Install as ~/secureapp-repo.git/hooks/post-receive on the Pi (chmod +x). Runs after every
+# `git push pi main` — checks the pushed commit out into the working copy that
+# relay/SecureApp.Relay/docker-compose.yml (and deploy.sh) actually build from. Does NOT build or
+# restart anything itself — that only happens when /admin/deploy is called (button in the app, or
+# later a cron/systemd timer), so a push alone never takes the relay down mid-transfer.
+GIT_WORK_TREE=/home/dvorakv1/SecureApp git --git-dir=/home/dvorakv1/secureapp-repo.git checkout -f main

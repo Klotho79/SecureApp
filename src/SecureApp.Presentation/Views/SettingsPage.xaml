@@ -79,6 +79,19 @@
                 </VerticalStackLayout>
             </Border>
 
+            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding IsAdmin}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Admin: Relay Deploy" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Label Text="Rebuilds and restarts the relay from whatever code was last pushed to the Pi (git push). No SSH needed for this step — see relay/ops/README.md for the one-time Pi setup." FontSize="12" TextColor="Gray" />
+
+                    <VerticalStackLayout Spacing="8" IsVisible="{Binding HasAdminSecret}">
+                        <Button Text="Redeploy relay" Style="{StaticResource SecondaryButton}" Command="{Binding RedeployRelayCommand}" IsEnabled="{Binding CanUseAdminControls}" />
+                        <Label Text="{Binding DeployStatusText}" FontSize="12" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding HasDeployStatus}" />
+                    </VerticalStackLayout>
+                    <Label Text="Save the admin secret above first." FontSize="12" TextColor="Gray" IsVisible="{Binding HasNoAdminSecret}" />
+                </VerticalStackLayout>
+            </Border>
+
             <Border Style="{StaticResource CardBorder}">
                 <VerticalStackLayout Spacing="8">
                     <Label Text="Shared Library Key" Style="{StaticResource SectionHeader}" Margin="0" />

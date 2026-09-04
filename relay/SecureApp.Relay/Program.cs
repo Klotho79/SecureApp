@@ -11,6 +11,13 @@ var adminSecret = builder.Configuration["SECUREAPP_RELAY_ADMIN_SECRET"]
 var port = builder.Configuration["SECUREAPP_RELAY_PORT"] ?? "8080";
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
+// Same directory RelayDatabase resolves SECUREAPP_RELAY_DB_PATH into (the mounted /data volume in
+// production) — reused here rather than introducing a second env var, since the marker just needs
+// to land somewhere that survives a container restart and is visible to a host-side watcher.
+var deployMarkerPath = Path.Combine(
+    Path.GetDirectoryName(builder.Configuration["SECUREAPP_RELAY_DB_PATH"]) is { Length: > 0 } dbDir ? dbDir : AppContext.BaseDirectory,
+    "deploy-requested");
+
 builder.Services.AddSingleton<RelayDatabase>();
 builder.Services.AddSingleton<ConnectionRegistry>();
 
@@ -37,6 +44,21 @@ app.MapPost("/admin/devices", (HttpRequest request, CreateDeviceRequest body, Re
 
     var (deviceId, secret) = db.CreateDevice(body.DisplayName);
     return Results.Ok(new DeviceCredentialResponse(deviceId, secret));
+});
+
+// The relay only ever REQUESTS a redeploy — it never runs `docker compose` on itself. Doing that
+// from inside the very container being rebuilt would need the host's Docker socket mounted in
+// (root-equivalent host access from inside a container — the kind of privilege this app's whole
+// threat model tries to avoid granting anywhere). Instead this just drops a marker file into the
+// already-mounted /data volume; a host-side systemd watcher (see relay/ops/) does the actual
+// `docker compose build && up -d`, with real Docker access but no HTTP surface of its own.
+app.MapPost("/admin/deploy", (HttpRequest request) =>
+{
+    if (!IsAdminAuthorized(request, adminSecret))
+        return Results.Unauthorized();
+
+    File.WriteAllText(deployMarkerPath, DateTimeOffset.UtcNow.ToString("O"));
+    return Results.Accepted(value: new { queued = true, message = "Redeploy requested — the host watcher picks this up within a few seconds." });
 });
 
 app.MapPost("/register", (RegisterRequest body, RelayDatabase db) =>

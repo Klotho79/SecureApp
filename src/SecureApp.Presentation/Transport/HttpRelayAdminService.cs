@@ -55,6 +55,24 @@ public sealed class HttpRelayAdminService : IRelayAdminService
         return (result.Code, result.ExpiresAtUtc);
     }
 
+    public async Task RequestDeployAsync(Uri endpoint, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+
+        var secretBytes = await _vault.RetrieveSecretAsync(RelayDeviceVaultKeys.AdminSecret, ct)
+            ?? throw new InvalidOperationException("No admin secret is stored on this device yet — enter it above first.");
+        var adminSecret = Encoding.UTF8.GetString(secretBytes);
+
+        var deployUri = new Uri(ToHttpUri(endpoint), "admin/deploy");
+        using var request = new HttpRequestMessage(HttpMethod.Post, deployUri);
+        request.Headers.Add("X-Admin-Secret", adminSecret);
+
+        using var response = await _httpClient.SendAsync(request, ct);
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+            throw new InvalidOperationException("The relay rejected the stored admin secret — it may be wrong or have changed.");
+        response.EnsureSuccessStatusCode();
+    }
+
     // Mirrors WebSocketMessageTransport.ToHttpUri — the Settings UI stores/edits one ws:// address
     // for both the WebSocket connection and every HTTP admin/device call, so this needs the same
     // ws->http / wss->https rewrite.

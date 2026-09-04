@@ -15,4 +15,12 @@ public interface IRelayAdminService
 
     /// <summary>Mints a fresh invite code good for <paramref name="validForMinutes"/> minutes. Throws if no admin secret is stored yet, or the relay rejects the stored one.</summary>
     Task<(string InviteCode, DateTimeOffset ExpiresAtUtc)> CreateInviteAsync(Uri endpoint, string? displayNameHint, int validForMinutes, CancellationToken ct = default);
+
+    /// <summary>
+    /// Asks the relay to rebuild and restart itself from whatever code a prior <c>git push</c>
+    /// already checked out on the Pi (this call carries no code, just the request) — see
+    /// <c>relay/ops/README.md</c> for the full pipeline. Returns once the relay has queued the
+    /// request; the actual rebuild happens out-of-band on the Pi's host, not synchronously here.
+    /// </summary>
+    Task RequestDeployAsync(Uri endpoint, CancellationToken ct = default);
 }

@@ -128,6 +128,12 @@ public sealed partial class SettingsViewModel : ObservableObject
     public partial string? GeneratedInviteExpiryText { get; set; }
 
     [ObservableProperty]
+    public partial string? DeployStatusText { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasDeployStatus { get; set; }
+
+    [ObservableProperty]
     public partial string? AdminErrorMessage { get; set; }
 
     [ObservableProperty]
@@ -198,6 +204,8 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnIsBusyWithAdminChanged(bool value) => CanUseAdminControls = !value;
 
     partial void OnGeneratedInviteCodeTextChanged(string? value) => HasGeneratedInviteCode = !string.IsNullOrEmpty(value);
+
+    partial void OnDeployStatusTextChanged(string? value) => HasDeployStatus = !string.IsNullOrEmpty(value);
 
     [RelayCommand]
     private async Task LoadAsync()
@@ -274,6 +282,39 @@ public sealed partial class SettingsViewModel : ObservableObject
         catch (Exception ex)
         {
             AdminErrorMessage = $"Could not generate an invite code: {ex.Message}";
+        }
+        finally
+        {
+            IsBusyWithAdmin = false;
+        }
+    }
+
+    /// <summary>
+    /// Asks the relay to redeploy from whatever code the last `git push` to the Pi already checked
+    /// out — this call carries no code itself, just the request (see relay/ops/README.md and
+    /// IRelayAdminService.RequestDeployAsync's own remarks for the full pipeline and why). Purely
+    /// a convenience over SSHing into the Pi and running `docker compose build && up -d` by hand.
+    /// </summary>
+    [RelayCommand]
+    private async Task RedeployRelayAsync()
+    {
+        AdminErrorMessage = null;
+        DeployStatusText = null;
+        if (!Uri.TryCreate(RelayEndpointText, UriKind.Absolute, out var endpoint))
+        {
+            AdminErrorMessage = "Enter a valid relay address above first.";
+            return;
+        }
+
+        IsBusyWithAdmin = true;
+        try
+        {
+            await _relayAdminService.RequestDeployAsync(endpoint);
+            DeployStatusText = "Redeploy requested — the relay will rebuild and restart within a few seconds.";
+        }
+        catch (Exception ex)
+        {
+            AdminErrorMessage = $"Could not request a redeploy: {ex.Message}";
         }
         finally
         {
