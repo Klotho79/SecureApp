@@ -77,6 +77,13 @@ public sealed class HttpSharedLibraryService : ISharedLibraryService
         await _vault.StoreSecretAsync(SharedLibraryKeyVaultKey, key, ct);
     }
 
+    public async Task<string> ExportSharedKeyAsync(CancellationToken ct = default)
+    {
+        var key = await _vault.RetrieveSecretAsync(SharedLibraryKeyVaultKey, ct)
+            ?? throw new InvalidOperationException("No shared library key is set up yet on this device.");
+        return Convert.ToBase64String(key);
+    }
+
     public async Task<SharedLibraryFileSummary> UploadAsync(string folderPath, string fileName, IReadOnlyList<string> tags, Stream content, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(content);

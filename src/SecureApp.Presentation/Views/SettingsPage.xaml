@@ -99,7 +99,8 @@
                     <Label Text="{Binding SharedLibraryErrorMessage}" IsVisible="{Binding HasSharedLibraryError}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
                     <Label Text="✓ This device has a shared library key." FontSize="12" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding HasSharedLibraryKey}" />
 
-                    <Button Text="Generate a new key" Command="{Binding GenerateSharedLibraryKeyCommand}" />
+                    <Button Text="Generate a new key" Command="{Binding GenerateSharedLibraryKeyCommand}" IsVisible="{Binding HasNoSharedLibraryKey}" />
+                    <Button Text="Show key" Style="{StaticResource SecondaryButton}" Command="{Binding ShowSharedLibraryKeyCommand}" IsVisible="{Binding HasSharedLibraryKey}" />
                     <Editor Text="{Binding SharedLibraryKeyBlob}" IsReadOnly="True" HeightRequest="60" IsVisible="{Binding HasSharedLibraryKeyBlob}" />
                     <Button Text="Copy" Style="{StaticResource SecondaryButton}" Command="{Binding CopySharedLibraryKeyCommand}" IsVisible="{Binding HasSharedLibraryKeyBlob}" />
 

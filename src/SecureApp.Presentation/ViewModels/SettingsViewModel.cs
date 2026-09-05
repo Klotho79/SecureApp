@@ -89,6 +89,10 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool HasSharedLibraryKey { get; set; }
 
+    /// <summary>Mirrors <see cref="HasSharedLibraryKey"/> — kept as its own bound property (this codebase's established pattern, see HasNoAdminSecret) so XAML never needs to negate a binding. Gates which of Generate/Show is offered, so a key that already exists can only be re-shown, never silently regenerated and desynced from the rest of the community.</summary>
+    [ObservableProperty]
+    public partial bool HasNoSharedLibraryKey { get; set; }
+
     [ObservableProperty]
     public partial string? SharedLibraryKeyBlob { get; set; }
 
@@ -173,6 +177,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         InviteDisplayNameHintText = string.Empty;
         HasNoAdminSecret = true;
         CanUseAdminControls = true;
+        HasNoSharedLibraryKey = true;
     }
 
     partial void OnErrorMessageChanged(string? value) => HasErrorMessage = !string.IsNullOrEmpty(value);
@@ -196,6 +201,8 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnSharedLibraryErrorMessageChanged(string? value) => HasSharedLibraryError = !string.IsNullOrEmpty(value);
 
     partial void OnSharedLibraryKeyBlobChanged(string? value) => HasSharedLibraryKeyBlob = !string.IsNullOrEmpty(value);
+
+    partial void OnHasSharedLibraryKeyChanged(bool value) => HasNoSharedLibraryKey = !value;
 
     partial void OnAdminErrorMessageChanged(string? value) => HasAdminError = !string.IsNullOrEmpty(value);
 
@@ -334,6 +341,21 @@ public sealed partial class SettingsViewModel : ObservableObject
         catch (Exception ex)
         {
             SharedLibraryErrorMessage = $"Could not generate a key: {ex.Message}";
+        }
+    }
+
+    /// <summary>Re-shows the already-stored key (e.g. after the blob was dismissed/the app restarted before another device imported it) without minting a new one — see ISharedLibraryService.ExportSharedKeyAsync's own remarks for why that distinction matters.</summary>
+    [RelayCommand]
+    private async Task ShowSharedLibraryKeyAsync()
+    {
+        SharedLibraryErrorMessage = null;
+        try
+        {
+            SharedLibraryKeyBlob = await _sharedLibraryService.ExportSharedKeyAsync();
+        }
+        catch (Exception ex)
+        {
+            SharedLibraryErrorMessage = $"Could not retrieve the stored key: {ex.Message}";
         }
     }
 
