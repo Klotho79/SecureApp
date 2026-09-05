@@ -29,6 +29,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
     private readonly IMessagingService _messagingService;
     private readonly IMessageTransport _messageTransport;
     private readonly ISharedLibraryService _libraryService;
+    private readonly ITransportSettingsRepository _transportSettingsRepository;
 
     private Guid _chatSessionId;
     private EventHandler<MessageEnvelope>? _envelopeReceivedHandler;
@@ -69,13 +70,15 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         IMessageRepository messageRepository,
         IMessagingService messagingService,
         IMessageTransport messageTransport,
-        ISharedLibraryService libraryService)
+        ISharedLibraryService libraryService,
+        ITransportSettingsRepository transportSettingsRepository)
     {
         _sessionRepository = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
         _messageRepository = messageRepository ?? throw new ArgumentNullException(nameof(messageRepository));
         _messagingService = messagingService ?? throw new ArgumentNullException(nameof(messagingService));
         _messageTransport = messageTransport ?? throw new ArgumentNullException(nameof(messageTransport));
         _libraryService = libraryService ?? throw new ArgumentNullException(nameof(libraryService));
+        _transportSettingsRepository = transportSettingsRepository ?? throw new ArgumentNullException(nameof(transportSettingsRepository));
 
         Title = "Chat";
         Messages = [];
@@ -114,11 +117,37 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
             _chatSessionId = id;
     }
 
+    /// <summary>
+    /// Best-effort reconnect on opening a chat — the user's real, live complaint (2026-09-05):
+    /// a WebSocket connection that dropped mid-session (a relay restart, a network blip) never
+    /// reconnects on its own; only <c>App.xaml.cs</c>'s launch-time auto-connect existed before
+    /// this, so a message silently stayed Pending with no obvious reason why until someone
+    /// happened to check Settings. Mirrors that same method's logic (including respecting
+    /// <c>IsAutoConnectEnabled</c>, so a user who deliberately turned auto-connect off isn't
+    /// overridden just because they opened a chat) rather than a new always-on behavior.
+    /// </summary>
+    private async Task EnsureConnectedAsync()
+    {
+        if (_messageTransport.IsConnected) return;
+
+        try
+        {
+            var configuration = await _transportSettingsRepository.GetAsync();
+            if (configuration is { AssignedDeviceId: not null, IsAutoConnectEnabled: true, EndpointUri: { } endpoint })
+                await _messageTransport.ConnectAsync(endpoint);
+        }
+        catch
+        {
+            // Best-effort — SendAsync already tolerates staying Pending if this doesn't pan out.
+        }
+    }
+
     [RelayCommand]
     private async Task LoadAsync()
     {
         IsLoading = true;
         StatusErrorMessage = null;
+        await EnsureConnectedAsync();
         try
         {
             var session = await _sessionRepository.GetByIdAsync(_chatSessionId);
@@ -166,6 +195,9 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
             // Best-effort live send: the message is already durably persisted as Pending above
             // regardless of what happens here — no relay connected yet is the expected common
             // case until Milestone 5's transport is actually deployed, not an error condition.
+            // Also covers a connection that dropped while this chat was already open (LoadAsync's
+            // EnsureConnectedAsync only runs once, on appearing) — cheap no-op if already connected.
+            await EnsureConnectedAsync();
             if (_messageTransport.IsConnected)
             {
                 try
