@@ -20,6 +20,17 @@ public interface IMessagingService
     Task<byte[]> GetLocalIdentityPublicKeyAsync(CancellationToken ct = default);
 
     /// <summary>
+    /// Finds an existing non-Closed session with this exact peer identity, if any. Callers
+    /// (New Chat's "paste/scan a contact card or invite" flow) should check this BEFORE calling
+    /// <see cref="CreateSessionAsync"/>/<see cref="AcceptSessionAsync"/> and just open the existing
+    /// session instead of starting a fresh handshake — those two methods themselves always mint a
+    /// new session unconditionally (kept that way deliberately, so their own well-covered behavior
+    /// and test suite stay untouched); this is the policy check that decides whether to call them
+    /// at all. See IChatSessionRepository.GetByPeerPublicKeyAsync's own remarks for why this exists.
+    /// </summary>
+    Task<ChatSession?> FindExistingSessionAsync(byte[] peerIdentityPublicKey, CancellationToken ct = default);
+
+    /// <summary>
     /// Initiator side: creates the session (using our shared device identity key — see
     /// <see cref="GetLocalIdentityPublicKeyAsync"/>) and starts the Double Ratchet handshake. The
     /// returned <c>HandshakeCipherText</c> must reach the peer (via a future transport) for

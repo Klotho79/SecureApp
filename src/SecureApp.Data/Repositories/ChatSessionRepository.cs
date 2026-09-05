@@ -33,6 +33,13 @@ public sealed class ChatSessionRepository : IChatSessionRepository
         return rows.Select(ToEntity).ToList();
     }
 
+    public async Task<ChatSession?> GetByPeerPublicKeyAsync(byte[] peerIdentityPublicKey, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(peerIdentityPublicKey);
+        var all = await GetAllAsync(ct);
+        return all.FirstOrDefault(s => s.State != ChatSessionState.Closed && s.PeerIdentityPublicKey.AsSpan().SequenceEqual(peerIdentityPublicKey));
+    }
+
     public async Task AddAsync(ChatSession chatSession, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(chatSession);

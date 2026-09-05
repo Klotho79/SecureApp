@@ -4,6 +4,7 @@
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
+    xmlns:zxing="clr-namespace:ZXing.Net.Maui.Controls;assembly=ZXing.Net.MAUI.Controls"
     x:DataType="vm:NewChatViewModel"
     Title="New Chat">
 
@@ -11,6 +12,7 @@
         <VerticalStackLayout Padding="20" Spacing="8">
 
             <Label Text="{Binding StatusErrorMessage}" IsVisible="{Binding HasStatusError}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
+            <Label Text="{Binding StatusInfoMessage}" IsVisible="{Binding HasStatusInfo}" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" LineBreakMode="WordWrap" />
             <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" HorizontalOptions="Center" />
 
             <Border Style="{StaticResource CardBorder}">
@@ -18,15 +20,32 @@
                     <Label Text="Start a new chat" Style="{StaticResource SectionHeader}" Margin="0" />
                     <Label Text="Paste the contact card someone shared with you from their Settings page." FontSize="12" TextColor="Gray" />
                     <Editor Text="{Binding PeerContactCardText}" HeightRequest="80" Placeholder="Paste contact card here" />
+                    <Button Text="{Binding ScanPeerCardButtonText}" Style="{StaticResource SecondaryButton}" Command="{Binding ToggleScanPeerCardCommand}" />
+                    <zxing:CameraBarcodeReaderView
+                        x:Name="PeerCardScanner"
+                        IsVisible="{Binding IsScanningPeerCard}"
+                        IsDetecting="{Binding IsScanningPeerCard}"
+                        HeightRequest="250"
+                        BarcodesDetected="OnPeerCardBarcodeDetected" />
                     <Button Text="Create Chat" Command="{Binding CreateSessionCommand}" />
 
-                    <VerticalStackLayout IsVisible="{Binding HasGeneratedInvite}" Spacing="8" Margin="0,8,0,0">
-                        <Label Text="Send this back to them to finish connecting:" FontSize="12" TextColor="Gray" />
-                        <Editor Text="{Binding GeneratedInviteText}" IsReadOnly="True" HeightRequest="80" />
-                        <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
-                            <Button Grid.Column="0" Text="Copy" Style="{StaticResource SecondaryButton}" Command="{Binding CopyInviteCommand}" />
-                            <Button Grid.Column="1" Text="Open Chat" Command="{Binding OpenCreatedChatCommand}" />
-                        </Grid>
+                    <VerticalStackLayout IsVisible="{Binding HasCreatedSession}" Spacing="8" Margin="0,8,0,0">
+                        <VerticalStackLayout IsVisible="{Binding HasGeneratedInvite}" Spacing="8">
+                            <Label Text="Send this back to them to finish connecting:" FontSize="12" TextColor="Gray" />
+                            <Editor Text="{Binding GeneratedInviteText}" IsReadOnly="True" HeightRequest="80" />
+                            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                <Button Grid.Column="0" Text="Copy" Style="{StaticResource SecondaryButton}" Command="{Binding CopyInviteCommand}" />
+                                <Button Grid.Column="1" Text="Show QR" Style="{StaticResource SecondaryButton}" Command="{Binding ToggleShowInviteQrCommand}" />
+                            </Grid>
+                            <Image
+                                IsVisible="{Binding IsShowingInviteQr}"
+                                Source="{Binding GeneratedInviteQrImage}"
+                                BackgroundColor="White"
+                                HeightRequest="420"
+                                WidthRequest="420"
+                                HorizontalOptions="Center" />
+                        </VerticalStackLayout>
+                        <Button Text="Open Chat" Command="{Binding OpenCreatedChatCommand}" />
                     </VerticalStackLayout>
                 </VerticalStackLayout>
             </Border>
@@ -36,6 +55,13 @@
                     <Label Text="Accept an invite" Style="{StaticResource SectionHeader}" Margin="0" />
                     <Label Text="Paste the invite someone sent you back after you shared your contact card." FontSize="12" TextColor="Gray" />
                     <Editor Text="{Binding InviteBlobText}" HeightRequest="80" Placeholder="Paste invite here" />
+                    <Button Text="{Binding ScanInviteButtonText}" Style="{StaticResource SecondaryButton}" Command="{Binding ToggleScanInviteCommand}" />
+                    <zxing:CameraBarcodeReaderView
+                        x:Name="InviteScanner"
+                        IsVisible="{Binding IsScanningInvite}"
+                        IsDetecting="{Binding IsScanningInvite}"
+                        HeightRequest="250"
+                        BarcodesDetected="OnInviteBarcodeDetected" />
                     <Button Text="Accept Invite" Command="{Binding AcceptInviteCommand}" />
                     <Button Text="Open Chat" Command="{Binding OpenAcceptedChatCommand}" IsVisible="{Binding HasAcceptedSession}" />
                 </VerticalStackLayout>

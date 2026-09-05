@@ -84,6 +84,13 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial string ContactCardText { get; set; }
 
+    /// <summary>The same contact card, packed via QrBlobCodec for the "Show QR" flow — see that class's own remarks for why it can't just reuse ContactCardText's copy/paste format.</summary>
+    [ObservableProperty]
+    public partial string ContactCardQrValue { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsShowingContactCardQr { get; set; }
+
     // --- Shared library key (Milestone 5 follow-up) ---
 
     [ObservableProperty]
@@ -172,6 +179,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         IsNotRegistered = true;
         CanUseRelayControls = true;
         ContactCardText = string.Empty;
+        ContactCardQrValue = string.Empty;
         SharedLibraryKeyImportText = string.Empty;
         AdminSecretInputText = string.Empty;
         InviteDisplayNameHintText = string.Empty;
@@ -259,6 +267,9 @@ public sealed partial class SettingsViewModel : ObservableObject
             AdminErrorMessage = $"Could not save the admin secret: {ex.Message}";
         }
     }
+
+    [RelayCommand]
+    private void ToggleContactCardQr() => IsShowingContactCardQr = !IsShowingContactCardQr;
 
     /// <summary>Lets the user re-enter the admin secret (e.g. after a typo) without needing to know it was even wrong — just shows the input field again; the next Save overwrites whatever was stored before.</summary>
     [RelayCommand]
@@ -472,16 +483,19 @@ public sealed partial class SettingsViewModel : ObservableObject
             if (configuration?.AssignedDeviceId is not { } deviceId)
             {
                 ContactCardText = string.Empty;
+                ContactCardQrValue = string.Empty;
                 return;
             }
 
             var publicKey = await _messagingService.GetLocalIdentityPublicKeyAsync();
             var card = new ContactCardBlob(_currentUserService.Current.DisplayName, publicKey, deviceId);
             ContactCardText = ContactCardCodec.Encode(card);
+            ContactCardQrValue = QrBlobCodec.EncodeContactCard(card);
         }
         catch (Exception)
         {
             ContactCardText = string.Empty;
+            ContactCardQrValue = string.Empty;
         }
     }
 

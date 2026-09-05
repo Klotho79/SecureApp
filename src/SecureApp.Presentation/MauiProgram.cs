@@ -9,6 +9,7 @@ using SecureApp.Presentation.Transport;
 using SecureApp.Presentation.ViewModels;
 using SecureApp.Presentation.Views;
 using SkiaSharp.Views.Maui.Controls.Hosting;
+using ZXing.Net.Maui.Controls;
 
 namespace SecureApp.Presentation;
 
@@ -20,6 +21,7 @@ public static class MauiProgram
 		builder
 			.UseMauiApp<App>()
 			.UseSkiaSharp() // Registers SkiaSharp/HarfBuzz rendering handlers for the in-app document/image viewer.
+			.UseBarcodeReader() // ZXing.Net.MAUI — QR generate (BarcodeGeneratorView) + camera scan (CameraBarcodeReaderView) for chat pairing.
 			.ConfigureFonts(fonts =>
 			{
 				fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");

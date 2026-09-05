@@ -4,6 +4,8 @@
 <dict>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Used to scan a QR code when pairing a new chat contact.</string>
 	<key>UIDeviceFamily</key>
 	<array>
 		<integer>1</integer>
