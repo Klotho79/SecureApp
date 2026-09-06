@@ -130,6 +130,15 @@ public sealed partial class LibraryViewModel : ObservableObject
     }
 
     /// <summary>
+    /// A starting structure so the chip row isn't empty before anyone has uploaded anything — the
+    /// user's own field (anesthesiology/intensive care) plus a general announcements bucket. Not
+    /// exclusive: any other folder name typed on upload shows up as its own chip too (see
+    /// RefreshCategoriesAsync below), this is just a floor, not a ceiling. Worth making
+    /// admin-editable later rather than a hardcoded list, if the community's categories evolve.
+    /// </summary>
+    private static readonly string[] SeedCategories = ["Anesthesiology", "Intensive Care Medicine", "Announcements"];
+
+    /// <summary>
     /// Unfiltered fetch, deliberately separate from the (possibly filtered) Results above — the
     /// chip row needs to keep showing every category that exists regardless of which one is
     /// currently selected, not just whichever one the active filter happens to match.
@@ -137,9 +146,12 @@ public sealed partial class LibraryViewModel : ObservableObject
     private async Task RefreshCategoriesAsync()
     {
         var all = await _libraryService.SearchAsync();
-        var distinctFolders = all
+        var uploadedFolders = all
             .Select(f => f.FolderPath)
-            .Where(f => !string.IsNullOrWhiteSpace(f))
+            .Where(f => !string.IsNullOrWhiteSpace(f));
+
+        var distinctFolders = SeedCategories
+            .Concat(uploadedFolders)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(f => f, StringComparer.OrdinalIgnoreCase);
 
