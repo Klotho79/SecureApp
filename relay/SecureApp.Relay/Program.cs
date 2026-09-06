@@ -219,6 +219,29 @@ app.Map("/ws", async (HttpContext context, RelayDatabase db, ConnectionRegistry 
                     db.EnqueueOutbox(recipientId, RelayProtocol.Serialize(deliverFrame));
                 }
             }
+            else if (frame is { Type: "pairing", RecipientDeviceId: { } pairingRecipientId, PairingInviteBlob: not null })
+            {
+                // Same live-or-outbox routing as a "send" frame above — deliberately duplicated
+                // rather than generalized, since the two carry different payload shapes (Envelope
+                // vs. an opaque pairing blob) and stay independently readable this way.
+                var pairingDeliverFrame = new RelayFrame { Type = "pairing-deliver", SenderDeviceId = deviceId, PairingInviteBlob = frame.PairingInviteBlob };
+
+                if (registry.TryGet(pairingRecipientId, out var pairingRecipientSocket))
+                {
+                    try
+                    {
+                        await RelayProtocol.SendFrameAsync(pairingRecipientSocket, pairingDeliverFrame, ct);
+                    }
+                    catch (WebSocketException)
+                    {
+                        db.EnqueueOutbox(pairingRecipientId, RelayProtocol.Serialize(pairingDeliverFrame));
+                    }
+                }
+                else
+                {
+                    db.EnqueueOutbox(pairingRecipientId, RelayProtocol.Serialize(pairingDeliverFrame));
+                }
+            }
         }
     }
     finally

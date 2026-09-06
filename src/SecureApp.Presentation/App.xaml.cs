@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
+using SecureApp.Presentation.Chat;
 
 namespace SecureApp.Presentation;
 
@@ -9,6 +10,47 @@ public partial class App : Application
 	public App()
 	{
 		InitializeComponent();
+
+		// 2026-09-06 pairing simplification: whichever side is online when the other calls
+		// CreateSessionAsync now gets the invite delivered automatically (see
+		// NewChatViewModel.CreateSessionAsync's own remarks) instead of needing a second manual
+		// QR/copy-paste round trip. Subscribed here (once, for the app's whole lifetime) rather
+		// than only while NewChatPage happens to be open — the other person might complete pairing
+		// at any time, not just while you're looking at that screen.
+		var transport = IPlatformApplication.Current?.Services.GetService<IMessageTransport>();
+		if (transport is not null)
+			transport.PairingInviteReceived += OnPairingInviteReceived;
+	}
+
+	private static async void OnPairingInviteReceived(object? sender, string inviteBlob)
+	{
+		var services = IPlatformApplication.Current?.Services;
+		if (services is null) return;
+
+		ChatInviteBlob invite;
+		try
+		{
+			invite = ContactCardCodec.Decode<ChatInviteBlob>(inviteBlob);
+		}
+		catch
+		{
+			return; // Malformed/foreign frame — never crash a background event handler over it.
+		}
+
+		using var scope = services.CreateScope();
+		var messagingService = scope.ServiceProvider.GetRequiredService<IMessagingService>();
+		try
+		{
+			if (await messagingService.FindExistingSessionAsync(invite.InitiatorPublicKey) is not null)
+				return; // Already paired — e.g. the sender's own fallback QR was also scanned separately.
+
+			await messagingService.AcceptSessionAsync(invite.InitiatorDisplayName, invite.InitiatorPublicKey, invite.InitiatorRelayDeviceId, invite.HandshakeCipherText);
+		}
+		catch
+		{
+			// Best-effort, same reasoning as AutoConnectRelayAsync below — the manual QR/copy-paste
+			// fallback the initiator's own screen still shows remains available either way.
+		}
 	}
 
 	protected override Window CreateWindow(IActivationState? activationState)

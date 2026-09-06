@@ -10,15 +10,17 @@
          corner-button navigation (💬📚⚙ buttons on DocumentBrowserPage). Detail/pushed pages
          (DocumentViewerPage, NewChatPage, ChatPage) are NOT tabs — they're reached via
          GoToAsync and registered below via Routing.RegisterRoute instead. -->
+    <!-- Chats leads — the user's own call (2026-09-06): discussing a procedure is the actual
+         day-to-day activity, Documents (private per-device files) is used far less often. -->
     <TabBar>
-        <Tab Title="🗂 Documents">
-            <ShellContent ContentTemplate="{DataTemplate views:DocumentBrowserPage}" Route="DocumentBrowser" />
-        </Tab>
         <Tab Title="💬 Chats">
             <ShellContent ContentTemplate="{DataTemplate views:ChatListPage}" Route="ChatListTab" />
         </Tab>
         <Tab Title="📚 Library">
             <ShellContent ContentTemplate="{DataTemplate views:LibraryPage}" Route="LibraryTab" />
+        </Tab>
+        <Tab Title="🗂 Documents">
+            <ShellContent ContentTemplate="{DataTemplate views:DocumentBrowserPage}" Route="DocumentBrowser" />
         </Tab>
         <Tab Title="⚙ Settings">
             <ShellContent ContentTemplate="{DataTemplate views:SettingsPage}" Route="SettingsTab" />

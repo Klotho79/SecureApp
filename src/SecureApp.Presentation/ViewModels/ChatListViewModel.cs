@@ -41,7 +41,7 @@ public sealed partial class ChatListViewModel : ObservableObject
             var sessions = await _sessionRepository.GetAllAsync();
             Sessions = new ObservableCollection<ChatSessionItem>(
                 sessions.OrderByDescending(s => s.LastRatchetedAtUtc ?? s.CreatedAtUtc)
-                    .Select(s => new ChatSessionItem(s.Id, s.PeerDisplayName, s.State, DescribeLastActivity(s))));
+                    .Select(s => new ChatSessionItem(s.Id, s.PeerDisplayName, s.State, DescribeLastActivity(s), ComputeInitials(s.PeerDisplayName))));
             IsEmpty = Sessions.Count == 0;
         }
         finally
@@ -56,6 +56,17 @@ public sealed partial class ChatListViewModel : ObservableObject
         ChatSessionState.PendingHandshake => "Waiting to connect…",
         _ => session.LastRatchetedAtUtc is { } last ? last.LocalDateTime.ToString("g") : "No messages yet"
     };
+
+    /// <summary>Up to 2 letters for the avatar circle in the redesigned list (2026-09-06) — first letter of up to the first two words, e.g. "Dr. B. Chen" -&gt; "DB". Plain string, not a MAUI Color, to keep this partial's own stated MAUI-free claim true; the avatar's actual color is one fixed accent tint set in XAML, not per-contact.</summary>
+    private static string ComputeInitials(string displayName)
+    {
+        var letters = displayName
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Select(word => char.ToUpperInvariant(word[0]))
+            .Take(2)
+            .ToArray();
+        return letters.Length == 0 ? "?" : new string(letters);
+    }
 }
 
-public sealed record ChatSessionItem(Guid Id, string PeerDisplayName, ChatSessionState State, string LastActivityText);
+public sealed record ChatSessionItem(Guid Id, string PeerDisplayName, ChatSessionState State, string LastActivityText, string Initials);

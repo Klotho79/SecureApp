@@ -5,56 +5,95 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
     x:DataType="vm:LibraryViewModel"
-    Title="Shared Library">
+    Title="Library">
 
-    <Grid RowDefinitions="Auto,Auto,Auto,*" Padding="20" RowSpacing="10">
+    <Grid RowDefinitions="Auto,Auto,*" Padding="20,16" RowSpacing="14">
 
-        <Grid Grid.Row="0" ColumnDefinitions="*,*,*,Auto" ColumnSpacing="8">
-            <Entry Grid.Column="0" Text="{Binding SearchQuery}" Placeholder="Search by name" />
-            <Entry Grid.Column="1" Text="{Binding FolderFilter}" Placeholder="Folder" />
-            <Entry Grid.Column="2" Text="{Binding TagFilter}" Placeholder="Tag" />
-            <Button Grid.Column="3" Text="Search" Style="{StaticResource SecondaryButton}" Command="{Binding SearchCommand}" />
-        </Grid>
+        <!-- Header + search + filters, all in one scroll-independent block so the results list
+             below gets its own scroll region (RefreshView needs sole ownership of the ScrollView
+             it wraps — see Grid.Row 2). -->
+        <VerticalStackLayout Grid.Row="0" Spacing="14">
+            <VerticalStackLayout Spacing="2">
+                <Label Text="Procedure Library" Style="{StaticResource PageTitle}" />
+                <Label Text="Shared, encrypted reference for the whole team — searchable by name, folder, or tag." FontSize="12.5" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
+            </VerticalStackLayout>
 
-        <Label
-            Grid.Row="1"
-            Text="{Binding StatusErrorMessage}"
-            IsVisible="{Binding HasStatusError}"
-            TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}"
-            LineBreakMode="WordWrap" />
+            <Border Style="{StaticResource CardBorder}" Margin="0" Padding="14" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}" Stroke="Transparent">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                    <Entry Grid.Column="0" Text="{Binding SearchQuery}" Placeholder="Search procedures, e.g. &quot;sepsis&quot;…" BackgroundColor="Transparent" />
+                    <Button Grid.Column="1" Text="Search" Command="{Binding SearchCommand}" />
+                </Grid>
+            </Border>
 
-        <Border Grid.Row="2" Style="{StaticResource CardBorder}" Margin="0,4,0,4">
-            <Grid ColumnDefinitions="*,*,Auto" ColumnSpacing="8">
-                <Entry Grid.Column="0" Text="{Binding UploadFolderPath}" Placeholder="Upload to folder (optional)" />
-                <Entry Grid.Column="1" Text="{Binding UploadTags}" Placeholder="Tags, comma separated" />
-                <Button Grid.Column="2" Text="⬆ Upload" Command="{Binding UploadCommand}" IsEnabled="{Binding CanUpload}" />
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                <Entry Grid.Column="0" Text="{Binding FolderFilter}" Placeholder="Filter by folder" />
+                <Entry Grid.Column="1" Text="{Binding TagFilter}" Placeholder="Filter by tag" />
             </Grid>
+
+            <Label
+                Text="{Binding StatusErrorMessage}"
+                IsVisible="{Binding HasStatusError}"
+                TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}"
+                LineBreakMode="WordWrap" />
+        </VerticalStackLayout>
+
+        <!-- Upload — kept as its own compact card rather than folded into the search card above,
+             so "find a procedure" and "add a procedure" read as two clearly separate actions. -->
+        <Border Grid.Row="1" Style="{StaticResource CardBorder}" Margin="0" IsVisible="{Binding CanModifyContent}">
+            <VerticalStackLayout Spacing="8">
+                <Label Text="Add a procedure" Style="{StaticResource SectionHeader}" Margin="0" FontSize="14" />
+                <Grid ColumnDefinitions="*,*,Auto" ColumnSpacing="8">
+                    <Entry Grid.Column="0" Text="{Binding UploadFolderPath}" Placeholder="Folder (optional)" />
+                    <Entry Grid.Column="1" Text="{Binding UploadTags}" Placeholder="Tags, comma separated" />
+                    <Button Grid.Column="2" Text="⬆ Upload" Style="{StaticResource SecondaryButton}" Command="{Binding UploadCommand}" IsEnabled="{Binding CanUpload}" />
+                </Grid>
+            </VerticalStackLayout>
         </Border>
 
-        <RefreshView Grid.Row="3" IsRefreshing="{Binding IsLoading}" Command="{Binding SearchCommand}">
+        <RefreshView Grid.Row="2" IsRefreshing="{Binding IsLoading}" Command="{Binding SearchCommand}">
             <ScrollView>
-                <VerticalStackLayout Spacing="0">
+                <VerticalStackLayout Spacing="10">
 
                     <Label
-                        Text="No files found."
+                        Text="No procedures found — try a different search, or add one above."
                         IsVisible="{Binding IsEmpty}"
                         Margin="0,32"
                         HorizontalOptions="Center"
-                        TextColor="Gray" />
+                        HorizontalTextAlignment="Center"
+                        TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
 
                     <CollectionView
                         x:Name="ResultsView"
                         ItemsSource="{Binding Results}"
                         SelectionMode="Single"
                         SelectionChanged="OnResultSelected">
+                        <CollectionView.ItemsLayout>
+                            <LinearItemsLayout Orientation="Vertical" ItemSpacing="10" />
+                        </CollectionView.ItemsLayout>
                         <CollectionView.ItemTemplate>
                             <DataTemplate x:DataType="vm:LibraryFileItem">
-                                <Border Style="{StaticResource CardBorder}">
-                                    <Grid ColumnDefinitions="Auto,*">
-                                        <Label Grid.Column="0" Text="📄" FontSize="20" Margin="0,0,12,0" VerticalOptions="Center" />
-                                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
-                                            <Label Text="{Binding FileName}" FontSize="16" />
-                                            <Label Text="{Binding SubtitleText}" FontSize="12" TextColor="Gray" />
+                                <Border Style="{StaticResource CardBorder}" Margin="0">
+                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+
+                                        <Border Grid.Column="0" WidthRequest="38" HeightRequest="38" Padding="0" StrokeShape="RoundRectangle 9" Stroke="Transparent" BackgroundColor="{AppThemeBinding Light={StaticResource AccentSoft}, Dark={StaticResource AccentSoftDark}}" VerticalOptions="Start">
+                                            <Label Text="📄" FontSize="16" HorizontalOptions="Center" VerticalOptions="Center" />
+                                        </Border>
+
+                                        <VerticalStackLayout Grid.Column="1" Spacing="5">
+                                            <Label Text="{Binding FileName}" FontSize="14.5" FontAttributes="Bold" LineBreakMode="TailTruncation" />
+                                            <Label Text="{Binding FolderPath}" IsVisible="{Binding HasFolder}" FontSize="12" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
+
+                                            <FlexLayout IsVisible="{Binding HasTags}" BindableLayout.ItemsSource="{Binding Tags}" Wrap="Wrap" Direction="Row" JustifyContent="Start" AlignItems="Start">
+                                                <BindableLayout.ItemTemplate>
+                                                    <DataTemplate x:DataType="vm:LibraryTagItem">
+                                                        <Border Style="{StaticResource Chip}" Margin="0,2,6,0">
+                                                            <Label Text="{Binding Label}" Style="{StaticResource ChipLabel}" />
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </BindableLayout.ItemTemplate>
+                                            </FlexLayout>
+
+                                            <Label Text="{Binding SizeAndDateText}" FontSize="11.5" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
                                         </VerticalStackLayout>
                                     </Grid>
                                 </Border>

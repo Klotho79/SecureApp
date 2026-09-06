@@ -28,6 +28,19 @@ public interface IMessageTransport
     Task DisconnectAsync(CancellationToken ct = default);
     Task SendEnvelopeAsync(MessageEnvelope envelope, CancellationToken ct = default);
 
+    /// <summary>
+    /// Delivers a pairing invite (the same blob a manual copy/paste or QR scan would otherwise
+    /// carry — see <c>ContactCardCodec.Encode(ChatInviteBlob)</c>) directly over this already-open
+    /// connection, so a peer who's online never needs the manual round-trip at all. Best-effort by
+    /// design (throws if not connected, same as <see cref="SendEnvelopeAsync"/>) — the manual
+    /// QR/copy-paste path this replaces for the common case stays fully functional as the fallback.
+    /// </summary>
+    Task SendPairingInviteAsync(Guid recipientRelayDeviceId, string inviteBlob, CancellationToken ct = default);
+
     event EventHandler<MessageEnvelope>? EnvelopeReceived;
+
+    /// <summary>Raised when a pairing invite arrives via <see cref="SendPairingInviteAsync"/> from the other side — the raw blob, ready for <c>ContactCardCodec.Decode&lt;ChatInviteBlob&gt;</c> exactly like a manually pasted/scanned one.</summary>
+    event EventHandler<string>? PairingInviteReceived;
+
     event EventHandler<TransportConnectionState>? ConnectionStateChanged;
 }

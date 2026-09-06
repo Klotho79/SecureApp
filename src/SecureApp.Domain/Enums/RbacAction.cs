@@ -12,5 +12,7 @@ public enum RbacAction
     DeleteDocument,
     MoveDocument,
     CreateChatSession,
-    SendMessage
+    SendMessage,
+    UploadLibraryFile,
+    DeleteLibraryFile
 }

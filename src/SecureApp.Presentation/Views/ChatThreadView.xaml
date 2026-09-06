@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentView
+    x:Class="SecureApp.Presentation.Views.ChatThreadView"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
+    x:DataType="vm:ChatViewModel"
+    x:Name="ChatThreadRoot">
+
+    <Grid RowDefinitions="Auto,*,Auto,Auto" Padding="0" RowSpacing="0">
+
+        <Label
+            Grid.Row="0"
+            Text="{Binding StatusErrorMessage}"
+            IsVisible="{Binding HasStatusError}"
+            Margin="20,12,20,0"
+            TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}"
+            LineBreakMode="WordWrap" />
+
+        <Grid Grid.Row="1">
+            <ActivityIndicator IsRunning="{Binding IsLoading}" IsVisible="{Binding IsLoading}" HorizontalOptions="Center" VerticalOptions="Center" />
+
+            <CollectionView ItemsSource="{Binding Messages}" ItemsUpdatingScrollMode="KeepLastItemInView" Margin="12,12,12,4">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ChatMessageItem">
+                        <Grid Padding="8,3">
+                            <Border
+                                Padding="13,10"
+                                StrokeShape="RoundRectangle 16,16,4,16"
+                                StrokeThickness="1"
+                                Stroke="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}"
+                                BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray950}}"
+                                HorizontalOptions="Start"
+                                MaximumWidthRequest="340">
+                                <Border.Triggers>
+                                    <DataTrigger TargetType="Border" Binding="{Binding IsOutbound}" Value="True">
+                                        <Setter Property="StrokeShape" Value="RoundRectangle 16,16,16,4" />
+                                        <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
+                                        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
+                                        <Setter Property="HorizontalOptions" Value="End" />
+                                    </DataTrigger>
+                                </Border.Triggers>
+                                <VerticalStackLayout Spacing="5">
+                                    <Label Text="{Binding Text}" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" FontSize="14.5" LineBreakMode="WordWrap" IsVisible="{Binding HasText}">
+                                        <Label.Triggers>
+                                            <DataTrigger TargetType="Label" Binding="{Binding IsOutbound}" Value="True">
+                                                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource PrimaryDarkText}}" />
+                                            </DataTrigger>
+                                        </Label.Triggers>
+                                    </Label>
+
+                                    <Border IsVisible="{Binding HasAttachment}" Padding="10,8" StrokeShape="RoundRectangle 10" Stroke="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer
+                                                Command="{Binding Source={x:Reference ChatThreadRoot}, Path=BindingContext.OpenAttachmentCommand}"
+                                                CommandParameter="{Binding .}" />
+                                        </Border.GestureRecognizers>
+                                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
+                                            <Border Grid.Column="0" WidthRequest="28" HeightRequest="28" Padding="0" StrokeShape="RoundRectangle 7" Stroke="Transparent" BackgroundColor="{AppThemeBinding Light={StaticResource AccentSoft}, Dark={StaticResource AccentSoftDark}}" VerticalOptions="Center">
+                                                <Label Text="📄" FontSize="12" HorizontalOptions="Center" VerticalOptions="Center" />
+                                            </Border>
+                                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
+                                                <Label Text="{Binding AttachmentFileName}" FontSize="12.5" FontAttributes="Bold" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" LineBreakMode="TailTruncation" />
+                                                <Label Text="From the shared library" FontSize="10.5" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
+                                            </VerticalStackLayout>
+                                        </Grid>
+                                    </Border>
+
+                                    <Label Text="{Binding SentAtUtc, StringFormat='{0:t}'}" FontSize="10" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}">
+                                        <Label.Triggers>
+                                            <DataTrigger TargetType="Label" Binding="{Binding IsOutbound}" Value="True">
+                                                <Setter Property="TextColor" Value="{AppThemeBinding Light=#CFE7F0, Dark={StaticResource PrimaryDarkText}}" />
+                                            </DataTrigger>
+                                        </Label.Triggers>
+                                    </Label>
+                                </VerticalStackLayout>
+                            </Border>
+                        </Grid>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </Grid>
+
+        <Border Grid.Row="2" Margin="12,0" Padding="8,6" IsVisible="{Binding HasPendingAttachment}" StrokeShape="RoundRectangle 10" Stroke="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <Label Grid.Column="0" Text="📎" VerticalOptions="Center" Margin="0,0,8,0" />
+                <Label Grid.Column="1" Text="{Binding PendingAttachmentFileName}" VerticalOptions="Center" LineBreakMode="TailTruncation" />
+                <Button Grid.Column="2" Text="✕" Style="{StaticResource SecondaryButton}" WidthRequest="40" Padding="0" Command="{Binding ClearPendingAttachmentCommand}" />
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="3" Padding="12,10" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10" BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource OffBlack}}">
+            <BoxView Grid.ColumnSpan="3" HeightRequest="1" VerticalOptions="Start" Margin="-12,-10,-12,0" Color="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}" />
+            <Button Grid.Column="0" Text="📎" Style="{StaticResource SecondaryButton}" WidthRequest="44" Padding="0" Clicked="OnAttachClicked" />
+            <Entry Grid.Column="1" Text="{Binding ComposeText}" Placeholder="Type a message…" ReturnCommand="{Binding SendCommand}" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}" />
+            <Button Grid.Column="2" Text="Send" Command="{Binding SendCommand}" IsEnabled="{Binding CanSend}" />
+        </Grid>
+    </Grid>
+</ContentView>

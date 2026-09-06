@@ -3,84 +3,10 @@
     x:Class="SecureApp.Presentation.Views.ChatPage"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-    xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
-    x:DataType="vm:ChatViewModel"
-    Title="{Binding Title}"
-    x:Name="ChatPageRoot">
+    Title="{Binding Title}">
 
-    <Grid RowDefinitions="Auto,*,Auto,Auto" Padding="20,16" RowSpacing="8">
+    <!-- Content is set in code-behind (ChatThreadView needs a constructor-injected
+         ISharedLibraryService, which a XAML-declared child element can't receive — only
+         ChatPage's own DI-resolved constructor can). See ChatThreadView's own remarks. -->
 
-        <Label
-            Grid.Row="0"
-            Text="{Binding StatusErrorMessage}"
-            IsVisible="{Binding HasStatusError}"
-            TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}"
-            LineBreakMode="WordWrap" />
-
-        <Grid Grid.Row="1">
-            <ActivityIndicator IsRunning="{Binding IsLoading}" IsVisible="{Binding IsLoading}" HorizontalOptions="Center" VerticalOptions="Center" />
-
-            <CollectionView ItemsSource="{Binding Messages}" ItemsUpdatingScrollMode="KeepLastItemInView">
-                <CollectionView.ItemTemplate>
-                    <DataTemplate x:DataType="vm:ChatMessageItem">
-                        <Grid Padding="4,2">
-                            <Border
-                                Padding="10,6"
-                                StrokeShape="RoundRectangle 12"
-                                BackgroundColor="{StaticResource Gray200}"
-                                HorizontalOptions="Start"
-                                MaximumWidthRequest="280">
-                                <Border.Triggers>
-                                    <DataTrigger TargetType="Border" Binding="{Binding IsOutbound}" Value="True">
-                                        <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
-                                        <Setter Property="HorizontalOptions" Value="End" />
-                                    </DataTrigger>
-                                </Border.Triggers>
-                                <VerticalStackLayout Spacing="2">
-                                    <Label Text="{Binding Text}" TextColor="{StaticResource OffBlack}" LineBreakMode="WordWrap" IsVisible="{Binding HasText}">
-                                        <Label.Triggers>
-                                            <DataTrigger TargetType="Label" Binding="{Binding IsOutbound}" Value="True">
-                                                <Setter Property="TextColor" Value="{StaticResource White}" />
-                                            </DataTrigger>
-                                        </Label.Triggers>
-                                    </Label>
-                                    <Border IsVisible="{Binding HasAttachment}" Stroke="{StaticResource Gray400}" StrokeShape="RoundRectangle 8" Padding="6,4" BackgroundColor="Transparent">
-                                        <Border.GestureRecognizers>
-                                            <TapGestureRecognizer
-                                                Command="{Binding Source={x:Reference ChatPageRoot}, Path=BindingContext.OpenAttachmentCommand}"
-                                                CommandParameter="{Binding .}" />
-                                        </Border.GestureRecognizers>
-                                        <Label Text="{Binding AttachmentFileName, StringFormat='📎 {0}'}" FontSize="13" TextColor="{StaticResource OffBlack}">
-                                            <Label.Triggers>
-                                                <DataTrigger TargetType="Label" Binding="{Binding IsOutbound}" Value="True">
-                                                    <Setter Property="TextColor" Value="{StaticResource White}" />
-                                                </DataTrigger>
-                                            </Label.Triggers>
-                                        </Label>
-                                    </Border>
-                                    <Label Text="{Binding SentAtUtc, StringFormat='{0:t}'}" FontSize="10" TextColor="{StaticResource Gray500}" />
-                                </VerticalStackLayout>
-                            </Border>
-                        </Grid>
-                    </DataTemplate>
-                </CollectionView.ItemTemplate>
-            </CollectionView>
-        </Grid>
-
-        <Border Grid.Row="2" Style="{StaticResource CardBorder}" Margin="0" Padding="8,6" IsVisible="{Binding HasPendingAttachment}">
-            <Grid ColumnDefinitions="Auto,*,Auto">
-                <Label Grid.Column="0" Text="📎" VerticalOptions="Center" Margin="0,0,8,0" />
-                <Label Grid.Column="1" Text="{Binding PendingAttachmentFileName}" VerticalOptions="Center" LineBreakMode="TailTruncation" />
-                <Button Grid.Column="2" Text="✕" Style="{StaticResource SecondaryButton}" WidthRequest="40" Padding="0" Command="{Binding ClearPendingAttachmentCommand}" />
-            </Grid>
-        </Border>
-
-        <Border Grid.Row="3" Style="{StaticResource CardBorder}" Margin="0" Padding="8">
-            <Grid ColumnDefinitions="Auto,*,Auto">
-                <Button Grid.Column="0" Text="📎" Style="{StaticResource SecondaryButton}" WidthRequest="44" Padding="0" Margin="0,0,8,0" Clicked="OnAttachClicked" />
-                <Entry Grid.Column="1" Text="{Binding ComposeText}" Placeholder="Type a message…" ReturnCommand="{Binding SendCommand}" />
-                <Button Grid.Column="2" Text="Send" Command="{Binding SendCommand}" IsEnabled="{Binding CanSend}" Margin="8,0,0,0" />
-            </Grid>
-        </Border>
-    </Grid>
 </ContentPage>

@@ -20,6 +20,7 @@ public sealed partial class NewChatViewModel : ObservableObject
     private readonly IMessagingService _messagingService;
     private readonly ICurrentUserService _currentUserService;
     private readonly ITransportSettingsRepository _transportSettingsRepository;
+    private readonly IMessageTransport _messageTransport;
 
     [ObservableProperty]
     public partial string PeerContactCardText { get; set; }
@@ -88,11 +89,13 @@ public sealed partial class NewChatViewModel : ObservableObject
     public NewChatViewModel(
         IMessagingService messagingService,
         ICurrentUserService currentUserService,
-        ITransportSettingsRepository transportSettingsRepository)
+        ITransportSettingsRepository transportSettingsRepository,
+        IMessageTransport messageTransport)
     {
         _messagingService = messagingService ?? throw new ArgumentNullException(nameof(messagingService));
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         _transportSettingsRepository = transportSettingsRepository ?? throw new ArgumentNullException(nameof(transportSettingsRepository));
+        _messageTransport = messageTransport ?? throw new ArgumentNullException(nameof(messageTransport));
 
         PeerContactCardText = string.Empty;
         InviteBlobText = string.Empty;
@@ -161,6 +164,28 @@ public sealed partial class NewChatViewModel : ObservableObject
             GeneratedInviteText = ContactCardCodec.Encode(invite);
             GeneratedInviteQrValue = QrBlobCodec.EncodeInvite(invite);
             CreatedSession = session;
+
+            // 2026-09-06 pairing simplification (user's own request: "co nejméně zatěžující pro
+            // uživatele" — as little burden on the user as possible): if the peer's device happens
+            // to be online right now, this delivers the invite over the relay directly instead of
+            // making the user do a second manual QR/copy-paste round trip — App.xaml.cs's
+            // OnPairingInviteReceived completes pairing on their end automatically, with zero
+            // action needed there either. Best-effort and silent either way: the QR/Copy UI above
+            // stays fully populated and usable regardless, so a peer who's offline (or whose relay
+            // hop fails) is never blocked — same "never let live-send failure surface as an error"
+            // policy ChatViewModel.SendAsync already established for ordinary messages.
+            try
+            {
+                if (_messageTransport.IsConnected)
+                {
+                    await _messageTransport.SendPairingInviteAsync(peerCard.RelayDeviceId, GeneratedInviteText);
+                    StatusInfoMessage = $"Sent automatically — {peerCard.DisplayName} should be paired shortly. You can also share the QR/text below as a backup.";
+                }
+            }
+            catch
+            {
+                // Stays available as the QR/Copy fallback below — nothing further to do here.
+            }
         }
         catch (Exception ex)
         {

@@ -26,6 +26,16 @@ public static class MauiProgram
 			{
 				fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
 				fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
+				// 2026-09-06 visual redesign — a serif for headings/document titles (reads as
+				// clinical/editorial authority) paired with a variable-weight sans for everything
+				// else. IBM Plex Sans no longer ships static per-weight files on Google Fonts (the
+				// whole repo has moved to variable fonts) — the single variable file responds to
+				// FontAttributes/requested weight fine on all 4 targets since each platform's own
+				// modern text stack (DirectWrite/CoreText/Android's renderer) resolves the wght axis.
+				fonts.AddFont("Spectral-Medium.ttf", "SpectralMedium");
+				fonts.AddFont("Spectral-SemiBold.ttf", "SpectralSemibold");
+				fonts.AddFont("Spectral-Bold.ttf", "SpectralBold");
+				fonts.AddFont("IBMPlexSans-Variable.ttf", "PlexSans");
 			});
 
 #if DEBUG

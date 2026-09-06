@@ -27,4 +27,13 @@ public sealed class RelayFrame
     public Guid? SenderDeviceId { get; init; }
 
     public MessageEnvelope? Envelope { get; init; }
+
+    /// <summary>
+    /// On a "pairing"/"pairing-deliver" frame — an opaque, already-encrypted-in-substance blob the
+    /// relay never parses (it's a client-encoded ChatInviteBlob, meaningless without the recipient's
+    /// own crypto context). Routed exactly like Envelope on a "send"/"deliver" frame — see
+    /// Program.cs's /ws handler — added alongside it (2026-09-06) rather than overloading Envelope
+    /// itself, since a pairing invite has no SessionId to route by yet on the receiving side.
+    /// </summary>
+    public string? PairingInviteBlob { get; init; }
 }

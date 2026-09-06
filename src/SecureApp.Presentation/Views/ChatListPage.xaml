@@ -7,43 +7,75 @@
     x:DataType="vm:ChatListViewModel"
     Title="Chats">
 
-    <Grid RowDefinitions="Auto,*" Padding="20" RowSpacing="10">
+    <!-- Adaptive list+detail split (2026-09-06) — on a wide window (tablet/desktop) the list stays
+         on screen and tapping a chat fills DetailPane in place; on a narrow one (phone) DetailColumn
+         collapses to 0 and tapping a chat pushes ChatPage instead, same as before. Built this way
+         specifically because Windows' Shell back button doesn't reliably return from a pushed
+         ChatPage to this list (works fine on Android) — see ChatThreadView's own remarks. Widths
+         are toggled from code-behind's SizeChanged handler, not a XAML trigger — MAUI has no
+         window-width VisualState trigger, only per-page/OS idioms this app doesn't otherwise use. -->
+    <Grid x:Name="RootGrid" ColumnSpacing="0">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition x:Name="ListColumn" Width="*" />
+            <ColumnDefinition x:Name="DetailColumn" Width="0" />
+        </Grid.ColumnDefinitions>
 
-        <Button Grid.Row="0" Text="+ New Chat" HorizontalOptions="Start" Command="{Binding NewChatCommand}" />
+        <Grid Grid.Column="0" RowDefinitions="Auto,*" Padding="20,16" RowSpacing="14">
 
-        <RefreshView Grid.Row="1" IsRefreshing="{Binding IsLoading}" Command="{Binding LoadCommand}">
-            <ScrollView>
-                <VerticalStackLayout Spacing="0">
+            <VerticalStackLayout Grid.Row="0" Spacing="12">
+                <Label Text="Chats" Style="{StaticResource PageTitle}" />
+                <Button Text="+ New Chat" HorizontalOptions="Start" Command="{Binding NewChatCommand}" />
+            </VerticalStackLayout>
 
-                    <Label
-                        Text="No chats yet. Tap '+ New Chat' to start one."
-                        IsVisible="{Binding IsEmpty}"
-                        Margin="0,32"
-                        HorizontalOptions="Center"
-                        TextColor="Gray" />
+            <RefreshView Grid.Row="1" IsRefreshing="{Binding IsLoading}" Command="{Binding LoadCommand}">
+                <ScrollView>
+                    <VerticalStackLayout Spacing="0">
 
-                    <CollectionView
-                        x:Name="SessionsView"
-                        ItemsSource="{Binding Sessions}"
-                        SelectionMode="Single"
-                        SelectionChanged="OnSessionSelected">
-                        <CollectionView.ItemTemplate>
-                            <DataTemplate x:DataType="vm:ChatSessionItem">
-                                <Border Style="{StaticResource CardBorder}">
-                                    <Grid ColumnDefinitions="Auto,*">
-                                        <Label Grid.Column="0" Text="💬" FontSize="20" Margin="0,0,12,0" VerticalOptions="Center" />
-                                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
-                                            <Label Text="{Binding PeerDisplayName}" FontSize="16" />
-                                            <Label Text="{Binding LastActivityText}" FontSize="12" TextColor="Gray" />
-                                        </VerticalStackLayout>
-                                    </Grid>
-                                </Border>
-                            </DataTemplate>
-                        </CollectionView.ItemTemplate>
-                    </CollectionView>
+                        <Label
+                            Text="No chats yet. Tap '+ New Chat' to start one."
+                            IsVisible="{Binding IsEmpty}"
+                            Margin="0,32"
+                            HorizontalOptions="Center"
+                            TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
 
-                </VerticalStackLayout>
-            </ScrollView>
-        </RefreshView>
+                        <CollectionView
+                            x:Name="SessionsView"
+                            ItemsSource="{Binding Sessions}"
+                            SelectionMode="Single"
+                            SelectionChanged="OnSessionSelected">
+                            <CollectionView.ItemsLayout>
+                                <LinearItemsLayout Orientation="Vertical" ItemSpacing="8" />
+                            </CollectionView.ItemsLayout>
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ChatSessionItem">
+                                    <Border Style="{StaticResource CardBorder}" Margin="0">
+                                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                                            <Border Grid.Column="0" WidthRequest="42" HeightRequest="42" Padding="0" StrokeShape="RoundRectangle 21" Stroke="Transparent" BackgroundColor="{AppThemeBinding Light={StaticResource AccentSoft}, Dark={StaticResource AccentSoftDark}}" VerticalOptions="Center">
+                                                <Label Text="{Binding Initials}" FontFamily="SpectralSemibold" FontSize="14" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" HorizontalOptions="Center" VerticalOptions="Center" />
+                                            </Border>
+                                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="2">
+                                                <Label Text="{Binding PeerDisplayName}" FontSize="15" FontAttributes="Bold" />
+                                                <Label Text="{Binding LastActivityText}" FontSize="12.5" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" LineBreakMode="TailTruncation" />
+                                            </VerticalStackLayout>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
+
+                    </VerticalStackLayout>
+                </ScrollView>
+            </RefreshView>
+        </Grid>
+
+        <BoxView Grid.Column="1" WidthRequest="1" HorizontalOptions="Start" Color="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}" />
+
+        <Grid Grid.Column="1" x:Name="DetailPane" Padding="1,0,0,0" IsVisible="False">
+            <ContentView x:Name="ThreadHost" IsVisible="False" />
+            <VerticalStackLayout x:Name="EmptyDetailState" HorizontalOptions="Center" VerticalOptions="Center" Spacing="6">
+                <Label Text="Select a chat" FontFamily="SpectralSemibold" FontSize="17" HorizontalOptions="Center" />
+                <Label Text="Choose a conversation from the list to start reading." FontSize="13" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" HorizontalOptions="Center" />
+            </VerticalStackLayout>
+        </Grid>
     </Grid>
 </ContentPage>

@@ -9,6 +9,12 @@ public sealed partial class LibraryViewModel
     [RelayCommand]
     private async Task UploadAsync()
     {
+        if (!CanModifyContent)
+        {
+            StatusErrorMessage = "Only an Admin or Modifier can add to the shared library.";
+            return;
+        }
+
         FileResult? picked;
         try
         {
