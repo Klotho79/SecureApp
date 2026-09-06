@@ -102,6 +102,9 @@ public static class MauiProgram
 		// Lets an Admin-role device mint relay invite codes in-app instead of SSH+curl on the Pi.
 		builder.Services.AddSingleton<IRelayAdminService, HttpRelayAdminService>();
 
+		// Member directory (2026-09-06) — same registration shape as ISharedLibraryService above.
+		builder.Services.AddSingleton<IContactDirectoryService, HttpContactDirectoryService>();
+
 		// --- Milestone 3: Presentation (pages + view models) ---
 		builder.Services.AddTransient<DocumentBrowserViewModel>();
 		builder.Services.AddTransient<DocumentBrowserPage>();

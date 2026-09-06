@@ -15,6 +15,36 @@
             <Label Text="{Binding StatusInfoMessage}" IsVisible="{Binding HasStatusInfo}" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" LineBreakMode="WordWrap" />
             <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" HorizontalOptions="Center" />
 
+            <!-- Member directory (2026-09-06) — the primary, one-tap path: everyone here already
+                 went through admin-approved activation, so no contact-card exchange is needed at
+                 all. See NewChatViewModel's class-level remarks for why the manual paste/QR cards
+                 below stay as a fallback rather than being removed. -->
+            <Border Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Chat s někým z komunity" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Label Text="Klepnutím na jméno appka sama založí zabezpečený chat — žádné kartičky ani kódy." FontSize="12" TextColor="Gray" />
+                    <ActivityIndicator IsRunning="{Binding IsLoadingMembers}" IsVisible="{Binding IsLoadingMembers}" HorizontalOptions="Center" />
+                    <Label Text="Zatím tu nikdo není — buď jsi jediný aktivovaný, nebo se ostatní ještě nepřipojili." FontSize="12" TextColor="Gray" IsVisible="{Binding HasNoMembers}" />
+                    <CollectionView ItemsSource="{Binding Members}" SelectionMode="None">
+                        <CollectionView.ItemsLayout>
+                            <LinearItemsLayout Orientation="Vertical" ItemSpacing="6" />
+                        </CollectionView.ItemsLayout>
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:DirectoryMemberItem">
+                                <Border Style="{StaticResource CardBorder}" Margin="0" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Command="{Binding Command}" CommandParameter="{Binding .}" />
+                                    </Border.GestureRecognizers>
+                                    <Label Text="{Binding DisplayName}" FontAttributes="Bold" FontSize="14.5" />
+                                </Border>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                </VerticalStackLayout>
+            </Border>
+
+            <Label Text="Nebo ručně (pokud dotyčný ještě není v seznamu výše)" FontSize="12.5" FontAttributes="Bold" TextColor="Gray" Margin="0,8,0,0" />
+
             <Border Style="{StaticResource CardBorder}">
                 <VerticalStackLayout Spacing="8">
                     <Label Text="Začít nový chat" Style="{StaticResource SectionHeader}" Margin="0" />

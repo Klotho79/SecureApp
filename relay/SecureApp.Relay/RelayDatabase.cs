@@ -116,6 +116,24 @@ public sealed class RelayDatabase
             )
             """);
         Execute(connection, "CREATE INDEX IF NOT EXISTS ix_activation_requests_status ON activation_requests(status)");
+
+        // Member directory (2026-09-06) — one row per device that has opted in by calling
+        // /directory/publish (every device does this automatically on connect once the client-side
+        // feature ships; an old device that never reconnects since just never appears here, rather
+        // than needing a data migration). Trust-model note, stated explicitly because it's a real
+        // shift: this only makes sense because every device already went through admin-approved
+        // activation above — the relay is deliberately treating "this device is registered" as
+        // "safe to hand its public key to any other registered device", not just "safe to route
+        // ciphertext to" like the plain `devices` table already implied. A small, admin-curated
+        // community's reasonable tradeoff, not a universal one.
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS directory_entries (
+                device_id         TEXT PRIMARY KEY NOT NULL,
+                display_name      TEXT NOT NULL,
+                public_key        BLOB NOT NULL,
+                updated_at_utc    TEXT NOT NULL
+            )
+            """);
     }
 
     public string CreateInvite(string? displayNameHint, TimeSpan validFor, out DateTimeOffset expiresAtUtc)
@@ -379,6 +397,32 @@ public sealed class RelayDatabase
         (string)reader["status"],
         DateTimeOffset.Parse((string)reader["created_at_utc"], CultureInfo.InvariantCulture),
         reader["assigned_device_id"] is DBNull ? null : Guid.Parse((string)reader["assigned_device_id"]));
+
+    public void UpsertDirectoryEntry(Guid deviceId, string displayName, byte[] publicKey)
+    {
+        using var connection = OpenConnection();
+        Execute(connection,
+            """
+            INSERT INTO directory_entries (device_id, display_name, public_key, updated_at_utc) VALUES (@id, @name, @key, @now)
+            ON CONFLICT(device_id) DO UPDATE SET display_name = @name, public_key = @key, updated_at_utc = @now
+            """,
+            ("@id", deviceId.ToString()), ("@name", displayName), ("@key", publicKey), ("@now", Format(DateTimeOffset.UtcNow)));
+    }
+
+    /// <summary>Every published member except the caller — a device never needs to "start a chat" with its own identity.</summary>
+    public IReadOnlyList<(Guid DeviceId, string DisplayName, byte[] PublicKey)> GetDirectoryMembers(Guid excludingDeviceId)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT device_id, display_name, public_key FROM directory_entries WHERE device_id != @excluded ORDER BY display_name COLLATE NOCASE";
+        command.Parameters.AddWithValue("@excluded", excludingDeviceId.ToString());
+
+        var results = new List<(Guid, string, byte[])>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            results.Add((Guid.Parse((string)reader["device_id"]), (string)reader["display_name"], (byte[])reader["public_key"]));
+        return results;
+    }
 
     private static LibraryFileRecord ReadLibraryFileRecord(SqliteDataReader reader) => new(
         Guid.Parse((string)reader["id"]),

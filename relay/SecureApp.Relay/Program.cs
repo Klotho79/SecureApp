@@ -223,6 +223,41 @@ app.MapDelete("/library/files/{id:guid}", (Guid id, HttpRequest request, RelayDa
     return Results.NoContent();
 });
 
+// --- Member directory (2026-09-06) — see Contracts.cs's own remarks. Device-authenticated
+// (X-Device-Id/X-Device-Secret), same as /library/files — not admin-gated, since any already
+// admin-approved device is exactly who this is meant to be visible to.
+
+app.MapPost("/directory/publish", (HttpRequest request, PublishDirectoryEntryRequest body, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+
+    if (string.IsNullOrWhiteSpace(body.DisplayName) || string.IsNullOrWhiteSpace(body.PublicKeyBase64))
+        return Results.BadRequest("DisplayName and PublicKeyBase64 are both required.");
+
+    byte[] publicKey;
+    try
+    {
+        publicKey = Convert.FromBase64String(body.PublicKeyBase64);
+    }
+    catch (FormatException)
+    {
+        return Results.BadRequest("PublicKeyBase64 is not valid base64.");
+    }
+
+    db.UpsertDirectoryEntry(deviceId, body.DisplayName, publicKey);
+    return Results.Ok();
+});
+
+app.MapGet("/directory/members", (HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+
+    var members = db.GetDirectoryMembers(deviceId);
+    return Results.Ok(members.Select(m => new DirectoryMemberSummary(m.DeviceId, m.DisplayName, Convert.ToBase64String(m.PublicKey))).ToList());
+});
+
 app.Map("/ws", async (HttpContext context, RelayDatabase db, ConnectionRegistry registry) =>
 {
     if (!context.WebSockets.IsWebSocketRequest)

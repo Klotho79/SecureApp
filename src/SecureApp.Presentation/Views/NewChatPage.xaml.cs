@@ -27,6 +27,12 @@ public partial class NewChatPage : ContentPage
         InviteScanner.Options = readerOptions;
     }
 
+    protected override void OnAppearing()
+    {
+        base.OnAppearing();
+        _viewModel.LoadMembersCommand.Execute(null);
+    }
+
     // BarcodesDetected fires off the camera-processing thread (same reasoning as
     // ChatViewModel's EnvelopeReceived — see StartListening's own remarks), so every UI/ViewModel
     // touch here is marshalled back via MainThread. Only the first detected code is used; a QR

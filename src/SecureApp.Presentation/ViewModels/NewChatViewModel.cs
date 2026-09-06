@@ -1,19 +1,25 @@
+using System.Collections.ObjectModel;
+using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SecureApp.Domain.Entities;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
+using SecureApp.Domain.ValueObjects;
 using SecureApp.Presentation.Chat;
 
 namespace SecureApp.Presentation.ViewModels;
 
 /// <summary>
-/// Pairs a new chat session without any QR/contact-exchange UI yet — the user pastes a peer's
-/// "contact card" (display name + identity public key + relay device id, copied from that
-/// peer's own Settings page) to start a chat, and separately pastes back an "invite" blob to
-/// accept one. No MAUI dependency in this partial (only Domain/Data interfaces +
-/// <see cref="ContactCardCodec"/>) — the Clipboard/Shell-navigation commands that need MAUI live
-/// in <c>NewChatViewModel.Actions.cs</c>, same split rationale as <see cref="DocumentBrowserViewModel"/>.
+/// Pairs a new chat session. Primary flow (2026-09-06): pick someone from the relay's member
+/// directory (<see cref="Members"/>) and tap once — <see cref="CreateSessionWithPeerAsync"/> does
+/// the rest, same as it always has. Manual contact-card paste/QR stays as a fallback for a peer not
+/// yet in the directory (see <see cref="IContactDirectoryService"/>'s own remarks for why this
+/// doesn't replace that path, just makes it unnecessary for the common case) — the user separately
+/// pastes back an "invite" blob to accept one when the automatic delivery below couldn't reach
+/// them. No MAUI dependency in this partial (only Domain/Data interfaces + <see cref="ContactCardCodec"/>)
+/// — the Clipboard/Shell-navigation commands that need MAUI live in <c>NewChatViewModel.Actions.cs</c>,
+/// same split rationale as <see cref="DocumentBrowserViewModel"/>.
 /// </summary>
 public sealed partial class NewChatViewModel : ObservableObject
 {
@@ -21,6 +27,17 @@ public sealed partial class NewChatViewModel : ObservableObject
     private readonly ICurrentUserService _currentUserService;
     private readonly ITransportSettingsRepository _transportSettingsRepository;
     private readonly IMessageTransport _messageTransport;
+    private readonly IContactDirectoryService _contactDirectoryService;
+
+    /// <summary>Every other community member the relay already knows about — see the class-level remarks. Refreshed on page appear (<see cref="LoadMembersAsync"/>), not live-updated; a member who activates while this page is open just needs a pull-to-refresh-equivalent re-open, same freshness tradeoff <c>LibraryViewModel.Categories</c> already accepts.</summary>
+    [ObservableProperty]
+    public partial ObservableCollection<DirectoryMemberItem> Members { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsLoadingMembers { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasNoMembers { get; set; }
 
     [ObservableProperty]
     public partial string PeerContactCardText { get; set; }
@@ -90,13 +107,17 @@ public sealed partial class NewChatViewModel : ObservableObject
         IMessagingService messagingService,
         ICurrentUserService currentUserService,
         ITransportSettingsRepository transportSettingsRepository,
-        IMessageTransport messageTransport)
+        IMessageTransport messageTransport,
+        IContactDirectoryService contactDirectoryService)
     {
         _messagingService = messagingService ?? throw new ArgumentNullException(nameof(messagingService));
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         _transportSettingsRepository = transportSettingsRepository ?? throw new ArgumentNullException(nameof(transportSettingsRepository));
         _messageTransport = messageTransport ?? throw new ArgumentNullException(nameof(messageTransport));
+        _contactDirectoryService = contactDirectoryService ?? throw new ArgumentNullException(nameof(contactDirectoryService));
 
+        Members = [];
+        HasNoMembers = true;
         PeerContactCardText = string.Empty;
         InviteBlobText = string.Empty;
         ScanPeerCardButtonText = "Naskenovat QR";
@@ -118,6 +139,46 @@ public sealed partial class NewChatViewModel : ObservableObject
     partial void OnIsScanningInviteChanged(bool value) => ScanInviteButtonText = value ? "Zrušit skenování" : "Naskenovat QR";
 
     /// <summary>
+    /// Fetches the relay's member directory — see the class-level remarks. Best-effort in the sense
+    /// that a failure here (relay unreachable, not yet connected) just leaves the list empty rather
+    /// than blocking the page; the manual paste/QR fallback below is always available regardless.
+    /// </summary>
+    [RelayCommand]
+    private async Task LoadMembersAsync()
+    {
+        IsLoadingMembers = true;
+        try
+        {
+            var members = await _contactDirectoryService.ListMembersAsync();
+            Members = new ObservableCollection<DirectoryMemberItem>(
+                members.Select(m => new DirectoryMemberItem(m.RelayDeviceId, m.DisplayName, m.PublicKey, StartChatWithMemberCommand)));
+            HasNoMembers = Members.Count == 0;
+        }
+        catch
+        {
+            // Best-effort — see the remark above. Leaves whatever list (possibly empty) was there
+            // before rather than surfacing a StatusErrorMessage for what's meant to be a quiet,
+            // secondary convenience over the always-available manual paste/QR flow.
+            HasNoMembers = Members.Count == 0;
+        }
+        finally
+        {
+            IsLoadingMembers = false;
+        }
+    }
+
+    /// <summary>One-tap path (2026-09-06): builds the same <see cref="ContactCardBlob"/> a manually pasted card would have carried, directly from a directory entry — no decode step needed since there's no encoded text to decode.</summary>
+    [RelayCommand]
+    private Task StartChatWithMemberAsync(DirectoryMemberItem? member)
+    {
+        if (member is null)
+            return Task.CompletedTask;
+
+        var peerCard = new ContactCardBlob(member.DisplayName, member.PublicKey, member.RelayDeviceId);
+        return CreateSessionWithPeerAsync(peerCard);
+    }
+
+    /// <summary>
     /// Checks IMessagingService.FindExistingSessionAsync before minting a fresh session — a real
     /// gap the user caught live (2026-09-05): pasting/scanning the same peer's contact card twice
     /// used to silently create a second, indistinguishable session every time, since
@@ -129,12 +190,6 @@ public sealed partial class NewChatViewModel : ObservableObject
     [RelayCommand]
     private async Task CreateSessionAsync()
     {
-        StatusErrorMessage = null;
-        StatusInfoMessage = null;
-        GeneratedInviteText = null;
-        GeneratedInviteQrValue = null;
-        CreatedSession = null;
-
         ContactCardBlob peerCard;
         try
         {
@@ -145,6 +200,18 @@ public sealed partial class NewChatViewModel : ObservableObject
             StatusErrorMessage = "To nevypadá jako platná kontaktní karta — zkontrolujte, že jste zkopírovali celý blok.";
             return;
         }
+
+        await CreateSessionWithPeerAsync(peerCard);
+    }
+
+    /// <summary>Shared by both the directory one-tap path (<see cref="StartChatWithMemberAsync"/>) and the manual-paste path (<see cref="CreateSessionAsync"/>) — everything past "we now have a peer's contact card, however we got it" is identical.</summary>
+    private async Task CreateSessionWithPeerAsync(ContactCardBlob peerCard)
+    {
+        StatusErrorMessage = null;
+        StatusInfoMessage = null;
+        GeneratedInviteText = null;
+        GeneratedInviteQrValue = null;
+        CreatedSession = null;
 
         IsBusy = true;
         try
@@ -319,3 +386,6 @@ public sealed partial class NewChatViewModel : ObservableObject
         return new ContactCardBlob(_currentUserService.Current.DisplayName, publicKey, deviceId);
     }
 }
+
+/// <summary>One row in the "New Chat" member-directory list — carries the same shared <c>StartChatWithMemberCommand</c> instance (bound per-item as <c>CommandParameter="{Binding .}"</c> in the DataTemplate) rather than an <c>x:Reference</c> back to the page, same pattern this codebase already uses for admin/category rows elsewhere.</summary>
+public sealed record DirectoryMemberItem(Guid RelayDeviceId, string DisplayName, byte[] PublicKey, ICommand Command);

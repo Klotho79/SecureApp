@@ -197,6 +197,22 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
         configuration.NoteConnected();
         await transportSettings.SaveAsync(configuration, ct);
 
+        // Member directory (2026-09-06): publish this device's own identity on every successful
+        // connect, not just once — cheap and idempotent (see IContactDirectoryService.PublishSelfAsync's
+        // own remarks), so a later display-name change or key rotation is picked up automatically.
+        // Best-effort by design, same "never let this block the actual connection" policy already
+        // established for SendPairingInviteAsync — a stale/missing directory entry just means this
+        // device won't show up in someone else's "New Chat" list yet, not a connection failure.
+        try
+        {
+            var directoryService = scope.ServiceProvider.GetRequiredService<IContactDirectoryService>();
+            await directoryService.PublishSelfAsync(ct);
+        }
+        catch
+        {
+            // Best-effort — see the remark above.
+        }
+
         RaiseConnectionState(TransportConnectionState.Connected);
     }
 

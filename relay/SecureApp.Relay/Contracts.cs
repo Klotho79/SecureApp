@@ -25,3 +25,14 @@ public sealed record ActivationStatusResponse(string Status, Guid? DeviceId, str
 
 /// <summary>One row in the admin's pending-activations list — deliberately carries no secret, only what the admin needs to decide whether to approve.</summary>
 public sealed record ActivationRequestSummary(Guid Id, string DisplayName, string Email, string KeyFingerprint, DateTimeOffset CreatedAtUtc);
+
+// --- Member directory (2026-09-06) — replaces manual contact-card generate/paste for starting a
+// chat with someone already on this relay. Only makes sense BECAUSE activation above already had
+// an admin approve every device's real identity; see RelayDatabase's own remarks on
+// directory_entries for the trust-model note this relies on.
+
+/// <summary>Upserts the CALLING (device-authenticated) device's own entry — carries no device id, since the relay already knows which device is asking from the X-Device-Id/X-Device-Secret headers, same auth as the /library/files endpoints.</summary>
+public sealed record PublishDirectoryEntryRequest(string DisplayName, string PublicKeyBase64);
+
+/// <summary>One other community member, resolvable straight into a chat session with no QR/paste step — <c>PublicKeyBase64</c> is the same chat-identity key a manually-shared contact card would have carried.</summary>
+public sealed record DirectoryMemberSummary(Guid DeviceId, string DisplayName, string PublicKeyBase64);
