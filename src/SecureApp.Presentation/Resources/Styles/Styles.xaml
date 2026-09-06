@@ -121,13 +121,22 @@
         <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}" />
         <Setter Property="Stroke" Value="Transparent" />
         <Setter Property="StrokeShape" Value="RoundRectangle 999" />
-        <Setter Property="Padding" Value="10,4" />
+        <Setter Property="Padding" Value="14,8" />
         <Setter Property="HorizontalOptions" Value="Start" />
+        <Setter Property="VerticalOptions" Value="Center" />
     </Style>
 
+    <!-- FontSize bumped from 11.5 and NoWrap added 2026-09-06 — the real bug behind "fields too
+         small for the text" on a real device: Label's default LineBreakMode is WordWrap, so a
+         longer chip label (e.g. "Intensive Care Medicine") could wrap inside its pill instead of
+         just taking the width it needs, since the surrounding FlexLayout doesn't force a fixed
+         width. A chip is always meant to be one line — if it's too long for its row, the row's own
+         horizontal scroll (see LibraryPage's category chips) is what should give it room, not
+         in-chip wrapping. -->
     <Style x:Key="ChipLabel" TargetType="Label">
-        <Setter Property="FontSize" Value="11.5" />
+        <Setter Property="FontSize" Value="13" />
         <Setter Property="FontFamily" Value="PlexSans" />
+        <Setter Property="LineBreakMode" Value="NoWrap" />
         <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
     </Style>
 

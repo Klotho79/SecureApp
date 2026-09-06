@@ -18,38 +18,19 @@
                 <Label Text="Shared, encrypted reference for the whole team — searchable by name, folder, or tag." FontSize="12.5" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
             </VerticalStackLayout>
 
-            <Border Style="{StaticResource CardBorder}" Margin="0" Padding="14" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}" Stroke="Transparent">
-                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-                    <Entry Grid.Column="0" Text="{Binding SearchQuery}" Placeholder="Search procedures, e.g. &quot;sepsis&quot;…" BackgroundColor="Transparent" />
-                    <Button Grid.Column="1" Text="Search" Command="{Binding SearchCommand}" />
-                </Grid>
-            </Border>
+            <!-- Search + category — reworked 2026-09-06 from a custom search card + horizontal
+                 chip/pill row to plain native controls (SearchBar, Picker). The user's own call:
+                 this is a professional reference tool for clinicians, not a consumer app, so it
+                 should look and behave like ordinary platform-native filter controls rather than
+                 a styled "commercial app" search box and colored bubbles — a Picker also sidesteps
+                 the chip row's real layout bug, where the horizontal ScrollView wrapping it could
+                 visually overlap the field below it (especially cramped on a phone). -->
+            <SearchBar Text="{Binding SearchQuery}" Placeholder="Search procedures, e.g. &quot;sepsis&quot;…" SearchCommand="{Binding SearchCommand}" />
 
-            <!-- Category chips — dynamic, derived from whatever folder names actually exist in
-                 the library (see LibraryViewModel.RefreshCategoriesAsync's own remarks); not the
-                 redesign mockup's static Emergency/Surgery/… row, since every real community
-                 defines its own categories just by typing a folder name on upload. -->
-            <ScrollView Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
-                <FlexLayout BindableLayout.ItemsSource="{Binding Categories}" Direction="Row" Wrap="NoWrap">
-                    <BindableLayout.ItemTemplate>
-                        <DataTemplate x:DataType="vm:LibraryCategoryChip">
-                            <Border Margin="0,0,8,0" Padding="12,6" StrokeShape="RoundRectangle 999" Stroke="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
-                                <Border.GestureRecognizers>
-                                    <TapGestureRecognizer Command="{Binding Command}" CommandParameter="{Binding Name}" />
-                                </Border.GestureRecognizers>
-                                <Label x:Name="ChipLabel" Text="{Binding Name}" FontSize="13" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
-                                <Border.Triggers>
-                                    <DataTrigger TargetType="Border" Binding="{Binding IsSelected}" Value="True">
-                                        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
-                                        <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
-                                        <Setter TargetName="ChipLabel" Property="Label.TextColor" Value="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource PrimaryDarkText}}" />
-                                    </DataTrigger>
-                                </Border.Triggers>
-                            </Border>
-                        </DataTemplate>
-                    </BindableLayout.ItemTemplate>
-                </FlexLayout>
-            </ScrollView>
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10" VerticalOptions="Center">
+                <Label Grid.Column="0" Text="Category" VerticalOptions="Center" FontSize="13" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
+                <Picker Grid.Column="1" ItemsSource="{Binding Categories}" SelectedItem="{Binding SelectedCategory}" />
+            </Grid>
 
             <Entry Text="{Binding TagFilter}" Placeholder="Filter by tag" />
 

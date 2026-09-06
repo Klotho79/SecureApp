@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SecureApp.Domain.Enums;
@@ -40,14 +39,22 @@ public sealed partial class LibraryViewModel : ObservableObject
     public partial ObservableCollection<LibraryFileItem> Results { get; set; }
 
     /// <summary>
-    /// Category chips (2026-09-06) — deliberately NOT a fixed/hardcoded list like the redesign
-    /// mockup's static "Emergency/Surgery/Pediatrics/…" row: every real community using this app
-    /// picks its own categories by typing a folder name on upload (already-existing, unchanged
-    /// behavior), so the chip row is derived from whatever folder names actually exist in the
-    /// library right now, refreshed alongside every search. "All" clears the filter.
+    /// Category names (2026-09-06, reworked same day from a chip/pill row to a plain Picker —
+    /// the user's own call: this is a professional reference tool, not a consumer app, and the
+    /// pill row both looked out of place ("nelibi se mi ty oblacky") and had a real layout bug on
+    /// narrow screens where the horizontal ScrollView could visually overlap the sibling field
+    /// below it). Deliberately NOT a fixed/hardcoded list like the redesign mockup's static
+    /// "Emergency/Surgery/Pediatrics/…" row: every real community using this app picks its own
+    /// categories by typing a folder name on upload (already-existing, unchanged behavior), so
+    /// this list is derived from whatever folder names actually exist in the library right now,
+    /// refreshed alongside every search. "All" (always first) clears the filter.
     /// </summary>
     [ObservableProperty]
-    public partial ObservableCollection<LibraryCategoryChip> Categories { get; set; }
+    public partial ObservableCollection<string> Categories { get; set; }
+
+    /// <summary>Bound to the Picker's SelectedItem; see <see cref="OnSelectedCategoryChanged"/>.</summary>
+    [ObservableProperty]
+    public partial string? SelectedCategory { get; set; }
 
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
@@ -89,6 +96,7 @@ public sealed partial class LibraryViewModel : ObservableObject
         UploadTags = string.Empty;
         Results = [];
         Categories = [];
+        SelectedCategory = "All";
         CanModifyContent = true;
         RecomputeCanUpload();
     }
@@ -153,18 +161,41 @@ public sealed partial class LibraryViewModel : ObservableObject
         var distinctFolders = SeedCategories
             .Concat(uploadedFolders)
             .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(f => f, StringComparer.OrdinalIgnoreCase);
+            .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
-        var chips = new List<LibraryCategoryChip> { new("All", string.IsNullOrEmpty(FolderFilter), SelectCategoryCommand) };
-        chips.AddRange(distinctFolders.Select(f => new LibraryCategoryChip(f, string.Equals(f, FolderFilter, StringComparison.OrdinalIgnoreCase), SelectCategoryCommand)));
-        Categories = new ObservableCollection<LibraryCategoryChip>(chips);
+        var names = new List<string> { "All" };
+        names.AddRange(distinctFolders);
+        Categories = new ObservableCollection<string>(names);
+
+        // Keep the Picker's selection in sync with whatever FolderFilter already is (e.g. after a
+        // plain text search) without re-triggering OnSelectedCategoryChanged below — assigning the
+        // same string value again is a no-op per CommunityToolkit.Mvvm's generated setter.
+        SelectedCategory = string.IsNullOrEmpty(FolderFilter)
+            ? "All"
+            : names.FirstOrDefault(n => string.Equals(n, FolderFilter, StringComparison.OrdinalIgnoreCase)) ?? FolderFilter;
     }
 
-    [RelayCommand]
-    private async Task SelectCategoryAsync(string category)
+    /// <summary>
+    /// Fires only on an actual user pick in the Picker (see the RefreshCategoriesAsync remark
+    /// above for why re-assigning the same value here is silent, avoiding a refresh↔selection
+    /// feedback loop).
+    /// </summary>
+    partial void OnSelectedCategoryChanged(string? value)
     {
-        FolderFilter = category == "All" ? string.Empty : category;
-        await SearchAsync();
+        if (value is null)
+        {
+            return;
+        }
+
+        var target = value == "All" ? string.Empty : value;
+        if (string.Equals(target, FolderFilter, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        FolderFilter = target;
+        _ = SearchAsync();
     }
 
     private static LibraryFileItem ToItem(SharedLibraryFileSummary summary)
@@ -200,6 +231,3 @@ public sealed record LibraryFileItem(Guid Id, string FileName, string? FolderPat
 
 /// <summary>Wraps a plain tag string only so it has a stable reference type for BindableLayout's ItemsSource — a bare List&lt;string&gt; binds fine too, but this keeps the DataTemplate's x:DataType explicit rather than implicitly "x:String".</summary>
 public sealed record LibraryTagItem(string Label);
-
-/// <summary>One category filter chip — carries the same shared SelectCategoryCommand instance (bound per-item as CommandParameter="{Binding Name}" in the DataTemplate) rather than requiring an x:Reference back to the page, since this item type doesn't live nested inside another item's own DataTemplate the way ChatThreadView's attachment chip does.</summary>
-public sealed record LibraryCategoryChip(string Name, bool IsSelected, ICommand Command);
