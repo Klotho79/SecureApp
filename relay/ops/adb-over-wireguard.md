@@ -1,5 +1,12 @@
 # Deploying to a phone remotely, over the WireGuard tunnel
 
+**Status (2026-09-06): steps 1-2 confirmed working on the Galaxy S9+** — `adb tcpip 5555` +
+`adb connect <ip>:5555` successfully replaced the USB connection while the phone was still on the
+home LAN's WiFi (`192.168.50.236` in that test). Not yet tried over an actual WireGuard tunnel from
+outside the LAN (needs the S23+ on USB briefly first, and the PC-side route in step 3) — that's the
+remaining piece to actually prove step 3 end to end.
+
+
 Normal deploys (`dotnet build ... -f net10.0-android -t:Run`) go over `adb`, which needs the phone
 reachable by IP from this PC — true over USB or the same LAN, not over mobile data. Since a phone's
 WireGuard tunnel gives it a real IP inside the home network, `adb` can work over that tunnel too,
