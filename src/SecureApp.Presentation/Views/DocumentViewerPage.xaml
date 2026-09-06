@@ -39,13 +39,13 @@
         </Grid>
 
         <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto">
-            <Button Grid.Column="0" Text="⬅ Previous" Command="{Binding PreviousPageCommand}" IsEnabled="{Binding CanGoToPreviousPage}" />
+            <Button Grid.Column="0" Text="⬅ Předchozí" Command="{Binding PreviousPageCommand}" IsEnabled="{Binding CanGoToPreviousPage}" />
             <Label
                 Grid.Column="1"
                 Text="{Binding PageIndicatorText}"
                 HorizontalOptions="Center"
                 VerticalOptions="Center" />
-            <Button Grid.Column="2" Text="Next ➡" Command="{Binding NextPageCommand}" IsEnabled="{Binding CanGoToNextPage}" />
+            <Button Grid.Column="2" Text="Další ➡" Command="{Binding NextPageCommand}" IsEnabled="{Binding CanGoToNextPage}" />
         </Grid>
     </Grid>
 </ContentPage>

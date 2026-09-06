@@ -5,7 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
     x:DataType="vm:ChatListViewModel"
-    Title="Chats">
+    Title="Chaty">
 
     <!-- Adaptive list+detail split (2026-09-06) — on a wide window (tablet/desktop) the list stays
          on screen and tapping a chat fills DetailPane in place; on a narrow one (phone) DetailColumn
@@ -23,8 +23,8 @@
         <Grid Grid.Column="0" RowDefinitions="Auto,*" Padding="20,16" RowSpacing="14">
 
             <VerticalStackLayout Grid.Row="0" Spacing="12">
-                <Label Text="Chats" Style="{StaticResource PageTitle}" />
-                <Button Text="+ New Chat" HorizontalOptions="Start" Command="{Binding NewChatCommand}" />
+                <Label Text="Chaty" Style="{StaticResource PageTitle}" />
+                <Button Text="+ Nový chat" HorizontalOptions="Start" Command="{Binding NewChatCommand}" />
             </VerticalStackLayout>
 
             <RefreshView Grid.Row="1" IsRefreshing="{Binding IsLoading}" Command="{Binding LoadCommand}">
@@ -32,7 +32,7 @@
                     <VerticalStackLayout Spacing="0">
 
                         <Label
-                            Text="No chats yet. Tap '+ New Chat' to start one."
+                            Text="Zatím žádné chaty. Klepnutím na '+ Nový chat' jeden založte."
                             IsVisible="{Binding IsEmpty}"
                             Margin="0,32"
                             HorizontalOptions="Center"
@@ -73,8 +73,8 @@
         <Grid Grid.Column="1" x:Name="DetailPane" Padding="1,0,0,0" IsVisible="False">
             <ContentView x:Name="ThreadHost" IsVisible="False" />
             <VerticalStackLayout x:Name="EmptyDetailState" HorizontalOptions="Center" VerticalOptions="Center" Spacing="6">
-                <Label Text="Select a chat" FontFamily="SpectralSemibold" FontSize="17" HorizontalOptions="Center" />
-                <Label Text="Choose a conversation from the list to start reading." FontSize="13" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" HorizontalOptions="Center" />
+                <Label Text="Vyberte chat" FontFamily="SpectralSemibold" FontSize="17" HorizontalOptions="Center" />
+                <Label Text="Vyberte konverzaci ze seznamu a začněte číst." FontSize="13" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" HorizontalOptions="Center" />
             </VerticalStackLayout>
         </Grid>
     </Grid>

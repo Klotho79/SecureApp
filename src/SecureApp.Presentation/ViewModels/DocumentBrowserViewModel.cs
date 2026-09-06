@@ -80,7 +80,7 @@ public sealed partial class DocumentBrowserViewModel : ObservableObject
 
         Folders = [];
         Documents = [];
-        CurrentFolderName = "Documents";
+        CurrentFolderName = "Dokumenty";
         CanImport = true;
         CanModifyContent = true;
     }
@@ -147,7 +147,7 @@ public sealed partial class DocumentBrowserViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(name)) return;
         if (!CanModifyContent)
         {
-            StatusErrorMessage = "Your role (Viewer) cannot create folders.";
+            StatusErrorMessage = "Vaše role (Viewer) nemůže vytvářet složky.";
             return;
         }
 
@@ -160,7 +160,7 @@ public sealed partial class DocumentBrowserViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            StatusErrorMessage = $"Could not create folder '{name}': {ex.Message}";
+            StatusErrorMessage = $"Nepodařilo se vytvořit složku '{name}': {ex.Message}";
         }
     }
 
@@ -170,7 +170,7 @@ public sealed partial class DocumentBrowserViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(args.NewName) || args.NewName == args.Folder.Name) return;
         if (!CanModifyContent)
         {
-            StatusErrorMessage = "Your role (Viewer) cannot rename folders.";
+            StatusErrorMessage = "Vaše role (Viewer) nemůže přejmenovávat složky.";
             return;
         }
 
@@ -186,7 +186,7 @@ public sealed partial class DocumentBrowserViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            StatusErrorMessage = $"Could not rename folder '{args.Folder.Name}': {ex.Message}";
+            StatusErrorMessage = $"Nepodařilo se přejmenovat složku '{args.Folder.Name}': {ex.Message}";
         }
     }
 
@@ -196,7 +196,7 @@ public sealed partial class DocumentBrowserViewModel : ObservableObject
         if (folder is null) return;
         if (!CanModifyContent)
         {
-            StatusErrorMessage = "Your role (Viewer) cannot delete folders.";
+            StatusErrorMessage = "Vaše role (Viewer) nemůže mazat složky.";
             return;
         }
 
@@ -208,7 +208,7 @@ public sealed partial class DocumentBrowserViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            StatusErrorMessage = $"Could not delete folder '{folder.Name}': {ex.Message}";
+            StatusErrorMessage = $"Nepodařilo se smazat složku '{folder.Name}': {ex.Message}";
         }
     }
 

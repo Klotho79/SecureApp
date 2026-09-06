@@ -96,7 +96,7 @@ public sealed partial class LibraryViewModel : ObservableObject
         UploadTags = string.Empty;
         Results = [];
         Categories = [];
-        SelectedCategory = "All";
+        SelectedCategory = "Vše";
         CanModifyContent = true;
         RecomputeCanUpload();
     }
@@ -129,7 +129,7 @@ public sealed partial class LibraryViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            StatusErrorMessage = $"Could not search the library: {ex.Message}";
+            StatusErrorMessage = $"Nepodařilo se prohledat knihovnu: {ex.Message}";
         }
         finally
         {
@@ -144,7 +144,7 @@ public sealed partial class LibraryViewModel : ObservableObject
     /// RefreshCategoriesAsync below), this is just a floor, not a ceiling. Worth making
     /// admin-editable later rather than a hardcoded list, if the community's categories evolve.
     /// </summary>
-    private static readonly string[] SeedCategories = ["Anesthesiology", "Intensive Care Medicine", "Announcements"];
+    private static readonly string[] SeedCategories = ["Anesteziologie", "Intenzivní medicína", "Oznámení"];
 
     /// <summary>
     /// Unfiltered fetch, deliberately separate from the (possibly filtered) Results above — the
@@ -164,7 +164,7 @@ public sealed partial class LibraryViewModel : ObservableObject
             .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        var names = new List<string> { "All" };
+        var names = new List<string> { "Vše" };
         names.AddRange(distinctFolders);
         Categories = new ObservableCollection<string>(names);
 
@@ -172,7 +172,7 @@ public sealed partial class LibraryViewModel : ObservableObject
         // plain text search) without re-triggering OnSelectedCategoryChanged below — assigning the
         // same string value again is a no-op per CommunityToolkit.Mvvm's generated setter.
         SelectedCategory = string.IsNullOrEmpty(FolderFilter)
-            ? "All"
+            ? "Vše"
             : names.FirstOrDefault(n => string.Equals(n, FolderFilter, StringComparison.OrdinalIgnoreCase)) ?? FolderFilter;
     }
 
@@ -188,7 +188,7 @@ public sealed partial class LibraryViewModel : ObservableObject
             return;
         }
 
-        var target = value == "All" ? string.Empty : value;
+        var target = value == "Vše" ? string.Empty : value;
         if (string.Equals(target, FolderFilter, StringComparison.OrdinalIgnoreCase))
         {
             return;
@@ -201,7 +201,7 @@ public sealed partial class LibraryViewModel : ObservableObject
     private static LibraryFileItem ToItem(SharedLibraryFileSummary summary)
     {
         var hasFolder = !string.IsNullOrWhiteSpace(summary.FolderPath);
-        var sizeAndDate = $"{FormatSize(summary.SizeBytes)} · Updated {summary.UploadedAtUtc.LocalDateTime:g}";
+        var sizeAndDate = $"{FormatSize(summary.SizeBytes)} · Aktualizováno {summary.UploadedAtUtc.LocalDateTime:g}";
 
         return new LibraryFileItem(
             summary.Id,

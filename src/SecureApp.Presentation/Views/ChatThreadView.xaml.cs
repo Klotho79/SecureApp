@@ -35,12 +35,12 @@ public partial class ChatThreadView : ContentView
     /// </summary>
     private async void OnAttachClicked(object? sender, EventArgs e)
     {
-        var choice = await Shell.Current.DisplayActionSheetAsync("Attach a file", "Cancel", null, "Pick from Library", "Upload New File");
-        if (choice is "Pick from Library")
+        var choice = await Shell.Current.DisplayActionSheetAsync("Přiložit soubor", "Zrušit", null, "Vybrat z knihovny", "Nahrát nový soubor");
+        if (choice is "Vybrat z knihovny")
         {
             await PickFromLibraryAsync();
         }
-        else if (choice is "Upload New File")
+        else if (choice is "Nahrát nový soubor")
         {
             await UploadAndAttachAsync();
         }
@@ -55,18 +55,18 @@ public partial class ChatThreadView : ContentView
         }
         catch (Exception ex)
         {
-            await Shell.Current.DisplayAlertAsync("Could not load the library", ex.Message, "OK");
+            await Shell.Current.DisplayAlertAsync("Nepodařilo se načíst knihovnu", ex.Message, "OK");
             return;
         }
 
         if (results.Count == 0)
         {
-            await Shell.Current.DisplayAlertAsync("Shared library is empty", "Upload a file first, or use \"Upload New File\" instead.", "OK");
+            await Shell.Current.DisplayAlertAsync("Sdílená knihovna je prázdná", "Nejprve nahrajte soubor, nebo místo toho použijte \"Nahrát nový soubor\".", "OK");
             return;
         }
 
         var labels = results.Select(r => string.IsNullOrWhiteSpace(r.FolderPath) ? r.FileName : $"{r.FolderPath}/{r.FileName}").ToArray();
-        var choice = await Shell.Current.DisplayActionSheetAsync("Pick a file", "Cancel", null, labels);
+        var choice = await Shell.Current.DisplayActionSheetAsync("Vyberte soubor", "Zrušit", null, labels);
         var index = Array.IndexOf(labels, choice);
         if (index < 0) return;
 
@@ -79,11 +79,11 @@ public partial class ChatThreadView : ContentView
         FileResult? picked;
         try
         {
-            picked = await FilePicker.PickAsync(new PickOptions { PickerTitle = "Select a file to attach" });
+            picked = await FilePicker.PickAsync(new PickOptions { PickerTitle = "Vyberte soubor k přiložení" });
         }
         catch (Exception ex)
         {
-            await Shell.Current.DisplayAlertAsync("Could not open the file picker", ex.Message, "OK");
+            await Shell.Current.DisplayAlertAsync("Nepodařilo se otevřít výběr souborů", ex.Message, "OK");
             return;
         }
 
@@ -97,7 +97,7 @@ public partial class ChatThreadView : ContentView
         }
         catch (Exception ex)
         {
-            await Shell.Current.DisplayAlertAsync($"Could not upload '{picked.FileName}'", ex.Message, "OK");
+            await Shell.Current.DisplayAlertAsync($"Nepodařilo se nahrát '{picked.FileName}'", ex.Message, "OK");
         }
     }
 }

@@ -5,7 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
     x:DataType="vm:LibraryViewModel"
-    Title="Library">
+    Title="Knihovna">
 
     <Grid RowDefinitions="Auto,Auto,*" Padding="20,16" RowSpacing="14">
 
@@ -14,8 +14,8 @@
              it wraps — see Grid.Row 2). -->
         <VerticalStackLayout Grid.Row="0" Spacing="14">
             <VerticalStackLayout Spacing="2">
-                <Label Text="Procedure Library" Style="{StaticResource PageTitle}" />
-                <Label Text="Shared, encrypted reference for the whole team — searchable by name, folder, or tag." FontSize="12.5" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
+                <Label Text="Knihovna postupů" Style="{StaticResource PageTitle}" />
+                <Label Text="Sdílená, šifrovaná příručka pro celý tým — prohledávatelná podle názvu, složky nebo štítku." FontSize="12.5" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
             </VerticalStackLayout>
 
             <!-- Search + category — reworked 2026-09-06 from a custom search card + horizontal
@@ -25,14 +25,14 @@
                  a styled "commercial app" search box and colored bubbles — a Picker also sidesteps
                  the chip row's real layout bug, where the horizontal ScrollView wrapping it could
                  visually overlap the field below it (especially cramped on a phone). -->
-            <SearchBar Text="{Binding SearchQuery}" Placeholder="Search procedures, e.g. &quot;sepsis&quot;…" SearchCommand="{Binding SearchCommand}" />
+            <SearchBar Text="{Binding SearchQuery}" Placeholder="Hledat postupy, např. &quot;sepse&quot;…" SearchCommand="{Binding SearchCommand}" />
 
             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10" VerticalOptions="Center">
-                <Label Grid.Column="0" Text="Category" VerticalOptions="Center" FontSize="13" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
+                <Label Grid.Column="0" Text="Kategorie" VerticalOptions="Center" FontSize="13" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
                 <Picker Grid.Column="1" ItemsSource="{Binding Categories}" SelectedItem="{Binding SelectedCategory}" />
             </Grid>
 
-            <Entry Text="{Binding TagFilter}" Placeholder="Filter by tag" />
+            <Entry Text="{Binding TagFilter}" Placeholder="Filtrovat podle štítku" />
 
             <Label
                 Text="{Binding StatusErrorMessage}"
@@ -45,11 +45,11 @@
              so "find a procedure" and "add a procedure" read as two clearly separate actions. -->
         <Border Grid.Row="1" Style="{StaticResource CardBorder}" Margin="0" IsVisible="{Binding CanModifyContent}">
             <VerticalStackLayout Spacing="8">
-                <Label Text="Add a procedure" Style="{StaticResource SectionHeader}" Margin="0" FontSize="14" />
+                <Label Text="Přidat postup" Style="{StaticResource SectionHeader}" Margin="0" FontSize="14" />
                 <Grid ColumnDefinitions="*,*,Auto" ColumnSpacing="8">
-                    <Entry Grid.Column="0" Text="{Binding UploadFolderPath}" Placeholder="Folder (optional)" />
-                    <Entry Grid.Column="1" Text="{Binding UploadTags}" Placeholder="Tags, comma separated" />
-                    <Button Grid.Column="2" Text="⬆ Upload" Style="{StaticResource SecondaryButton}" Command="{Binding UploadCommand}" IsEnabled="{Binding CanUpload}" />
+                    <Entry Grid.Column="0" Text="{Binding UploadFolderPath}" Placeholder="Složka (volitelné)" />
+                    <Entry Grid.Column="1" Text="{Binding UploadTags}" Placeholder="Štítky, oddělené čárkou" />
+                    <Button Grid.Column="2" Text="⬆ Nahrát" Style="{StaticResource SecondaryButton}" Command="{Binding UploadCommand}" IsEnabled="{Binding CanUpload}" />
                 </Grid>
             </VerticalStackLayout>
         </Border>
@@ -59,7 +59,7 @@
                 <VerticalStackLayout Spacing="10">
 
                     <Label
-                        Text="No procedures found — try a different search, or add one above."
+                        Text="Nenalezeny žádné postupy — zkuste jiné hledání, nebo jeden přidejte výše."
                         IsVisible="{Binding IsEmpty}"
                         Margin="0,32"
                         HorizontalOptions="Center"

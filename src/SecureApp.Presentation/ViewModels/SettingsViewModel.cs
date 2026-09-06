@@ -174,7 +174,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         DisplayName = string.Empty;
         RelayEndpointText = string.Empty;
         InviteCodeText = string.Empty;
-        ConnectionStatusText = "Disconnected";
+        ConnectionStatusText = "Odpojeno";
         IsNotConnected = true;
         IsNotRegistered = true;
         CanUseRelayControls = true;
@@ -252,7 +252,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         AdminErrorMessage = null;
         if (string.IsNullOrWhiteSpace(AdminSecretInputText))
         {
-            AdminErrorMessage = "Enter the relay's SECUREAPP_RELAY_ADMIN_SECRET first.";
+            AdminErrorMessage = "Nejprve zadejte SECUREAPP_RELAY_ADMIN_SECRET relay serveru.";
             return;
         }
 
@@ -264,7 +264,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            AdminErrorMessage = $"Could not save the admin secret: {ex.Message}";
+            AdminErrorMessage = $"Nepodařilo se uložit admin heslo: {ex.Message}";
         }
     }
 
@@ -285,7 +285,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         AdminErrorMessage = null;
         if (!Uri.TryCreate(RelayEndpointText, UriKind.Absolute, out var endpoint))
         {
-            AdminErrorMessage = "Enter a valid relay address above first.";
+            AdminErrorMessage = "Nejprve zadejte platnou adresu relay serveru výše.";
             return;
         }
 
@@ -295,11 +295,11 @@ public sealed partial class SettingsViewModel : ObservableObject
             var hint = string.IsNullOrWhiteSpace(InviteDisplayNameHintText) ? null : InviteDisplayNameHintText;
             var (inviteCode, expiresAtUtc) = await _relayAdminService.CreateInviteAsync(endpoint, hint, validForMinutes: 60);
             GeneratedInviteCodeText = inviteCode;
-            GeneratedInviteExpiryText = $"Expires {expiresAtUtc.ToLocalTime():g}";
+            GeneratedInviteExpiryText = $"Vyprší {expiresAtUtc.ToLocalTime():g}";
         }
         catch (Exception ex)
         {
-            AdminErrorMessage = $"Could not generate an invite code: {ex.Message}";
+            AdminErrorMessage = $"Nepodařilo se vygenerovat pozvánkový kód: {ex.Message}";
         }
         finally
         {
@@ -320,7 +320,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         DeployStatusText = null;
         if (!Uri.TryCreate(RelayEndpointText, UriKind.Absolute, out var endpoint))
         {
-            AdminErrorMessage = "Enter a valid relay address above first.";
+            AdminErrorMessage = "Nejprve zadejte platnou adresu relay serveru výše.";
             return;
         }
 
@@ -328,11 +328,11 @@ public sealed partial class SettingsViewModel : ObservableObject
         try
         {
             await _relayAdminService.RequestDeployAsync(endpoint);
-            DeployStatusText = "Redeploy requested — the relay will rebuild and restart within a few seconds.";
+            DeployStatusText = "Nasazení vyžádáno — relay server se za pár sekund znovu sestaví a restartuje.";
         }
         catch (Exception ex)
         {
-            AdminErrorMessage = $"Could not request a redeploy: {ex.Message}";
+            AdminErrorMessage = $"Nepodařilo se vyžádat nasazení: {ex.Message}";
         }
         finally
         {
@@ -351,7 +351,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            SharedLibraryErrorMessage = $"Could not generate a key: {ex.Message}";
+            SharedLibraryErrorMessage = $"Nepodařilo se vygenerovat klíč: {ex.Message}";
         }
     }
 
@@ -366,7 +366,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            SharedLibraryErrorMessage = $"Could not retrieve the stored key: {ex.Message}";
+            SharedLibraryErrorMessage = $"Nepodařilo se načíst uložený klíč: {ex.Message}";
         }
     }
 
@@ -376,7 +376,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         SharedLibraryErrorMessage = null;
         if (string.IsNullOrWhiteSpace(SharedLibraryKeyImportText))
         {
-            SharedLibraryErrorMessage = "Paste the key someone else generated first.";
+            SharedLibraryErrorMessage = "Nejprve vložte klíč vygenerovaný někým jiným.";
             return;
         }
 
@@ -388,7 +388,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            SharedLibraryErrorMessage = $"Could not import that key: {ex.Message}";
+            SharedLibraryErrorMessage = $"Nepodařilo se importovat tento klíč: {ex.Message}";
         }
     }
 
@@ -404,7 +404,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Could not save: {ex.Message}";
+            ErrorMessage = $"Nepodařilo se uložit: {ex.Message}";
         }
     }
 
@@ -414,12 +414,12 @@ public sealed partial class SettingsViewModel : ObservableObject
         RelayErrorMessage = null;
         if (!Uri.TryCreate(RelayEndpointText, UriKind.Absolute, out var endpoint))
         {
-            RelayErrorMessage = "Enter a valid relay address, e.g. ws://10.8.0.1:8080";
+            RelayErrorMessage = "Zadejte platnou adresu relay serveru, např. ws://10.8.0.1:8080";
             return;
         }
         if (string.IsNullOrWhiteSpace(InviteCodeText))
         {
-            RelayErrorMessage = "Enter the invite code you were given.";
+            RelayErrorMessage = "Zadejte pozvánkový kód, který jste obdrželi.";
             return;
         }
 
@@ -432,7 +432,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            RelayErrorMessage = $"Registration failed: {ex.Message}";
+            RelayErrorMessage = $"Registrace se nezdařila: {ex.Message}";
         }
         finally
         {
@@ -446,7 +446,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         RelayErrorMessage = null;
         if (!Uri.TryCreate(RelayEndpointText, UriKind.Absolute, out var endpoint))
         {
-            RelayErrorMessage = "Enter a valid relay address, e.g. ws://10.8.0.1:8080";
+            RelayErrorMessage = "Zadejte platnou adresu relay serveru, např. ws://10.8.0.1:8080";
             return;
         }
 
@@ -455,11 +455,11 @@ public sealed partial class SettingsViewModel : ObservableObject
         {
             await _messageTransport.ConnectAsync(endpoint);
             IsConnected = _messageTransport.IsConnected;
-            ConnectionStatusText = IsConnected ? "Connected" : "Disconnected";
+            ConnectionStatusText = IsConnected ? "Připojeno" : "Odpojeno";
         }
         catch (Exception ex)
         {
-            RelayErrorMessage = $"Could not connect: {ex.Message}";
+            RelayErrorMessage = $"Nepodařilo se připojit: {ex.Message}";
         }
         finally
         {
@@ -472,7 +472,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         await _messageTransport.DisconnectAsync();
         IsConnected = _messageTransport.IsConnected;
-        ConnectionStatusText = "Disconnected";
+        ConnectionStatusText = "Odpojeno";
     }
 
     private async Task RefreshContactCardAsync()
@@ -511,7 +511,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         _connectionStateHandler = (_, state) => MainThread.BeginInvokeOnMainThread(() =>
         {
             IsConnected = state == TransportConnectionState.Connected;
-            ConnectionStatusText = state.ToString();
+            ConnectionStatusText = DescribeConnectionState(state);
         });
         _messageTransport.ConnectionStateChanged += _connectionStateHandler;
     }
@@ -522,4 +522,13 @@ public sealed partial class SettingsViewModel : ObservableObject
         _messageTransport.ConnectionStateChanged -= _connectionStateHandler;
         _connectionStateHandler = null;
     }
+
+    /// <summary>Czech display text for <see cref="TransportConnectionState"/> — the enum itself stays English (it's a wire/internal concept), only what reaches ConnectionStatusText is translated.</summary>
+    private static string DescribeConnectionState(TransportConnectionState state) => state switch
+    {
+        TransportConnectionState.Connected => "Připojeno",
+        TransportConnectionState.Connecting => "Připojování…",
+        TransportConnectionState.Reconnecting => "Připojování znovu…",
+        _ => "Odpojeno"
+    };
 }

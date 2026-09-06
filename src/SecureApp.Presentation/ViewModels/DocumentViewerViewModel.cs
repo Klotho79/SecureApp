@@ -86,7 +86,7 @@ public sealed partial class DocumentViewerViewModel : ObservableObject, IQueryAt
         _renderingService = renderingService ?? throw new ArgumentNullException(nameof(renderingService));
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
 
-        Title = "Document";
+        Title = "Dokument";
         PageIndicatorText = string.Empty;
         WatermarkText = string.Empty;
     }
@@ -99,7 +99,7 @@ public sealed partial class DocumentViewerViewModel : ObservableObject, IQueryAt
 
     partial void OnPageCountChanged(int value) => UpdatePageIndicator();
 
-    private void UpdatePageIndicator() => PageIndicatorText = PageCount == 0 ? string.Empty : $"Page {CurrentPageNumber} of {PageCount}";
+    private void UpdatePageIndicator() => PageIndicatorText = PageCount == 0 ? string.Empty : $"Stránka {CurrentPageNumber} z {PageCount}";
 
     public void ApplyQueryAttributes(IDictionary<string, object> query)
     {
@@ -127,7 +127,7 @@ public sealed partial class DocumentViewerViewModel : ObservableObject, IQueryAt
         }
         catch (DocumentNotFoundException)
         {
-            ErrorMessage = "This document could not be found.";
+            ErrorMessage = "Tento dokument se nepodařilo najít.";
         }
         finally
         {
@@ -224,6 +224,6 @@ public sealed partial class DocumentViewerViewModel : ObservableObject, IQueryAt
             // Best-effort only — the watermark still shows user + timestamp without an IP.
         }
 
-        return "unknown";
+        return "neznámá";
     }
 }

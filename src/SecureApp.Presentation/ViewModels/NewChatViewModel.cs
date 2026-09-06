@@ -99,8 +99,8 @@ public sealed partial class NewChatViewModel : ObservableObject
 
         PeerContactCardText = string.Empty;
         InviteBlobText = string.Empty;
-        ScanPeerCardButtonText = "Scan QR";
-        ScanInviteButtonText = "Scan QR";
+        ScanPeerCardButtonText = "Naskenovat QR";
+        ScanInviteButtonText = "Naskenovat QR";
     }
 
     partial void OnStatusErrorMessageChanged(string? value) => HasStatusError = !string.IsNullOrEmpty(value);
@@ -113,9 +113,9 @@ public sealed partial class NewChatViewModel : ObservableObject
 
     partial void OnAcceptedSessionChanged(ChatSession? value) => HasAcceptedSession = value is not null;
 
-    partial void OnIsScanningPeerCardChanged(bool value) => ScanPeerCardButtonText = value ? "Cancel Scan" : "Scan QR";
+    partial void OnIsScanningPeerCardChanged(bool value) => ScanPeerCardButtonText = value ? "Zrušit skenování" : "Naskenovat QR";
 
-    partial void OnIsScanningInviteChanged(bool value) => ScanInviteButtonText = value ? "Cancel Scan" : "Scan QR";
+    partial void OnIsScanningInviteChanged(bool value) => ScanInviteButtonText = value ? "Zrušit skenování" : "Naskenovat QR";
 
     /// <summary>
     /// Checks IMessagingService.FindExistingSessionAsync before minting a fresh session — a real
@@ -142,7 +142,7 @@ public sealed partial class NewChatViewModel : ObservableObject
         }
         catch (Exception)
         {
-            StatusErrorMessage = "That doesn't look like a valid contact card — check you copied the whole block.";
+            StatusErrorMessage = "To nevypadá jako platná kontaktní karta — zkontrolujte, že jste zkopírovali celý blok.";
             return;
         }
 
@@ -196,7 +196,7 @@ public sealed partial class NewChatViewModel : ObservableObject
                 // same reasoning as the already-paired branch above. If it turns out the peer
                 // couldn't complete their end for some reason, the chat is still reachable from the
                 // list afterwards and a fresh invite can be generated then.
-                StatusInfoMessage = $"Sent automatically — {peerCard.DisplayName} should be paired shortly.";
+                StatusInfoMessage = $"Odesláno automaticky — spárování s {peerCard.DisplayName} by mělo proběhnout za chvíli.";
                 await OpenCreatedChatCommand.ExecuteAsync(null);
             }
             else
@@ -209,7 +209,7 @@ public sealed partial class NewChatViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            StatusErrorMessage = $"Could not start the chat: {ex.Message}";
+            StatusErrorMessage = $"Nepodařilo se zahájit chat: {ex.Message}";
         }
         finally
         {
@@ -232,7 +232,7 @@ public sealed partial class NewChatViewModel : ObservableObject
         }
         catch (Exception)
         {
-            StatusErrorMessage = "That doesn't look like a valid invite — check you copied the whole block.";
+            StatusErrorMessage = "To nevypadá jako platná pozvánka — zkontrolujte, že jste zkopírovali celý blok.";
             return;
         }
 
@@ -256,7 +256,7 @@ public sealed partial class NewChatViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            StatusErrorMessage = $"Could not accept the invite: {ex.Message}";
+            StatusErrorMessage = $"Nepodařilo se přijmout pozvánku: {ex.Message}";
         }
         finally
         {
@@ -290,7 +290,7 @@ public sealed partial class NewChatViewModel : ObservableObject
         }
         catch (Exception)
         {
-            StatusErrorMessage = "That QR code doesn't look like a valid contact card.";
+            StatusErrorMessage = "Tento QR kód nevypadá jako platná kontaktní karta.";
         }
     }
 
@@ -305,7 +305,7 @@ public sealed partial class NewChatViewModel : ObservableObject
         }
         catch (Exception)
         {
-            StatusErrorMessage = "That QR code doesn't look like a valid invite.";
+            StatusErrorMessage = "Tento QR kód nevypadá jako platná pozvánka.";
         }
     }
 
@@ -314,7 +314,7 @@ public sealed partial class NewChatViewModel : ObservableObject
     {
         var configuration = await _transportSettingsRepository.GetAsync();
         var deviceId = configuration?.AssignedDeviceId
-            ?? throw new InvalidOperationException("Register with a relay in Settings first.");
+            ?? throw new InvalidOperationException("Nejprve se zaregistrujte u relay serveru v Nastavení.");
         var publicKey = await _messagingService.GetLocalIdentityPublicKeyAsync();
         return new ContactCardBlob(_currentUserService.Current.DisplayName, publicKey, deviceId);
     }

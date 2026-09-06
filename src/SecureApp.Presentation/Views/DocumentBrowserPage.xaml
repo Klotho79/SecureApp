@@ -15,7 +15,7 @@
         <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto">
             <Button
                 Grid.Column="0"
-                Text="⬅ Up"
+                Text="⬅ Nahoru"
                 Style="{StaticResource SecondaryButton}"
                 HorizontalOptions="Start"
                 IsVisible="{Binding CanGoUp}"
@@ -23,7 +23,7 @@
 
             <Button
                 Grid.Column="2"
-                Text="+ New Folder"
+                Text="+ Nová složka"
                 Style="{StaticResource SecondaryButton}"
                 IsVisible="{Binding CanModifyContent}"
                 Clicked="OnNewFolderClicked" />
@@ -50,7 +50,7 @@
                 <VerticalStackLayout Spacing="0">
 
                     <Label
-                        Text="No folders or documents here yet."
+                        Text="Zatím tu nejsou žádné složky ani dokumenty."
                         IsVisible="{Binding IsEmpty}"
                         Margin="0,32"
                         HorizontalOptions="Center"

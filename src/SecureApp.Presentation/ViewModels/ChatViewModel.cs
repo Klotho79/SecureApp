@@ -80,7 +80,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         _libraryService = libraryService ?? throw new ArgumentNullException(nameof(libraryService));
         _transportSettingsRepository = transportSettingsRepository ?? throw new ArgumentNullException(nameof(transportSettingsRepository));
 
-        Title = "Chat";
+        Title = "Chat"; // "Chat" is used identically in Czech, kept as-is
         Messages = [];
         ComposeText = string.Empty;
     }
@@ -165,7 +165,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         }
         catch (Exception ex)
         {
-            StatusErrorMessage = $"Could not load this chat: {ex.Message}";
+            StatusErrorMessage = $"Nepodařilo se načíst tento chat: {ex.Message}";
         }
         finally
         {
@@ -215,7 +215,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         }
         catch (Exception ex)
         {
-            StatusErrorMessage = $"Could not send: {ex.Message}";
+            StatusErrorMessage = $"Nepodařilo se odeslat: {ex.Message}";
         }
     }
 
@@ -228,7 +228,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         }
         catch (Exception)
         {
-            return "[Could not decrypt this message]";
+            return "[Tuto zprávu se nepodařilo dešifrovat]";
         }
     }
 
@@ -261,7 +261,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         }
         catch (Exception ex)
         {
-            StatusErrorMessage = $"Could not process an incoming message: {ex.Message}";
+            StatusErrorMessage = $"Nepodařilo se zpracovat příchozí zprávu: {ex.Message}";
         }
     }
 
@@ -296,7 +296,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         }
         catch (Exception ex)
         {
-            StatusErrorMessage = $"Could not open '{item.AttachmentFileName}': {ex.Message}";
+            StatusErrorMessage = $"Nepodařilo se otevřít '{item.AttachmentFileName}': {ex.Message}";
         }
     }
 }

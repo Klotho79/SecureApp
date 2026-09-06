@@ -5,27 +5,27 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
     x:DataType="vm:SettingsViewModel"
-    Title="Settings">
+    Title="Nastavení">
 
     <ScrollView>
         <VerticalStackLayout Padding="20" Spacing="16">
 
             <Border Style="{StaticResource CardBorder}">
                 <VerticalStackLayout Spacing="8">
-                    <Label Text="Account" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Label Text="Účet" Style="{StaticResource SectionHeader}" Margin="0" />
 
-                    <Label Text="Display name" FontAttributes="Bold" />
-                    <Entry Text="{Binding DisplayName}" Placeholder="Your name" />
+                    <Label Text="Zobrazované jméno" FontAttributes="Bold" />
+                    <Entry Text="{Binding DisplayName}" Placeholder="Vaše jméno" />
 
                     <Label Text="Role" FontAttributes="Bold" Margin="0,8,0,0" />
                     <Picker ItemsSource="{Binding AvailableRoles}" SelectedItem="{Binding SelectedRole}" />
                     <Label
-                        Text="Viewer can browse and open documents but cannot create, rename, move, delete, or import."
+                        Text="Viewer může procházet a otevírat dokumenty, ale nemůže vytvářet, přejmenovávat, přesouvat, mazat ani importovat."
                         FontSize="12"
                         TextColor="Gray" />
 
-                    <Button Text="Save" Command="{Binding SaveCommand}" />
-                    <Label Text="Saved." IsVisible="{Binding IsSaved}" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" />
+                    <Button Text="Uložit" Command="{Binding SaveCommand}" />
+                    <Label Text="Uloženo." IsVisible="{Binding IsSaved}" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" />
                     <Label Text="{Binding ErrorMessage}" IsVisible="{Binding HasErrorMessage}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
                 </VerticalStackLayout>
             </Border>
@@ -36,24 +36,24 @@
                     <Label Text="{Binding ConnectionStatusText}" FontSize="12" TextColor="Gray" />
                     <Label Text="{Binding RelayErrorMessage}" IsVisible="{Binding HasRelayError}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
 
-                    <Entry Text="{Binding RelayEndpointText}" Placeholder="Relay address, e.g. ws://10.8.0.1:8080" />
-                    <Entry Text="{Binding InviteCodeText}" Placeholder="Invite code" IsVisible="{Binding IsNotRegistered}" />
+                    <Entry Text="{Binding RelayEndpointText}" Placeholder="Adresa relay serveru, např. ws://10.8.0.1:8080" />
+                    <Entry Text="{Binding InviteCodeText}" Placeholder="Pozvánkový kód" IsVisible="{Binding IsNotRegistered}" />
 
-                    <Button Text="Register" Command="{Binding RegisterWithRelayCommand}" IsVisible="{Binding IsNotRegistered}" IsEnabled="{Binding CanUseRelayControls}" />
-                    <Button Text="Connect" Command="{Binding ConnectToRelayCommand}" IsVisible="{Binding IsNotConnected}" IsEnabled="{Binding CanUseRelayControls}" />
-                    <Button Text="Disconnect" Style="{StaticResource SecondaryButton}" Command="{Binding DisconnectFromRelayCommand}" IsVisible="{Binding IsConnected}" />
+                    <Button Text="Registrovat" Command="{Binding RegisterWithRelayCommand}" IsVisible="{Binding IsNotRegistered}" IsEnabled="{Binding CanUseRelayControls}" />
+                    <Button Text="Připojit" Command="{Binding ConnectToRelayCommand}" IsVisible="{Binding IsNotConnected}" IsEnabled="{Binding CanUseRelayControls}" />
+                    <Button Text="Odpojit" Style="{StaticResource SecondaryButton}" Command="{Binding DisconnectFromRelayCommand}" IsVisible="{Binding IsConnected}" />
                 </VerticalStackLayout>
             </Border>
 
             <Border Style="{StaticResource CardBorder}">
                 <VerticalStackLayout Spacing="8">
-                    <Label Text="My Contact Card" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Label Text="Share this with someone before they start a chat with you." FontSize="12" TextColor="Gray" />
+                    <Label Text="Moje kontaktní karta" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Label Text="Sdílejte ji s někým předtím, než s vámi začne chatovat." FontSize="12" TextColor="Gray" />
                     <Editor Text="{Binding ContactCardText}" IsReadOnly="True" HeightRequest="80" IsVisible="{Binding IsRegistered}" />
-                    <Label Text="Register with a relay first to get a contact card." FontSize="12" TextColor="Gray" IsVisible="{Binding IsNotRegistered}" />
+                    <Label Text="Nejprve se zaregistrujte u relay serveru, abyste získali kontaktní kartu." FontSize="12" TextColor="Gray" IsVisible="{Binding IsNotRegistered}" />
                     <Grid ColumnDefinitions="*,*" ColumnSpacing="8" IsVisible="{Binding IsRegistered}">
-                        <Button Grid.Column="0" Text="Copy" Style="{StaticResource SecondaryButton}" Command="{Binding CopyContactCardCommand}" />
-                        <Button Grid.Column="1" Text="Show QR" Style="{StaticResource SecondaryButton}" Command="{Binding ToggleContactCardQrCommand}" />
+                        <Button Grid.Column="0" Text="Kopírovat" Style="{StaticResource SecondaryButton}" Command="{Binding CopyContactCardCommand}" />
+                        <Button Grid.Column="1" Text="Zobrazit QR" Style="{StaticResource SecondaryButton}" Command="{Binding ToggleContactCardQrCommand}" />
                     </Grid>
                     <Image
                         IsVisible="{Binding IsShowingContactCardQr}"
@@ -67,55 +67,55 @@
 
             <Border Style="{StaticResource CardBorder}" IsVisible="{Binding IsAdmin}">
                 <VerticalStackLayout Spacing="8">
-                    <Label Text="Admin: Invite Codes" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Label Text="Mint an invite code for a new device to register with the relay above — no SSH/curl on the Pi needed." FontSize="12" TextColor="Gray" />
+                    <Label Text="Admin: Pozvánkové kódy" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Label Text="Vygenerujte pozvánkový kód pro nové zařízení, aby se mohlo zaregistrovat u relay serveru výše — není potřeba SSH/curl na Pi." FontSize="12" TextColor="Gray" />
                     <Label Text="{Binding AdminErrorMessage}" IsVisible="{Binding HasAdminError}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
 
                     <VerticalStackLayout Spacing="8" IsVisible="{Binding HasNoAdminSecret}">
-                        <Label Text="Relay admin secret (SECUREAPP_RELAY_ADMIN_SECRET)" FontSize="12" TextColor="Gray" />
-                        <Entry Text="{Binding AdminSecretInputText}" Placeholder="Paste the relay's admin secret" IsPassword="True" />
-                        <Button Text="Save admin secret" Command="{Binding SaveAdminSecretCommand}" />
+                        <Label Text="Admin heslo relay serveru (SECUREAPP_RELAY_ADMIN_SECRET)" FontSize="12" TextColor="Gray" />
+                        <Entry Text="{Binding AdminSecretInputText}" Placeholder="Vložte admin heslo relay serveru" IsPassword="True" />
+                        <Button Text="Uložit admin heslo" Command="{Binding SaveAdminSecretCommand}" />
                     </VerticalStackLayout>
 
                     <VerticalStackLayout Spacing="8" IsVisible="{Binding HasAdminSecret}">
-                        <Label Text="✓ Admin secret stored on this device." FontSize="12" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" />
-                        <Button Text="Change admin secret" Style="{StaticResource SecondaryButton}" Command="{Binding ChangeAdminSecretCommand}" />
-                        <Entry Text="{Binding InviteDisplayNameHintText}" Placeholder="Display name hint (optional)" />
-                        <Button Text="Generate invite code" Command="{Binding GenerateInviteCommand}" IsEnabled="{Binding CanUseAdminControls}" />
+                        <Label Text="✓ Admin heslo uloženo na tomto zařízení." FontSize="12" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" />
+                        <Button Text="Změnit admin heslo" Style="{StaticResource SecondaryButton}" Command="{Binding ChangeAdminSecretCommand}" />
+                        <Entry Text="{Binding InviteDisplayNameHintText}" Placeholder="Nápověda ke jménu (volitelné)" />
+                        <Button Text="Vygenerovat pozvánkový kód" Command="{Binding GenerateInviteCommand}" IsEnabled="{Binding CanUseAdminControls}" />
                         <Editor Text="{Binding GeneratedInviteCodeText}" IsReadOnly="True" HeightRequest="50" IsVisible="{Binding HasGeneratedInviteCode}" />
                         <Label Text="{Binding GeneratedInviteExpiryText}" FontSize="12" TextColor="Gray" IsVisible="{Binding HasGeneratedInviteCode}" />
-                        <Button Text="Copy" Style="{StaticResource SecondaryButton}" Command="{Binding CopyGeneratedInviteCodeCommand}" IsVisible="{Binding HasGeneratedInviteCode}" />
+                        <Button Text="Kopírovat" Style="{StaticResource SecondaryButton}" Command="{Binding CopyGeneratedInviteCodeCommand}" IsVisible="{Binding HasGeneratedInviteCode}" />
                     </VerticalStackLayout>
                 </VerticalStackLayout>
             </Border>
 
             <Border Style="{StaticResource CardBorder}" IsVisible="{Binding IsAdmin}">
                 <VerticalStackLayout Spacing="8">
-                    <Label Text="Admin: Relay Deploy" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Label Text="Rebuilds and restarts the relay from whatever code was last pushed to the Pi (git push). No SSH needed for this step — see relay/ops/README.md for the one-time Pi setup." FontSize="12" TextColor="Gray" />
+                    <Label Text="Admin: Nasazení relay serveru" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Label Text="Znovu sestaví a restartuje relay server z posledního kódu nahraného na Pi (git push). Pro tento krok není potřeba SSH — jednorázové nastavení Pi najdete v relay/ops/README.md." FontSize="12" TextColor="Gray" />
 
                     <VerticalStackLayout Spacing="8" IsVisible="{Binding HasAdminSecret}">
-                        <Button Text="Redeploy relay" Style="{StaticResource SecondaryButton}" Command="{Binding RedeployRelayCommand}" IsEnabled="{Binding CanUseAdminControls}" />
+                        <Button Text="Znovu nasadit relay" Style="{StaticResource SecondaryButton}" Command="{Binding RedeployRelayCommand}" IsEnabled="{Binding CanUseAdminControls}" />
                         <Label Text="{Binding DeployStatusText}" FontSize="12" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding HasDeployStatus}" />
                     </VerticalStackLayout>
-                    <Label Text="Save the admin secret above first." FontSize="12" TextColor="Gray" IsVisible="{Binding HasNoAdminSecret}" />
+                    <Label Text="Nejprve uložte admin heslo výše." FontSize="12" TextColor="Gray" IsVisible="{Binding HasNoAdminSecret}" />
                 </VerticalStackLayout>
             </Border>
 
             <Border Style="{StaticResource CardBorder}">
                 <VerticalStackLayout Spacing="8">
-                    <Label Text="Shared Library Key" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Label Text="One key, shared by everyone in the community, protects every file in the shared library." FontSize="12" TextColor="Gray" />
+                    <Label Text="Klíč sdílené knihovny" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Label Text="Jeden klíč, sdílený všemi v komunitě, chrání každý soubor ve sdílené knihovně." FontSize="12" TextColor="Gray" />
                     <Label Text="{Binding SharedLibraryErrorMessage}" IsVisible="{Binding HasSharedLibraryError}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
-                    <Label Text="✓ This device has a shared library key." FontSize="12" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding HasSharedLibraryKey}" />
+                    <Label Text="✓ Toto zařízení má klíč sdílené knihovny." FontSize="12" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding HasSharedLibraryKey}" />
 
-                    <Button Text="Generate a new key" Command="{Binding GenerateSharedLibraryKeyCommand}" IsVisible="{Binding HasNoSharedLibraryKey}" />
-                    <Button Text="Show key" Style="{StaticResource SecondaryButton}" Command="{Binding ShowSharedLibraryKeyCommand}" IsVisible="{Binding HasSharedLibraryKey}" />
+                    <Button Text="Vygenerovat nový klíč" Command="{Binding GenerateSharedLibraryKeyCommand}" IsVisible="{Binding HasNoSharedLibraryKey}" />
+                    <Button Text="Zobrazit klíč" Style="{StaticResource SecondaryButton}" Command="{Binding ShowSharedLibraryKeyCommand}" IsVisible="{Binding HasSharedLibraryKey}" />
                     <Editor Text="{Binding SharedLibraryKeyBlob}" IsReadOnly="True" HeightRequest="60" IsVisible="{Binding HasSharedLibraryKeyBlob}" />
-                    <Button Text="Copy" Style="{StaticResource SecondaryButton}" Command="{Binding CopySharedLibraryKeyCommand}" IsVisible="{Binding HasSharedLibraryKeyBlob}" />
+                    <Button Text="Kopírovat" Style="{StaticResource SecondaryButton}" Command="{Binding CopySharedLibraryKeyCommand}" IsVisible="{Binding HasSharedLibraryKeyBlob}" />
 
-                    <Entry Text="{Binding SharedLibraryKeyImportText}" Placeholder="Paste a key someone else generated" />
-                    <Button Text="Import" Style="{StaticResource SecondaryButton}" Command="{Binding ImportSharedLibraryKeyCommand}" />
+                    <Entry Text="{Binding SharedLibraryKeyImportText}" Placeholder="Vložte klíč, který vygeneroval někdo jiný" />
+                    <Button Text="Importovat" Style="{StaticResource SecondaryButton}" Command="{Binding ImportSharedLibraryKeyCommand}" />
                 </VerticalStackLayout>
             </Border>
 

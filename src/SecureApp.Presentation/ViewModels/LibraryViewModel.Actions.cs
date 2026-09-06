@@ -11,19 +11,19 @@ public sealed partial class LibraryViewModel
     {
         if (!CanModifyContent)
         {
-            StatusErrorMessage = "Only an Admin or Modifier can add to the shared library.";
+            StatusErrorMessage = "Přidávat do sdílené knihovny může jen Admin nebo Modifier.";
             return;
         }
 
         FileResult? picked;
         try
         {
-            picked = await FilePicker.PickAsync(new PickOptions { PickerTitle = "Select a file to share" });
+            picked = await FilePicker.PickAsync(new PickOptions { PickerTitle = "Vyberte soubor ke sdílení" });
         }
         catch (Exception ex)
         {
             // Some platforms throw instead of returning null when the user cancels or there's no picker activity available.
-            StatusErrorMessage = $"Could not open the file picker: {ex.Message}";
+            StatusErrorMessage = $"Nepodařilo se otevřít výběr souborů: {ex.Message}";
             return;
         }
 
@@ -40,7 +40,7 @@ public sealed partial class LibraryViewModel
         }
         catch (Exception ex)
         {
-            StatusErrorMessage = $"Could not upload '{picked.FileName}': {ex.Message}";
+            StatusErrorMessage = $"Nepodařilo se nahrát '{picked.FileName}': {ex.Message}";
         }
         finally
         {
@@ -61,7 +61,7 @@ public sealed partial class LibraryViewModel
         }
         catch (Exception ex)
         {
-            StatusErrorMessage = $"Could not open '{item.FileName}': {ex.Message}";
+            StatusErrorMessage = $"Nepodařilo se otevřít '{item.FileName}': {ex.Message}";
         }
     }
 }

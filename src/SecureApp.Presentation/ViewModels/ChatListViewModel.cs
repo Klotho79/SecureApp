@@ -52,9 +52,9 @@ public sealed partial class ChatListViewModel : ObservableObject
 
     private static string DescribeLastActivity(ChatSession session) => session.State switch
     {
-        ChatSessionState.Closed => "Closed",
-        ChatSessionState.PendingHandshake => "Waiting to connect…",
-        _ => session.LastRatchetedAtUtc is { } last ? last.LocalDateTime.ToString("g") : "No messages yet"
+        ChatSessionState.Closed => "Uzavřeno",
+        ChatSessionState.PendingHandshake => "Čeká na připojení…",
+        _ => session.LastRatchetedAtUtc is { } last ? last.LocalDateTime.ToString("g") : "Zatím žádné zprávy"
     };
 
     /// <summary>Up to 2 letters for the avatar circle in the redesigned list (2026-09-06) — first letter of up to the first two words, e.g. "Dr. B. Chen" -&gt; "DB". Plain string, not a MAUI Color, to keep this partial's own stated MAUI-free claim true; the avatar's actual color is one fixed accent tint set in XAML, not per-contact.</summary>

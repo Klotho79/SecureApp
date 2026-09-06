@@ -34,7 +34,7 @@ public partial class DocumentBrowserPage : ContentPage
 
 	private async void OnNewFolderClicked(object? sender, EventArgs e)
 	{
-		var name = await DisplayPromptAsync("New Folder", "Folder name:");
+		var name = await DisplayPromptAsync("Nová složka", "Název složky:");
 		if (string.IsNullOrWhiteSpace(name)) return;
 
 		await _viewModel.CreateFolderCommand.ExecuteAsync(name);
@@ -44,7 +44,7 @@ public partial class DocumentBrowserPage : ContentPage
 	{
 		if (sender is not Button { BindingContext: DocumentFolderItem folder }) return;
 
-		var newName = await DisplayPromptAsync("Rename Folder", "New name:", initialValue: folder.Name);
+		var newName = await DisplayPromptAsync("Přejmenovat složku", "Nový název:", initialValue: folder.Name);
 		if (string.IsNullOrWhiteSpace(newName)) return;
 
 		await _viewModel.RenameFolderCommand.ExecuteAsync((folder, newName));
@@ -55,10 +55,10 @@ public partial class DocumentBrowserPage : ContentPage
 		if (sender is not Button { BindingContext: DocumentFolderItem folder }) return;
 
 		var confirmed = await DisplayAlertAsync(
-			"Delete Folder",
-			$"Delete '{folder.Name}'? Subfolders inside it will be deleted too. Documents directly inside it will move to the root level instead of being deleted.",
-			"Delete",
-			"Cancel");
+			"Smazat složku",
+			$"Smazat složku '{folder.Name}'? Podsložky uvnitř ní budou smazány také. Dokumenty přímo v ní se místo smazání přesunou do kořenové úrovně.",
+			"Smazat",
+			"Zrušit");
 		if (!confirmed) return;
 
 		await _viewModel.DeleteFolderCommand.ExecuteAsync(folder);

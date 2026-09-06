@@ -11,20 +11,20 @@ public sealed partial class DocumentBrowserViewModel
     {
         if (!CanModifyContent)
         {
-            StatusErrorMessage = "Your role (Viewer) cannot import documents.";
+            StatusErrorMessage = "Vaše role (Viewer) nemůže importovat dokumenty.";
             return;
         }
 
         IEnumerable<FileResult?>? picked;
         try
         {
-            picked = await FilePicker.PickMultipleAsync(new PickOptions { PickerTitle = "Select documents to import" });
+            picked = await FilePicker.PickMultipleAsync(new PickOptions { PickerTitle = "Vyberte dokumenty k importu" });
         }
         catch (Exception ex)
         {
             // Some platforms throw instead of returning null/empty when the user cancels or
             // there's no picker activity available; treat it as "nothing picked" either way.
-            StatusErrorMessage = $"Could not open the file picker: {ex.Message}";
+            StatusErrorMessage = $"Nepodařilo se otevřít výběr souborů: {ex.Message}";
             return;
         }
 
@@ -50,7 +50,7 @@ public sealed partial class DocumentBrowserViewModel
         }
 
         if (failures.Count > 0)
-            StatusErrorMessage = $"{failures.Count} of {files.Count} file(s) failed to import:\n{string.Join("\n", failures)}";
+            StatusErrorMessage = $"Import se nezdařil u {failures.Count} z {files.Count} souborů:\n{string.Join("\n", failures)}";
 
         IsImporting = false;
         await LoadAsync();
