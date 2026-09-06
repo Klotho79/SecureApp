@@ -152,8 +152,11 @@ public sealed partial class NewChatViewModel : ObservableObject
             var existing = await _messagingService.FindExistingSessionAsync(peerCard.PublicKey);
             if (existing is not null)
             {
+                // Nothing to show or share — jump straight in. See OpenCreatedChatAsync's own
+                // remarks (2026-09-06) for why this auto-navigates instead of waiting for a second
+                // "Open Chat" tap the user rightly called out as pointless extra friction.
                 CreatedSession = existing;
-                StatusInfoMessage = $"You're already paired with {peerCard.DisplayName} — opening the existing chat.";
+                await OpenCreatedChatCommand.ExecuteAsync(null);
                 return;
             }
 
@@ -170,21 +173,38 @@ public sealed partial class NewChatViewModel : ObservableObject
             // to be online right now, this delivers the invite over the relay directly instead of
             // making the user do a second manual QR/copy-paste round trip — App.xaml.cs's
             // OnPairingInviteReceived completes pairing on their end automatically, with zero
-            // action needed there either. Best-effort and silent either way: the QR/Copy UI above
-            // stays fully populated and usable regardless, so a peer who's offline (or whose relay
-            // hop fails) is never blocked — same "never let live-send failure surface as an error"
-            // policy ChatViewModel.SendAsync already established for ordinary messages.
+            // action needed there either.
+            var deliveredAutomatically = false;
             try
             {
                 if (_messageTransport.IsConnected)
                 {
                     await _messageTransport.SendPairingInviteAsync(peerCard.RelayDeviceId, GeneratedInviteText);
-                    StatusInfoMessage = $"Sent automatically — {peerCard.DisplayName} should be paired shortly. You can also share the QR/text below as a backup.";
+                    deliveredAutomatically = true;
                 }
             }
             catch
             {
-                // Stays available as the QR/Copy fallback below — nothing further to do here.
+                // Falls through to the manual QR/Copy UI below — never surfaced as an error, same
+                // "never let live-send failure block the user" policy ChatViewModel.SendAsync
+                // already established for ordinary messages.
+            }
+
+            if (deliveredAutomatically)
+            {
+                // Confirmed sent over an actually-open connection — trust it and jump straight in,
+                // same reasoning as the already-paired branch above. If it turns out the peer
+                // couldn't complete their end for some reason, the chat is still reachable from the
+                // list afterwards and a fresh invite can be generated then.
+                StatusInfoMessage = $"Sent automatically — {peerCard.DisplayName} should be paired shortly.";
+                await OpenCreatedChatCommand.ExecuteAsync(null);
+            }
+            else
+            {
+                // Genuinely need the human to share this — peer's offline or unreachable right now,
+                // so keep them on this screen with the QR/text visible instead of navigating away
+                // from the one thing they still need to act on.
+                StatusInfoMessage = null;
             }
         }
         catch (Exception ex)
@@ -223,12 +243,16 @@ public sealed partial class NewChatViewModel : ObservableObject
             if (existing is not null)
             {
                 AcceptedSession = existing;
-                StatusInfoMessage = $"You're already paired with {invite.InitiatorDisplayName} — opening the existing chat.";
-                return;
+            }
+            else
+            {
+                AcceptedSession = await _messagingService.AcceptSessionAsync(
+                    invite.InitiatorDisplayName, invite.InitiatorPublicKey, invite.InitiatorRelayDeviceId, invite.HandshakeCipherText);
             }
 
-            AcceptedSession = await _messagingService.AcceptSessionAsync(
-                invite.InitiatorDisplayName, invite.InitiatorPublicKey, invite.InitiatorRelayDeviceId, invite.HandshakeCipherText);
+            // Nothing further to show either way — jump straight in, same reasoning as
+            // CreateSessionAsync's own already-paired branch (2026-09-06).
+            await OpenAcceptedChatCommand.ExecuteAsync(null);
         }
         catch (Exception ex)
         {
