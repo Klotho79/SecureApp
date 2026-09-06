@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SecureApp.Domain.Enums;
@@ -37,6 +38,16 @@ public sealed partial class LibraryViewModel : ObservableObject
 
     [ObservableProperty]
     public partial ObservableCollection<LibraryFileItem> Results { get; set; }
+
+    /// <summary>
+    /// Category chips (2026-09-06) — deliberately NOT a fixed/hardcoded list like the redesign
+    /// mockup's static "Emergency/Surgery/Pediatrics/…" row: every real community using this app
+    /// picks its own categories by typing a folder name on upload (already-existing, unchanged
+    /// behavior), so the chip row is derived from whatever folder names actually exist in the
+    /// library right now, refreshed alongside every search. "All" clears the filter.
+    /// </summary>
+    [ObservableProperty]
+    public partial ObservableCollection<LibraryCategoryChip> Categories { get; set; }
 
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
@@ -77,6 +88,7 @@ public sealed partial class LibraryViewModel : ObservableObject
         UploadFolderPath = string.Empty;
         UploadTags = string.Empty;
         Results = [];
+        Categories = [];
         CanModifyContent = true;
         RecomputeCanUpload();
     }
@@ -104,6 +116,8 @@ public sealed partial class LibraryViewModel : ObservableObject
 
             Results = new ObservableCollection<LibraryFileItem>(results.Select(ToItem));
             IsEmpty = Results.Count == 0;
+
+            await RefreshCategoriesAsync();
         }
         catch (Exception ex)
         {
@@ -113,6 +127,32 @@ public sealed partial class LibraryViewModel : ObservableObject
         {
             IsLoading = false;
         }
+    }
+
+    /// <summary>
+    /// Unfiltered fetch, deliberately separate from the (possibly filtered) Results above — the
+    /// chip row needs to keep showing every category that exists regardless of which one is
+    /// currently selected, not just whichever one the active filter happens to match.
+    /// </summary>
+    private async Task RefreshCategoriesAsync()
+    {
+        var all = await _libraryService.SearchAsync();
+        var distinctFolders = all
+            .Select(f => f.FolderPath)
+            .Where(f => !string.IsNullOrWhiteSpace(f))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(f => f, StringComparer.OrdinalIgnoreCase);
+
+        var chips = new List<LibraryCategoryChip> { new("All", string.IsNullOrEmpty(FolderFilter), SelectCategoryCommand) };
+        chips.AddRange(distinctFolders.Select(f => new LibraryCategoryChip(f, string.Equals(f, FolderFilter, StringComparison.OrdinalIgnoreCase), SelectCategoryCommand)));
+        Categories = new ObservableCollection<LibraryCategoryChip>(chips);
+    }
+
+    [RelayCommand]
+    private async Task SelectCategoryAsync(string category)
+    {
+        FolderFilter = category == "All" ? string.Empty : category;
+        await SearchAsync();
     }
 
     private static LibraryFileItem ToItem(SharedLibraryFileSummary summary)
@@ -148,3 +188,6 @@ public sealed record LibraryFileItem(Guid Id, string FileName, string? FolderPat
 
 /// <summary>Wraps a plain tag string only so it has a stable reference type for BindableLayout's ItemsSource — a bare List&lt;string&gt; binds fine too, but this keeps the DataTemplate's x:DataType explicit rather than implicitly "x:String".</summary>
 public sealed record LibraryTagItem(string Label);
+
+/// <summary>One category filter chip — carries the same shared SelectCategoryCommand instance (bound per-item as CommandParameter="{Binding Name}" in the DataTemplate) rather than requiring an x:Reference back to the page, since this item type doesn't live nested inside another item's own DataTemplate the way ChatThreadView's attachment chip does.</summary>
+public sealed record LibraryCategoryChip(string Name, bool IsSelected, ICommand Command);
