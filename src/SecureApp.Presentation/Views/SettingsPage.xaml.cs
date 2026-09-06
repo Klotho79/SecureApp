@@ -23,5 +23,6 @@ public partial class SettingsPage : ContentPage
     {
         base.OnDisappearing();
         _viewModel.StopObservingConnection();
+        _viewModel.StopActivationPolling();
     }
 }

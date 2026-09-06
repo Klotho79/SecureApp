@@ -31,12 +31,13 @@ public sealed class TransportSettingsRepository : ITransportSettingsRepository
         var connection = await _connectionFactory.GetConnectionAsync(ct);
         await connection.ExecuteAsync("DELETE FROM transport_settings");
         await connection.ExecuteAsync(
-            "INSERT INTO transport_settings (id, endpoint_uri, is_auto_connect_enabled, last_connected_at_utc, assigned_relay_device_id, created_at_utc, modified_at_utc) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO transport_settings (id, endpoint_uri, is_auto_connect_enabled, last_connected_at_utc, assigned_relay_device_id, pending_activation_request_id, created_at_utc, modified_at_utc) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             configuration.Id.ToString(),
             configuration.EndpointUri?.ToString(),
             configuration.IsAutoConnectEnabled ? 1 : 0,
             configuration.LastConnectedAtUtc is null ? null : Format(configuration.LastConnectedAtUtc.Value),
             configuration.AssignedDeviceId?.ToString(),
+            configuration.PendingActivationRequestId?.ToString(),
             Format(configuration.CreatedAtUtc),
             Format(configuration.ModifiedAtUtc));
     }
@@ -51,6 +52,7 @@ public sealed class TransportSettingsRepository : ITransportSettingsRepository
         EntityMaterializer.Set(entity, nameof(TransportEndpointConfiguration.IsAutoConnectEnabled), row.IsAutoConnectEnabled != 0);
         EntityMaterializer.Set(entity, nameof(TransportEndpointConfiguration.LastConnectedAtUtc), row.LastConnectedAtUtc is null ? null : (DateTimeOffset?)Parse(row.LastConnectedAtUtc));
         EntityMaterializer.Set(entity, nameof(TransportEndpointConfiguration.AssignedDeviceId), row.AssignedRelayDeviceId is null ? null : (Guid?)Guid.Parse(row.AssignedRelayDeviceId));
+        EntityMaterializer.Set(entity, nameof(TransportEndpointConfiguration.PendingActivationRequestId), row.PendingActivationRequestId is null ? null : (Guid?)Guid.Parse(row.PendingActivationRequestId));
         return entity;
     }
 

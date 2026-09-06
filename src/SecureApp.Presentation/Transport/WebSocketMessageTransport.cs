@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Net.WebSockets;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
@@ -79,6 +80,81 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
         var configuration = await transportSettings.GetAsync(ct) ?? new TransportEndpointConfiguration(endpoint, isAutoConnectEnabled: true);
         configuration.AssignDevice(credential.DeviceId);
         await transportSettings.SaveAsync(configuration, ct);
+    }
+
+    public async Task<Guid> RequestActivationAsync(Uri endpoint, string displayName, string email, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+        ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(email);
+
+        using var scope = _scopeFactory.CreateScope();
+        var messagingService = scope.ServiceProvider.GetRequiredService<IMessagingService>();
+        var publicKey = await messagingService.GetLocalIdentityPublicKeyAsync(ct);
+        var fingerprint = ComputeKeyFingerprint(publicKey);
+
+        var requestUri = new Uri(ToHttpUri(endpoint), "activation/request");
+        using var response = await _httpClient.PostAsJsonAsync(
+            requestUri,
+            new { DisplayName = displayName, Email = email, KeyFingerprint = fingerprint },
+            HttpJsonOptions,
+            ct);
+        response.EnsureSuccessStatusCode();
+
+        var result = await response.Content.ReadFromJsonAsync<ActivationRequestCreated>(HttpJsonOptions, ct)
+            ?? throw new InvalidOperationException("Relay returned an empty activation-request response.");
+
+        var transportSettings = scope.ServiceProvider.GetRequiredService<ITransportSettingsRepository>();
+        var configuration = await transportSettings.GetAsync(ct) ?? new TransportEndpointConfiguration(endpoint, isAutoConnectEnabled: true);
+        configuration.SetPendingActivationRequest(result.RequestId);
+        await transportSettings.SaveAsync(configuration, ct);
+
+        return result.RequestId;
+    }
+
+    public async Task<ActivationRequestStatus> PollActivationAsync(Uri endpoint, Guid requestId, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+
+        var statusUri = new Uri(ToHttpUri(endpoint), $"activation/status/{requestId}");
+        using var response = await _httpClient.GetAsync(statusUri, ct);
+        response.EnsureSuccessStatusCode();
+
+        var result = await response.Content.ReadFromJsonAsync<ActivationStatusResult>(HttpJsonOptions, ct)
+            ?? throw new InvalidOperationException("Relay returned an empty activation-status response.");
+
+        if (!Enum.TryParse<ActivationRequestStatus>(result.Status, ignoreCase: true, out var status))
+            throw new InvalidOperationException($"Relay returned an unrecognized activation status '{result.Status}'.");
+
+        if (status == ActivationRequestStatus.Approved && result is { DeviceId: { } deviceId, Secret: { } secret })
+        {
+            // Same tail RegisterAsync already runs — completing it here (rather than making the
+            // caller do it) is what lets PollActivationAsync stand in as a drop-in async analog of
+            // RegisterAsync: "keep polling until it's not Pending" is the whole contract.
+            await _vault.StoreSecretAsync(RelayDeviceVaultKeys.DeviceSecret, Encoding.UTF8.GetBytes(secret), ct);
+
+            using var scope = _scopeFactory.CreateScope();
+            var transportSettings = scope.ServiceProvider.GetRequiredService<ITransportSettingsRepository>();
+            var configuration = await transportSettings.GetAsync(ct) ?? new TransportEndpointConfiguration(endpoint, isAutoConnectEnabled: true);
+            configuration.AssignDevice(deviceId); // also clears PendingActivationRequestId
+            await transportSettings.SaveAsync(configuration, ct);
+        }
+
+        return status;
+    }
+
+    /// <summary>
+    /// A short, human-legible digest of a chat-identity public key for the admin to optionally read
+    /// back to whoever's requesting activation (phone call, in person) before approving — not a
+    /// secret, and not meant to be cryptographically unforgeable on its own (8 bytes of a SHA-256
+    /// digest), just enough to catch an honest mismatch. Grouped like an SSH key fingerprint for
+    /// easier reading aloud.
+    /// </summary>
+    private static string ComputeKeyFingerprint(byte[] publicKey)
+    {
+        var hash = SHA256.HashData(publicKey);
+        var hex = Convert.ToHexStringLower(hash.AsSpan(0, 8));
+        return string.Join(" ", Enumerable.Range(0, 4).Select(i => hex.Substring(i * 4, 4).ToUpperInvariant()));
     }
 
     public async Task ConnectAsync(Uri endpoint, CancellationToken ct = default)
@@ -308,4 +384,6 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
     }
 
     private sealed record DeviceCredential(Guid DeviceId, string Secret);
+    private sealed record ActivationRequestCreated(Guid RequestId);
+    private sealed record ActivationStatusResult(string Status, Guid? DeviceId, string? Secret);
 }

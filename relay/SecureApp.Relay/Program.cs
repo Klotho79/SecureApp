@@ -70,6 +70,74 @@ app.MapPost("/register", (RegisterRequest body, RelayDatabase db) =>
     return Results.Ok(new DeviceCredentialResponse(deviceId, secret));
 });
 
+// --- Activation requests (2026-09-06) — see Contracts.cs's own remarks for why this exists
+// alongside (not instead of, at the relay's own storage level) the invite-code endpoints above.
+
+app.MapPost("/activation/request", (CreateActivationRequestRequest body, RelayDatabase db) =>
+{
+    if (string.IsNullOrWhiteSpace(body.DisplayName) || string.IsNullOrWhiteSpace(body.Email) || string.IsNullOrWhiteSpace(body.KeyFingerprint))
+        return Results.BadRequest("DisplayName, Email, and KeyFingerprint are all required.");
+
+    var requestId = db.CreateActivationRequest(body.DisplayName, body.Email, body.KeyFingerprint);
+    return Results.Ok(new CreateActivationRequestResponse(requestId));
+});
+
+// Deliberately unauthenticated (like /register) — the request id itself is an unguessable GUID the
+// requesting device alone holds, same bearer-token-by-possession reasoning an invite code already
+// relied on. Idempotent: polling again after Approved keeps returning the same credential rather
+// than a one-shot reveal, so a device that misses the response once (killed mid-poll, network
+// blip) doesn't get stuck needing the admin to approve a second time.
+app.MapGet("/activation/status/{id:guid}", (Guid id, RelayDatabase db) =>
+{
+    var record = db.GetActivationRequest(id);
+    if (record is null)
+        return Results.NotFound();
+
+    if (record.Status != "Approved" || record.AssignedDeviceId is not { } deviceId)
+        return Results.Ok(new ActivationStatusResponse(record.Status, null, null));
+
+    // Approved: the device row already exists (ApproveActivationRequest created it), but its
+    // bearer secret was only ever returned once from that call, at approval time — RelayDatabase
+    // doesn't store secrets in recoverable form (see its own remarks: salted + HMAC-hashed only).
+    // So the secret returned here is cached at approval time onto the activation request row's own
+    // (unauthenticated-but-unguessable) storage, not re-derived. See ApproveActivationRequest's
+    // caller below for where that value actually comes from.
+    var cachedSecret = db.GetActivationRequestSecret(id);
+    return Results.Ok(new ActivationStatusResponse(record.Status, deviceId, cachedSecret));
+});
+
+app.MapGet("/admin/activation-requests", (HttpRequest request, RelayDatabase db) =>
+{
+    if (!IsAdminAuthorized(request, adminSecret))
+        return Results.Unauthorized();
+
+    var pending = db.GetPendingActivationRequests();
+    return Results.Ok(pending.Select(r => new ActivationRequestSummary(r.Id, r.DisplayName, r.Email, r.KeyFingerprint, r.CreatedAtUtc)).ToList());
+});
+
+app.MapPost("/admin/activation-requests/{id:guid}/approve", (Guid id, HttpRequest request, RelayDatabase db) =>
+{
+    if (!IsAdminAuthorized(request, adminSecret))
+        return Results.Unauthorized();
+
+    var approved = db.ApproveActivationRequest(id);
+    if (approved is null)
+        return Results.Conflict("This request no longer exists or was already decided.");
+
+    return Results.Ok();
+});
+
+app.MapPost("/admin/activation-requests/{id:guid}/reject", (Guid id, HttpRequest request, RelayDatabase db) =>
+{
+    if (!IsAdminAuthorized(request, adminSecret))
+        return Results.Unauthorized();
+
+    if (!db.RejectActivationRequest(id))
+        return Results.Conflict("This request no longer exists or was already decided.");
+
+    return Results.Ok();
+});
+
 app.MapPost("/library/files", async (HttpRequest request, RelayDatabase db) =>
 {
     if (!TryGetDeviceAuth(request, db, out var deviceId))

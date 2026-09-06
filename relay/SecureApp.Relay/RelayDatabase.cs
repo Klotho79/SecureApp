@@ -16,6 +16,16 @@ public sealed record LibraryFileRecord(
     Guid UploadedByDeviceId,
     DateTimeOffset UploadedAtUtc);
 
+/// <summary>One pending/decided activation request — see <c>Contracts.cs</c>'s own remarks for the flow this replaces.</summary>
+public sealed record ActivationRequestRecord(
+    Guid Id,
+    string DisplayName,
+    string Email,
+    string KeyFingerprint,
+    string Status,
+    DateTimeOffset CreatedAtUtc,
+    Guid? AssignedDeviceId);
+
 /// <summary>
 /// Plain SQLite storage (not SQLCipher) for the relay's own bookkeeping — devices, invites, and
 /// the store-and-forward outbox. Deliberate simplicity/security tradeoff, stated explicitly: the
@@ -84,6 +94,28 @@ public sealed class RelayDatabase
             )
             """);
         Execute(connection, "CREATE INDEX IF NOT EXISTS ix_library_files_folder ON library_files(folder_path)");
+
+        // device_secret holds the new device's PLAINTEXT bearer secret once approved — unlike
+        // `devices.secret_hash` (salted + HMAC-hashed, never recoverable), this one genuinely needs
+        // to be readable back out, since it's the only channel that ever hands the secret to the
+        // still-unregistered device (see GetActivationRequestSecret's remarks). Equivalent exposure
+        // to what /register already does today (returns a plaintext secret over an unauthenticated
+        // call, gated only by possessing a valid one-time invite code) — here the request's own
+        // unguessable GUID plays that same role instead of a typed-in code.
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS activation_requests (
+                id                    TEXT PRIMARY KEY NOT NULL,
+                display_name          TEXT NOT NULL,
+                email                 TEXT NOT NULL,
+                key_fingerprint       TEXT NOT NULL,
+                status                TEXT NOT NULL,
+                created_at_utc        TEXT NOT NULL,
+                decided_at_utc        TEXT NULL,
+                assigned_device_id    TEXT NULL,
+                device_secret         TEXT NULL
+            )
+            """);
+        Execute(connection, "CREATE INDEX IF NOT EXISTS ix_activation_requests_status ON activation_requests(status)");
     }
 
     public string CreateInvite(string? displayNameHint, TimeSpan validFor, out DateTimeOffset expiresAtUtc)
@@ -259,6 +291,94 @@ public sealed class RelayDatabase
 
         return command.ExecuteNonQuery() > 0;
     }
+
+    public Guid CreateActivationRequest(string displayName, string email, string keyFingerprint)
+    {
+        var id = Guid.NewGuid();
+        using var connection = OpenConnection();
+        Execute(connection,
+            "INSERT INTO activation_requests (id, display_name, email, key_fingerprint, status, created_at_utc, decided_at_utc, assigned_device_id) VALUES (@id, @name, @email, @fp, 'Pending', @created, NULL, NULL)",
+            ("@id", id.ToString()), ("@name", displayName), ("@email", email), ("@fp", keyFingerprint), ("@created", Format(DateTimeOffset.UtcNow)));
+        return id;
+    }
+
+    public ActivationRequestRecord? GetActivationRequest(Guid id)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id, display_name, email, key_fingerprint, status, created_at_utc, assigned_device_id FROM activation_requests WHERE id = @id";
+        command.Parameters.AddWithValue("@id", id.ToString());
+
+        using var reader = command.ExecuteReader();
+        return reader.Read() ? ReadActivationRequestRecord(reader) : null;
+    }
+
+    public IReadOnlyList<ActivationRequestRecord> GetPendingActivationRequests()
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id, display_name, email, key_fingerprint, status, created_at_utc, assigned_device_id FROM activation_requests WHERE status = 'Pending' ORDER BY created_at_utc";
+
+        var results = new List<ActivationRequestRecord>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            results.Add(ReadActivationRequestRecord(reader));
+        return results;
+    }
+
+    /// <summary>Atomically approves a still-pending request: mints a new device credential (same underlying <see cref="CreateDevice"/> as the old invite-code path) and records it against the request. Returns null if the request doesn't exist or was already decided (approved/rejected) — e.g. a double-tap on "Potvrdit", or someone else already acted on it.</summary>
+    public (Guid DeviceId, string Secret)? ApproveActivationRequest(Guid id)
+    {
+        using var connection = OpenConnection();
+        using var checkCommand = connection.CreateCommand();
+        checkCommand.CommandText = "SELECT display_name FROM activation_requests WHERE id = @id AND status = 'Pending'";
+        checkCommand.Parameters.AddWithValue("@id", id.ToString());
+        using var reader = checkCommand.ExecuteReader();
+        if (!reader.Read())
+            return null;
+        var displayName = (string)reader["display_name"];
+        reader.Close();
+
+        var (deviceId, secret) = CreateDevice(displayName);
+
+        Execute(connection,
+            "UPDATE activation_requests SET status = 'Approved', decided_at_utc = @now, assigned_device_id = @device, device_secret = @secret WHERE id = @id",
+            ("@now", Format(DateTimeOffset.UtcNow)), ("@device", deviceId.ToString()), ("@id", id.ToString()), ("@secret", secret));
+
+        return (deviceId, secret);
+    }
+
+    /// <summary>Reads back the plaintext secret an approved activation request is holding for its still-polling device — see the `device_secret` column's own remarks in <see cref="Initialize"/> for why this one genuinely needs to be recoverable, unlike a device's own stored secret hash. Returns null for a request that isn't Approved (or doesn't exist) — never partially exposes a secret before a human has actually decided.</summary>
+    public string? GetActivationRequestSecret(Guid id)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT device_secret FROM activation_requests WHERE id = @id AND status = 'Approved'";
+        command.Parameters.AddWithValue("@id", id.ToString());
+
+        using var reader = command.ExecuteReader();
+        return reader.Read() && reader["device_secret"] is string secret ? secret : null;
+    }
+
+    /// <summary>Returns false if the request doesn't exist or was already decided — same "someone/something else got there first" reasoning as <see cref="ApproveActivationRequest"/>.</summary>
+    public bool RejectActivationRequest(Guid id)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE activation_requests SET status = 'Rejected', decided_at_utc = @now WHERE id = @id AND status = 'Pending'";
+        command.Parameters.AddWithValue("@now", Format(DateTimeOffset.UtcNow));
+        command.Parameters.AddWithValue("@id", id.ToString());
+        return command.ExecuteNonQuery() > 0;
+    }
+
+    private static ActivationRequestRecord ReadActivationRequestRecord(SqliteDataReader reader) => new(
+        Guid.Parse((string)reader["id"]),
+        (string)reader["display_name"],
+        (string)reader["email"],
+        (string)reader["key_fingerprint"],
+        (string)reader["status"],
+        DateTimeOffset.Parse((string)reader["created_at_utc"], CultureInfo.InvariantCulture),
+        reader["assigned_device_id"] is DBNull ? null : Guid.Parse((string)reader["assigned_device_id"]));
 
     private static LibraryFileRecord ReadLibraryFileRecord(SqliteDataReader reader) => new(
         Guid.Parse((string)reader["id"]),

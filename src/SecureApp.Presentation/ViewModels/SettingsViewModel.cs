@@ -1,8 +1,11 @@
+using System.Collections.ObjectModel;
+using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SecureApp.Domain.Enums;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
+using SecureApp.Domain.ValueObjects;
 using SecureApp.Presentation.Chat;
 using SecureApp.Presentation.Transport;
 
@@ -25,6 +28,8 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly IRelayAdminService _relayAdminService;
 
     private EventHandler<TransportConnectionState>? _connectionStateHandler;
+    private IDispatcherTimer? _activationPollTimer;
+    private Guid? _pendingActivationRequestId;
 
     public IReadOnlyList<Role> AvailableRoles { get; } = Enum.GetValues<Role>();
 
@@ -51,8 +56,20 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial string RelayEndpointText { get; set; }
 
+    // --- Activation (2026-09-06) — replaces the invite-code paste-in below for a new device
+    // joining the community: instead of typing in a code an admin handed over out-of-band, the new
+    // device sends the admin a request (name + email + this device's own key fingerprint) and just
+    // waits for it to be approved in-app. See IMessageTransport.RequestActivationAsync/PollActivationAsync
+    // and the "Admin: Pending Activations" properties further below for the admin's side of this.
+
     [ObservableProperty]
-    public partial string InviteCodeText { get; set; }
+    public partial string ActivationEmailText { get; set; }
+
+    [ObservableProperty]
+    public partial string? ActivationStatusText { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasActivationStatus { get; set; }
 
     [ObservableProperty]
     public partial string ConnectionStatusText { get; set; }
@@ -115,7 +132,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool HasSharedLibraryError { get; set; }
 
-    // --- Relay admin: mint invite codes in-app (Admin role only) ---
+    // --- Relay admin: approve/reject device activation requests in-app (Admin role only) ---
 
     [ObservableProperty]
     public partial bool HasAdminSecret { get; set; }
@@ -126,17 +143,18 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial string AdminSecretInputText { get; set; }
 
+    /// <summary>Every activation request still awaiting a decision, newest-request-command already baked in as <see cref="PendingActivationItem.ApproveCommand"/>/<see cref="PendingActivationItem.RejectCommand"/> so the CollectionView's DataTemplate needs no <c>x:Reference</c> back to this page — same pattern this codebase already used for chat-attachment/category-chip rows before those were simplified away.</summary>
     [ObservableProperty]
-    public partial string InviteDisplayNameHintText { get; set; }
+    public partial ObservableCollection<PendingActivationItem> PendingActivations { get; set; }
 
     [ObservableProperty]
-    public partial string? GeneratedInviteCodeText { get; set; }
+    public partial bool IsLoadingActivations { get; set; }
 
     [ObservableProperty]
-    public partial bool HasGeneratedInviteCode { get; set; }
+    public partial bool HasNoPendingActivations { get; set; }
 
     [ObservableProperty]
-    public partial string? GeneratedInviteExpiryText { get; set; }
+    public partial bool HasPendingActivations { get; set; }
 
     [ObservableProperty]
     public partial string? DeployStatusText { get; set; }
@@ -173,7 +191,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 
         DisplayName = string.Empty;
         RelayEndpointText = string.Empty;
-        InviteCodeText = string.Empty;
+        ActivationEmailText = string.Empty;
         ConnectionStatusText = "Odpojeno";
         IsNotConnected = true;
         IsNotRegistered = true;
@@ -182,10 +200,11 @@ public sealed partial class SettingsViewModel : ObservableObject
         ContactCardQrValue = string.Empty;
         SharedLibraryKeyImportText = string.Empty;
         AdminSecretInputText = string.Empty;
-        InviteDisplayNameHintText = string.Empty;
         HasNoAdminSecret = true;
         CanUseAdminControls = true;
         HasNoSharedLibraryKey = true;
+        PendingActivations = [];
+        HasNoPendingActivations = true;
     }
 
     partial void OnErrorMessageChanged(string? value) => HasErrorMessage = !string.IsNullOrEmpty(value);
@@ -199,6 +218,8 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     partial void OnRelayErrorMessageChanged(string? value) => HasRelayError = !string.IsNullOrEmpty(value);
+
+    partial void OnActivationStatusTextChanged(string? value) => HasActivationStatus = !string.IsNullOrEmpty(value);
 
     partial void OnIsBusyWithRelayChanged(bool value) => CanUseRelayControls = !value;
 
@@ -218,9 +239,9 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     partial void OnIsBusyWithAdminChanged(bool value) => CanUseAdminControls = !value;
 
-    partial void OnGeneratedInviteCodeTextChanged(string? value) => HasGeneratedInviteCode = !string.IsNullOrEmpty(value);
-
     partial void OnDeployStatusTextChanged(string? value) => HasDeployStatus = !string.IsNullOrEmpty(value);
+
+    partial void OnHasNoPendingActivationsChanged(bool value) => HasPendingActivations = !value;
 
     [RelayCommand]
     private async Task LoadAsync()
@@ -238,12 +259,26 @@ public sealed partial class SettingsViewModel : ObservableObject
         RelayEndpointText = configuration?.EndpointUri?.ToString() ?? RelayDefaults.DefaultEndpoint;
         IsRegistered = configuration?.AssignedDeviceId is not null;
         IsConnected = _messageTransport.IsConnected;
-        ConnectionStatusText = IsConnected ? "Connected" : "Disconnected";
+        ConnectionStatusText = IsConnected ? "Připojeno" : "Odpojeno";
+
+        // Resume polling an activation request that was still pending the last time this device
+        // closed — otherwise a relaunch between "Aktivovat" and the admin's decision would silently
+        // strand the request: nothing would ever check on it again even after the admin approves.
+        if (!IsRegistered && configuration?.PendingActivationRequestId is { } pendingRequestId
+            && Uri.TryCreate(RelayEndpointText, UriKind.Absolute, out var resumedEndpoint))
+        {
+            _pendingActivationRequestId = pendingRequestId;
+            ActivationStatusText = "Čeká na schválení administrátorem…";
+            StartActivationPolling(resumedEndpoint);
+        }
 
         await RefreshContactCardAsync();
 
         HasSharedLibraryKey = await _sharedLibraryService.HasSharedKeyAsync();
         HasAdminSecret = await _relayAdminService.HasAdminSecretAsync();
+
+        if (IsAdmin && HasAdminSecret)
+            await LoadPendingActivationsAsync();
     }
 
     [RelayCommand]
@@ -280,7 +315,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task GenerateInviteAsync()
+    private async Task LoadPendingActivationsAsync()
     {
         AdminErrorMessage = null;
         if (!Uri.TryCreate(RelayEndpointText, UriKind.Absolute, out var endpoint))
@@ -289,21 +324,71 @@ public sealed partial class SettingsViewModel : ObservableObject
             return;
         }
 
-        IsBusyWithAdmin = true;
+        IsLoadingActivations = true;
         try
         {
-            var hint = string.IsNullOrWhiteSpace(InviteDisplayNameHintText) ? null : InviteDisplayNameHintText;
-            var (inviteCode, expiresAtUtc) = await _relayAdminService.CreateInviteAsync(endpoint, hint, validForMinutes: 60);
-            GeneratedInviteCodeText = inviteCode;
-            GeneratedInviteExpiryText = $"Vyprší {expiresAtUtc.ToLocalTime():g}";
+            var pending = await _relayAdminService.GetPendingActivationRequestsAsync(endpoint);
+            PendingActivations = new ObservableCollection<PendingActivationItem>(pending.Select(ToPendingActivationItem));
+            HasNoPendingActivations = PendingActivations.Count == 0;
         }
         catch (Exception ex)
         {
-            AdminErrorMessage = $"Nepodařilo se vygenerovat pozvánkový kód: {ex.Message}";
+            AdminErrorMessage = $"Nepodařilo se načíst čekající žádosti: {ex.Message}";
         }
         finally
         {
-            IsBusyWithAdmin = false;
+            IsLoadingActivations = false;
+        }
+    }
+
+    private PendingActivationItem ToPendingActivationItem(PendingActivationRequest request) => new(
+        request.Id,
+        request.DisplayName,
+        request.Email,
+        request.KeyFingerprint,
+        request.CreatedAtUtc.LocalDateTime.ToString("g"),
+        ApproveActivationCommand,
+        RejectActivationCommand);
+
+    [RelayCommand]
+    private async Task ApproveActivationAsync(Guid id)
+    {
+        AdminErrorMessage = null;
+        if (!Uri.TryCreate(RelayEndpointText, UriKind.Absolute, out var endpoint))
+        {
+            AdminErrorMessage = "Nejprve zadejte platnou adresu relay serveru výše.";
+            return;
+        }
+
+        try
+        {
+            await _relayAdminService.ApproveActivationRequestAsync(endpoint, id);
+            await LoadPendingActivationsAsync();
+        }
+        catch (Exception ex)
+        {
+            AdminErrorMessage = $"Nepodařilo se schválit žádost: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private async Task RejectActivationAsync(Guid id)
+    {
+        AdminErrorMessage = null;
+        if (!Uri.TryCreate(RelayEndpointText, UriKind.Absolute, out var endpoint))
+        {
+            AdminErrorMessage = "Nejprve zadejte platnou adresu relay serveru výše.";
+            return;
+        }
+
+        try
+        {
+            await _relayAdminService.RejectActivationRequestAsync(endpoint, id);
+            await LoadPendingActivationsAsync();
+        }
+        catch (Exception ex)
+        {
+            AdminErrorMessage = $"Nepodařilo se zamítnout žádost: {ex.Message}";
         }
     }
 
@@ -409,7 +494,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task RegisterWithRelayAsync()
+    private async Task RequestActivationAsync()
     {
         RelayErrorMessage = null;
         if (!Uri.TryCreate(RelayEndpointText, UriKind.Absolute, out var endpoint))
@@ -417,27 +502,80 @@ public sealed partial class SettingsViewModel : ObservableObject
             RelayErrorMessage = "Zadejte platnou adresu relay serveru, např. ws://10.8.0.1:8080";
             return;
         }
-        if (string.IsNullOrWhiteSpace(InviteCodeText))
+        if (string.IsNullOrWhiteSpace(ActivationEmailText))
         {
-            RelayErrorMessage = "Zadejte pozvánkový kód, který jste obdrželi.";
+            RelayErrorMessage = "Zadejte svůj (nejlépe pracovní) e-mail.";
             return;
         }
 
         IsBusyWithRelay = true;
         try
         {
-            await _messageTransport.RegisterAsync(endpoint, InviteCodeText, _currentUserService.Current.DisplayName);
-            IsRegistered = true;
-            await RefreshContactCardAsync();
+            _pendingActivationRequestId = await _messageTransport.RequestActivationAsync(endpoint, _currentUserService.Current.DisplayName, ActivationEmailText);
+            ActivationStatusText = "Čeká na schválení administrátorem…";
+            StartActivationPolling(endpoint);
         }
         catch (Exception ex)
         {
-            RelayErrorMessage = $"Registrace se nezdařila: {ex.Message}";
+            RelayErrorMessage = $"Nepodařilo se odeslat žádost o aktivaci: {ex.Message}";
         }
         finally
         {
             IsBusyWithRelay = false;
         }
+    }
+
+    /// <summary>Ticks every few seconds until the admin decides — see <c>IMessageTransport.PollActivationAsync</c>'s remarks for why one call here does double duty as both "check status" and "finish registering" on Approved.</summary>
+    private void StartActivationPolling(Uri endpoint)
+    {
+        if (_activationPollTimer is not null) return; // already running
+
+        _activationPollTimer = Microsoft.Maui.Controls.Application.Current?.Dispatcher.CreateTimer();
+        if (_activationPollTimer is null) return;
+
+        _activationPollTimer.Interval = TimeSpan.FromSeconds(4);
+        _activationPollTimer.Tick += (_, _) => _ = PollActivationOnceAsync(endpoint);
+        _activationPollTimer.Start();
+    }
+
+    private async Task PollActivationOnceAsync(Uri endpoint)
+    {
+        if (_pendingActivationRequestId is not { } requestId)
+            return;
+
+        try
+        {
+            var status = await _messageTransport.PollActivationAsync(endpoint, requestId);
+            switch (status)
+            {
+                case ActivationRequestStatus.Approved:
+                    StopActivationPolling();
+                    _pendingActivationRequestId = null;
+                    IsRegistered = true;
+                    ActivationStatusText = "Aktivováno — zařízení je zaregistrováno.";
+                    await RefreshContactCardAsync();
+                    break;
+                case ActivationRequestStatus.Rejected:
+                    StopActivationPolling();
+                    _pendingActivationRequestId = null;
+                    ActivationStatusText = "Žádost byla administrátorem zamítnuta.";
+                    break;
+                // Pending: nothing to do — the next tick just checks again.
+            }
+        }
+        catch
+        {
+            // Best-effort — a transient network blip while polling shouldn't blow up the status
+            // text or stop the loop; the next tick tries again on its own.
+        }
+    }
+
+    /// <summary>Stops the poll loop — call when leaving the page (paired with the resume-on-reappear logic already in <see cref="LoadAsync"/>) so a background timer doesn't keep firing network calls for a page that isn't shown. Does not clear <see cref="_pendingActivationRequestId"/>/the persisted configuration — a still-pending request resumes polling next time LoadAsync runs.</summary>
+    public void StopActivationPolling()
+    {
+        if (_activationPollTimer is null) return;
+        _activationPollTimer.Stop();
+        _activationPollTimer = null;
     }
 
     [RelayCommand]
@@ -532,3 +670,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         _ => "Odpojeno"
     };
 }
+
+/// <summary>One row in the admin's "Čekající aktivace" list — carries the same shared Approve/Reject <see cref="RelayCommand{T}"/> instances (bound per-item as <c>CommandParameter="{Binding Id}"</c> in the DataTemplate) rather than an <c>x:Reference</c> back to the page.</summary>
+public sealed record PendingActivationItem(Guid Id, string DisplayName, string Email, string KeyFingerprint, string CreatedText, ICommand ApproveCommand, ICommand RejectCommand);

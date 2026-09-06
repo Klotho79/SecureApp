@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using SecureApp.Domain.Interfaces.Services;
+using SecureApp.Domain.ValueObjects;
 
 namespace SecureApp.Presentation.Transport;
 
@@ -55,6 +56,54 @@ public sealed class HttpRelayAdminService : IRelayAdminService
         return (result.Code, result.ExpiresAtUtc);
     }
 
+    public async Task<IReadOnlyList<PendingActivationRequest>> GetPendingActivationRequestsAsync(Uri endpoint, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+
+        var adminSecret = await GetStoredAdminSecretAsync(ct);
+        var listUri = new Uri(ToHttpUri(endpoint), "admin/activation-requests");
+        using var request = new HttpRequestMessage(HttpMethod.Get, listUri);
+        request.Headers.Add("X-Admin-Secret", adminSecret);
+
+        using var response = await _httpClient.SendAsync(request, ct);
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+            throw new InvalidOperationException("The relay rejected the stored admin secret — it may be wrong or have changed.");
+        response.EnsureSuccessStatusCode();
+
+        var results = await response.Content.ReadFromJsonAsync<List<ActivationRequestSummary>>(HttpJsonOptions, ct) ?? [];
+        return results.Select(r => new PendingActivationRequest(r.Id, r.DisplayName, r.Email, r.KeyFingerprint, r.CreatedAtUtc)).ToList();
+    }
+
+    public Task ApproveActivationRequestAsync(Uri endpoint, Guid requestId, CancellationToken ct = default)
+        => PostActivationDecisionAsync(endpoint, requestId, "approve", ct);
+
+    public Task RejectActivationRequestAsync(Uri endpoint, Guid requestId, CancellationToken ct = default)
+        => PostActivationDecisionAsync(endpoint, requestId, "reject", ct);
+
+    private async Task PostActivationDecisionAsync(Uri endpoint, Guid requestId, string action, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+
+        var adminSecret = await GetStoredAdminSecretAsync(ct);
+        var decisionUri = new Uri(ToHttpUri(endpoint), $"admin/activation-requests/{requestId}/{action}");
+        using var request = new HttpRequestMessage(HttpMethod.Post, decisionUri);
+        request.Headers.Add("X-Admin-Secret", adminSecret);
+
+        using var response = await _httpClient.SendAsync(request, ct);
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+            throw new InvalidOperationException("The relay rejected the stored admin secret — it may be wrong or have changed.");
+        if (response.StatusCode == HttpStatusCode.Conflict)
+            throw new InvalidOperationException("This request was already approved or rejected — nothing left to do.");
+        response.EnsureSuccessStatusCode();
+    }
+
+    private async Task<string> GetStoredAdminSecretAsync(CancellationToken ct)
+    {
+        var secretBytes = await _vault.RetrieveSecretAsync(RelayDeviceVaultKeys.AdminSecret, ct)
+            ?? throw new InvalidOperationException("No admin secret is stored on this device yet — enter it above first.");
+        return Encoding.UTF8.GetString(secretBytes);
+    }
+
     public async Task RequestDeployAsync(Uri endpoint, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
@@ -88,4 +137,7 @@ public sealed class HttpRelayAdminService : IRelayAdminService
     }
 
     private sealed record InviteResponse(string Code, DateTimeOffset ExpiresAtUtc);
+
+    /// <summary>Mirrors the relay's own <c>SecureApp.Relay.Contracts.ActivationRequestSummary</c> — duplicated rather than shared, since this Presentation-layer client has no project reference to the Relay's own assembly (same reasoning as <see cref="InviteResponse"/> already established for the invite-code response shape).</summary>
+    private sealed record ActivationRequestSummary(Guid Id, string DisplayName, string Email, string KeyFingerprint, DateTimeOffset CreatedAtUtc);
 }

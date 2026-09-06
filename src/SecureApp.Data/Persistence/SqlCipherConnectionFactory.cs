@@ -18,7 +18,7 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
 {
     private const string DatabaseKeyVaultName = "sqlcipher:database-key";
     private const int DatabaseKeySizeBytes = 32; // 256-bit, used as a raw SQLCipher key (not a passphrase put through PBKDF2)
-    private const int CurrentSchemaVersion = 5;
+    private const int CurrentSchemaVersion = 6;
 
     private readonly DataStorageOptions _options;
     private readonly ISecureVaultKeyStore _vault;
@@ -109,6 +109,9 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
 
         if (schemaVersion < 5)
             await ApplyV5SchemaAsync(connection);
+
+        if (schemaVersion < 6)
+            await ApplyV6SchemaAsync(connection);
 
         await connection.ExecuteAsync($"PRAGMA user_version = {CurrentSchemaVersion}");
     }
@@ -317,5 +320,11 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
     {
         await connection.ExecuteAsync("ALTER TABLE messages ADD COLUMN attachment_library_file_id TEXT NULL");
         await connection.ExecuteAsync("ALTER TABLE messages ADD COLUMN attachment_file_name TEXT NULL");
+    }
+
+    /// <summary>Activation-request flow (2026-09-06, see <c>TransportEndpointConfiguration.PendingActivationRequestId</c>'s own remarks) — additive nullable column, no data migration needed.</summary>
+    private static async Task ApplyV6SchemaAsync(SQLiteAsyncConnection connection)
+    {
+        await connection.ExecuteAsync("ALTER TABLE transport_settings ADD COLUMN pending_activation_request_id TEXT NULL");
     }
 }

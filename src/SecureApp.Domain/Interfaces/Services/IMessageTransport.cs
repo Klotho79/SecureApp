@@ -3,6 +3,11 @@ using SecureApp.Domain.ValueObjects;
 
 namespace SecureApp.Domain.Interfaces.Services;
 
+// See RequestActivationAsync/PollActivationAsync's own remarks below for the 2026-09-06 activation
+// flow this file adds — it deliberately sits on IMessageTransport rather than a new interface, the
+// same way RegisterAsync (the flow it replaces) already did: both are one-time provisioning steps
+// for this device's relay identity, not ongoing messaging.
+
 /// <summary>
 /// Client-side abstraction over the (not-yet-built) message relay transport. Deliberately
 /// WAN-capable — <see cref="ConnectAsync"/> takes a full <see cref="Uri"/>, not a bare LAN
@@ -21,8 +26,28 @@ public interface IMessageTransport
 {
     bool IsConnected { get; }
 
-    /// <summary>One-time provisioning: exchanges an invite code (issued out-of-band by the relay's admin) for this device's persistent relay identity + bearer secret.</summary>
+    /// <summary>One-time provisioning: exchanges an invite code (issued out-of-band by the relay's admin) for this device's persistent relay identity + bearer secret. Superseded in the app's own UI by <see cref="RequestActivationAsync"/>/<see cref="PollActivationAsync"/> below (2026-09-06) — kept here (and on the relay) as a working, just-unused-by-the-app path, not removed.</summary>
     Task RegisterAsync(Uri endpoint, string inviteCode, string displayName, CancellationToken ct = default);
+
+    /// <summary>
+    /// Sends the admin a request to activate this device — name + email (both just for the admin to
+    /// recognize who's asking; not otherwise used by the protocol) plus a short fingerprint of this
+    /// device's own chat-identity public key (see <see cref="PendingActivationRequest.KeyFingerprint"/>'s
+    /// remarks). Returns the request id to pass into <see cref="PollActivationAsync"/>; the caller is
+    /// responsible for persisting it (<c>TransportEndpointConfiguration.SetPendingActivationRequest</c>)
+    /// so a relaunch before the admin responds can resume polling instead of losing track of it.
+    /// </summary>
+    Task<Guid> RequestActivationAsync(Uri endpoint, string displayName, string email, CancellationToken ct = default);
+
+    /// <summary>
+    /// Checks one activation request's status. On <see cref="ActivationRequestStatus.Approved"/>,
+    /// this completes registration transparently (stores the device secret in the vault, assigns
+    /// the device id — the same tail <see cref="RegisterAsync"/> already runs) before returning, so
+    /// the caller just needs to keep polling until the result isn't <see cref="ActivationRequestStatus.Pending"/>
+    /// and then stop. Safe to call repeatedly after approval (idempotent — see the relay's own
+    /// remarks on <c>/activation/status</c>).
+    /// </summary>
+    Task<ActivationRequestStatus> PollActivationAsync(Uri endpoint, Guid requestId, CancellationToken ct = default);
 
     Task ConnectAsync(Uri endpoint, CancellationToken ct = default);
     Task DisconnectAsync(CancellationToken ct = default);

@@ -11,6 +11,7 @@ internal sealed class TransportSettingsRow
     [Column("is_auto_connect_enabled")] public int IsAutoConnectEnabled { get; set; }
     [Column("last_connected_at_utc")] public string? LastConnectedAtUtc { get; set; }
     [Column("assigned_relay_device_id")] public string? AssignedRelayDeviceId { get; set; }
+    [Column("pending_activation_request_id")] public string? PendingActivationRequestId { get; set; }
     [Column("created_at_utc")] public string CreatedAtUtc { get; set; } = string.Empty;
     [Column("modified_at_utc")] public string ModifiedAtUtc { get; set; } = string.Empty;
 }

@@ -37,9 +37,17 @@
                     <Label Text="{Binding RelayErrorMessage}" IsVisible="{Binding HasRelayError}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
 
                     <Entry Text="{Binding RelayEndpointText}" Placeholder="Adresa relay serveru, např. ws://10.8.0.1:8080" />
-                    <Entry Text="{Binding InviteCodeText}" Placeholder="Pozvánkový kód" IsVisible="{Binding IsNotRegistered}" />
 
-                    <Button Text="Registrovat" Command="{Binding RegisterWithRelayCommand}" IsVisible="{Binding IsNotRegistered}" IsEnabled="{Binding CanUseRelayControls}" />
+                    <!-- Activation (2026-09-06) — replaces a pasted-in invite code: this device
+                         just sends the admin a request (name + email + its own key fingerprint,
+                         computed automatically) and waits to be approved. See
+                         SettingsViewModel.RequestActivationAsync's own remarks. -->
+                    <VerticalStackLayout Spacing="8" IsVisible="{Binding IsNotRegistered}">
+                        <Entry Text="{Binding ActivationEmailText}" Placeholder="Váš e-mail (ideálně pracovní)" Keyboard="Email" />
+                        <Button Text="Aktivovat" Command="{Binding RequestActivationCommand}" IsEnabled="{Binding CanUseRelayControls}" />
+                        <Label Text="{Binding ActivationStatusText}" IsVisible="{Binding HasActivationStatus}" FontSize="12" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
+                    </VerticalStackLayout>
+
                     <Button Text="Připojit" Command="{Binding ConnectToRelayCommand}" IsVisible="{Binding IsNotConnected}" IsEnabled="{Binding CanUseRelayControls}" />
                     <Button Text="Odpojit" Style="{StaticResource SecondaryButton}" Command="{Binding DisconnectFromRelayCommand}" IsVisible="{Binding IsConnected}" />
                 </VerticalStackLayout>
@@ -67,8 +75,8 @@
 
             <Border Style="{StaticResource CardBorder}" IsVisible="{Binding IsAdmin}">
                 <VerticalStackLayout Spacing="8">
-                    <Label Text="Admin: Pozvánkové kódy" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Label Text="Vygenerujte pozvánkový kód pro nové zařízení, aby se mohlo zaregistrovat u relay serveru výše — není potřeba SSH/curl na Pi." FontSize="12" TextColor="Gray" />
+                    <Label Text="Admin: Čekající aktivace" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Label Text="Nové zařízení požádá o aktivaci (jméno, e-mail, otisk klíče) a čeká tady na vaše potvrzení — žádné kódy se nikam neopisují." FontSize="12" TextColor="Gray" />
                     <Label Text="{Binding AdminErrorMessage}" IsVisible="{Binding HasAdminError}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
 
                     <VerticalStackLayout Spacing="8" IsVisible="{Binding HasNoAdminSecret}">
@@ -80,11 +88,35 @@
                     <VerticalStackLayout Spacing="8" IsVisible="{Binding HasAdminSecret}">
                         <Label Text="✓ Admin heslo uloženo na tomto zařízení." FontSize="12" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" />
                         <Button Text="Změnit admin heslo" Style="{StaticResource SecondaryButton}" Command="{Binding ChangeAdminSecretCommand}" />
-                        <Entry Text="{Binding InviteDisplayNameHintText}" Placeholder="Nápověda ke jménu (volitelné)" />
-                        <Button Text="Vygenerovat pozvánkový kód" Command="{Binding GenerateInviteCommand}" IsEnabled="{Binding CanUseAdminControls}" />
-                        <Editor Text="{Binding GeneratedInviteCodeText}" IsReadOnly="True" HeightRequest="50" IsVisible="{Binding HasGeneratedInviteCode}" />
-                        <Label Text="{Binding GeneratedInviteExpiryText}" FontSize="12" TextColor="Gray" IsVisible="{Binding HasGeneratedInviteCode}" />
-                        <Button Text="Kopírovat" Style="{StaticResource SecondaryButton}" Command="{Binding CopyGeneratedInviteCodeCommand}" IsVisible="{Binding HasGeneratedInviteCode}" />
+
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <Button Grid.Column="1" Text="⟳ Obnovit" Style="{StaticResource SecondaryButton}" Command="{Binding LoadPendingActivationsCommand}" />
+                        </Grid>
+                        <ActivityIndicator IsRunning="{Binding IsLoadingActivations}" IsVisible="{Binding IsLoadingActivations}" HorizontalOptions="Center" />
+
+                        <Label Text="Žádné čekající žádosti." FontSize="12" TextColor="Gray" IsVisible="{Binding HasNoPendingActivations}" />
+
+                        <CollectionView ItemsSource="{Binding PendingActivations}" IsVisible="{Binding HasPendingActivations}">
+                            <CollectionView.ItemsLayout>
+                                <LinearItemsLayout Orientation="Vertical" ItemSpacing="8" />
+                            </CollectionView.ItemsLayout>
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="vm:PendingActivationItem">
+                                    <Border Style="{StaticResource CardBorder}" Margin="0" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
+                                        <VerticalStackLayout Spacing="4">
+                                            <Label Text="{Binding DisplayName}" FontAttributes="Bold" FontSize="14.5" />
+                                            <Label Text="{Binding Email}" FontSize="12.5" TextColor="Gray" />
+                                            <Label Text="{Binding KeyFingerprint}" FontSize="12" FontFamily="Courier" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
+                                            <Label Text="{Binding CreatedText}" FontSize="11" TextColor="Gray" />
+                                            <Grid ColumnDefinitions="*,*" ColumnSpacing="8" Margin="0,6,0,0">
+                                                <Button Grid.Column="0" Text="✓ Potvrdit" Command="{Binding ApproveCommand}" CommandParameter="{Binding Id}" />
+                                                <Button Grid.Column="1" Text="✕ Zamítnout" Style="{StaticResource SecondaryButton}" Command="{Binding RejectCommand}" CommandParameter="{Binding Id}" />
+                                            </Grid>
+                                        </VerticalStackLayout>
+                                    </Border>
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
                     </VerticalStackLayout>
                 </VerticalStackLayout>
             </Border>
