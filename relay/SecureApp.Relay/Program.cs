@@ -11,6 +11,14 @@ var adminSecret = builder.Configuration["SECUREAPP_RELAY_ADMIN_SECRET"]
 var port = builder.Configuration["SECUREAPP_RELAY_PORT"] ?? "8080";
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
+// Kestrel's own default request-body cap (~28.6 MB) would silently reject a larger shared-library
+// upload (a multi-page scanned PDF can easily exceed that) with no code on either side actually
+// being wrong — this only ever showed up as a mysterious failure on a big file. Raised, not
+// removed: an explicit cap still protects the Pi's own (limited, non-redundant) disk from an
+// unbounded upload, it's just sized for a realistic clinical document rather than Kestrel's
+// generic default. 200 MB comfortably covers even a large scanned/multi-page PDF.
+builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 200 * 1024 * 1024);
+
 // Same directory RelayDatabase resolves SECUREAPP_RELAY_DB_PATH into (the mounted /data volume in
 // production) — reused here rather than introducing a second env var, since the marker just needs
 // to land somewhere that survives a container restart and is visible to a host-side watcher.

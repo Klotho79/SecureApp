@@ -35,7 +35,15 @@ public sealed class HttpSharedLibraryService : ISharedLibraryService
     private readonly ISecureVaultKeyStore _vault;
     private readonly ITransportSettingsRepository _transportSettingsRepository;
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly HttpClient _httpClient = new();
+
+    // HttpClient's own default Timeout (100s) is sized for ordinary API calls, not for uploading/
+    // downloading a real document over a slow connection — this app is explicitly meant to be
+    // usable off the home LAN, over a WireGuard tunnel on mobile data (see DEVELOPMENT_PLAN.md's
+    // 2026-08-30/09-06 VPN verification notes), where a multi-megabyte file can genuinely take
+    // longer than 100 seconds without anything being actually wrong. 5 minutes is a generous margin
+    // for a document-sized file even on a slow cellular connection, not an attempt to support
+    // arbitrarily large transfers.
+    private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromMinutes(5) };
 
     public HttpSharedLibraryService(
         ICryptoService crypto,
