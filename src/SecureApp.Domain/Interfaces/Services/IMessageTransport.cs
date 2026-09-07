@@ -62,10 +62,24 @@ public interface IMessageTransport
     /// </summary>
     Task SendPairingInviteAsync(Guid recipientRelayDeviceId, string inviteBlob, CancellationToken ct = default);
 
+    /// <summary>
+    /// Delivers a group-invite snapshot (2026-09-07) — the same blob a group's creation, a
+    /// membership change, or a rename produces (see <c>GroupChat</c>/<c>IGroupMemberRepository.ReplaceAllAsync</c>'s
+    /// own remarks: always a full membership list, never an incremental diff) directly to one
+    /// member over an already-open connection. Mirrors <see cref="SendPairingInviteAsync"/> exactly
+    /// (same best-effort-if-connected contract) — kept as a separate method/frame type rather than
+    /// overloading that one, since a group invite has no single peer relay device id it's
+    /// "about" the way a pairing invite does; the caller sends one call per member.
+    /// </summary>
+    Task SendGroupInviteAsync(Guid recipientRelayDeviceId, string groupInviteBlob, CancellationToken ct = default);
+
     event EventHandler<MessageEnvelope>? EnvelopeReceived;
 
     /// <summary>Raised when a pairing invite arrives via <see cref="SendPairingInviteAsync"/> from the other side — the raw blob, ready for <c>ContactCardCodec.Decode&lt;ChatInviteBlob&gt;</c> exactly like a manually pasted/scanned one.</summary>
     event EventHandler<string>? PairingInviteReceived;
+
+    /// <summary>Raised when a group-invite snapshot arrives via <see cref="SendGroupInviteAsync"/> — the raw blob, ready for <c>ContactCardCodec.Decode&lt;GroupInviteBlob&gt;</c>.</summary>
+    event EventHandler<string>? GroupInviteReceived;
 
     event EventHandler<TransportConnectionState>? ConnectionStateChanged;
 }

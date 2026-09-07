@@ -46,10 +46,11 @@ public interface IMessagingService
     /// <summary>
     /// Encrypts + persists as <see cref="Enums.MessageStatus.Pending"/>. The returned <c>Envelope</c> is the wire-format payload a future transport would actually send — this method itself never calls one.
     /// <paramref name="attachmentLibraryFileId"/>/<paramref name="attachmentFileName"/> reference a file already uploaded to the community's shared library (<c>ISharedLibraryService</c>) — the real cross-device attachment path, since <paramref name="attachmentDocumentId"/> only ever resolves on the sender's own device.
+    /// <paramref name="groupChatId"/>/<paramref name="groupMessageId"/> (2026-09-07): set by a group chat's own fan-out send — see <c>GroupChat</c>'s own remarks. Both null for an ordinary 1:1 message; this method's actual ratchet-encrypt-and-persist behavior is otherwise identical either way, since a group send is just N calls to this same method against N different pairwise sessions.
     /// </summary>
-    Task<(Message Message, MessageEnvelope Envelope)> SendMessageAsync(Guid sessionId, ReadOnlyMemory<byte> plaintext, Guid? attachmentDocumentId = null, Guid? attachmentLibraryFileId = null, string? attachmentFileName = null, CancellationToken ct = default);
+    Task<(Message Message, MessageEnvelope Envelope)> SendMessageAsync(Guid sessionId, ReadOnlyMemory<byte> plaintext, Guid? attachmentDocumentId = null, Guid? attachmentLibraryFileId = null, string? attachmentFileName = null, Guid? groupChatId = null, Guid? groupMessageId = null, CancellationToken ct = default);
 
-    /// <summary>Hands a received envelope (from a transport) to the ratchet for decryption, then persists it as Inbound.</summary>
+    /// <summary>Hands a received envelope (from a transport) to the ratchet for decryption, then persists it as Inbound — copies <c>envelope.GroupChatId</c>/<c>GroupMessageId</c> onto the stored row unchanged, see <see cref="SendMessageAsync"/>'s remarks.</summary>
     Task<Message> ReceiveMessageAsync(MessageEnvelope envelope, CancellationToken ct = default);
 
     /// <summary>On-demand plaintext decrypt, mirroring the document viewer's decrypt-on-demand pattern.</summary>

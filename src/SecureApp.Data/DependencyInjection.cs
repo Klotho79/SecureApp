@@ -59,6 +59,8 @@ public static class DependencyInjection
         services.AddScoped<IChatSessionRepository, ChatSessionRepository>();
         services.AddScoped<IRatchetSessionStateRepository, RatchetSessionStateRepository>();
         services.AddScoped<IMessageRepository, MessageRepository>();
+        services.AddScoped<IGroupChatRepository, GroupChatRepository>();
+        services.AddScoped<IGroupMemberRepository, GroupMemberRepository>();
         services.AddScoped<ITransportSettingsRepository, TransportSettingsRepository>();
         services.AddScoped<IRatchetService, RatchetService>();
         services.AddScoped<IMessagingService, MessagingService>();

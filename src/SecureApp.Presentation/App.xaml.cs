@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
+using SecureApp.Domain.Entities;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Presentation.Chat;
@@ -19,7 +20,10 @@ public partial class App : Application
 		// at any time, not just while you're looking at that screen.
 		var transport = IPlatformApplication.Current?.Services.GetService<IMessageTransport>();
 		if (transport is not null)
+		{
 			transport.PairingInviteReceived += OnPairingInviteReceived;
+			transport.GroupInviteReceived += OnGroupInviteReceived;
+		}
 	}
 
 	private static async void OnPairingInviteReceived(object? sender, string inviteBlob)
@@ -51,6 +55,116 @@ public partial class App : Application
 			// Best-effort, same reasoning as AutoConnectRelayAsync below — the manual QR/copy-paste
 			// fallback the initiator's own screen still shows remains available either way.
 		}
+	}
+
+	/// <summary>
+	/// A group-invite blob (2026-09-07) is always a FULL membership snapshot, whether it's a brand
+	/// new group, a rename, or a membership change (see <c>IGroupMemberRepository.ReplaceAllAsync</c>'s
+	/// own remarks) — so applying one is the same "replace everything for this group id" operation
+	/// every time. After syncing the local copy, this establishes this device's own pairwise
+	/// <c>ChatSession</c> with any OTHER member it doesn't already have one with — the full-mesh
+	/// crypto design <c>GroupChat</c>'s remarks describe. Each device runs this identical logic
+	/// independently and symmetrically; there's no central coordinator beyond whoever last
+	/// broadcast the snapshot.
+	/// </summary>
+	private static async void OnGroupInviteReceived(object? sender, string groupInviteBlobText)
+	{
+		var services = IPlatformApplication.Current?.Services;
+		if (services is null) return;
+
+		GroupInviteBlob invite;
+		try
+		{
+			invite = ContactCardCodec.Decode<GroupInviteBlob>(groupInviteBlobText);
+		}
+		catch
+		{
+			return; // Malformed/foreign frame — never crash a background event handler over it.
+		}
+
+		using var scope = services.CreateScope();
+		var messagingService = scope.ServiceProvider.GetRequiredService<IMessagingService>();
+		var groupChatRepository = scope.ServiceProvider.GetRequiredService<IGroupChatRepository>();
+		var groupMemberRepository = scope.ServiceProvider.GetRequiredService<IGroupMemberRepository>();
+		var messageTransport = scope.ServiceProvider.GetRequiredService<IMessageTransport>();
+
+		try
+		{
+			var localPublicKey = await messagingService.GetLocalIdentityPublicKeyAsync();
+
+			var existingGroup = await groupChatRepository.GetByIdAsync(invite.GroupId);
+			if (existingGroup is null)
+				await groupChatRepository.UpsertAsync(new GroupChat(invite.GroupId, invite.GroupName, invite.FounderPublicKey));
+			else if (existingGroup.Name != invite.GroupName)
+			{
+				existingGroup.Rename(invite.GroupName);
+				await groupChatRepository.UpsertAsync(existingGroup);
+			}
+
+			var members = invite.Members
+				.Select(m => new GroupMember(invite.GroupId, m.DisplayName, m.PublicKey, m.RelayDeviceId))
+				.ToList();
+			await groupMemberRepository.ReplaceAllAsync(invite.GroupId, members);
+
+			foreach (var member in invite.Members)
+			{
+				if (member.PublicKey.AsSpan().SequenceEqual(localPublicKey))
+					continue; // that's me
+
+				if (await messagingService.FindExistingSessionAsync(member.PublicKey) is not null)
+					continue; // already paired with this member from an earlier group/1:1 chat
+
+				if (!ShouldInitiateTo(localPublicKey, member.PublicKey))
+					continue; // the deterministic tie-break says THEY initiate toward us instead — OnPairingInviteReceived above auto-accepts whenever that arrives
+
+				try
+				{
+					var ownCard = await BuildOwnContactCardAsync(scope.ServiceProvider);
+					var (_, handshakeCipherText) = await messagingService.CreateSessionAsync(member.DisplayName, member.PublicKey, member.RelayDeviceId);
+					var chatInvite = new ChatInviteBlob(ownCard.DisplayName, ownCard.PublicKey, ownCard.RelayDeviceId, handshakeCipherText);
+
+					if (messageTransport.IsConnected)
+						await messageTransport.SendPairingInviteAsync(member.RelayDeviceId, ContactCardCodec.Encode(chatInvite));
+					// Not connected right now: the session still exists locally (PendingHandshake),
+					// same "stays Pending, no error surfaced" policy this app already uses elsewhere
+					// (ChatViewModel.SendAsync). No manual QR/copy fallback UI for this particular
+					// gap in this pass — a later reconnect + a fresh group resync would recover it.
+				}
+				catch
+				{
+					// Best-effort per member — one failed pairwise handshake must never abort
+					// establishing sessions with the group's other members.
+				}
+			}
+		}
+		catch
+		{
+			// Best-effort, same reasoning as OnPairingInviteReceived above.
+		}
+	}
+
+	/// <summary>Deterministic tie-break so exactly one side initiates a given pairwise handshake instead of both racing to create one simultaneously (which would otherwise deadlock both sessions in PendingHandshake — each side waiting for the other to accept an invite it never looked for). The comparison itself carries no meaning beyond being consistent on both ends.</summary>
+	private static bool ShouldInitiateTo(byte[] localPublicKey, byte[] peerPublicKey)
+	{
+		var comparison = localPublicKey.Length != peerPublicKey.Length
+			? localPublicKey.Length.CompareTo(peerPublicKey.Length)
+			: string.CompareOrdinal(Convert.ToHexStringLower(localPublicKey), Convert.ToHexStringLower(peerPublicKey));
+		return comparison > 0;
+	}
+
+	/// <summary>Duplicated from <c>NewChatViewModel.BuildOwnContactCardAsync</c> rather than shared — this static handler isn't a ViewModel and has no instance to call it on; small enough to stay independently readable.</summary>
+	private static async Task<ContactCardBlob> BuildOwnContactCardAsync(IServiceProvider services)
+	{
+		var transportSettings = services.GetRequiredService<ITransportSettingsRepository>();
+		var currentUserService = services.GetRequiredService<ICurrentUserService>();
+		var messagingService = services.GetRequiredService<IMessagingService>();
+
+		var configuration = await transportSettings.GetAsync();
+		var deviceId = configuration?.AssignedDeviceId
+			?? throw new InvalidOperationException("Register with a relay in Settings first.");
+		var publicKey = await messagingService.GetLocalIdentityPublicKeyAsync();
+		await currentUserService.InitializeAsync();
+		return new ContactCardBlob(currentUserService.Current.DisplayName, publicKey, deviceId);
 	}
 
 	protected override Window CreateWindow(IActivationState? activationState)

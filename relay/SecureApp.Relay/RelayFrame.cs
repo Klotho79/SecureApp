@@ -36,4 +36,7 @@ public sealed class RelayFrame
     /// itself, since a pairing invite has no SessionId to route by yet on the receiving side.
     /// </summary>
     public string? PairingInviteBlob { get; init; }
+
+    /// <summary>On a "group-invite"/"group-invite-deliver" frame (2026-09-07) — a client-encoded GroupInviteBlob, opaque to the relay same as <see cref="PairingInviteBlob"/>. A separate field/frame type rather than reusing PairingInviteBlob, since the two carry different payload shapes and this codebase's own established call is to keep such things independently readable rather than generalized.</summary>
+    public string? GroupInviteBlob { get; init; }
 }

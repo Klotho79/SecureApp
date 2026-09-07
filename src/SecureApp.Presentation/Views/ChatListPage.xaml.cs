@@ -95,4 +95,12 @@ public partial class ChatListPage : ContentPage
         threadViewModel.LoadCommand.Execute(null);
         threadViewModel.StartListening();
     }
+
+    /// <summary>Group chats (2026-09-07) always push <see cref="Views.GroupChatPage"/> — not folded into the adaptive list+detail split above, a scope call for this first pass (see the XAML's own remarks), not a technical limitation.</summary>
+    private void OnGroupSelected(object? sender, SelectionChangedEventArgs e)
+    {
+        GroupsView.SelectedItem = null;
+        if (e.CurrentSelection.FirstOrDefault() is GroupChatListItem group)
+            _viewModel.OpenGroupCommand.Execute(group);
+    }
 }

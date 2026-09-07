@@ -16,9 +16,20 @@ namespace SecureApp.Presentation.ViewModels;
 public sealed partial class ChatListViewModel : ObservableObject
 {
     private readonly IChatSessionRepository _sessionRepository;
+    private readonly IGroupChatRepository _groupChatRepository;
 
     [ObservableProperty]
     public partial ObservableCollection<ChatSessionItem> Sessions { get; set; }
+
+    /// <summary>Group chats (2026-09-07) — listed separately from 1:1 <see cref="Sessions"/> rather than merged into one collection, so each keeps its own simple, already-tested item template (a group needs no peer-relay-device concept the way a 1:1 row does, and a 1:1 row needs no member count).</summary>
+    [ObservableProperty]
+    public partial ObservableCollection<GroupChatListItem> Groups { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasNoGroups { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasGroups { get; set; }
 
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
@@ -26,11 +37,16 @@ public sealed partial class ChatListViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsEmpty { get; set; }
 
-    public ChatListViewModel(IChatSessionRepository sessionRepository)
+    public ChatListViewModel(IChatSessionRepository sessionRepository, IGroupChatRepository groupChatRepository)
     {
         _sessionRepository = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
+        _groupChatRepository = groupChatRepository ?? throw new ArgumentNullException(nameof(groupChatRepository));
         Sessions = [];
+        Groups = [];
+        HasNoGroups = true;
     }
+
+    partial void OnHasNoGroupsChanged(bool value) => HasGroups = !value;
 
     [RelayCommand]
     private async Task LoadAsync()
@@ -43,6 +59,12 @@ public sealed partial class ChatListViewModel : ObservableObject
                 sessions.OrderByDescending(s => s.LastRatchetedAtUtc ?? s.CreatedAtUtc)
                     .Select(s => new ChatSessionItem(s.Id, s.PeerDisplayName, s.State, DescribeLastActivity(s), ComputeInitials(s.PeerDisplayName))));
             IsEmpty = Sessions.Count == 0;
+
+            var groups = await _groupChatRepository.GetAllAsync();
+            Groups = new ObservableCollection<GroupChatListItem>(
+                groups.OrderByDescending(g => g.ModifiedAtUtc)
+                    .Select(g => new GroupChatListItem(g.Id, g.Name, ComputeInitials(g.Name))));
+            HasNoGroups = Groups.Count == 0;
         }
         finally
         {
@@ -70,3 +92,5 @@ public sealed partial class ChatListViewModel : ObservableObject
 }
 
 public sealed record ChatSessionItem(Guid Id, string PeerDisplayName, ChatSessionState State, string LastActivityText, string Initials);
+
+public sealed record GroupChatListItem(Guid Id, string Name, string Initials);

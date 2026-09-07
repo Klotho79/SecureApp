@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="SecureApp.Presentation.Views.GroupChatPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
+    x:DataType="vm:GroupChatViewModel"
+    Title="{Binding Title}"
+    x:Name="GroupChatRoot">
+
+    <Grid RowDefinitions="Auto,Auto,*,Auto,Auto" Padding="0" RowSpacing="0">
+
+        <Label
+            Grid.Row="0"
+            Text="{Binding StatusErrorMessage}"
+            IsVisible="{Binding HasStatusError}"
+            Margin="20,12,20,0"
+            TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}"
+            LineBreakMode="WordWrap" />
+
+        <!-- Member list + management — visible to everyone (read-only), Add/Remove only for the
+             founder or an Admin/Modifier device (CanManageMembers) — see GroupChatViewModel's own
+             remarks on RbacAction.InviteGroupMember. -->
+        <Border Grid.Row="1" Style="{StaticResource CardBorder}" Margin="12,10,12,0">
+            <VerticalStackLayout Spacing="8">
+                <Grid ColumnDefinitions="*,Auto">
+                    <Label Grid.Column="0" Text="Členové" Style="{StaticResource SectionHeader}" Margin="0" FontSize="14" />
+                    <Button Grid.Column="1" Text="+ Přidat" Style="{StaticResource SecondaryButton}" Command="{Binding ToggleAddMemberCommand}" IsVisible="{Binding CanManageMembers}" />
+                </Grid>
+
+                <FlexLayout BindableLayout.ItemsSource="{Binding Members}" Wrap="Wrap" Direction="Row" JustifyContent="Start" AlignItems="Center">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="vm:GroupMemberItem">
+                            <Border Style="{StaticResource Chip}" Margin="0,3,6,0">
+                                <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="6">
+                                    <Label Grid.Column="0" Text="{Binding DisplayNameWithRoleSuffix}" Style="{StaticResource ChipLabel}" />
+                                    <Button
+                                        Grid.Column="1"
+                                        Text="✕"
+                                        FontSize="11"
+                                        Padding="4,0"
+                                        BackgroundColor="Transparent"
+                                        TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}"
+                                        Command="{Binding RemoveCommand}"
+                                        CommandParameter="{Binding Id}"
+                                        IsVisible="{Binding CanRemove}" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </FlexLayout>
+
+                <!-- Add-member picker — reuses the same relay member directory "New Chat"/"New Group" already use. -->
+                <VerticalStackLayout Spacing="6" IsVisible="{Binding IsShowingAddMember}">
+                    <ActivityIndicator IsRunning="{Binding IsLoadingAddableMembers}" IsVisible="{Binding IsLoadingAddableMembers}" HorizontalOptions="Center" />
+                    <CollectionView ItemsSource="{Binding AddableMembers}" SelectionMode="None" HeightRequest="140">
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:SelectableMemberItem">
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" Padding="0,4">
+                                    <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected}" />
+                                    <Label Grid.Column="1" Text="{Binding DisplayName}" VerticalOptions="Center" />
+                                </Grid>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                    <Button Text="Přidat vybrané" Command="{Binding ConfirmAddMembersCommand}" />
+                </VerticalStackLayout>
+            </VerticalStackLayout>
+        </Border>
+
+        <Grid Grid.Row="2">
+            <ActivityIndicator IsRunning="{Binding IsLoading}" IsVisible="{Binding IsLoading}" HorizontalOptions="Center" VerticalOptions="Center" />
+
+            <CollectionView ItemsSource="{Binding Messages}" ItemsUpdatingScrollMode="KeepLastItemInView" Margin="12,12,12,4">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="vm:GroupMessageItem">
+                        <Grid Padding="8,3">
+                            <Border
+                                Padding="13,10"
+                                StrokeShape="RoundRectangle 16,16,4,16"
+                                StrokeThickness="1"
+                                Stroke="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}"
+                                BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray950}}"
+                                HorizontalOptions="Start"
+                                MaximumWidthRequest="340">
+                                <Border.Triggers>
+                                    <DataTrigger TargetType="Border" Binding="{Binding IsOutbound}" Value="True">
+                                        <Setter Property="StrokeShape" Value="RoundRectangle 16,16,16,4" />
+                                        <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
+                                        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
+                                        <Setter Property="HorizontalOptions" Value="End" />
+                                    </DataTrigger>
+                                </Border.Triggers>
+                                <VerticalStackLayout Spacing="3">
+                                    <!-- Sender name — the one real difference from a 1:1 bubble (ChatThreadView),
+                                         since "who sent this" isn't implicit in a group. Hidden for my own
+                                         outbound messages, same as a 1:1 thread never labels your own bubbles. -->
+                                    <Label
+                                        Text="{Binding SenderDisplayName}"
+                                        FontSize="11"
+                                        FontAttributes="Bold"
+                                        IsVisible="{Binding IsInbound}"
+                                        TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
+
+                                    <Label Text="{Binding Text}" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" FontSize="14.5" LineBreakMode="WordWrap" IsVisible="{Binding HasText}">
+                                        <Label.Triggers>
+                                            <DataTrigger TargetType="Label" Binding="{Binding IsOutbound}" Value="True">
+                                                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource PrimaryDarkText}}" />
+                                            </DataTrigger>
+                                        </Label.Triggers>
+                                    </Label>
+
+                                    <Border IsVisible="{Binding HasAttachment}" Padding="10,8" StrokeShape="RoundRectangle 10" Stroke="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer
+                                                Command="{Binding Source={x:Reference GroupChatRoot}, Path=BindingContext.OpenAttachmentCommand}"
+                                                CommandParameter="{Binding .}" />
+                                        </Border.GestureRecognizers>
+                                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
+                                            <Border Grid.Column="0" WidthRequest="28" HeightRequest="28" Padding="0" StrokeShape="RoundRectangle 7" Stroke="Transparent" BackgroundColor="{AppThemeBinding Light={StaticResource AccentSoft}, Dark={StaticResource AccentSoftDark}}" VerticalOptions="Center">
+                                                <Label Text="📄" FontSize="12" HorizontalOptions="Center" VerticalOptions="Center" />
+                                            </Border>
+                                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
+                                                <Label Text="{Binding AttachmentFileName}" FontSize="12.5" FontAttributes="Bold" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" LineBreakMode="TailTruncation" />
+                                                <Label Text="Ze sdílené knihovny" FontSize="10.5" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
+                                            </VerticalStackLayout>
+                                        </Grid>
+                                    </Border>
+
+                                    <Label Text="{Binding SentAtUtc, StringFormat='{0:t}'}" FontSize="10" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}">
+                                        <Label.Triggers>
+                                            <DataTrigger TargetType="Label" Binding="{Binding IsOutbound}" Value="True">
+                                                <Setter Property="TextColor" Value="{AppThemeBinding Light=#CFE7F0, Dark={StaticResource PrimaryDarkText}}" />
+                                            </DataTrigger>
+                                        </Label.Triggers>
+                                    </Label>
+                                </VerticalStackLayout>
+                            </Border>
+                        </Grid>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </Grid>
+
+        <Border Grid.Row="3" Margin="12,0" Padding="8,6" IsVisible="{Binding HasPendingAttachment}" StrokeShape="RoundRectangle 10" Stroke="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <Label Grid.Column="0" Text="📎" VerticalOptions="Center" Margin="0,0,8,0" />
+                <Label Grid.Column="1" Text="{Binding PendingAttachmentFileName}" VerticalOptions="Center" LineBreakMode="TailTruncation" />
+                <Button Grid.Column="2" Text="✕" Style="{StaticResource SecondaryButton}" WidthRequest="40" Padding="0" Command="{Binding ClearPendingAttachmentCommand}" />
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="4" Padding="12,10" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10" BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource OffBlack}}">
+            <BoxView Grid.ColumnSpan="3" HeightRequest="1" VerticalOptions="Start" Margin="-12,-10,-12,0" Color="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}" />
+            <Button Grid.Column="0" Text="📎" Style="{StaticResource SecondaryButton}" WidthRequest="44" Padding="0" Clicked="OnAttachClicked" />
+            <Entry Grid.Column="1" Text="{Binding ComposeText}" Placeholder="Napište zprávu skupině…" ReturnCommand="{Binding SendCommand}" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}" />
+            <Button Grid.Column="2" Text="Odeslat" Command="{Binding SendCommand}" IsEnabled="{Binding CanSend}" />
+        </Grid>
+    </Grid>
+</ContentPage>

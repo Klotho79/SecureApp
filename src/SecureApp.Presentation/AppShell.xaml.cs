@@ -23,5 +23,12 @@ public partial class AppShell : Shell
 		// Reached via GoToAsync from ChatListPage/NewChatPage, carrying a chatSessionId query
 		// parameter that ChatViewModel.ApplyQueryAttributes picks up.
 		Routing.RegisterRoute(nameof(ChatPage), typeof(ChatPage));
+
+		// Group chats (2026-09-07) — reached via the '+ Nová skupina' button on ChatListPage.
+		Routing.RegisterRoute(nameof(NewGroupPage), typeof(NewGroupPage));
+
+		// Reached via GoToAsync from ChatListPage/NewGroupViewModel, carrying a groupChatId query
+		// parameter that GroupChatViewModel.ApplyQueryAttributes picks up.
+		Routing.RegisterRoute(nameof(GroupChatPage), typeof(GroupChatPage));
 	}
 }

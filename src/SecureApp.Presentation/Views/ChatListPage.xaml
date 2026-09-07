@@ -24,12 +24,47 @@
 
             <VerticalStackLayout Grid.Row="0" Spacing="12">
                 <Label Text="Chaty" Style="{StaticResource PageTitle}" />
-                <Button Text="+ Nový chat" HorizontalOptions="Start" Command="{Binding NewChatCommand}" />
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                    <Button Grid.Column="0" Text="+ Nový chat" Command="{Binding NewChatCommand}" />
+                    <Button Grid.Column="1" Text="+ Nová skupina" Style="{StaticResource SecondaryButton}" Command="{Binding NewGroupCommand}" />
+                </Grid>
             </VerticalStackLayout>
 
             <RefreshView Grid.Row="1" IsRefreshing="{Binding IsLoading}" Command="{Binding LoadCommand}">
                 <ScrollView>
-                    <VerticalStackLayout Spacing="0">
+                    <VerticalStackLayout Spacing="14">
+
+                        <!-- Group chats (2026-09-07) — a full mesh of ordinary pairwise sessions
+                             under the hood, see GroupChat's own remarks; listed separately from
+                             1:1 Sessions below since the two item shapes genuinely differ (a group
+                             has no single peer, just a member count/name). Kept as simple push
+                             navigation (OnGroupSelected) rather than folded into the adaptive
+                             list+detail split below — a scope call for this first pass, not a
+                             XAML limitation. -->
+                        <VerticalStackLayout Spacing="8" IsVisible="{Binding HasGroups}">
+                            <Label Text="Skupiny" FontAttributes="Bold" FontSize="13" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
+                            <CollectionView
+                                x:Name="GroupsView"
+                                ItemsSource="{Binding Groups}"
+                                SelectionMode="Single"
+                                SelectionChanged="OnGroupSelected">
+                                <CollectionView.ItemsLayout>
+                                    <LinearItemsLayout Orientation="Vertical" ItemSpacing="8" />
+                                </CollectionView.ItemsLayout>
+                                <CollectionView.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:GroupChatListItem">
+                                        <Border Style="{StaticResource CardBorder}" Margin="0">
+                                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                                                <Border Grid.Column="0" WidthRequest="42" HeightRequest="42" Padding="0" StrokeShape="RoundRectangle 12" Stroke="Transparent" BackgroundColor="{AppThemeBinding Light={StaticResource AccentSoft}, Dark={StaticResource AccentSoftDark}}" VerticalOptions="Center">
+                                                    <Label Text="{Binding Initials}" FontFamily="SpectralSemibold" FontSize="14" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" HorizontalOptions="Center" VerticalOptions="Center" />
+                                                </Border>
+                                                <Label Grid.Column="1" Text="{Binding Name}" FontSize="15" FontAttributes="Bold" VerticalOptions="Center" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </CollectionView.ItemTemplate>
+                            </CollectionView>
+                        </VerticalStackLayout>
 
                         <Label
                             Text="Zatím žádné chaty. Klepnutím na '+ Nový chat' jeden založte."

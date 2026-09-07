@@ -48,6 +48,7 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
 
     public event EventHandler<MessageEnvelope>? EnvelopeReceived;
     public event EventHandler<string>? PairingInviteReceived;
+    public event EventHandler<string>? GroupInviteReceived;
     public event EventHandler<TransportConnectionState>? ConnectionStateChanged;
 
     public WebSocketMessageTransport(ISecureVaultKeyStore vault, IServiceScopeFactory scopeFactory)
@@ -272,6 +273,15 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
         await SendFrameAsync(socket, new WireFrame { Type = "pairing", RecipientDeviceId = recipientRelayDeviceId, PairingInviteBlob = inviteBlob }, ct);
     }
 
+    public async Task SendGroupInviteAsync(Guid recipientRelayDeviceId, string groupInviteBlob, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(groupInviteBlob);
+        if (_socket is not { State: WebSocketState.Open } socket)
+            throw new InvalidOperationException("Not connected to a relay.");
+
+        await SendFrameAsync(socket, new WireFrame { Type = "group-invite", RecipientDeviceId = recipientRelayDeviceId, GroupInviteBlob = groupInviteBlob }, ct);
+    }
+
     private async Task ReceiveLoopAsync(ClientWebSocket socket, CancellationToken ct)
     {
         try
@@ -291,6 +301,10 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
                 else if (frame is { Type: "pairing-deliver", PairingInviteBlob: { } inviteBlob })
                 {
                     PairingInviteReceived?.Invoke(this, inviteBlob);
+                }
+                else if (frame is { Type: "group-invite-deliver", GroupInviteBlob: { } groupInviteBlob })
+                {
+                    GroupInviteReceived?.Invoke(this, groupInviteBlob);
                 }
             }
         }

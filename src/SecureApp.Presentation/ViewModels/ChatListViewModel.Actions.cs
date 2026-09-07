@@ -18,4 +18,17 @@ public sealed partial class ChatListViewModel
     {
         await Shell.Current.GoToAsync(nameof(NewChatPage));
     }
+
+    [RelayCommand]
+    private async Task OpenGroupAsync(GroupChatListItem? group)
+    {
+        if (group is null) return;
+        await Shell.Current.GoToAsync($"{nameof(GroupChatPage)}?groupChatId={group.Id}");
+    }
+
+    [RelayCommand]
+    private async Task NewGroupAsync()
+    {
+        await Shell.Current.GoToAsync(nameof(NewGroupPage));
+    }
 }

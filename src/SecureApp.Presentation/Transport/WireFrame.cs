@@ -34,4 +34,7 @@ internal sealed class WireFrame
     /// happen to be online, which is the common case, not the exception.
     /// </summary>
     public string? PairingInviteBlob { get; init; }
+
+    /// <summary>On a "group-invite"/"group-invite-deliver" frame (2026-09-07) — a client-encoded GroupInviteBlob (<c>SecureApp.Presentation.Chat.GroupInviteBlob</c>), opaque to the relay same as <see cref="PairingInviteBlob"/>.</summary>
+    public string? GroupInviteBlob { get; init; }
 }

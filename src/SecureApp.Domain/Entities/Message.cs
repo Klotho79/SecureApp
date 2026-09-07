@@ -42,6 +42,19 @@ public sealed class Message : Entity
     /// <summary>Original file name for a library attachment, carried alongside <see cref="AttachmentLibraryFileId"/> so the UI can show it before/without a metadata round trip.</summary>
     public string? AttachmentFileName { get; private set; }
 
+    /// <summary>
+    /// Set when this row is one leg of a group message's pairwise fan-out (2026-09-07) — see
+    /// <see cref="GroupChat"/>'s own remarks on the crypto design. Null for an ordinary 1:1 message.
+    /// Lets the 1:1 <c>ChatViewModel</c> thread for <see cref="ChatSessionId"/> filter group traffic
+    /// back out (group messages display in their own group thread instead, not mixed into a
+    /// specific member's direct conversation) while still physically traveling over that member's
+    /// pairwise ratchet.
+    /// </summary>
+    public Guid? GroupChatId { get; private set; }
+
+    /// <summary>Shared across every fan-out copy of the SAME logical group message (one per other member) — lets the sender's own group thread collapse its own N outbound rows back into the one bubble a recipient only ever sees once. Null whenever <see cref="GroupChatId"/> is null.</summary>
+    public Guid? GroupMessageId { get; private set; }
+
     public DateTimeOffset? DeliveredAtUtc { get; private set; }
     public DateTimeOffset? ReadAtUtc { get; private set; }
 
@@ -59,7 +72,9 @@ public sealed class Message : Entity
         EncryptedPayload payload,
         Guid? attachmentDocumentId = null,
         Guid? attachmentLibraryFileId = null,
-        string? attachmentFileName = null)
+        string? attachmentFileName = null,
+        Guid? groupChatId = null,
+        Guid? groupMessageId = null)
     {
         if (chatSessionId == Guid.Empty)
             throw new ArgumentException("Chat session id cannot be empty.", nameof(chatSessionId));
@@ -71,6 +86,8 @@ public sealed class Message : Entity
         AttachmentDocumentId = attachmentDocumentId;
         AttachmentLibraryFileId = attachmentLibraryFileId;
         AttachmentFileName = attachmentFileName;
+        GroupChatId = groupChatId;
+        GroupMessageId = groupMessageId;
         Status = MessageStatus.Pending;
     }
 

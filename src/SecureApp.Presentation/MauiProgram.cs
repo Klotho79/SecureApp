@@ -118,6 +118,12 @@ public static class MauiProgram
 		builder.Services.AddTransient<ChatListPage>();
 		builder.Services.AddTransient<NewChatViewModel>();
 		builder.Services.AddTransient<NewChatPage>();
+
+		// Group chats (2026-09-07) — see GroupChat's own remarks for the design.
+		builder.Services.AddTransient<NewGroupViewModel>();
+		builder.Services.AddTransient<NewGroupPage>();
+		builder.Services.AddTransient<GroupChatViewModel>();
+		builder.Services.AddTransient<GroupChatPage>();
 		builder.Services.AddTransient<ChatViewModel>();
 		builder.Services.AddTransient<ChatPage>();
 

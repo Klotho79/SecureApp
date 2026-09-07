@@ -18,7 +18,7 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
 {
     private const string DatabaseKeyVaultName = "sqlcipher:database-key";
     private const int DatabaseKeySizeBytes = 32; // 256-bit, used as a raw SQLCipher key (not a passphrase put through PBKDF2)
-    private const int CurrentSchemaVersion = 6;
+    private const int CurrentSchemaVersion = 7;
 
     private readonly DataStorageOptions _options;
     private readonly ISecureVaultKeyStore _vault;
@@ -112,6 +112,9 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
 
         if (schemaVersion < 6)
             await ApplyV6SchemaAsync(connection);
+
+        if (schemaVersion < 7)
+            await ApplyV7SchemaAsync(connection);
 
         await connection.ExecuteAsync($"PRAGMA user_version = {CurrentSchemaVersion}");
     }
@@ -326,5 +329,43 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
     private static async Task ApplyV6SchemaAsync(SQLiteAsyncConnection connection)
     {
         await connection.ExecuteAsync("ALTER TABLE transport_settings ADD COLUMN pending_activation_request_id TEXT NULL");
+    }
+
+    /// <summary>
+    /// Group chats (2026-09-07) — see <c>GroupChat</c>'s own remarks for the crypto design (a full
+    /// mesh of ordinary pairwise <c>ChatSession</c>s, not a new group ratchet). `messages` gets two
+    /// additive nullable columns (a group message is still stored as ordinary pairwise-session
+    /// `Message` rows, just tagged); `group_chats`/`group_members` are new tables, not migrations of
+    /// anything existing.
+    /// </summary>
+    private static async Task ApplyV7SchemaAsync(SQLiteAsyncConnection connection)
+    {
+        await connection.ExecuteAsync("ALTER TABLE messages ADD COLUMN group_chat_id TEXT NULL");
+        await connection.ExecuteAsync("ALTER TABLE messages ADD COLUMN group_message_id TEXT NULL");
+        await connection.ExecuteAsync("CREATE INDEX IF NOT EXISTS ix_messages_group_chat_id ON messages(group_chat_id)");
+
+        await connection.ExecuteAsync("""
+            CREATE TABLE IF NOT EXISTS group_chats (
+                id                     TEXT PRIMARY KEY NOT NULL,
+                name                   TEXT NOT NULL,
+                founder_public_key     BLOB NOT NULL,
+                created_at_utc         TEXT NOT NULL,
+                modified_at_utc        TEXT NOT NULL
+            )
+            """);
+
+        await connection.ExecuteAsync("""
+            CREATE TABLE IF NOT EXISTS group_members (
+                id                  TEXT PRIMARY KEY NOT NULL,
+                group_chat_id       TEXT NOT NULL REFERENCES group_chats(id) ON DELETE CASCADE,
+                display_name        TEXT NOT NULL,
+                public_key          BLOB NOT NULL,
+                relay_device_id     TEXT NOT NULL,
+                can_invite          INTEGER NOT NULL,
+                created_at_utc      TEXT NOT NULL,
+                modified_at_utc     TEXT NOT NULL
+            )
+            """);
+        await connection.ExecuteAsync("CREATE INDEX IF NOT EXISTS ix_group_members_group_chat_id ON group_members(group_chat_id)");
     }
 }

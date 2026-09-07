@@ -14,6 +14,7 @@ namespace SecureApp.Domain.ValueObjects;
 /// mechanism a chat attachment reaches its recipient; <see cref="AttachmentDocumentId"/> remains for
 /// same-device correlation only and was never itself cross-device-resolvable.
 /// </summary>
+/// <summary><see cref="GroupChatId"/>/<see cref="GroupMessageId"/> (2026-09-07): set when this envelope is one leg of a group message's pairwise fan-out — see <c>GroupChat</c>'s own remarks on the crypto design. Both null for an ordinary 1:1 message.</summary>
 public sealed record MessageEnvelope(
     Guid SessionId,
     Guid SenderUserId,
@@ -21,4 +22,6 @@ public sealed record MessageEnvelope(
     EncryptedPayload Payload,
     Guid? AttachmentDocumentId,
     Guid? AttachmentLibraryFileId = null,
-    string? AttachmentFileName = null);
+    string? AttachmentFileName = null,
+    Guid? GroupChatId = null,
+    Guid? GroupMessageId = null);

@@ -36,6 +36,13 @@ public sealed class MessageRepository : IMessageRepository
         return rows.Select(ToEntity).ToList();
     }
 
+    public async Task<IReadOnlyList<Message>> GetByGroupAsync(Guid groupChatId, CancellationToken ct = default)
+    {
+        var connection = await _connectionFactory.GetConnectionAsync(ct);
+        var rows = await connection.QueryAsync<MessageRow>("SELECT * FROM messages WHERE group_chat_id = ? ORDER BY created_at_utc", groupChatId.ToString());
+        return rows.Select(ToEntity).ToList();
+    }
+
     public async Task AddAsync(Message message, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(message);
@@ -47,8 +54,9 @@ public sealed class MessageRepository : IMessageRepository
                 header_dh_public_key, header_previous_chain_length, header_message_number,
                 payload_key_id, payload_algorithm, payload_cipher_text, payload_nonce, payload_auth_tag,
                 attachment_document_id, attachment_library_file_id, attachment_file_name,
+                group_chat_id, group_message_id,
                 delivered_at_utc, read_at_utc, created_at_utc, modified_at_utc
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             message.Id.ToString(),
             message.ChatSessionId.ToString(),
@@ -65,6 +73,8 @@ public sealed class MessageRepository : IMessageRepository
             message.AttachmentDocumentId?.ToString(),
             message.AttachmentLibraryFileId?.ToString(),
             message.AttachmentFileName,
+            message.GroupChatId?.ToString(),
+            message.GroupMessageId?.ToString(),
             message.DeliveredAtUtc is null ? null : Format(message.DeliveredAtUtc.Value),
             message.ReadAtUtc is null ? null : Format(message.ReadAtUtc.Value),
             Format(message.CreatedAtUtc),
@@ -106,6 +116,8 @@ public sealed class MessageRepository : IMessageRepository
         EntityMaterializer.Set(entity, nameof(Message.AttachmentDocumentId), row.AttachmentDocumentId is null ? null : Guid.Parse(row.AttachmentDocumentId));
         EntityMaterializer.Set(entity, nameof(Message.AttachmentLibraryFileId), row.AttachmentLibraryFileId is null ? null : Guid.Parse(row.AttachmentLibraryFileId));
         EntityMaterializer.Set(entity, nameof(Message.AttachmentFileName), row.AttachmentFileName);
+        EntityMaterializer.Set(entity, nameof(Message.GroupChatId), row.GroupChatId is null ? null : (Guid?)Guid.Parse(row.GroupChatId));
+        EntityMaterializer.Set(entity, nameof(Message.GroupMessageId), row.GroupMessageId is null ? null : (Guid?)Guid.Parse(row.GroupMessageId));
         EntityMaterializer.Set(entity, nameof(Message.DeliveredAtUtc), row.DeliveredAtUtc is null ? null : (DateTimeOffset?)Parse(row.DeliveredAtUtc));
         EntityMaterializer.Set(entity, nameof(Message.ReadAtUtc), row.ReadAtUtc is null ? null : (DateTimeOffset?)Parse(row.ReadAtUtc));
         return entity;

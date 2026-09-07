@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="SecureApp.Presentation.Views.NewGroupPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
+    x:DataType="vm:NewGroupViewModel"
+    Title="Nová skupina">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="20" Spacing="12">
+
+            <Label Text="{Binding StatusErrorMessage}" IsVisible="{Binding HasStatusError}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
+            <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" HorizontalOptions="Center" />
+
+            <Border Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Nová skupina" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Entry Text="{Binding GroupNameText}" Placeholder="Název skupiny, např. &quot;Anesteziologie&quot;" />
+
+                    <Label Text="Členové" FontAttributes="Bold" Margin="0,8,0,0" />
+                    <Label Text="Vyberte, koho chcete do skupiny přidat — jsou to všichni, kdo už mají aktivované zařízení." FontSize="12" TextColor="Gray" />
+                    <ActivityIndicator IsRunning="{Binding IsLoadingMembers}" IsVisible="{Binding IsLoadingMembers}" HorizontalOptions="Center" />
+                    <Label Text="Zatím tu nikdo není — buď jsi jediný aktivovaný, nebo se ostatní ještě nepřipojili." FontSize="12" TextColor="Gray" IsVisible="{Binding HasNoMembers}" />
+
+                    <CollectionView ItemsSource="{Binding Members}" SelectionMode="None">
+                        <CollectionView.ItemsLayout>
+                            <LinearItemsLayout Orientation="Vertical" ItemSpacing="4" />
+                        </CollectionView.ItemsLayout>
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:SelectableMemberItem">
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10" Padding="0,4">
+                                    <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected}" />
+                                    <Label Grid.Column="1" Text="{Binding DisplayName}" VerticalOptions="Center" FontSize="15" />
+                                </Grid>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+
+                    <Button Text="Vytvořit skupinu" Command="{Binding CreateGroupCommand}" />
+                </VerticalStackLayout>
+            </Border>
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

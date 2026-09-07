@@ -353,6 +353,27 @@ app.Map("/ws", async (HttpContext context, RelayDatabase db, ConnectionRegistry 
                     db.EnqueueOutbox(pairingRecipientId, RelayProtocol.Serialize(pairingDeliverFrame));
                 }
             }
+            else if (frame is { Type: "group-invite", RecipientDeviceId: { } groupInviteRecipientId, GroupInviteBlob: not null })
+            {
+                // Same live-or-outbox routing again — see the "pairing" branch above.
+                var groupInviteDeliverFrame = new RelayFrame { Type = "group-invite-deliver", SenderDeviceId = deviceId, GroupInviteBlob = frame.GroupInviteBlob };
+
+                if (registry.TryGet(groupInviteRecipientId, out var groupInviteRecipientSocket))
+                {
+                    try
+                    {
+                        await RelayProtocol.SendFrameAsync(groupInviteRecipientSocket, groupInviteDeliverFrame, ct);
+                    }
+                    catch (WebSocketException)
+                    {
+                        db.EnqueueOutbox(groupInviteRecipientId, RelayProtocol.Serialize(groupInviteDeliverFrame));
+                    }
+                }
+                else
+                {
+                    db.EnqueueOutbox(groupInviteRecipientId, RelayProtocol.Serialize(groupInviteDeliverFrame));
+                }
+            }
         }
     }
     finally
