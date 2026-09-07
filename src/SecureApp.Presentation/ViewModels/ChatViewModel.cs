@@ -157,6 +157,12 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
             var items = new List<ChatMessageItem>();
             foreach (var message in messages)
             {
+                // Same reasoning as HandleEnvelopeReceivedAsync's own remarks — a group message
+                // fans out over this same pairwise session, so GetBySessionAsync returns those rows
+                // too; they belong in the group's own thread (GroupChatViewModel.LoadMessagesAsync),
+                // not mixed into this direct 1:1 conversation.
+                if (message.GroupChatId is not null) continue;
+
                 var text = await TryDecryptAsync(message);
                 items.Add(new ChatMessageItem(message.Id, message.Direction == MessageDirection.Outbound, text, message.CreatedAtUtc, message.Status, message.AttachmentLibraryFileId, message.AttachmentFileName));
             }
@@ -252,6 +258,16 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
     internal async Task HandleEnvelopeReceivedAsync(MessageEnvelope envelope)
     {
         if (envelope.SessionId != _chatSessionId) return;
+
+        // Group chats (2026-09-07) fan out over this SAME pairwise session — see GroupChat's own
+        // remarks on the crypto design — so a group envelope also matches the check above and would
+        // otherwise reach here too. It must not: GroupChatViewModel.HandleEnvelopeReceivedAsync
+        // already decrypts it (a Double Ratchet message key is one-time-use — decrypting the same
+        // envelope twice fails the second time, surfacing as "message decryption failed" whenever a
+        // direct 1:1 thread with that peer happens to be open at the same time a group message from
+        // them arrives — a real bug caught live, not a hypothetical). Group traffic belongs in the
+        // group's own thread only.
+        if (envelope.GroupChatId is not null) return;
 
         try
         {
