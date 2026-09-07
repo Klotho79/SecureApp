@@ -32,10 +32,26 @@
                     <BindableLayout.ItemTemplate>
                         <DataTemplate x:DataType="vm:GroupMemberItem">
                             <Border Style="{StaticResource Chip}" Margin="0,3,6,0">
-                                <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="6">
+                                <Grid ColumnDefinitions="Auto,Auto,Auto" ColumnSpacing="4">
                                     <Label Grid.Column="0" Text="{Binding DisplayNameWithRoleSuffix}" Style="{StaticResource ChipLabel}" />
+                                    <!-- Reset pairing (2026-09-07) — reachable right here, not just from the 1:1 chat
+                                         list, since every "Local User" row there looks identical and there's no way
+                                         to tell which one is THIS member. See GroupChatViewModel.ResetPairingAsync's
+                                         own remarks: only closes this device's own side of the pairwise session —
+                                         the OTHER person needs to tap the same button on their own device before
+                                         re-pairing (New Chat / "+ Přidat") actually completes. -->
                                     <Button
                                         Grid.Column="1"
+                                        Text="↺"
+                                        FontSize="12"
+                                        Padding="4,0"
+                                        BackgroundColor="Transparent"
+                                        TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}"
+                                        Command="{Binding ResetPairingCommand}"
+                                        CommandParameter="{Binding .}"
+                                        IsVisible="{Binding CanResetPairing}" />
+                                    <Button
+                                        Grid.Column="2"
                                         Text="✕"
                                         FontSize="11"
                                         Padding="4,0"

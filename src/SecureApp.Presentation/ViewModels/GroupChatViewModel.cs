@@ -168,10 +168,12 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
             Members = new ObservableCollection<GroupMemberItem>(_members.Select(m => new GroupMemberItem(
                 m.Id,
                 m.DisplayName,
+                m.PublicKey,
                 IsMe: m.PublicKey.AsSpan().SequenceEqual(_localPublicKey),
                 IsFounder: m.PublicKey.AsSpan().SequenceEqual(_founderPublicKey),
                 ViewerCanManage: CanManageMembers,
-                RemoveCommand)));
+                RemoveCommand,
+                ResetPairingCommand)));
 
             await LoadMessagesAsync();
         }
@@ -296,6 +298,39 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
         }
     }
 
+    /// <summary>
+    /// Recovery for a specific member's pairwise session whose Double Ratchet state has become
+    /// genuinely undecryptable (2026-09-07) — same underlying action as
+    /// <c>ChatListViewModel.ResetSessionAsync</c>, just reachable directly from the group's own
+    /// member list instead of requiring a detour through the 1:1 chat list, where every "Local
+    /// User" row looks identical and there's no way to tell which one is this member. Only closes
+    /// THIS device's side — see the button's own remarks in <c>GroupChatPage.xaml</c> for why the
+    /// OTHER device needs to do the same before re-pairing actually completes.
+    /// </summary>
+    [RelayCommand]
+    private async Task ResetPairingAsync(GroupMemberItem? member)
+    {
+        if (member is null || member.IsMe) return;
+
+        StatusErrorMessage = null;
+        try
+        {
+            var session = await _messagingService.FindExistingSessionAsync(member.PublicKey);
+            if (session is null)
+            {
+                StatusErrorMessage = $"S uživatelem {member.DisplayName} zatím není žádné aktivní párování.";
+                return;
+            }
+
+            await _messagingService.CloseSessionAsync(session.Id);
+            StatusErrorMessage = $"Párování s {member.DisplayName} zrušeno na tomto zařízení. Stejné tlačítko musí použít i {member.DisplayName} na svém zařízení — pak se přes „+ Přidat“ nebo Nový chat spárujete znovu.";
+        }
+        catch (Exception ex)
+        {
+            StatusErrorMessage = $"Nepodařilo se zrušit párování: {ex.Message}";
+        }
+    }
+
     [RelayCommand]
     private async Task OpenAttachmentAsync(GroupMessageItem? item)
     {
@@ -347,11 +382,12 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
             await _groupMemberRepository.ReplaceAllAsync(_groupChatId, newMembers);
             _members = newMembers;
             Members = new ObservableCollection<GroupMemberItem>(newMembers.Select(m => new GroupMemberItem(
-                m.Id, m.DisplayName,
+                m.Id, m.DisplayName, m.PublicKey,
                 IsMe: m.PublicKey.AsSpan().SequenceEqual(_localPublicKey),
                 IsFounder: m.PublicKey.AsSpan().SequenceEqual(_founderPublicKey),
                 ViewerCanManage: CanManageMembers,
-                RemoveCommand)));
+                RemoveCommand,
+                ResetPairingCommand)));
 
             var inviteBlob = ContactCardCodec.Encode(new GroupInviteBlob(
                 _groupChatId, Title, _founderPublicKey,
@@ -462,13 +498,15 @@ public sealed record GroupMessageItem(Guid Id, bool IsOutbound, string SenderDis
 }
 
 /// <summary>
-/// One row in a group's member list — carries the shared <see cref="RemoveCommand"/> instance
-/// (bound per-item as <c>CommandParameter="{Binding Id}"</c>), same pattern this codebase already
-/// uses elsewhere for per-item actions. <see cref="DisplayNameWithRoleSuffix"/> and
+/// One row in a group's member list — carries the shared <see cref="RemoveCommand"/>/<see cref="ResetPairingCommand"/>
+/// instances (bound per-item as <c>CommandParameter="{Binding .}"</c>/<c>Id</c>), same pattern this
+/// codebase already uses elsewhere for per-item actions. <see cref="DisplayNameWithRoleSuffix"/> and
 /// <see cref="CanRemove"/> are pre-computed here rather than in XAML, same no-converters
-/// convention as <see cref="GroupMessageItem.IsInbound"/>.
+/// convention as <see cref="GroupMessageItem.IsInbound"/>. <see cref="PublicKey"/> (2026-09-07) is
+/// what <c>GroupChatViewModel.ResetPairingAsync</c> actually needs to look up this member's
+/// pairwise <c>ChatSession</c> — not otherwise displayed.
 /// </summary>
-public sealed record GroupMemberItem(Guid Id, string DisplayName, bool IsMe, bool IsFounder, bool ViewerCanManage, System.Windows.Input.ICommand RemoveCommand)
+public sealed record GroupMemberItem(Guid Id, string DisplayName, byte[] PublicKey, bool IsMe, bool IsFounder, bool ViewerCanManage, System.Windows.Input.ICommand RemoveCommand, System.Windows.Input.ICommand ResetPairingCommand)
 {
     public string DisplayNameWithRoleSuffix => (IsMe, IsFounder) switch
     {
@@ -477,6 +515,9 @@ public sealed record GroupMemberItem(Guid Id, string DisplayName, bool IsMe, boo
         (false, true) => $"{DisplayName} (zakladatel)",
         _ => DisplayName
     };
+
+    /// <summary>Unlike <see cref="CanRemove"/>, resetting a broken pairing doesn't need <see cref="ViewerCanManage"/> — it only touches this device's own copy of a session it's already a party to, not the group's shared membership list, so there's no reason to gate it behind the same admin/founder permission.</summary>
+    public bool CanResetPairing => !IsMe;
 
     /// <summary>Requires BOTH that the person looking at this list is allowed to manage members at all (<see cref="ViewerCanManage"/>, mirroring <c>GroupChatViewModel.CanManageMembers</c> at the time this row was built) AND that this particular row isn't the viewer themselves or the founder — leaving/founder-transfer isn't built in this pass (see DEVELOPMENT_PLAN.md's remarks).</summary>
     public bool CanRemove => ViewerCanManage && !IsMe && !IsFounder;
