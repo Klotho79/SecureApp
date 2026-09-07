@@ -26,43 +26,101 @@ public partial class App : Application
 			transport.GroupInviteReceived += OnGroupInviteReceived;
 		}
 
-		// 2026-09-07: the user's explicit, direct feedback after live-testing group chats — manually
-		// pressing a reset button on two separate devices to fix a broken pairing was rejected
-		// outright ("nesmysl", i.e. nonsense) in favor of the app checking and fixing itself in the
-		// background. Runs for the app's whole foreground lifetime, same as the event subscriptions
-		// just above — see RunHealthCheckOnceAsync's own remarks for exactly what it checks and its
-		// honest scope (foreground-process-only, no OS background-execution wiring in this pass).
-		_ = RunBackgroundHealthCheckLoopAsync();
+		// 2026-09-07: two rounds of direct user feedback, both pointing the same direction — the
+		// app, not the user, is responsible for noticing something's wrong and fixing it. First: a
+		// broken pairwise session shouldn't need anyone to press a reset button (see
+		// SessionRecoveryHelper.ResyncAsync). Second, blunter still, about the relay connection
+		// itself: "uzivatel vubec nema ovladat připojení apka sama musi zjistovat jestli je připojena
+		// akdyz ne podnikne vse aby se pripojila" (the user should never have to manage the
+		// connection at all — the app itself must know whether it's connected and, if not, do
+		// everything to reconnect). Before this, the app only ever tried to connect ONCE at launch
+		// (the old AutoConnectRelayAsync) or reactively when a chat page happened to be opened
+		// (ChatViewModel.EnsureConnectedAsync) — a drop at any other moment (relay restart, phone
+		// sleep, switching Wi-Fi/mobile data) just sat disconnected, unnoticed, until someone opened
+		// Settings and pressed Connect by hand. This one loop replaces both that one-shot connect and
+		// the earlier connected-only resync sweep: it runs for the app's whole foreground lifetime,
+		// checks IsConnected on every tick, and reconnects the moment it can — no user action
+		// anywhere in it.
+		_ = RunConnectionSupervisorLoopAsync();
 	}
 
-	private static readonly TimeSpan _healthCheckInterval = TimeSpan.FromMinutes(3);
+	private static readonly TimeSpan _supervisorTickInterval = TimeSpan.FromSeconds(10);
+	private static readonly TimeSpan _staleSessionSweepInterval = TimeSpan.FromMinutes(3);
 
-	private static async Task RunBackgroundHealthCheckLoopAsync()
+	/// <summary>
+	/// Runs for the app's whole foreground lifetime (started once, from the constructor — honest
+	/// scope: this is a foreground-process loop, not OS-level background execution, same as every
+	/// other "best-effort" spot in this codebase). Every tick: if the relay isn't connected, try to
+	/// connect; either right after a reconnect just succeeded, or otherwise every
+	/// <see cref="_staleSessionSweepInterval"/> regardless, also sweep for any pairwise session stuck
+	/// mid-resync (see <see cref="RunStaleSessionSweepAsync"/>).
+	/// </summary>
+	private static async Task RunConnectionSupervisorLoopAsync()
 	{
+		var lastStaleSweep = DateTimeOffset.MinValue;
+
 		while (true)
 		{
-			try { await Task.Delay(_healthCheckInterval); }
-			catch { return; }
+			try
+			{
+				var services = IPlatformApplication.Current?.Services;
+				var transport = services?.GetService<IMessageTransport>();
 
-			await RunHealthCheckOnceAsync();
+				if (services is not null && transport is not null)
+				{
+					var wasConnected = transport.IsConnected;
+					if (!wasConnected)
+						await TryConnectAsync(services, transport);
+
+					var justReconnected = !wasConnected && transport.IsConnected;
+					var sweepDue = DateTimeOffset.UtcNow - lastStaleSweep >= _staleSessionSweepInterval;
+
+					if (transport.IsConnected && (justReconnected || sweepDue))
+					{
+						await RunStaleSessionSweepAsync(services, transport);
+						lastStaleSweep = DateTimeOffset.UtcNow;
+					}
+				}
+			}
+			catch
+			{
+				// This loop must never die from one bad tick — whatever went wrong is tried again
+				// next tick, ~10s later.
+			}
+
+			try { await Task.Delay(_supervisorTickInterval); }
+			catch { return; }
+		}
+	}
+
+	/// <summary>The actual connect attempt, called from every supervisor tick that finds the transport disconnected (not just once at launch, as the old AutoConnectRelayAsync did). Respects <c>IsAutoConnectEnabled</c>, so a user who deliberately turned auto-connect off in Settings isn't overridden.</summary>
+	private static async Task TryConnectAsync(IServiceProvider services, IMessageTransport transport)
+	{
+		using var scope = services.CreateScope();
+		var transportSettings = scope.ServiceProvider.GetRequiredService<ITransportSettingsRepository>();
+		var configuration = await transportSettings.GetAsync();
+		if (configuration is not { AssignedDeviceId: not null, IsAutoConnectEnabled: true, EndpointUri: { } endpoint })
+			return;
+
+		try
+		{
+			await transport.ConnectAsync(endpoint);
+		}
+		catch
+		{
+			// Best-effort — retried again next tick, ~10s later.
 		}
 	}
 
 	/// <summary>
-	/// Background self-healing sweep: looks for a peer whose ONLY local <see cref="ChatSession"/>
+	/// Background self-healing sweep (2026-09-07): looks for a peer whose ONLY local <see cref="ChatSession"/>
 	/// row is Closed — meaning an earlier <see cref="SessionRecoveryHelper.ResyncAsync"/> call
 	/// closed the old session but never got as far as sending (or even creating) its replacement,
 	/// most likely because the relay wasn't connected at that exact moment — and retries the whole
-	/// resync. Nothing to do if the relay isn't connected right now either; tried again next sweep.
+	/// resync.
 	/// </summary>
-	private static async Task RunHealthCheckOnceAsync()
+	private static async Task RunStaleSessionSweepAsync(IServiceProvider services, IMessageTransport transport)
 	{
-		var services = IPlatformApplication.Current?.Services;
-		if (services is null) return;
-
-		var transport = services.GetService<IMessageTransport>();
-		if (transport is null || !transport.IsConnected) return;
-
 		using var scope = services.CreateScope();
 		var sessionRepository = scope.ServiceProvider.GetRequiredService<IChatSessionRepository>();
 		var messagingService = scope.ServiceProvider.GetRequiredService<IMessagingService>();
@@ -256,38 +314,11 @@ public partial class App : Application
 			var dlpService = IPlatformApplication.Current?.Services.GetService<INativeDlpService>();
 			dlpService?.PreventScreenCapture();
 
-			// Milestone 5 (E2EE Chat): if this device already registered with a relay before and
-			// auto-connect wasn't turned off, reconnect without the user having to open Settings
-			// and press Connect on every launch. Fire-and-forget — a relay that's unreachable at
-			// startup (offline, VPN not up yet) must never block or crash app launch; the Settings
-			// page's Connect button remains available as a manual retry either way.
-			_ = AutoConnectRelayAsync();
+			// Milestone 5 (E2EE Chat) connect: handled entirely by RunConnectionSupervisorLoopAsync
+			// now, started from the constructor above — its very first tick fires almost immediately,
+			// so launch-time connect behavior is unchanged; nothing further to kick off here.
 		};
 
 		return window;
-	}
-
-	private static async Task AutoConnectRelayAsync()
-	{
-		var services = IPlatformApplication.Current?.Services;
-		if (services is null) return;
-
-		var transport = services.GetService<IMessageTransport>();
-		if (transport is null || transport.IsConnected) return;
-
-		using var scope = services.CreateScope();
-		var transportSettings = scope.ServiceProvider.GetRequiredService<ITransportSettingsRepository>();
-		var configuration = await transportSettings.GetAsync();
-		if (configuration is not { AssignedDeviceId: not null, IsAutoConnectEnabled: true, EndpointUri: { } endpoint })
-			return;
-
-		try
-		{
-			await transport.ConnectAsync(endpoint);
-		}
-		catch
-		{
-			// Best-effort — see the remark on the call site above.
-		}
 	}
 }
