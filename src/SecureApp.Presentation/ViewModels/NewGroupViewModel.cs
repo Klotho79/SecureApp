@@ -83,20 +83,53 @@ public sealed partial class NewGroupViewModel : ObservableObject
 
     partial void OnCreatedGroupIdChanged(Guid? value) => HasCreatedGroup = value is not null;
 
+    /// <summary>
+    /// Best-effort reconnect before listing, same reasoning as <c>ChatViewModel.EnsureConnectedAsync</c>
+    /// — picking members to invite needs a live relay connection just as much as sending a message
+    /// does, so this page shouldn't show an empty list just because the connection dropped since the
+    /// app last background-reconnected.
+    /// </summary>
+    private async Task EnsureConnectedAsync()
+    {
+        if (_messageTransport.IsConnected) return;
+        try
+        {
+            var configuration = await _transportSettingsRepository.GetAsync();
+            if (configuration is { AssignedDeviceId: not null, IsAutoConnectEnabled: true, EndpointUri: { } endpoint })
+                await _messageTransport.ConnectAsync(endpoint);
+        }
+        catch
+        {
+            // Best-effort — ListMembersAsync below will surface whatever's actually wrong.
+        }
+    }
+
+    /// <summary>
+    /// Was a silent best-effort catch until a real user complaint (2026-09-07): "nejde přidat
+    /// uživatele, není žádná možnost na výběr" (can't add a user, there's nothing to choose) — an
+    /// empty picker with NO explanation looks exactly like a bug whether or not it actually is one.
+    /// Surfacing the real reason (not registered yet, relay unreachable, whatever it is) via
+    /// <see cref="StatusErrorMessage"/> instead is the honest version of "the app should just work":
+    /// when there's something to fix automatically (a dropped connection), <see cref="EnsureConnectedAsync"/>
+    /// above fixes it silently; when there genuinely isn't (no registration yet), the user needs to
+    /// be told, not left staring at an unexplained empty list.
+    /// </summary>
     [RelayCommand]
     private async Task LoadMembersAsync()
     {
         IsLoadingMembers = true;
+        StatusErrorMessage = null;
+        await EnsureConnectedAsync();
         try
         {
             var members = await _contactDirectoryService.ListMembersAsync();
             Members = new ObservableCollection<SelectableMemberItem>(members.Select(m => new SelectableMemberItem(m.RelayDeviceId, m.DisplayName, m.PublicKey)));
             HasNoMembers = Members.Count == 0;
         }
-        catch
+        catch (Exception ex)
         {
-            // Best-effort, same reasoning as NewChatViewModel.LoadMembersAsync.
             HasNoMembers = Members.Count == 0;
+            StatusErrorMessage = $"Nepodařilo se načíst seznam členů komunity: {ex.Message}";
         }
         finally
         {

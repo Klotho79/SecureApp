@@ -138,28 +138,48 @@ public sealed partial class NewChatViewModel : ObservableObject
 
     partial void OnIsScanningInviteChanged(bool value) => ScanInviteButtonText = value ? "Zrušit skenování" : "Naskenovat QR";
 
+    /// <summary>Best-effort reconnect before listing, same reasoning as <c>ChatViewModel.EnsureConnectedAsync</c> — a dropped connection shouldn't have to wait for this page's next open to notice.</summary>
+    private async Task EnsureConnectedAsync()
+    {
+        if (_messageTransport.IsConnected) return;
+        try
+        {
+            var configuration = await _transportSettingsRepository.GetAsync();
+            if (configuration is { AssignedDeviceId: not null, IsAutoConnectEnabled: true, EndpointUri: { } endpoint })
+                await _messageTransport.ConnectAsync(endpoint);
+        }
+        catch
+        {
+            // Best-effort — LoadMembersAsync below surfaces a quiet note if this didn't help.
+        }
+    }
+
     /// <summary>
-    /// Fetches the relay's member directory — see the class-level remarks. Best-effort in the sense
-    /// that a failure here (relay unreachable, not yet connected) just leaves the list empty rather
-    /// than blocking the page; the manual paste/QR fallback below is always available regardless.
+    /// Fetches the relay's member directory — see the class-level remarks. A failure here (relay
+    /// unreachable, not yet connected) leaves the list empty, same as before — the manual paste/QR
+    /// fallback below is always available regardless, which is why this stays a quiet
+    /// <see cref="StatusInfoMessage"/> rather than a red <see cref="StatusErrorMessage"/> — but it's
+    /// no longer silent (2026-09-07, a real complaint elsewhere in this app about an unexplained
+    /// empty list applies here too): an empty directory list now says why, instead of just looking
+    /// like nothing happened.
     /// </summary>
     [RelayCommand]
     private async Task LoadMembersAsync()
     {
         IsLoadingMembers = true;
+        await EnsureConnectedAsync();
         try
         {
             var members = await _contactDirectoryService.ListMembersAsync();
             Members = new ObservableCollection<DirectoryMemberItem>(
                 members.Select(m => new DirectoryMemberItem(m.RelayDeviceId, m.DisplayName, m.PublicKey, StartChatWithMemberCommand)));
             HasNoMembers = Members.Count == 0;
+            if (HasNoMembers) StatusInfoMessage = null;
         }
-        catch
+        catch (Exception ex)
         {
-            // Best-effort — see the remark above. Leaves whatever list (possibly empty) was there
-            // before rather than surfacing a StatusErrorMessage for what's meant to be a quiet,
-            // secondary convenience over the always-available manual paste/QR flow.
             HasNoMembers = Members.Count == 0;
+            StatusInfoMessage = $"Seznam členů komunity se teď nepodařilo načíst ({ex.Message}) — můžete pozvat ručně přes kartu/pozvánku níže.";
         }
         finally
         {

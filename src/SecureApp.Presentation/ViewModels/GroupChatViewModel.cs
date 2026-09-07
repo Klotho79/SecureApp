@@ -508,10 +508,34 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
         }
     }
 
+    /// <summary>Best-effort reconnect before listing addable members, same reasoning as <c>ChatViewModel.EnsureConnectedAsync</c>.</summary>
+    private async Task EnsureConnectedAsync()
+    {
+        if (_messageTransport.IsConnected) return;
+        try
+        {
+            var configuration = await _transportSettingsRepository.GetAsync();
+            if (configuration is { AssignedDeviceId: not null, IsAutoConnectEnabled: true, EndpointUri: { } endpoint })
+                await _messageTransport.ConnectAsync(endpoint);
+        }
+        catch
+        {
+            // Best-effort — LoadAddableMembersAsync below surfaces whatever's still wrong.
+        }
+    }
+
+    /// <summary>
+    /// Unlike <c>NewChatViewModel.LoadMembersAsync</c>, there's no manual paste/QR fallback for
+    /// adding an existing group's member — this IS the only path — so a failure here (2026-09-07,
+    /// same "an unexplained empty list looks exactly like a bug" complaint as <c>NewGroupViewModel</c>)
+    /// gets a real <see cref="StatusErrorMessage"/>, not silence.
+    /// </summary>
     [RelayCommand]
     private async Task LoadAddableMembersAsync()
     {
         IsLoadingAddableMembers = true;
+        StatusErrorMessage = null;
+        await EnsureConnectedAsync();
         try
         {
             var directoryMembers = await _contactDirectoryService.ListMembersAsync();
@@ -521,9 +545,9 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
                     .Where(m => !alreadyIn.Contains(Convert.ToBase64String(m.PublicKey)))
                     .Select(m => new SelectableMemberItem(m.RelayDeviceId, m.DisplayName, m.PublicKey)));
         }
-        catch
+        catch (Exception ex)
         {
-            // Best-effort — see NewChatViewModel.LoadMembersAsync's identical remark.
+            StatusErrorMessage = $"Nepodařilo se načíst seznam členů komunity: {ex.Message}";
         }
         finally
         {

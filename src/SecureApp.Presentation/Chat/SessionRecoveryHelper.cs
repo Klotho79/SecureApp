@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
 
@@ -23,6 +24,22 @@ namespace SecureApp.Presentation.Chat;
 /// </summary>
 public static class SessionRecoveryHelper
 {
+    /// <summary>
+    /// How long one resync gets to actually settle (its invite reach the peer, the peer accept it)
+    /// before another trigger for the SAME peer is allowed to run at all (2026-09-07 — a real bug
+    /// caught live: with several independent triggers for the same broken pairing — the reactive
+    /// per-message <c>TryAutoHealAsync</c>, the opportunistic per-send background resync, the
+    /// on-open <c>ResyncMissingMembersAsync</c> sweep, and the periodic connection-supervisor sweep —
+    /// firing close together (e.g. a burst of test messages) each tore down the session the previous
+    /// one had JUST created, before its invite could even land, so the pairing could never actually
+    /// stabilize and every single message kept failing the same way forever. This is a simple,
+    /// process-wide cooldown, not per-caller: whichever trigger gets there first for a given peer
+    /// wins, and every other trigger for that same peer is a silent no-op until the cooldown lapses.
+    /// </summary>
+    private static readonly TimeSpan _cooldown = TimeSpan.FromSeconds(15);
+
+    private static readonly ConcurrentDictionary<string, DateTimeOffset> _lastResyncAttemptUtc = new();
+
     public static async Task ResyncAsync(
         IMessagingService messagingService,
         IMessageTransport messageTransport,
@@ -33,6 +50,13 @@ public static class SessionRecoveryHelper
         Guid peerRelayDeviceId,
         CancellationToken ct = default)
     {
+        var peerKeyHex = Convert.ToHexStringLower(peerPublicKey);
+        var now = DateTimeOffset.UtcNow;
+        var lastAttempt = _lastResyncAttemptUtc.GetOrAdd(peerKeyHex, DateTimeOffset.MinValue);
+        if (now - lastAttempt < _cooldown)
+            return; // Another trigger already resynced this same peer moments ago — let it settle.
+        _lastResyncAttemptUtc[peerKeyHex] = now;
+
         var existing = await messagingService.FindExistingSessionAsync(peerPublicKey, ct);
         if (existing is not null)
             await messagingService.CloseSessionAsync(existing.Id, ct);
