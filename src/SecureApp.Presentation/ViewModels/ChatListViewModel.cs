@@ -72,6 +72,30 @@ public sealed partial class ChatListViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Closes a 1:1 chat session, letting it be re-paired from scratch (2026-09-07) — the recovery
+    /// path for a session whose Double Ratchet state has become genuinely unrecoverable (not a
+    /// duplicate-delivery false alarm, which <c>MessagingService.ReceiveMessageAsync</c>'s own
+    /// idempotency guard already handles silently — this is for when decryption itself throws a
+    /// real error). No UI existed for this before — a real gap the user hit live testing group
+    /// chats, whose messages travel over these same pairwise sessions (see <c>GroupChat</c>'s own
+    /// remarks). Confirmation dialog lives in <c>ChatListPage</c>'s code-behind, this codebase's
+    /// established "native prompts live in the page" convention — this method itself does the
+    /// actual close once the user has confirmed.
+    /// </summary>
+    [RelayCommand]
+    private async Task ResetSessionAsync(ChatSessionItem? item)
+    {
+        if (item is null) return;
+
+        var session = await _sessionRepository.GetByIdAsync(item.Id);
+        if (session is null) return;
+
+        session.Close();
+        await _sessionRepository.UpdateAsync(session);
+        await LoadAsync();
+    }
+
     private static string DescribeLastActivity(ChatSession session) => session.State switch
     {
         ChatSessionState.Closed => "Uzavřeno",
