@@ -179,6 +179,12 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
                 ResetPairingCommand)));
 
             await LoadMessagesAsync();
+
+            // Auto-heal on open (2026-09-07) — the user's explicit demand after several rounds of
+            // this needing a manual nudge: opening the group screen is now the ONLY thing needed to
+            // fix every broken/missing pairwise link with the other members, with no button anywhere
+            // in this path. Fire-and-forget so it never blocks the screen from showing.
+            _ = ResyncMissingMembersAsync();
         }
         catch (Exception ex)
         {
@@ -338,7 +344,32 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
         }
     }
 
-    /// <summary>Fire-and-forget opportunistic resync for a member <see cref="SendAsync"/> just found unpaired — best-effort by design, same reasoning as this file's other best-effort per-member catches; a failure here only means the NEXT send attempt is no better off than this one, never a crash.</summary>
+    /// <summary>
+    /// Auto-heal on open (2026-09-07): checks every OTHER member for a currently active pairwise
+    /// session and resyncs any that don't have one — covers both a member who was never paired
+    /// (their device came online only after the original group invite went out — a real gap the
+    /// user's 3-way live test kept hitting: with 3 devices dropping in and out all session, a pair
+    /// missing its handshake entirely looked identical to a broken one from the outside) and one
+    /// whose session broke and got Closed but never actually got re-established since. Runs every
+    /// time this screen loads — opening the group is now the whole fix, nothing else to press.
+    /// </summary>
+    private async Task ResyncMissingMembersAsync()
+    {
+        var others = _members.Where(m => !m.PublicKey.AsSpan().SequenceEqual(_localPublicKey)).ToList();
+        foreach (var member in others)
+        {
+            ChatSession? existing;
+            try { existing = await _messagingService.FindExistingSessionAsync(member.PublicKey); }
+            catch { continue; }
+
+            if (existing is not null)
+                continue; // already paired and healthy — nothing to do
+
+            await TryBackgroundResyncAsync(member);
+        }
+    }
+
+    /// <summary>Fire-and-forget opportunistic resync for a member <see cref="SendAsync"/> (or <see cref="ResyncMissingMembersAsync"/>) just found unpaired — best-effort by design, same reasoning as this file's other best-effort per-member catches; a failure here only means the NEXT attempt is no better off than this one, never a crash.</summary>
     private async Task TryBackgroundResyncAsync(GroupMember member)
     {
         try
