@@ -104,18 +104,21 @@ public partial class ChatListPage : ContentPage
             _viewModel.OpenGroupCommand.Execute(group);
     }
 
-    /// <summary>Confirmation dialog lives here per this codebase's established "native prompts live in the page code-behind" convention — <see cref="ChatListViewModel.ResetSessionAsync"/> does the actual close once confirmed.</summary>
+    /// <summary>Confirmation dialog lives here per this codebase's established "native prompts live in the page code-behind" convention — <see cref="ChatListViewModel.ResetSessionAsync"/> does the actual resync once confirmed (2026-09-07: a single tap now fully re-pairs on its own, nothing to do on the other device).</summary>
     private async void OnResetSessionClicked(object? sender, EventArgs e)
     {
         if (sender is not Button { BindingContext: ChatSessionItem session }) return;
 
         var confirmed = await DisplayAlertAsync(
-            "Zrušit párování",
-            $"Zrušit párování s '{session.PeerDisplayName}'? Historie zpráv zůstane zachovaná, ale pro další komunikaci se bude appka muset spárovat znovu (např. výběrem jména v Novém chatu).",
-            "Zrušit párování",
+            "Obnovit spojení",
+            $"Obnovit spojení s '{session.PeerDisplayName}'? Historie zpráv zůstane zachovaná. Appka se s ním rovnou znovu spáruje sama — na jeho zařízení není potřeba dělat nic.",
+            "Obnovit spojení",
             "Storno");
         if (!confirmed) return;
 
         await _viewModel.ResetSessionCommand.ExecuteAsync(session);
+
+        if (_viewModel.ResetErrorMessage is { } error)
+            await DisplayAlertAsync("Obnovení se nezdařilo", error, "OK");
     }
 }

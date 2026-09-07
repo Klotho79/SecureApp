@@ -36,10 +36,10 @@
                                     <Label Grid.Column="0" Text="{Binding DisplayNameWithRoleSuffix}" Style="{StaticResource ChipLabel}" />
                                     <!-- Reset pairing (2026-09-07) — reachable right here, not just from the 1:1 chat
                                          list, since every "Local User" row there looks identical and there's no way
-                                         to tell which one is THIS member. See GroupChatViewModel.ResetPairingAsync's
-                                         own remarks: only closes this device's own side of the pairwise session —
-                                         the OTHER person needs to tap the same button on their own device before
-                                         re-pairing (New Chat / "+ Přidat") actually completes. -->
+                                         to tell which one is THIS member. A single tap fully resolves it — see
+                                         GroupChatViewModel.ResetPairingAsync / SessionRecoveryHelper.ResyncAsync's
+                                         own remarks: the other person's device auto-accepts the fresh handshake,
+                                         nothing to press on their end. -->
                                     <Button
                                         Grid.Column="1"
                                         Text="↺"

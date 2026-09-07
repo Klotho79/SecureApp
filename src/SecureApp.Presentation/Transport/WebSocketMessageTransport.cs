@@ -333,6 +333,14 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
     /// <c>IMessagingService.ReceiveMessageAsync</c> and <c>ChatViewModel</c>'s session filtering see
     /// a correctly-correlated envelope and never need to know about this translation.
     /// Returns null (drop the message) if no local session is linked to that sender yet.
+    ///
+    /// A resync (2026-09-07 — see <c>SessionRecoveryHelper.ResyncAsync</c>) leaves the OLD, Closed
+    /// session row in place alongside a brand new one for the same peer, so more than one local
+    /// session can share a <see cref="ChatSession.PeerRelayDeviceId"/> at once. Prefer a non-Closed
+    /// one, and among those the most recently created — otherwise an unordered
+    /// <c>FirstOrDefault</c> could just as easily land back on the stale Closed row and every
+    /// message from a freshly-resynced peer would keep throwing <c>ChatSessionClosedException</c>
+    /// forever instead of actually recovering.
     /// </summary>
     private async Task<MessageEnvelope?> CorrelateToLocalSessionAsync(Guid? senderDeviceId, MessageEnvelope envelope, CancellationToken ct)
     {
@@ -342,7 +350,11 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
         using var scope = _scopeFactory.CreateScope();
         var sessionRepository = scope.ServiceProvider.GetRequiredService<IChatSessionRepository>();
         var sessions = await sessionRepository.GetAllAsync(ct);
-        var localSession = sessions.FirstOrDefault(s => s.PeerRelayDeviceId == senderId);
+        var localSession = sessions
+            .Where(s => s.PeerRelayDeviceId == senderId)
+            .OrderBy(s => s.State == ChatSessionState.Closed) // false (0) sorts before true (1) — non-Closed first
+            .ThenByDescending(s => s.CreatedAtUtc)
+            .FirstOrDefault();
         if (localSession is null)
             return null;
 

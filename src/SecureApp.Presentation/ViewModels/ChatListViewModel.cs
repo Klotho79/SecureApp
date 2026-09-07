@@ -4,19 +4,27 @@ using CommunityToolkit.Mvvm.Input;
 using SecureApp.Domain.Entities;
 using SecureApp.Domain.Enums;
 using SecureApp.Domain.Interfaces.Repositories;
+using SecureApp.Domain.Interfaces.Services;
+using SecureApp.Presentation.Chat;
 
 namespace SecureApp.Presentation.ViewModels;
 
 /// <summary>
 /// Lists existing chat sessions. Split like <see cref="DocumentBrowserViewModel"/>: this partial
-/// is free of any MAUI type (only Domain interfaces + CommunityToolkit.Mvvm), so it's directly
-/// testable from a plain console app; <c>ChatListViewModel.Actions.cs</c> holds the two
-/// Shell-navigation commands.
+/// is free of any MAUI-<em>framework</em> type (only Domain interfaces + CommunityToolkit.Mvvm), so
+/// it's directly testable from a plain console app with mocked interfaces; <c>ChatListViewModel.Actions.cs</c>
+/// holds the two Shell-navigation commands. <see cref="IMessagingService"/>/<see cref="IMessageTransport"/>/etc.
+/// (2026-09-07, for <see cref="ResetSessionAsync"/>'s auto-resync) are just more Domain interfaces,
+/// same as the two repositories already here — they don't break that claim.
 /// </summary>
 public sealed partial class ChatListViewModel : ObservableObject
 {
     private readonly IChatSessionRepository _sessionRepository;
     private readonly IGroupChatRepository _groupChatRepository;
+    private readonly IMessagingService _messagingService;
+    private readonly IMessageTransport _messageTransport;
+    private readonly ITransportSettingsRepository _transportSettingsRepository;
+    private readonly ICurrentUserService _currentUserService;
 
     [ObservableProperty]
     public partial ObservableCollection<ChatSessionItem> Sessions { get; set; }
@@ -37,10 +45,20 @@ public sealed partial class ChatListViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsEmpty { get; set; }
 
-    public ChatListViewModel(IChatSessionRepository sessionRepository, IGroupChatRepository groupChatRepository)
+    public ChatListViewModel(
+        IChatSessionRepository sessionRepository,
+        IGroupChatRepository groupChatRepository,
+        IMessagingService messagingService,
+        IMessageTransport messageTransport,
+        ITransportSettingsRepository transportSettingsRepository,
+        ICurrentUserService currentUserService)
     {
         _sessionRepository = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
         _groupChatRepository = groupChatRepository ?? throw new ArgumentNullException(nameof(groupChatRepository));
+        _messagingService = messagingService ?? throw new ArgumentNullException(nameof(messagingService));
+        _messageTransport = messageTransport ?? throw new ArgumentNullException(nameof(messageTransport));
+        _transportSettingsRepository = transportSettingsRepository ?? throw new ArgumentNullException(nameof(transportSettingsRepository));
+        _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         Sessions = [];
         Groups = [];
         HasNoGroups = true;
@@ -72,27 +90,50 @@ public sealed partial class ChatListViewModel : ObservableObject
         }
     }
 
+    [ObservableProperty]
+    public partial string? ResetErrorMessage { get; set; }
+
     /// <summary>
-    /// Closes a 1:1 chat session, letting it be re-paired from scratch (2026-09-07) — the recovery
-    /// path for a session whose Double Ratchet state has become genuinely unrecoverable (not a
-    /// duplicate-delivery false alarm, which <c>MessagingService.ReceiveMessageAsync</c>'s own
-    /// idempotency guard already handles silently — this is for when decryption itself throws a
-    /// real error). No UI existed for this before — a real gap the user hit live testing group
-    /// chats, whose messages travel over these same pairwise sessions (see <c>GroupChat</c>'s own
-    /// remarks). Confirmation dialog lives in <c>ChatListPage</c>'s code-behind, this codebase's
-    /// established "native prompts live in the page" convention — this method itself does the
-    /// actual close once the user has confirmed.
+    /// Fully resyncs a 1:1 chat session in one tap (2026-09-07) — the recovery path for a session
+    /// whose Double Ratchet state has become genuinely unrecoverable (not a duplicate-delivery false
+    /// alarm, which <c>MessagingService.ReceiveMessageAsync</c>'s own idempotency guard already
+    /// handles silently — this is for when decryption itself throws a real error).
+    ///
+    /// An earlier version of this just closed the session and told the user to press the same
+    /// button on the OTHER device too — that turned out to be a dead end live (nothing ever
+    /// re-paired afterward). <see cref="SessionRecoveryHelper.ResyncAsync"/> now does the whole
+    /// close-plus-fresh-handshake-plus-invite sequence right here, and the receiving side
+    /// (<c>App.OnPairingInviteReceived</c>) always accepts a fresh invite from an already-paired
+    /// peer instead of silently ignoring it — so only THIS device needs to act.
+    /// Confirmation dialog lives in <c>ChatListPage</c>'s code-behind, this codebase's established
+    /// "native prompts live in the page" convention — this method runs once the user has confirmed.
     /// </summary>
     [RelayCommand]
     private async Task ResetSessionAsync(ChatSessionItem? item)
     {
         if (item is null) return;
 
+        ResetErrorMessage = null;
         var session = await _sessionRepository.GetByIdAsync(item.Id);
         if (session is null) return;
 
-        session.Close();
-        await _sessionRepository.UpdateAsync(session);
+        if (session.PeerRelayDeviceId is not { } relayDeviceId)
+        {
+            ResetErrorMessage = $"S {session.PeerDisplayName} chybí propojení na relay zařízení — obnovit spojení nelze.";
+            return;
+        }
+
+        try
+        {
+            await SessionRecoveryHelper.ResyncAsync(
+                _messagingService, _messageTransport, _transportSettingsRepository, _currentUserService,
+                session.PeerDisplayName, session.PeerIdentityPublicKey, relayDeviceId);
+        }
+        catch (Exception ex)
+        {
+            ResetErrorMessage = $"Nepodařilo se obnovit spojení s {session.PeerDisplayName}: {ex.Message}";
+        }
+
         await LoadAsync();
     }
 

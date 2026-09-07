@@ -30,6 +30,7 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
     private readonly ICurrentUserService _currentUserService;
     private readonly ISharedLibraryService _libraryService;
     private readonly IContactDirectoryService _contactDirectoryService;
+    private readonly ITransportSettingsRepository _transportSettingsRepository;
 
     private Guid _groupChatId;
     private byte[] _localPublicKey = [];
@@ -92,7 +93,8 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
         IMessageTransport messageTransport,
         ICurrentUserService currentUserService,
         ISharedLibraryService libraryService,
-        IContactDirectoryService contactDirectoryService)
+        IContactDirectoryService contactDirectoryService,
+        ITransportSettingsRepository transportSettingsRepository)
     {
         _groupChatRepository = groupChatRepository ?? throw new ArgumentNullException(nameof(groupChatRepository));
         _groupMemberRepository = groupMemberRepository ?? throw new ArgumentNullException(nameof(groupMemberRepository));
@@ -103,6 +105,7 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         _libraryService = libraryService ?? throw new ArgumentNullException(nameof(libraryService));
         _contactDirectoryService = contactDirectoryService ?? throw new ArgumentNullException(nameof(contactDirectoryService));
+        _transportSettingsRepository = transportSettingsRepository ?? throw new ArgumentNullException(nameof(transportSettingsRepository));
 
         Title = "Skupina";
         Messages = [];
@@ -260,11 +263,13 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
                 if (session is null)
                 {
                     // Not yet paired with this member (their device hasn't come online to complete
-                    // the pairwise handshake since being added) — skip them for this message rather
-                    // than blocking the whole send; once paired they'll simply have missed messages
-                    // sent before that point, same "no history backfill" gap 1:1 chat already has
-                    // for an offline recipient beyond the relay's own outbox window.
+                    // the pairwise handshake since being added — or a previous session with them
+                    // broke and got closed) — skip them for THIS message rather than blocking the
+                    // whole send, but kick off a resync in the background (2026-09-07) so a future
+                    // message has a real chance: matches this app's "the app should reconnect on
+                    // its own" recovery policy rather than requiring a manual reset tap first.
                     unreachable.Add(member.DisplayName);
+                    _ = TryBackgroundResyncAsync(member);
                     continue;
                 }
 
@@ -303,31 +308,83 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
     /// genuinely undecryptable (2026-09-07) — same underlying action as
     /// <c>ChatListViewModel.ResetSessionAsync</c>, just reachable directly from the group's own
     /// member list instead of requiring a detour through the 1:1 chat list, where every "Local
-    /// User" row looks identical and there's no way to tell which one is this member. Only closes
-    /// THIS device's side — see the button's own remarks in <c>GroupChatPage.xaml</c> for why the
-    /// OTHER device needs to do the same before re-pairing actually completes.
+    /// User" row looks identical and there's no way to tell which one is this member.
+    ///
+    /// A single tap fully resolves it — <see cref="SessionRecoveryHelper.ResyncAsync"/> closes,
+    /// re-handshakes and re-invites all in one call, and the OTHER device auto-accepts the fresh
+    /// invite (<c>App.OnPairingInviteReceived</c>) without needing to press anything itself. An
+    /// earlier version required the same button pressed on both devices with no actual re-pairing
+    /// step after that — a dead end caught live; see this method's own git history.
     /// </summary>
     [RelayCommand]
     private async Task ResetPairingAsync(GroupMemberItem? member)
     {
         if (member is null || member.IsMe) return;
 
+        var groupMember = _members.FirstOrDefault(m => m.PublicKey.AsSpan().SequenceEqual(member.PublicKey));
+        if (groupMember is null) return;
+
         StatusErrorMessage = null;
         try
         {
-            var session = await _messagingService.FindExistingSessionAsync(member.PublicKey);
-            if (session is null)
-            {
-                StatusErrorMessage = $"S uživatelem {member.DisplayName} zatím není žádné aktivní párování.";
-                return;
-            }
-
-            await _messagingService.CloseSessionAsync(session.Id);
-            StatusErrorMessage = $"Párování s {member.DisplayName} zrušeno na tomto zařízení. Stejné tlačítko musí použít i {member.DisplayName} na svém zařízení — pak se přes „+ Přidat“ nebo Nový chat spárujete znovu.";
+            await SessionRecoveryHelper.ResyncAsync(
+                _messagingService, _messageTransport, _transportSettingsRepository, _currentUserService,
+                groupMember.DisplayName, groupMember.PublicKey, groupMember.RelayDeviceId);
+            StatusErrorMessage = $"Spojení s {member.DisplayName} bylo obnoveno.";
         }
         catch (Exception ex)
         {
-            StatusErrorMessage = $"Nepodařilo se zrušit párování: {ex.Message}";
+            StatusErrorMessage = $"Nepodařilo se obnovit spojení s {member.DisplayName}: {ex.Message}";
+        }
+    }
+
+    /// <summary>Fire-and-forget opportunistic resync for a member <see cref="SendAsync"/> just found unpaired — best-effort by design, same reasoning as this file's other best-effort per-member catches; a failure here only means the NEXT send attempt is no better off than this one, never a crash.</summary>
+    private async Task TryBackgroundResyncAsync(GroupMember member)
+    {
+        try
+        {
+            await SessionRecoveryHelper.ResyncAsync(
+                _messagingService, _messageTransport, _transportSettingsRepository, _currentUserService,
+                member.DisplayName, member.PublicKey, member.RelayDeviceId);
+        }
+        catch
+        {
+            // Best-effort — see the remark above.
+        }
+    }
+
+    /// <summary>
+    /// Auto-heal (2026-09-07): triggered from <see cref="HandleEnvelopeReceivedAsync"/>'s catch
+    /// block whenever a genuine ratchet decrypt failure surfaces (not the idempotency guard's
+    /// silent-duplicate case — that never throws) — resyncs the broken member's pairwise session
+    /// automatically, no button press required on either device. The one message that failed to
+    /// decrypt is unrecoverable either way (Double Ratchet forward secrecy — see
+    /// <c>MessagingService.ReceiveMessageAsync</c>'s own remarks), but everything the member sends
+    /// after this point should go through cleanly once the resync completes.
+    /// </summary>
+    private async Task TryAutoHealAsync(Guid sessionId, Exception originalError)
+    {
+        try
+        {
+            var session = await _chatSessionRepository.GetByIdAsync(sessionId);
+            var member = session is null
+                ? null
+                : _members.FirstOrDefault(m => m.PublicKey.AsSpan().SequenceEqual(session.PeerIdentityPublicKey));
+
+            if (session is null || member is null)
+            {
+                StatusErrorMessage = $"Nepodařilo se zpracovat příchozí zprávu skupiny: {originalError.Message}";
+                return;
+            }
+
+            await SessionRecoveryHelper.ResyncAsync(
+                _messagingService, _messageTransport, _transportSettingsRepository, _currentUserService,
+                member.DisplayName, member.PublicKey, member.RelayDeviceId);
+            StatusErrorMessage = $"Spojení s {member.DisplayName} se automaticky obnovilo na pozadí. Tahle jedna zpráva se ztratila, další už by měly projít v pořádku.";
+        }
+        catch (Exception healEx)
+        {
+            StatusErrorMessage = $"Zprávu se nepodařilo zpracovat a automatické obnovení spojení selhalo: {healEx.Message}";
         }
     }
 
@@ -484,7 +541,7 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
         }
         catch (Exception ex)
         {
-            StatusErrorMessage = $"Nepodařilo se zpracovat příchozí zprávu skupiny: {ex.Message}";
+            await TryAutoHealAsync(envelope.SessionId, ex);
         }
     }
 }

@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using SecureApp.Domain.Entities;
+using SecureApp.Domain.Enums;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Presentation.Chat;
@@ -24,6 +25,75 @@ public partial class App : Application
 			transport.PairingInviteReceived += OnPairingInviteReceived;
 			transport.GroupInviteReceived += OnGroupInviteReceived;
 		}
+
+		// 2026-09-07: the user's explicit, direct feedback after live-testing group chats — manually
+		// pressing a reset button on two separate devices to fix a broken pairing was rejected
+		// outright ("nesmysl", i.e. nonsense) in favor of the app checking and fixing itself in the
+		// background. Runs for the app's whole foreground lifetime, same as the event subscriptions
+		// just above — see RunHealthCheckOnceAsync's own remarks for exactly what it checks and its
+		// honest scope (foreground-process-only, no OS background-execution wiring in this pass).
+		_ = RunBackgroundHealthCheckLoopAsync();
+	}
+
+	private static readonly TimeSpan _healthCheckInterval = TimeSpan.FromMinutes(3);
+
+	private static async Task RunBackgroundHealthCheckLoopAsync()
+	{
+		while (true)
+		{
+			try { await Task.Delay(_healthCheckInterval); }
+			catch { return; }
+
+			await RunHealthCheckOnceAsync();
+		}
+	}
+
+	/// <summary>
+	/// Background self-healing sweep: looks for a peer whose ONLY local <see cref="ChatSession"/>
+	/// row is Closed — meaning an earlier <see cref="SessionRecoveryHelper.ResyncAsync"/> call
+	/// closed the old session but never got as far as sending (or even creating) its replacement,
+	/// most likely because the relay wasn't connected at that exact moment — and retries the whole
+	/// resync. Nothing to do if the relay isn't connected right now either; tried again next sweep.
+	/// </summary>
+	private static async Task RunHealthCheckOnceAsync()
+	{
+		var services = IPlatformApplication.Current?.Services;
+		if (services is null) return;
+
+		var transport = services.GetService<IMessageTransport>();
+		if (transport is null || !transport.IsConnected) return;
+
+		using var scope = services.CreateScope();
+		var sessionRepository = scope.ServiceProvider.GetRequiredService<IChatSessionRepository>();
+		var messagingService = scope.ServiceProvider.GetRequiredService<IMessagingService>();
+		var transportSettings = scope.ServiceProvider.GetRequiredService<ITransportSettingsRepository>();
+		var currentUserService = scope.ServiceProvider.GetRequiredService<ICurrentUserService>();
+
+		IReadOnlyList<ChatSession> sessions;
+		try { sessions = await sessionRepository.GetAllAsync(); }
+		catch { return; }
+
+		var stalePeers = sessions
+			.GroupBy(s => Convert.ToHexStringLower(s.PeerIdentityPublicKey))
+			.Where(group => group.All(s => s.State == ChatSessionState.Closed))
+			.Select(group => group.OrderByDescending(s => s.ModifiedAtUtc).First());
+
+		foreach (var stale in stalePeers)
+		{
+			if (stale.PeerRelayDeviceId is not { } relayDeviceId)
+				continue;
+
+			try
+			{
+				await SessionRecoveryHelper.ResyncAsync(
+					messagingService, transport, transportSettings, currentUserService,
+					stale.PeerDisplayName, stale.PeerIdentityPublicKey, relayDeviceId);
+			}
+			catch
+			{
+				// Best-effort — retried again next sweep.
+			}
+		}
 	}
 
 	private static async void OnPairingInviteReceived(object? sender, string inviteBlob)
@@ -45,8 +115,15 @@ public partial class App : Application
 		var messagingService = scope.ServiceProvider.GetRequiredService<IMessagingService>();
 		try
 		{
-			if (await messagingService.FindExistingSessionAsync(invite.InitiatorPublicKey) is not null)
-				return; // Already paired — e.g. the sender's own fallback QR was also scanned separately.
+			// A fresh handshake invite from a peer we already have a session with (2026-09-07) now
+			// means THAT SIDE determined a resync was needed (see SessionRecoveryHelper.ResyncAsync)
+			// and is trying to fix things without any action required here — so always accept it,
+			// closing this device's own stale copy first, rather than silently ignoring it as before.
+			// (The old behavior assumed "already paired" could only mean a redundant duplicate scan
+			// of the initiator's own QR — accepting-and-replacing is harmless in that case too, just
+			// a wasted extra handshake.)
+			if (await messagingService.FindExistingSessionAsync(invite.InitiatorPublicKey) is { } existingSession)
+				await messagingService.CloseSessionAsync(existingSession.Id);
 
 			await messagingService.AcceptSessionAsync(invite.InitiatorDisplayName, invite.InitiatorPublicKey, invite.InitiatorRelayDeviceId, invite.HandshakeCipherText);
 		}

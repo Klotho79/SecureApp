@@ -4,9 +4,11 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SecureApp.Domain.Entities;
 using SecureApp.Domain.Enums;
+using SecureApp.Domain.Exceptions;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Domain.ValueObjects;
+using SecureApp.Presentation.Chat;
 using SecureApp.Presentation.Views;
 
 namespace SecureApp.Presentation.ViewModels;
@@ -30,6 +32,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
     private readonly IMessageTransport _messageTransport;
     private readonly ISharedLibraryService _libraryService;
     private readonly ITransportSettingsRepository _transportSettingsRepository;
+    private readonly ICurrentUserService _currentUserService;
 
     private Guid _chatSessionId;
     private EventHandler<MessageEnvelope>? _envelopeReceivedHandler;
@@ -71,7 +74,8 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         IMessagingService messagingService,
         IMessageTransport messageTransport,
         ISharedLibraryService libraryService,
-        ITransportSettingsRepository transportSettingsRepository)
+        ITransportSettingsRepository transportSettingsRepository,
+        ICurrentUserService currentUserService)
     {
         _sessionRepository = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
         _messageRepository = messageRepository ?? throw new ArgumentNullException(nameof(messageRepository));
@@ -79,6 +83,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         _messageTransport = messageTransport ?? throw new ArgumentNullException(nameof(messageTransport));
         _libraryService = libraryService ?? throw new ArgumentNullException(nameof(libraryService));
         _transportSettingsRepository = transportSettingsRepository ?? throw new ArgumentNullException(nameof(transportSettingsRepository));
+        _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
 
         Title = "Chat"; // "Chat" is used identically in Czech, kept as-is
         Messages = [];
@@ -194,7 +199,19 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         try
         {
             var plaintext = Encoding.UTF8.GetBytes(text);
-            var (message, envelope) = await _messagingService.SendMessageAsync(_chatSessionId, plaintext, attachmentLibraryFileId: attachmentId, attachmentFileName: attachmentName);
+            Message message;
+            MessageEnvelope envelope;
+            try
+            {
+                (message, envelope) = await _messagingService.SendMessageAsync(_chatSessionId, plaintext, attachmentLibraryFileId: attachmentId, attachmentFileName: attachmentName);
+            }
+            catch (ChatSessionClosedException)
+            {
+                // The session broke earlier (a decrypt-failure auto-heal, or a manual "↺" reset) but
+                // nothing had re-paired since — resync right now and retry this exact send once
+                // (2026-09-07), instead of just failing and making the user notice and act.
+                (message, envelope) = await ResyncAndRetrySendAsync(plaintext, attachmentId, attachmentName);
+            }
 
             Messages.Add(new ChatMessageItem(message.Id, true, text, message.CreatedAtUtc, message.Status, message.AttachmentLibraryFileId, message.AttachmentFileName));
 
@@ -222,6 +239,54 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         catch (Exception ex)
         {
             StatusErrorMessage = $"Nepodařilo se odeslat: {ex.Message}";
+        }
+    }
+
+    /// <summary>Resyncs this thread's peer (see <see cref="SessionRecoveryHelper.ResyncAsync"/>) and retries the same send once against the fresh session — <see cref="_chatSessionId"/> is repointed at the new session id so the rest of this ViewModel (loading, listening) keeps working transparently.</summary>
+    private async Task<(Message, MessageEnvelope)> ResyncAndRetrySendAsync(ReadOnlyMemory<byte> plaintext, Guid? attachmentId, string? attachmentName)
+    {
+        var session = await _sessionRepository.GetByIdAsync(_chatSessionId)
+            ?? throw new ChatSessionNotFoundException(_chatSessionId);
+        if (session.PeerRelayDeviceId is not { } relayDeviceId)
+            throw new InvalidOperationException($"S {session.PeerDisplayName} chybí propojení na relay zařízení — obnovit spojení nelze.");
+
+        await SessionRecoveryHelper.ResyncAsync(
+            _messagingService, _messageTransport, _transportSettingsRepository, _currentUserService,
+            session.PeerDisplayName, session.PeerIdentityPublicKey, relayDeviceId);
+
+        var newSession = await _sessionRepository.GetByPeerPublicKeyAsync(session.PeerIdentityPublicKey)
+            ?? throw new InvalidOperationException("Obnovení spojení se nezdařilo.");
+        _chatSessionId = newSession.Id;
+
+        return await _messagingService.SendMessageAsync(_chatSessionId, plaintext, attachmentLibraryFileId: attachmentId, attachmentFileName: attachmentName);
+    }
+
+    /// <summary>
+    /// Auto-heal (2026-09-07): triggered from <see cref="HandleEnvelopeReceivedAsync"/>'s catch block
+    /// on a genuine ratchet decrypt failure — resyncs the session automatically, no button press
+    /// required. That one message is unrecoverable either way (Double Ratchet forward secrecy — see
+    /// <c>MessagingService.ReceiveMessageAsync</c>'s own remarks), but future messages should go
+    /// through once this completes.
+    /// </summary>
+    private async Task TryAutoHealAsync(Exception originalError)
+    {
+        try
+        {
+            var session = await _sessionRepository.GetByIdAsync(_chatSessionId);
+            if (session?.PeerRelayDeviceId is not { } relayDeviceId)
+            {
+                StatusErrorMessage = $"Nepodařilo se zpracovat příchozí zprávu: {originalError.Message}";
+                return;
+            }
+
+            await SessionRecoveryHelper.ResyncAsync(
+                _messagingService, _messageTransport, _transportSettingsRepository, _currentUserService,
+                session.PeerDisplayName, session.PeerIdentityPublicKey, relayDeviceId);
+            StatusErrorMessage = $"Spojení s {session.PeerDisplayName} se automaticky obnovilo na pozadí. Tahle jedna zpráva se ztratila, další už by měly projít v pořádku.";
+        }
+        catch (Exception healEx)
+        {
+            StatusErrorMessage = $"Zprávu se nepodařilo zpracovat a automatické obnovení spojení selhalo: {healEx.Message}";
         }
     }
 
@@ -277,7 +342,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         }
         catch (Exception ex)
         {
-            StatusErrorMessage = $"Nepodařilo se zpracovat příchozí zprávu: {ex.Message}";
+            await TryAutoHealAsync(ex);
         }
     }
 
