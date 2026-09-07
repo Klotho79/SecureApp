@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.Http.Json;
-using System.Text;
 using System.Text.Json;
 using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Domain.ValueObjects;
@@ -14,30 +13,16 @@ public sealed class HttpRelayAdminService : IRelayAdminService
     // serialize/bind camelCase by default, plain JsonSerializerOptions.Default is case-sensitive.
     private static readonly JsonSerializerOptions HttpJsonOptions = new(JsonSerializerDefaults.Web);
 
-    private readonly ISecureVaultKeyStore _vault;
     private readonly HttpClient _httpClient = new();
 
-    public HttpRelayAdminService(ISecureVaultKeyStore vault)
-    {
-        _vault = vault ?? throw new ArgumentNullException(nameof(vault));
-    }
+    // Deliberately no ISecureVaultKeyStore dependency (2026-09-07) — see IRelayAdminService's own
+    // remarks: the admin secret is never persisted by this class at all, only ever passed straight
+    // through to the one HTTP call that needs it.
 
-    public async Task<bool> HasAdminSecretAsync(CancellationToken ct = default)
-        => await _vault.RetrieveSecretAsync(RelayDeviceVaultKeys.AdminSecret, ct) is not null;
-
-    public async Task SetAdminSecretAsync(string adminSecret, CancellationToken ct = default)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(adminSecret);
-        await _vault.StoreSecretAsync(RelayDeviceVaultKeys.AdminSecret, Encoding.UTF8.GetBytes(adminSecret), ct);
-    }
-
-    public async Task<(string InviteCode, DateTimeOffset ExpiresAtUtc)> CreateInviteAsync(Uri endpoint, string? displayNameHint, int validForMinutes, CancellationToken ct = default)
+    public async Task<(string InviteCode, DateTimeOffset ExpiresAtUtc)> CreateInviteAsync(Uri endpoint, string adminSecret, string? displayNameHint, int validForMinutes, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
-
-        var secretBytes = await _vault.RetrieveSecretAsync(RelayDeviceVaultKeys.AdminSecret, ct)
-            ?? throw new InvalidOperationException("No admin secret is stored on this device yet — enter it above first.");
-        var adminSecret = Encoding.UTF8.GetString(secretBytes);
+        ArgumentException.ThrowIfNullOrWhiteSpace(adminSecret);
 
         var invitesUri = new Uri(ToHttpUri(endpoint), "admin/invites");
         using var request = new HttpRequestMessage(HttpMethod.Post, invitesUri)
@@ -48,7 +33,7 @@ public sealed class HttpRelayAdminService : IRelayAdminService
 
         using var response = await _httpClient.SendAsync(request, ct);
         if (response.StatusCode == HttpStatusCode.Unauthorized)
-            throw new InvalidOperationException("The relay rejected the stored admin secret — it may be wrong or have changed.");
+            throw new InvalidOperationException("Relay odmítl zadané admin heslo.");
         response.EnsureSuccessStatusCode();
 
         var result = await response.Content.ReadFromJsonAsync<InviteResponse>(HttpJsonOptions, ct)
@@ -56,61 +41,51 @@ public sealed class HttpRelayAdminService : IRelayAdminService
         return (result.Code, result.ExpiresAtUtc);
     }
 
-    public async Task<IReadOnlyList<PendingActivationRequest>> GetPendingActivationRequestsAsync(Uri endpoint, CancellationToken ct = default)
+    public async Task<IReadOnlyList<PendingActivationRequest>> GetPendingActivationRequestsAsync(Uri endpoint, string adminSecret, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
+        ArgumentException.ThrowIfNullOrWhiteSpace(adminSecret);
 
-        var adminSecret = await GetStoredAdminSecretAsync(ct);
         var listUri = new Uri(ToHttpUri(endpoint), "admin/activation-requests");
         using var request = new HttpRequestMessage(HttpMethod.Get, listUri);
         request.Headers.Add("X-Admin-Secret", adminSecret);
 
         using var response = await _httpClient.SendAsync(request, ct);
         if (response.StatusCode == HttpStatusCode.Unauthorized)
-            throw new InvalidOperationException("The relay rejected the stored admin secret — it may be wrong or have changed.");
+            throw new InvalidOperationException("Relay odmítl zadané admin heslo.");
         response.EnsureSuccessStatusCode();
 
         var results = await response.Content.ReadFromJsonAsync<List<ActivationRequestSummary>>(HttpJsonOptions, ct) ?? [];
         return results.Select(r => new PendingActivationRequest(r.Id, r.DisplayName, r.Email, r.KeyFingerprint, r.CreatedAtUtc)).ToList();
     }
 
-    public Task ApproveActivationRequestAsync(Uri endpoint, Guid requestId, CancellationToken ct = default)
-        => PostActivationDecisionAsync(endpoint, requestId, "approve", ct);
+    public Task ApproveActivationRequestAsync(Uri endpoint, string adminSecret, Guid requestId, CancellationToken ct = default)
+        => PostActivationDecisionAsync(endpoint, adminSecret, requestId, "approve", ct);
 
-    public Task RejectActivationRequestAsync(Uri endpoint, Guid requestId, CancellationToken ct = default)
-        => PostActivationDecisionAsync(endpoint, requestId, "reject", ct);
+    public Task RejectActivationRequestAsync(Uri endpoint, string adminSecret, Guid requestId, CancellationToken ct = default)
+        => PostActivationDecisionAsync(endpoint, adminSecret, requestId, "reject", ct);
 
-    private async Task PostActivationDecisionAsync(Uri endpoint, Guid requestId, string action, CancellationToken ct)
+    private async Task PostActivationDecisionAsync(Uri endpoint, string adminSecret, Guid requestId, string action, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
+        ArgumentException.ThrowIfNullOrWhiteSpace(adminSecret);
 
-        var adminSecret = await GetStoredAdminSecretAsync(ct);
         var decisionUri = new Uri(ToHttpUri(endpoint), $"admin/activation-requests/{requestId}/{action}");
         using var request = new HttpRequestMessage(HttpMethod.Post, decisionUri);
         request.Headers.Add("X-Admin-Secret", adminSecret);
 
         using var response = await _httpClient.SendAsync(request, ct);
         if (response.StatusCode == HttpStatusCode.Unauthorized)
-            throw new InvalidOperationException("The relay rejected the stored admin secret — it may be wrong or have changed.");
+            throw new InvalidOperationException("Relay odmítl zadané admin heslo.");
         if (response.StatusCode == HttpStatusCode.Conflict)
             throw new InvalidOperationException("This request was already approved or rejected — nothing left to do.");
         response.EnsureSuccessStatusCode();
     }
 
-    private async Task<string> GetStoredAdminSecretAsync(CancellationToken ct)
-    {
-        var secretBytes = await _vault.RetrieveSecretAsync(RelayDeviceVaultKeys.AdminSecret, ct)
-            ?? throw new InvalidOperationException("No admin secret is stored on this device yet — enter it above first.");
-        return Encoding.UTF8.GetString(secretBytes);
-    }
-
-    public async Task RequestDeployAsync(Uri endpoint, CancellationToken ct = default)
+    public async Task RequestDeployAsync(Uri endpoint, string adminSecret, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
-
-        var secretBytes = await _vault.RetrieveSecretAsync(RelayDeviceVaultKeys.AdminSecret, ct)
-            ?? throw new InvalidOperationException("No admin secret is stored on this device yet — enter it above first.");
-        var adminSecret = Encoding.UTF8.GetString(secretBytes);
+        ArgumentException.ThrowIfNullOrWhiteSpace(adminSecret);
 
         var deployUri = new Uri(ToHttpUri(endpoint), "admin/deploy");
         using var request = new HttpRequestMessage(HttpMethod.Post, deployUri);
@@ -118,7 +93,7 @@ public sealed class HttpRelayAdminService : IRelayAdminService
 
         using var response = await _httpClient.SendAsync(request, ct);
         if (response.StatusCode == HttpStatusCode.Unauthorized)
-            throw new InvalidOperationException("The relay rejected the stored admin secret — it may be wrong or have changed.");
+            throw new InvalidOperationException("Relay odmítl zadané admin heslo.");
         response.EnsureSuccessStatusCode();
     }
 

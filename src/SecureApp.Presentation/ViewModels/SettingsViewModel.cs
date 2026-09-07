@@ -133,12 +133,13 @@ public sealed partial class SettingsViewModel : ObservableObject
     public partial bool HasSharedLibraryError { get; set; }
 
     // --- Relay admin: approve/reject device activation requests in-app (Admin role only) ---
-
-    [ObservableProperty]
-    public partial bool HasAdminSecret { get; set; }
-
-    [ObservableProperty]
-    public partial bool HasNoAdminSecret { get; set; }
+    //
+    // AdminSecretInputText (2026-09-07) is deliberately NEVER persisted anywhere — the user's own
+    // explicit call after reviewing the original design, which stored it in OS-backed secure
+    // storage (Windows DPAPI etc.): that protects against someone without this device's own login,
+    // but not against anything already running under it. Re-typed fresh before every single admin
+    // action (list/approve/reject/redeploy) and cleared immediately after each one — see
+    // IRelayAdminService's own remarks for the same reasoning on the service side.
 
     [ObservableProperty]
     public partial string AdminSecretInputText { get; set; }
@@ -200,7 +201,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         ContactCardQrValue = string.Empty;
         SharedLibraryKeyImportText = string.Empty;
         AdminSecretInputText = string.Empty;
-        HasNoAdminSecret = true;
         CanUseAdminControls = true;
         HasNoSharedLibraryKey = true;
         PendingActivations = [];
@@ -234,8 +234,6 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnHasSharedLibraryKeyChanged(bool value) => HasNoSharedLibraryKey = !value;
 
     partial void OnAdminErrorMessageChanged(string? value) => HasAdminError = !string.IsNullOrEmpty(value);
-
-    partial void OnHasAdminSecretChanged(bool value) => HasNoAdminSecret = !value;
 
     partial void OnIsBusyWithAdminChanged(bool value) => CanUseAdminControls = !value;
 
@@ -275,43 +273,29 @@ public sealed partial class SettingsViewModel : ObservableObject
         await RefreshContactCardAsync();
 
         HasSharedLibraryKey = await _sharedLibraryService.HasSharedKeyAsync();
-        HasAdminSecret = await _relayAdminService.HasAdminSecretAsync();
 
-        if (IsAdmin && HasAdminSecret)
-            await LoadPendingActivationsAsync();
-    }
-
-    [RelayCommand]
-    private async Task SaveAdminSecretAsync()
-    {
-        AdminErrorMessage = null;
-        if (string.IsNullOrWhiteSpace(AdminSecretInputText))
-        {
-            AdminErrorMessage = "Nejprve zadejte SECUREAPP_RELAY_ADMIN_SECRET relay serveru.";
-            return;
-        }
-
-        try
-        {
-            await _relayAdminService.SetAdminSecretAsync(AdminSecretInputText);
-            HasAdminSecret = true;
-            AdminSecretInputText = string.Empty;
-        }
-        catch (Exception ex)
-        {
-            AdminErrorMessage = $"Nepodařilo se uložit admin heslo: {ex.Message}";
-        }
+        // No auto-load of pending activations here anymore (2026-09-07) — that would need the
+        // admin secret, which is never held between actions; the admin types it in and presses
+        // "Obnovit" explicitly instead. See AdminSecretInputText's own remarks.
     }
 
     [RelayCommand]
     private void ToggleContactCardQr() => IsShowingContactCardQr = !IsShowingContactCardQr;
 
-    /// <summary>Lets the user re-enter the admin secret (e.g. after a typo) without needing to know it was even wrong — just shows the input field again; the next Save overwrites whatever was stored before.</summary>
-    [RelayCommand]
-    private void ChangeAdminSecret()
+    /// <summary>True while <see cref="AdminSecretInputText"/> is validated and about to be used — factored out so every admin command below applies the identical check/clear pattern instead of repeating it.</summary>
+    private bool TryTakeAdminSecret(out string adminSecret)
     {
-        AdminErrorMessage = null;
-        HasAdminSecret = false;
+        adminSecret = AdminSecretInputText;
+        if (string.IsNullOrWhiteSpace(adminSecret))
+        {
+            AdminErrorMessage = "Nejprve zadejte admin heslo relay serveru (SECUREAPP_RELAY_ADMIN_SECRET).";
+            return false;
+        }
+
+        // Cleared immediately, whether or not the call below actually succeeds — see
+        // AdminSecretInputText's own remarks: it must never linger longer than one call.
+        AdminSecretInputText = string.Empty;
+        return true;
     }
 
     [RelayCommand]
@@ -323,11 +307,24 @@ public sealed partial class SettingsViewModel : ObservableObject
             AdminErrorMessage = "Nejprve zadejte platnou adresu relay serveru výše.";
             return;
         }
+        if (!TryTakeAdminSecret(out var adminSecret)) return;
+        await RefreshPendingActivationsAsync(endpoint, adminSecret);
+    }
 
+    /// <summary>
+    /// The actual fetch, factored out so Approve/Reject below can refresh the list immediately
+    /// afterward using the SAME already-typed secret they just used — held only in that command's
+    /// own local variable for the remainder of its one execution, never written back to
+    /// <see cref="AdminSecretInputText"/> or anywhere else. Re-typing it a second time just to see
+    /// the list update would be pure friction with no security benefit over reusing it for the
+    /// rest of this one logical action.
+    /// </summary>
+    private async Task RefreshPendingActivationsAsync(Uri endpoint, string adminSecret)
+    {
         IsLoadingActivations = true;
         try
         {
-            var pending = await _relayAdminService.GetPendingActivationRequestsAsync(endpoint);
+            var pending = await _relayAdminService.GetPendingActivationRequestsAsync(endpoint, adminSecret);
             PendingActivations = new ObservableCollection<PendingActivationItem>(pending.Select(ToPendingActivationItem));
             HasNoPendingActivations = PendingActivations.Count == 0;
         }
@@ -350,6 +347,13 @@ public sealed partial class SettingsViewModel : ObservableObject
         ApproveActivationCommand,
         RejectActivationCommand);
 
+    /// <summary>
+    /// Note on the flow this implies: the admin types the secret once, then presses Potvrdit on
+    /// the specific row — see <see cref="TryTakeAdminSecret"/>'s own remarks for why it's consumed
+    /// (cleared) right away; approving a *second* request afterward means typing it again. The
+    /// immediate list refresh right below reuses this same call's own local copy rather than
+    /// asking for it twice in a row for what's really one logical action.
+    /// </summary>
     [RelayCommand]
     private async Task ApproveActivationAsync(Guid id)
     {
@@ -359,11 +363,12 @@ public sealed partial class SettingsViewModel : ObservableObject
             AdminErrorMessage = "Nejprve zadejte platnou adresu relay serveru výše.";
             return;
         }
+        if (!TryTakeAdminSecret(out var adminSecret)) return;
 
         try
         {
-            await _relayAdminService.ApproveActivationRequestAsync(endpoint, id);
-            await LoadPendingActivationsAsync();
+            await _relayAdminService.ApproveActivationRequestAsync(endpoint, adminSecret, id);
+            await RefreshPendingActivationsAsync(endpoint, adminSecret);
         }
         catch (Exception ex)
         {
@@ -380,11 +385,12 @@ public sealed partial class SettingsViewModel : ObservableObject
             AdminErrorMessage = "Nejprve zadejte platnou adresu relay serveru výše.";
             return;
         }
+        if (!TryTakeAdminSecret(out var adminSecret)) return;
 
         try
         {
-            await _relayAdminService.RejectActivationRequestAsync(endpoint, id);
-            await LoadPendingActivationsAsync();
+            await _relayAdminService.RejectActivationRequestAsync(endpoint, adminSecret, id);
+            await RefreshPendingActivationsAsync(endpoint, adminSecret);
         }
         catch (Exception ex)
         {
@@ -409,10 +415,12 @@ public sealed partial class SettingsViewModel : ObservableObject
             return;
         }
 
+        if (!TryTakeAdminSecret(out var adminSecret)) return;
+
         IsBusyWithAdmin = true;
         try
         {
-            await _relayAdminService.RequestDeployAsync(endpoint);
+            await _relayAdminService.RequestDeployAsync(endpoint, adminSecret);
             DeployStatusText = "Nasazení vyžádáno — relay server se za pár sekund znovu sestaví a restartuje.";
         }
         catch (Exception ex)

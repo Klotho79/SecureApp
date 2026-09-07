@@ -5,6 +5,8 @@ internal static class RelayDeviceVaultKeys
 {
     public const string DeviceSecret = "transport:relay-device-secret";
 
-    /// <summary>The relay's <c>SECUREAPP_RELAY_ADMIN_SECRET</c>, typed in once on an admin's device via Settings so invite codes can be minted in-app instead of SSH+curl on the Pi. Only ever present on devices whose local <see cref="SecureApp.Domain.Enums.Role"/> is Admin — see <see cref="HttpRelayAdminService"/>.</summary>
-    public const string AdminSecret = "transport:relay-admin-secret";
+    // No AdminSecret key here (2026-09-07, removed) — the relay's SECUREAPP_RELAY_ADMIN_SECRET is
+    // deliberately never persisted on any device at all now, not even in secure storage. See
+    // IRelayAdminService's own remarks for why: OS-backed vault storage only protects against
+    // someone without this device's own login, not against anything already running under it.
 }

@@ -79,58 +79,54 @@
                     <Label Text="Nové zařízení požádá o aktivaci (jméno, e-mail, otisk klíče) a čeká tady na vaše potvrzení — žádné kódy se nikam neopisují." FontSize="12" TextColor="Gray" />
                     <Label Text="{Binding AdminErrorMessage}" IsVisible="{Binding HasAdminError}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
 
-                    <VerticalStackLayout Spacing="8" IsVisible="{Binding HasNoAdminSecret}">
-                        <Label Text="Admin heslo relay serveru (SECUREAPP_RELAY_ADMIN_SECRET)" FontSize="12" TextColor="Gray" />
-                        <Entry Text="{Binding AdminSecretInputText}" Placeholder="Vložte admin heslo relay serveru" IsPassword="True" />
-                        <Button Text="Uložit admin heslo" Command="{Binding SaveAdminSecretCommand}" />
-                    </VerticalStackLayout>
+                    <!-- Admin heslo (2026-09-07) — nikdy se neukládá, ani v appce, ani na disku;
+                         zadává se vždy znovu před KAŽDOU jednotlivou admin akcí (Obnovit, Potvrdit,
+                         Zamítnout, Znovu nasadit dole) a appka ho hned po použití zahodí. Uživatelovo
+                         vlastní rozhodnutí po posouzení, že i zašifrované úložiště (Windows DPAPI)
+                         chrání jen proti někomu bez přihlášení k tomuto zařízení, ne proti něčemu, co
+                         už pod ním běží. -->
+                    <Label Text="Admin heslo relay serveru (SECUREAPP_RELAY_ADMIN_SECRET) — zadej před každou akcí, nikam se neukládá" FontSize="12" TextColor="Gray" />
+                    <Entry Text="{Binding AdminSecretInputText}" Placeholder="Admin heslo" IsPassword="True" />
 
-                    <VerticalStackLayout Spacing="8" IsVisible="{Binding HasAdminSecret}">
-                        <Label Text="✓ Admin heslo uloženo na tomto zařízení." FontSize="12" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" />
-                        <Button Text="Změnit admin heslo" Style="{StaticResource SecondaryButton}" Command="{Binding ChangeAdminSecretCommand}" />
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <Button Grid.Column="1" Text="⟳ Obnovit" Style="{StaticResource SecondaryButton}" Command="{Binding LoadPendingActivationsCommand}" />
+                    </Grid>
+                    <ActivityIndicator IsRunning="{Binding IsLoadingActivations}" IsVisible="{Binding IsLoadingActivations}" HorizontalOptions="Center" />
 
-                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                            <Button Grid.Column="1" Text="⟳ Obnovit" Style="{StaticResource SecondaryButton}" Command="{Binding LoadPendingActivationsCommand}" />
-                        </Grid>
-                        <ActivityIndicator IsRunning="{Binding IsLoadingActivations}" IsVisible="{Binding IsLoadingActivations}" HorizontalOptions="Center" />
+                    <Label Text="Žádné čekající žádosti." FontSize="12" TextColor="Gray" IsVisible="{Binding HasNoPendingActivations}" />
 
-                        <Label Text="Žádné čekající žádosti." FontSize="12" TextColor="Gray" IsVisible="{Binding HasNoPendingActivations}" />
-
-                        <CollectionView ItemsSource="{Binding PendingActivations}" IsVisible="{Binding HasPendingActivations}">
-                            <CollectionView.ItemsLayout>
-                                <LinearItemsLayout Orientation="Vertical" ItemSpacing="8" />
-                            </CollectionView.ItemsLayout>
-                            <CollectionView.ItemTemplate>
-                                <DataTemplate x:DataType="vm:PendingActivationItem">
-                                    <Border Style="{StaticResource CardBorder}" Margin="0" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
-                                        <VerticalStackLayout Spacing="4">
-                                            <Label Text="{Binding DisplayName}" FontAttributes="Bold" FontSize="14.5" />
-                                            <Label Text="{Binding Email}" FontSize="12.5" TextColor="Gray" />
-                                            <Label Text="{Binding KeyFingerprint}" FontSize="12" FontFamily="Courier" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
-                                            <Label Text="{Binding CreatedText}" FontSize="11" TextColor="Gray" />
-                                            <Grid ColumnDefinitions="*,*" ColumnSpacing="8" Margin="0,6,0,0">
-                                                <Button Grid.Column="0" Text="✓ Potvrdit" Command="{Binding ApproveCommand}" CommandParameter="{Binding Id}" />
-                                                <Button Grid.Column="1" Text="✕ Zamítnout" Style="{StaticResource SecondaryButton}" Command="{Binding RejectCommand}" CommandParameter="{Binding Id}" />
-                                            </Grid>
-                                        </VerticalStackLayout>
-                                    </Border>
-                                </DataTemplate>
-                            </CollectionView.ItemTemplate>
-                        </CollectionView>
-                    </VerticalStackLayout>
+                    <CollectionView ItemsSource="{Binding PendingActivations}" IsVisible="{Binding HasPendingActivations}">
+                        <CollectionView.ItemsLayout>
+                            <LinearItemsLayout Orientation="Vertical" ItemSpacing="8" />
+                        </CollectionView.ItemsLayout>
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:PendingActivationItem">
+                                <Border Style="{StaticResource CardBorder}" Margin="0" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
+                                    <VerticalStackLayout Spacing="4">
+                                        <Label Text="{Binding DisplayName}" FontAttributes="Bold" FontSize="14.5" />
+                                        <Label Text="{Binding Email}" FontSize="12.5" TextColor="Gray" />
+                                        <Label Text="{Binding KeyFingerprint}" FontSize="12" FontFamily="Courier" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
+                                        <Label Text="{Binding CreatedText}" FontSize="11" TextColor="Gray" />
+                                        <Label Text="Zadej admin heslo výše, pak:" FontSize="10.5" TextColor="Gray" Margin="0,4,0,0" />
+                                        <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                            <Button Grid.Column="0" Text="✓ Potvrdit" Command="{Binding ApproveCommand}" CommandParameter="{Binding Id}" />
+                                            <Button Grid.Column="1" Text="✕ Zamítnout" Style="{StaticResource SecondaryButton}" Command="{Binding RejectCommand}" CommandParameter="{Binding Id}" />
+                                        </Grid>
+                                    </VerticalStackLayout>
+                                </Border>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
                 </VerticalStackLayout>
             </Border>
 
             <Border Style="{StaticResource CardBorder}" IsVisible="{Binding IsAdmin}">
                 <VerticalStackLayout Spacing="8">
                     <Label Text="Admin: Nasazení relay serveru" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Label Text="Znovu sestaví a restartuje relay server z posledního kódu nahraného na Pi (git push). Pro tento krok není potřeba SSH — jednorázové nastavení Pi najdete v relay/ops/README.md." FontSize="12" TextColor="Gray" />
+                    <Label Text="Znovu sestaví a restartuje relay server z posledního kódu nahraného na Pi (git push). Pro tento krok není potřeba SSH — jednorázové nastavení Pi najdete v relay/ops/README.md. Použije stejné admin heslo zadané výše." FontSize="12" TextColor="Gray" />
 
-                    <VerticalStackLayout Spacing="8" IsVisible="{Binding HasAdminSecret}">
-                        <Button Text="Znovu nasadit relay" Style="{StaticResource SecondaryButton}" Command="{Binding RedeployRelayCommand}" IsEnabled="{Binding CanUseAdminControls}" />
-                        <Label Text="{Binding DeployStatusText}" FontSize="12" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding HasDeployStatus}" />
-                    </VerticalStackLayout>
-                    <Label Text="Nejprve uložte admin heslo výše." FontSize="12" TextColor="Gray" IsVisible="{Binding HasNoAdminSecret}" />
+                    <Button Text="Znovu nasadit relay" Style="{StaticResource SecondaryButton}" Command="{Binding RedeployRelayCommand}" IsEnabled="{Binding CanUseAdminControls}" />
+                    <Label Text="{Binding DeployStatusText}" FontSize="12" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding HasDeployStatus}" />
                 </VerticalStackLayout>
             </Border>
 
