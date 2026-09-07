@@ -149,6 +149,23 @@ public sealed class MessagingService : IMessagingService
         if (session.State == ChatSessionState.Closed)
             throw new ChatSessionClosedException(envelope.SessionId);
 
+        // Idempotency guard (2026-09-07) — a real bug surfaced this live: if the exact same
+        // envelope somehow reaches this method twice (multiple live listeners on the transport's
+        // singleton EnvelopeReceived event — e.g. a stale ViewModel instance that never got its
+        // StopListening call, on top of the cross-contamination ChatViewModel/GroupChatViewModel
+        // fix below — or a transport-level duplicate delivery), decrypting it a second time fails
+        // outright: a Double Ratchet message key is one-time-use by design, that's the whole point
+        // of forward secrecy. Recognized by its exact wire header — DhPublicKey + MessageNumber
+        // together uniquely identify one message within one sending chain — so a genuine duplicate
+        // just returns the already-stored row instead of re-attempting the ratchet.
+        var alreadyReceived = await _messageRepository.GetBySessionAsync(envelope.SessionId, ct: ct);
+        var duplicate = alreadyReceived.FirstOrDefault(m =>
+            m.Direction == MessageDirection.Inbound &&
+            m.Header.MessageNumber == envelope.Header.MessageNumber &&
+            m.Header.DhPublicKey.AsSpan().SequenceEqual(envelope.Header.DhPublicKey));
+        if (duplicate is not null)
+            return duplicate;
+
         // Decrypting the wire envelope both verifies authenticity and advances the ratchet's
         // receive chain — this must happen exactly once per message, which is also why the
         // decrypted plaintext (not the wire ciphertext) is what gets re-encrypted for storage.
