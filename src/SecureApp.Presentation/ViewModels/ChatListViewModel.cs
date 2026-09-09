@@ -25,6 +25,7 @@ public sealed partial class ChatListViewModel : ObservableObject
     private readonly IMessageTransport _messageTransport;
     private readonly ITransportSettingsRepository _transportSettingsRepository;
     private readonly ICurrentUserService _currentUserService;
+    private readonly IContactDirectoryService _contactDirectoryService;
 
     [ObservableProperty]
     public partial ObservableCollection<ChatSessionItem> Sessions { get; set; }
@@ -51,7 +52,8 @@ public sealed partial class ChatListViewModel : ObservableObject
         IMessagingService messagingService,
         IMessageTransport messageTransport,
         ITransportSettingsRepository transportSettingsRepository,
-        ICurrentUserService currentUserService)
+        ICurrentUserService currentUserService,
+        IContactDirectoryService contactDirectoryService)
     {
         _sessionRepository = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
         _groupChatRepository = groupChatRepository ?? throw new ArgumentNullException(nameof(groupChatRepository));
@@ -59,6 +61,7 @@ public sealed partial class ChatListViewModel : ObservableObject
         _messageTransport = messageTransport ?? throw new ArgumentNullException(nameof(messageTransport));
         _transportSettingsRepository = transportSettingsRepository ?? throw new ArgumentNullException(nameof(transportSettingsRepository));
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
+        _contactDirectoryService = contactDirectoryService ?? throw new ArgumentNullException(nameof(contactDirectoryService));
         Sessions = [];
         Groups = [];
         HasNoGroups = true;
@@ -73,9 +76,16 @@ public sealed partial class ChatListViewModel : ObservableObject
         try
         {
             var sessions = await _sessionRepository.GetAllAsync();
+            // 2026-09-09: prefer each peer's CURRENT name from the relay directory over whatever
+            // got captured once at pairing time — see DirectoryNameResolver's own remarks.
+            var directoryNames = await DirectoryNameResolver.BuildAsync(_contactDirectoryService);
             Sessions = new ObservableCollection<ChatSessionItem>(
                 sessions.OrderByDescending(s => s.LastRatchetedAtUtc ?? s.CreatedAtUtc)
-                    .Select(s => new ChatSessionItem(s.Id, s.PeerDisplayName, s.State, DescribeLastActivity(s), ComputeInitials(s.PeerDisplayName))));
+                    .Select(s =>
+                    {
+                        var name = DirectoryNameResolver.Resolve(directoryNames, s.PeerIdentityPublicKey, s.PeerDisplayName);
+                        return new ChatSessionItem(s.Id, name, s.State, DescribeLastActivity(s), ComputeInitials(name));
+                    }));
             IsEmpty = Sessions.Count == 0;
 
             var groups = await _groupChatRepository.GetAllAsync();

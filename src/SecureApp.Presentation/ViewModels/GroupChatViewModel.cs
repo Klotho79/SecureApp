@@ -36,6 +36,7 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
     private byte[] _localPublicKey = [];
     private byte[] _founderPublicKey = [];
     private IReadOnlyList<GroupMember> _members = [];
+    private IReadOnlyDictionary<string, string> _directoryNames = new Dictionary<string, string>();
     private EventHandler<MessageEnvelope>? _envelopeReceivedHandler;
 
     [ObservableProperty]
@@ -168,9 +169,14 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
             CanManageMembers = isFounder || RoleAccessPolicy.IsAllowed(_currentUserService.Current.Role, RbacAction.InviteGroupMember);
 
             _members = await _groupMemberRepository.GetByGroupAsync(_groupChatId);
+            // 2026-09-09: always resolve against the relay's CURRENT directory rather than trusting
+            // whatever name got captured once at invite time — see DirectoryNameResolver's own
+            // remarks. Stored on the instance so ResolveSenderDisplayNameAsync (message list) uses
+            // the same fresh snapshot without a second directory fetch.
+            _directoryNames = await DirectoryNameResolver.BuildAsync(_contactDirectoryService);
             Members = new ObservableCollection<GroupMemberItem>(_members.Select(m => new GroupMemberItem(
                 m.Id,
-                m.DisplayName,
+                DirectoryNameResolver.Resolve(_directoryNames, m.PublicKey, m.DisplayName),
                 m.PublicKey,
                 IsMe: m.PublicKey.AsSpan().SequenceEqual(_localPublicKey),
                 IsFounder: m.PublicKey.AsSpan().SequenceEqual(_founderPublicKey),
@@ -228,7 +234,8 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
     private async Task<string> ResolveSenderDisplayNameAsync(Guid chatSessionId)
     {
         var session = await _chatSessionRepository.GetByIdAsync(chatSessionId);
-        return session?.PeerDisplayName ?? "Neznámý člen";
+        if (session is null) return "Neznámý člen";
+        return DirectoryNameResolver.Resolve(_directoryNames, session.PeerIdentityPublicKey, session.PeerDisplayName);
     }
 
     private async Task<string> TryDecryptAsync(Message message)
@@ -477,8 +484,9 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
         {
             await _groupMemberRepository.ReplaceAllAsync(_groupChatId, newMembers);
             _members = newMembers;
+            _directoryNames = await DirectoryNameResolver.BuildAsync(_contactDirectoryService);
             Members = new ObservableCollection<GroupMemberItem>(newMembers.Select(m => new GroupMemberItem(
-                m.Id, m.DisplayName, m.PublicKey,
+                m.Id, DirectoryNameResolver.Resolve(_directoryNames, m.PublicKey, m.DisplayName), m.PublicKey,
                 IsMe: m.PublicKey.AsSpan().SequenceEqual(_localPublicKey),
                 IsFounder: m.PublicKey.AsSpan().SequenceEqual(_founderPublicKey),
                 ViewerCanManage: CanManageMembers,

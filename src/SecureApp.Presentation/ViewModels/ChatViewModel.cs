@@ -33,6 +33,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
     private readonly ISharedLibraryService _libraryService;
     private readonly ITransportSettingsRepository _transportSettingsRepository;
     private readonly ICurrentUserService _currentUserService;
+    private readonly IContactDirectoryService _contactDirectoryService;
 
     private Guid _chatSessionId;
     private EventHandler<MessageEnvelope>? _envelopeReceivedHandler;
@@ -75,7 +76,8 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         IMessageTransport messageTransport,
         ISharedLibraryService libraryService,
         ITransportSettingsRepository transportSettingsRepository,
-        ICurrentUserService currentUserService)
+        ICurrentUserService currentUserService,
+        IContactDirectoryService contactDirectoryService)
     {
         _sessionRepository = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
         _messageRepository = messageRepository ?? throw new ArgumentNullException(nameof(messageRepository));
@@ -84,6 +86,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         _libraryService = libraryService ?? throw new ArgumentNullException(nameof(libraryService));
         _transportSettingsRepository = transportSettingsRepository ?? throw new ArgumentNullException(nameof(transportSettingsRepository));
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
+        _contactDirectoryService = contactDirectoryService ?? throw new ArgumentNullException(nameof(contactDirectoryService));
 
         Title = "Chat"; // "Chat" is used identically in Czech, kept as-is
         Messages = [];
@@ -156,7 +159,11 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         try
         {
             var session = await _sessionRepository.GetByIdAsync(_chatSessionId);
-            Title = session?.PeerDisplayName ?? "Chat";
+            // 2026-09-09: prefer the peer's CURRENT name from the relay directory over whatever got
+            // captured once at pairing time — see DirectoryNameResolver's own remarks.
+            Title = session is null
+                ? "Chat"
+                : DirectoryNameResolver.Resolve(await DirectoryNameResolver.BuildAsync(_contactDirectoryService), session.PeerIdentityPublicKey, session.PeerDisplayName);
 
             var messages = await _messageRepository.GetBySessionAsync(_chatSessionId);
             var items = new List<ChatMessageItem>();
