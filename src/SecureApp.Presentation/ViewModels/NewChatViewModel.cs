@@ -403,6 +403,7 @@ public sealed partial class NewChatViewModel : ObservableObject
         var deviceId = configuration?.AssignedDeviceId
             ?? throw new InvalidOperationException("Nejprve se zaregistrujte u relay serveru v Nastavení.");
         var publicKey = await _messagingService.GetLocalIdentityPublicKeyAsync();
+        await _currentUserService.InitializeAsync(); // defensive — see HttpContactDirectoryService.PublishSelfAsync's own remarks on why this must never be skipped
         return new ContactCardBlob(_currentUserService.Current.DisplayName, publicKey, deviceId);
     }
 }

@@ -40,6 +40,15 @@ public sealed class HttpContactDirectoryService : IContactDirectoryService
 
     public async Task PublishSelfAsync(CancellationToken ct = default)
     {
+        // 2026-09-09 — a real, repeatedly-reported bug: without this call, `_currentUserService.Current`
+        // can still be its in-memory constructor default ("Local User") rather than whatever was
+        // actually persisted, if nothing else has initialized it yet. `App.RunConnectionSupervisorLoopAsync`
+        // now connects (and so publishes) almost immediately on every launch, racing ahead of Settings'
+        // own page-level InitializeAsync call — so EVERY app restart re-published the wrong default
+        // name, overwriting whatever the user had actually set the moment before. InitializeAsync is
+        // idempotent (a no-op after the first real call), so calling it defensively here is always safe.
+        await _currentUserService.InitializeAsync(ct);
+
         var publicKey = await _messagingService.GetLocalIdentityPublicKeyAsync(ct);
         var endpoint = await GetHttpEndpointAsync(ct);
         var uri = new Uri(endpoint, "directory/publish");
