@@ -8,18 +8,20 @@ namespace SecureApp.Domain.Policies;
 ///
 /// Current matrix: <see cref="Role.Viewer"/> is denied every <see cref="RbacAction"/> (read-only —
 /// browsing and opening documents is never gated in the first place, so nothing else is needed
-/// to make Viewer read-only). <see cref="Role.Modifier"/> and <see cref="Role.Admin"/> are
-/// equivalent today; the split is reserved for future admin-only features (e.g. managing other
-/// users' roles) that don't exist yet since there's no multi-user model — see
-/// DEVELOPMENT_PLAN.md's Milestone 3 note.
+/// to make Viewer read-only). <see cref="Role.Modifier"/> and <see cref="Role.Admin"/> were fully
+/// equivalent until <see cref="RbacAction.ManageLogbookCatalog"/> (2026-09-09) — the FIRST actual
+/// use of the split this class's own earlier remarks had flagged as "reserved for future
+/// admin-only features": the user's own explicit call, "položky zadá admin", makes editing the
+/// Logbook's catalog Admin-only while every other action stays Modifier-equivalent-to-Admin as before.
 /// </summary>
 public static class RoleAccessPolicy
 {
-    public static bool IsAllowed(Role role, RbacAction action) => role switch
+    public static bool IsAllowed(Role role, RbacAction action) => (role, action) switch
     {
-        Role.Viewer => false,
-        Role.Modifier => true,
-        Role.Admin => true,
+        (Role.Viewer, _) => false,
+        (Role.Admin, _) => true,
+        (Role.Modifier, RbacAction.ManageLogbookCatalog) => false,
+        (Role.Modifier, _) => true,
         _ => false
     };
 }

@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="SecureApp.Presentation.Views.LogbookPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
+    x:DataType="vm:LogbookViewModel"
+    Title="Logbook">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="16" Spacing="12">
+
+            <Label Text="Logbook" Style="{StaticResource PageTitle}" />
+
+            <Label Text="{Binding StatusErrorMessage}" IsVisible="{Binding HasStatusError}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
+            <ActivityIndicator IsRunning="{Binding IsLoading}" IsVisible="{Binding IsLoading}" HorizontalOptions="Center" />
+
+            <!-- Check-listy -->
+            <Border Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="8">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Grid.Column="0" Text="Check-listy" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Button Grid.Column="1" Text="+ Nový" Style="{StaticResource SecondaryButton}" Command="{Binding ToggleAddingChecklistCommand}" IsVisible="{Binding CanManageCatalog}" />
+                    </Grid>
+
+                    <Label Text="Zatím tu žádný check-list není." FontSize="12" TextColor="Gray" IsVisible="{Binding HasNoChecklists}" />
+
+                    <CollectionView x:Name="ChecklistsView" ItemsSource="{Binding Checklists}" SelectionMode="Single" SelectionChanged="OnChecklistSelected">
+                        <CollectionView.ItemsLayout>
+                            <LinearItemsLayout Orientation="Vertical" ItemSpacing="4" />
+                        </CollectionView.ItemsLayout>
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:LogbookChecklistListItem">
+                                <Grid Padding="0,6">
+                                    <Label Text="{Binding Name, StringFormat='{0} ›'}" FontSize="15" />
+                                </Grid>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+
+                    <!-- New checklist form — collapsed by default (2026-09-09, same reasoning as
+                         GroupChatViewModel.IsMembersExpanded: an admin-only form nobody else opens
+                         shouldn't cost every viewer screen space). -->
+                    <VerticalStackLayout Spacing="6" IsVisible="{Binding IsAddingChecklist}">
+                        <Entry Text="{Binding NewChecklistName}" Placeholder="Název check-listu, např. &quot;Před RSI&quot;" />
+                        <Editor Text="{Binding NewChecklistItemsText}" Placeholder="Jedna položka na řádek" HeightRequest="100" AutoSize="TextChanges" />
+                        <Button Text="Vytvořit check-list" Command="{Binding ConfirmAddChecklistCommand}" />
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Zaznamenat výkon -->
+            <Border Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="8">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Grid.Column="0" Text="Zaznamenat výkon" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Button Grid.Column="1" Text="+ Nový typ" Style="{StaticResource SecondaryButton}" Command="{Binding ToggleAddingProcedureTypeCommand}" IsVisible="{Binding CanManageCatalog}" />
+                    </Grid>
+
+                    <Picker ItemsSource="{Binding ProcedureTypeOptions}" ItemDisplayBinding="{Binding Name}" SelectedItem="{Binding SelectedProcedureType}" Title="Typ výkonu" />
+                    <Picker ItemsSource="{Binding LevelOptions}" SelectedIndex="{Binding SelectedLevelIndex}" Title="Úroveň" />
+                    <Entry Text="{Binding NoteText}" Placeholder="Poznámka (nepovinné)" />
+                    <Button Text="Zaznamenat" Command="{Binding RecordProcedureCommand}" />
+
+                    <!-- New procedure-type form — collapsed by default, same reasoning as the checklist one above. -->
+                    <VerticalStackLayout Spacing="6" IsVisible="{Binding IsAddingProcedureType}">
+                        <Entry Text="{Binding NewProcedureTypeName}" Placeholder="Název výkonu, např. &quot;CŽK&quot;" />
+                        <Picker ItemsSource="{Binding CategoryOptions}" SelectedIndex="{Binding SelectedCategoryIndex}" Title="Kategorie" />
+                        <Button Text="Přidat typ výkonu" Command="{Binding ConfirmAddProcedureTypeCommand}" />
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Statistika -->
+            <Border Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Statistika" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Label Text="Zatím žádné zaznamenané výkony." FontSize="12" TextColor="Gray" IsVisible="{Binding HasNoStatistics}" />
+
+                    <CollectionView ItemsSource="{Binding Statistics}" SelectionMode="None">
+                        <CollectionView.ItemsLayout>
+                            <LinearItemsLayout Orientation="Vertical" ItemSpacing="4" />
+                        </CollectionView.ItemsLayout>
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:LogbookStatItem">
+                                <Grid Padding="0,4" ColumnDefinitions="*,Auto">
+                                    <VerticalStackLayout Grid.Column="0">
+                                        <Label Text="{Binding Name}" FontSize="14.5" FontAttributes="Bold" />
+                                        <Label Text="{Binding CategoryLabel}" FontSize="11" TextColor="Gray" />
+                                    </VerticalStackLayout>
+                                    <Label Grid.Column="1" VerticalOptions="Center" FontSize="12" Text="{Binding SummaryText}" />
+                                </Grid>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                </VerticalStackLayout>
+            </Border>
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

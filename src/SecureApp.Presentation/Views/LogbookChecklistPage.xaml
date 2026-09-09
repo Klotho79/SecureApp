@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="SecureApp.Presentation.Views.LogbookChecklistPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
+    x:DataType="vm:LogbookChecklistViewModel"
+    Title="{Binding Title}">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="16" Spacing="12">
+
+            <Label Text="{Binding StatusErrorMessage}" IsVisible="{Binding HasStatusError}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
+            <ActivityIndicator IsRunning="{Binding IsLoading}" IsVisible="{Binding IsLoading}" HorizontalOptions="Center" />
+
+            <CollectionView ItemsSource="{Binding Items}" SelectionMode="None">
+                <CollectionView.ItemsLayout>
+                    <LinearItemsLayout Orientation="Vertical" ItemSpacing="6" />
+                </CollectionView.ItemsLayout>
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="vm:LogbookChecklistRowItem">
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10" Padding="0,4">
+                            <CheckBox Grid.Column="0" IsChecked="{Binding IsChecked}" />
+                            <Label Grid.Column="1" Text="{Binding Text}" VerticalOptions="Center" FontSize="15" LineBreakMode="WordWrap" />
+                        </Grid>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+
+            <Button Text="Vynulovat" Style="{StaticResource SecondaryButton}" Command="{Binding ResetCommand}" />
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

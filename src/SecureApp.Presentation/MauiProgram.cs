@@ -131,6 +131,12 @@ public static class MauiProgram
 		builder.Services.AddTransient<LibraryViewModel>();
 		builder.Services.AddTransient<LibraryPage>();
 
+		// Logbook (2026-09-09) — see GroupChat's own registration comment above for the pattern this follows.
+		builder.Services.AddTransient<LogbookViewModel>();
+		builder.Services.AddTransient<LogbookPage>();
+		builder.Services.AddTransient<LogbookChecklistViewModel>();
+		builder.Services.AddTransient<LogbookChecklistPage>();
+
 		return builder.Build();
 	}
 }

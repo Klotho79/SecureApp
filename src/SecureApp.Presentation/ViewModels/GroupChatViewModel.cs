@@ -67,6 +67,10 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
     [ObservableProperty]
     public partial bool CanManageMembers { get; set; }
 
+    /// <summary>Collapsed by default (2026-09-09 — real complaint: the member card "zabírá třetinu displeje", a third of the screen) so the actual conversation gets the space on a phone; tap the header to expand.</summary>
+    [ObservableProperty]
+    public partial bool IsMembersExpanded { get; set; }
+
     [ObservableProperty]
     public partial bool IsShowingAddMember { get; set; }
 
@@ -451,6 +455,9 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
         }
     }
 
+    [RelayCommand]
+    private void ToggleMembersExpanded() => IsMembersExpanded = !IsMembersExpanded;
+
     // --- Membership management (founder/admin/authorized-user only, see CanManageMembers) ---
 
     [RelayCommand]
@@ -458,7 +465,10 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
     {
         IsShowingAddMember = !IsShowingAddMember;
         if (IsShowingAddMember)
+        {
+            IsMembersExpanded = true; // "+ Přidat" only makes sense expanded — see IsMembersExpanded's own remarks
             await LoadAddableMembersAsync();
+        }
     }
 
     [RelayCommand]

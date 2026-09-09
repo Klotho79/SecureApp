@@ -18,7 +18,7 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
 {
     private const string DatabaseKeyVaultName = "sqlcipher:database-key";
     private const int DatabaseKeySizeBytes = 32; // 256-bit, used as a raw SQLCipher key (not a passphrase put through PBKDF2)
-    private const int CurrentSchemaVersion = 7;
+    private const int CurrentSchemaVersion = 8;
 
     private readonly DataStorageOptions _options;
     private readonly ISecureVaultKeyStore _vault;
@@ -115,6 +115,9 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
 
         if (schemaVersion < 7)
             await ApplyV7SchemaAsync(connection);
+
+        if (schemaVersion < 8)
+            await ApplyV8SchemaAsync(connection);
 
         await connection.ExecuteAsync($"PRAGMA user_version = {CurrentSchemaVersion}");
     }
@@ -367,5 +370,42 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
             )
             """);
         await connection.ExecuteAsync("CREATE INDEX IF NOT EXISTS ix_group_members_group_chat_id ON group_members(group_chat_id)");
+    }
+
+    /// <summary>Logbook (2026-09-09) — checklist templates, an admin-managed procedure-type catalog, and per-entry logged procedures. See <c>LogbookChecklistTemplate</c>/<c>LogbookProcedureType</c>/<c>LogbookProcedureEntry</c>'s own remarks for why each is shaped the way it is.</summary>
+    private static async Task ApplyV8SchemaAsync(SQLiteAsyncConnection connection)
+    {
+        await connection.ExecuteAsync("""
+            CREATE TABLE IF NOT EXISTS logbook_checklist_templates (
+                id                 TEXT PRIMARY KEY NOT NULL,
+                name               TEXT NOT NULL,
+                items_json         TEXT NOT NULL,
+                created_at_utc     TEXT NOT NULL,
+                modified_at_utc    TEXT NOT NULL
+            )
+            """);
+
+        await connection.ExecuteAsync("""
+            CREATE TABLE IF NOT EXISTS logbook_procedure_types (
+                id                 TEXT PRIMARY KEY NOT NULL,
+                name               TEXT NOT NULL,
+                category           INTEGER NOT NULL,
+                created_at_utc     TEXT NOT NULL,
+                modified_at_utc    TEXT NOT NULL
+            )
+            """);
+
+        await connection.ExecuteAsync("""
+            CREATE TABLE IF NOT EXISTS logbook_procedure_entries (
+                id                    TEXT PRIMARY KEY NOT NULL,
+                procedure_type_id     TEXT NOT NULL REFERENCES logbook_procedure_types(id) ON DELETE CASCADE,
+                level                 INTEGER NOT NULL,
+                performed_at_utc      TEXT NOT NULL,
+                note                  TEXT NULL,
+                created_at_utc        TEXT NOT NULL,
+                modified_at_utc       TEXT NOT NULL
+            )
+            """);
+        await connection.ExecuteAsync("CREATE INDEX IF NOT EXISTS ix_logbook_procedure_entries_type_id ON logbook_procedure_entries(procedure_type_id)");
     }
 }

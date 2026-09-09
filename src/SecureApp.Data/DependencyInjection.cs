@@ -65,6 +65,11 @@ public static class DependencyInjection
         services.AddScoped<IRatchetService, RatchetService>();
         services.AddScoped<IMessagingService, MessagingService>();
 
+        // Logbook (2026-09-09) — checklists + an admin-managed procedure catalog + per-entry log.
+        services.AddScoped<ILogbookChecklistRepository, LogbookChecklistRepository>();
+        services.AddScoped<ILogbookProcedureTypeRepository, LogbookProcedureTypeRepository>();
+        services.AddScoped<ILogbookProcedureEntryRepository, LogbookProcedureEntryRepository>();
+
         // NOTE: ISecureVaultKeyStore and IDocumentRenderingService are registered from the
         // Presentation layer instead (MauiProgram.cs) — they need MAUI/platform APIs
         // (SecureStorage, SkiaSharp) that this platform-agnostic class library cannot reference.

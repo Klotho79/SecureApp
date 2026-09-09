@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Maui.Storage;
 using SecureApp.Domain.Enums;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
@@ -51,6 +52,10 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     public partial bool IsAdmin { get; set; }
+
+    /// <summary>Logbook tab show/hide (2026-09-09) — the user's own explicit ask. Stored via <c>Preferences</c> (a per-device display setting, not User data — see LoadAsync/OnIsLogbookVisibleChanged) rather than a new Domain entity/table; takes effect on next launch, not live — see <c>AppShell</c>'s own remarks on why.</summary>
+    [ObservableProperty]
+    public partial bool IsLogbookVisible { get; set; }
 
     // --- Relay (Milestone 5) ---
 
@@ -244,6 +249,9 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     partial void OnHasNoPendingActivationsChanged(bool value) => HasPendingActivations = !value;
 
+    /// <summary>Writes through immediately, not gated behind the "Uložit" button — this is a per-device display preference (see <see cref="IsLogbookVisible"/>'s own remarks), not User data, so there's nothing to "save" beyond flipping the switch. <c>LoadAsync</c> below sets the initial value, which re-invokes this too — a harmless idempotent re-write of the same value.</summary>
+    partial void OnIsLogbookVisibleChanged(bool value) => Preferences.Default.Set(AppShell.LogbookVisibilityPreferenceKey, value);
+
     [RelayCommand]
     private async Task LoadAsync()
     {
@@ -253,6 +261,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         IsAdmin = SelectedRole == Role.Admin;
         IsSaved = false;
         ErrorMessage = null;
+        IsLogbookVisible = Preferences.Default.Get(AppShell.LogbookVisibilityPreferenceKey, false);
 
         var configuration = await _transportSettingsRepository.GetAsync();
         // No saved endpoint yet (first time this device opens Settings) -> pre-fill the
