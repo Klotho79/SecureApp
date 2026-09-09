@@ -10,6 +10,7 @@ using SecureApp.Domain.Exceptions;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Domain.ValueObjects;
+using SecureApp.Presentation.Chat;
 
 namespace SecureApp.Presentation.Transport;
 
@@ -356,9 +357,48 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
             .ThenByDescending(s => s.CreatedAtUtc)
             .FirstOrDefault();
         if (localSession is null)
+        {
+            // 2026-09-09 — the user's own suggestion, directly implemented: instead of silently
+            // dropping a message from a sender we have no local session for (this exact message is
+            // unrecoverable either way — there's no ratchet state to decrypt it against), look them
+            // up in the relay's own directory and pair with them right now, so this doesn't keep
+            // happening for every message that follows. Genuinely fire-and-forget: this method must
+            // still return null for THIS envelope immediately, not block the receive loop waiting on
+            // an HTTP round trip.
+            _ = TryAutoPairWithUnknownSenderAsync(senderId, ct);
             return null;
+        }
 
         return envelope with { SessionId = localSession.Id };
+    }
+
+    /// <summary>See the call site's own remarks in <see cref="CorrelateToLocalSessionAsync"/> for why this exists.</summary>
+    private async Task TryAutoPairWithUnknownSenderAsync(Guid senderRelayDeviceId, CancellationToken ct)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var contactDirectoryService = scope.ServiceProvider.GetRequiredService<IContactDirectoryService>();
+            var members = await contactDirectoryService.ListMembersAsync(ct);
+            var sender = members.FirstOrDefault(m => m.RelayDeviceId == senderRelayDeviceId);
+            if (sender is null)
+                return; // Not (yet) published to the directory — nothing to pair with.
+
+            var messagingService = scope.ServiceProvider.GetRequiredService<IMessagingService>();
+            if (await messagingService.FindExistingSessionAsync(sender.PublicKey, ct) is not null)
+                return; // A session showed up between the lookup above and here — nothing to do.
+
+            var transportSettings = scope.ServiceProvider.GetRequiredService<ITransportSettingsRepository>();
+            var currentUserService = scope.ServiceProvider.GetRequiredService<ICurrentUserService>();
+            await SessionRecoveryHelper.ResyncAsync(
+                messagingService, this, transportSettings, currentUserService,
+                sender.DisplayName, sender.PublicKey, sender.RelayDeviceId, ct);
+        }
+        catch
+        {
+            // Best-effort — the next message from this same sender hits this same path and tries
+            // again; SessionRecoveryHelper.ResyncAsync's own cooldown keeps repeated attempts cheap.
+        }
     }
 
     private static async Task<WireFrame?> ReceiveFrameAsync(ClientWebSocket socket, CancellationToken ct)
