@@ -26,6 +26,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly IMessageTransport _messageTransport;
     private readonly ISharedLibraryService _sharedLibraryService;
     private readonly IRelayAdminService _relayAdminService;
+    private readonly IContactDirectoryService _contactDirectoryService;
 
     private EventHandler<TransportConnectionState>? _connectionStateHandler;
     private IDispatcherTimer? _activationPollTimer;
@@ -181,7 +182,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         ITransportSettingsRepository transportSettingsRepository,
         IMessageTransport messageTransport,
         ISharedLibraryService sharedLibraryService,
-        IRelayAdminService relayAdminService)
+        IRelayAdminService relayAdminService,
+        IContactDirectoryService contactDirectoryService)
     {
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         _messagingService = messagingService ?? throw new ArgumentNullException(nameof(messagingService));
@@ -189,6 +191,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         _messageTransport = messageTransport ?? throw new ArgumentNullException(nameof(messageTransport));
         _sharedLibraryService = sharedLibraryService ?? throw new ArgumentNullException(nameof(sharedLibraryService));
         _relayAdminService = relayAdminService ?? throw new ArgumentNullException(nameof(relayAdminService));
+        _contactDirectoryService = contactDirectoryService ?? throw new ArgumentNullException(nameof(contactDirectoryService));
 
         DisplayName = string.Empty;
         RelayEndpointText = string.Empty;
@@ -494,6 +497,21 @@ public sealed partial class SettingsViewModel : ObservableObject
             await _currentUserService.SetCurrentUserAsync(DisplayName, SelectedRole);
             IsSaved = true;
             await RefreshContactCardAsync(); // display name is embedded in the contact card
+
+            // 2026-09-09: a real, repeatedly-reported bug — PublishSelfAsync (what actually pushes
+            // this device's name into the relay's directory, which DirectoryNameResolver's whole
+            // fix depends on) previously only ran from WebSocketMessageTransport.ConnectAsync, i.e.
+            // only on a fresh CONNECT. Renaming yourself while ALREADY connected — the ordinary
+            // case, nobody reconnects just to change their name — saved the new name locally but
+            // never told the relay, so every peer kept seeing the OLD name indefinitely, sometimes
+            // for hours, until this device's connection happened to drop and reconnect on its own.
+            // Republishing right here, immediately after a successful save, closes that gap — no
+            // reconnect needed for a rename to actually take effect for everyone else.
+            if (_messageTransport.IsConnected)
+            {
+                try { await _contactDirectoryService.PublishSelfAsync(); }
+                catch { /* best-effort — the next reconnect's own PublishSelfAsync call is a safety net */ }
+            }
         }
         catch (Exception ex)
         {

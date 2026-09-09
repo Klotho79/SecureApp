@@ -66,7 +66,7 @@
                                         </Grid>
                                     </Border>
 
-                                    <Label Text="{Binding SentAtUtc, StringFormat='{0:t}'}" FontSize="10" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}">
+                                    <Label Text="{Binding SentAtUtc.LocalDateTime, StringFormat='{0:t}'}" FontSize="10" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}">
                                         <Label.Triggers>
                                             <DataTrigger TargetType="Label" Binding="{Binding IsOutbound}" Value="True">
                                                 <Setter Property="TextColor" Value="{AppThemeBinding Light=#CFE7F0, Dark={StaticResource PrimaryDarkText}}" />

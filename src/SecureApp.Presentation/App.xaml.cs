@@ -63,16 +63,34 @@ public partial class App : Application
 	private static readonly TimeSpan _staleSessionSweepInterval = TimeSpan.FromMinutes(3);
 
 	/// <summary>
+	/// A live-looking connection can be silently dead (2026-09-09, caught live — S9+ went 4+ hours
+	/// with no successful reconnect, `IsConnected` presumably still reporting true the whole time):
+	/// a WebSocket the client never explicitly closed can still die at the TCP level — a NAT/router
+	/// timing out an idle mapping, the OS quietly dropping the socket while the app is backgrounded
+	/// — with `ClientWebSocket.State` staying `Open` until an actual send/receive attempt fails.
+	/// If nothing happens to be sent FROM this device for a while (the common case for whoever's
+	/// mostly *receiving* during a test), that failure might never get triggered, and this device
+	/// just silently stops receiving anything, with no error, no dropped-state event, nothing for
+	/// the rest of this loop to react to. Forcing a full disconnect+reconnect on this fixed cadence,
+	/// regardless of what `IsConnected` currently claims, bounds how long that kind of failure can
+	/// go unnoticed — worst case <see cref="_forcedReconnectInterval"/>, not indefinitely.
+	/// </summary>
+	private static readonly TimeSpan _forcedReconnectInterval = TimeSpan.FromMinutes(5);
+
+	/// <summary>
 	/// Runs for the app's whole foreground lifetime (started once, from the constructor — honest
 	/// scope: this is a foreground-process loop, not OS-level background execution, same as every
 	/// other "best-effort" spot in this codebase). Every tick: if the relay isn't connected, try to
-	/// connect; either right after a reconnect just succeeded, or otherwise every
+	/// connect; if it's been connected (however that's reported) for longer than
+	/// <see cref="_forcedReconnectInterval"/>, force a fresh reconnect anyway (see that field's own
+	/// remarks on why); either right after a reconnect just succeeded, or otherwise every
 	/// <see cref="_staleSessionSweepInterval"/> regardless, also sweep for any pairwise session stuck
 	/// mid-resync (see <see cref="RunStaleSessionSweepAsync"/>).
 	/// </summary>
 	private static async Task RunConnectionSupervisorLoopAsync()
 	{
 		var lastStaleSweep = DateTimeOffset.MinValue;
+		var lastForcedReconnect = DateTimeOffset.UtcNow;
 
 		while (true)
 		{
@@ -84,6 +102,15 @@ public partial class App : Application
 				if (services is not null && transport is not null)
 				{
 					var wasConnected = transport.IsConnected;
+
+					if (wasConnected && DateTimeOffset.UtcNow - lastForcedReconnect >= _forcedReconnectInterval)
+					{
+						try { await transport.DisconnectAsync(); }
+						catch { /* best-effort — TryConnectAsync below still runs regardless */ }
+						wasConnected = false;
+						lastForcedReconnect = DateTimeOffset.UtcNow;
+					}
+
 					if (!wasConnected)
 						await TryConnectAsync(services, transport);
 
