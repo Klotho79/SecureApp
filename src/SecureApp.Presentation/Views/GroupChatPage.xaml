@@ -102,9 +102,9 @@
             <CollectionView ItemsSource="{Binding Messages}" ItemsUpdatingScrollMode="KeepLastItemInView" Margin="12,12,12,4">
                 <CollectionView.ItemTemplate>
                     <DataTemplate x:DataType="vm:GroupMessageItem">
-                        <Grid Padding="8,3">
+                        <Grid Padding="6,2">
                             <Border
-                                Padding="13,10"
+                                Padding="10,6"
                                 StrokeShape="RoundRectangle 16,16,4,16"
                                 StrokeThickness="1"
                                 Stroke="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}"
@@ -119,16 +119,32 @@
                                         <Setter Property="HorizontalOptions" Value="End" />
                                     </DataTrigger>
                                 </Border.Triggers>
-                                <VerticalStackLayout Spacing="3">
-                                    <!-- Sender name — the one real difference from a 1:1 bubble (ChatThreadView),
-                                         since "who sent this" isn't implicit in a group. Hidden for my own
-                                         outbound messages, same as a 1:1 thread never labels your own bubbles. -->
-                                    <Label
-                                        Text="{Binding SenderDisplayName}"
-                                        FontSize="11"
-                                        FontAttributes="Bold"
-                                        IsVisible="{Binding IsInbound}"
-                                        TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
+                                <VerticalStackLayout Spacing="1">
+                                    <!-- Header row: sender name ("kdo" — the one real difference from a 1:1 bubble
+                                         in ChatThreadView, since "who sent this" isn't implicit in a group; hidden
+                                         for my own outbound messages) and the time, side by side on one line, with
+                                         the message text below — per the user's own requested layout. -->
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                        <Label
+                                            Grid.Column="0"
+                                            Text="{Binding SenderDisplayName}"
+                                            FontSize="11"
+                                            FontAttributes="Bold"
+                                            LineBreakMode="TailTruncation"
+                                            IsVisible="{Binding IsInbound}"
+                                            TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
+                                        <Label
+                                            Grid.Column="1"
+                                            Text="{Binding SentAtUtc.LocalDateTime, StringFormat='{0:t}'}"
+                                            FontSize="10"
+                                            TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}">
+                                            <Label.Triggers>
+                                                <DataTrigger TargetType="Label" Binding="{Binding IsOutbound}" Value="True">
+                                                    <Setter Property="TextColor" Value="{AppThemeBinding Light=#CFE7F0, Dark={StaticResource PrimaryDarkText}}" />
+                                                </DataTrigger>
+                                            </Label.Triggers>
+                                        </Label>
+                                    </Grid>
 
                                     <Label Text="{Binding Text}" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" FontSize="14.5" LineBreakMode="WordWrap" IsVisible="{Binding HasText}">
                                         <Label.Triggers>
@@ -138,7 +154,7 @@
                                         </Label.Triggers>
                                     </Label>
 
-                                    <Border IsVisible="{Binding HasAttachment}" Padding="10,8" StrokeShape="RoundRectangle 10" Stroke="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
+                                    <Border IsVisible="{Binding HasAttachment}" Padding="8,6" StrokeShape="RoundRectangle 10" Stroke="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
                                         <Border.GestureRecognizers>
                                             <TapGestureRecognizer
                                                 Command="{Binding Source={x:Reference GroupChatRoot}, Path=BindingContext.OpenAttachmentCommand}"
@@ -154,14 +170,6 @@
                                             </VerticalStackLayout>
                                         </Grid>
                                     </Border>
-
-                                    <Label Text="{Binding SentAtUtc.LocalDateTime, StringFormat='{0:t}'}" FontSize="10" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}">
-                                        <Label.Triggers>
-                                            <DataTrigger TargetType="Label" Binding="{Binding IsOutbound}" Value="True">
-                                                <Setter Property="TextColor" Value="{AppThemeBinding Light=#CFE7F0, Dark={StaticResource PrimaryDarkText}}" />
-                                            </DataTrigger>
-                                        </Label.Triggers>
-                                    </Label>
                                 </VerticalStackLayout>
                             </Border>
                         </Grid>
