@@ -104,8 +104,8 @@
                     <DataTemplate x:DataType="vm:GroupMessageItem">
                         <Grid Padding="6,2">
                             <Border
-                                Padding="10,6"
-                                StrokeShape="RoundRectangle 16,16,4,16"
+                                Padding="12,8"
+                                StrokeShape="RoundRectangle 18,18,5,18"
                                 StrokeThickness="1"
                                 Stroke="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}"
                                 BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray950}}"
@@ -113,28 +113,19 @@
                                 MaximumWidthRequest="340">
                                 <Border.Triggers>
                                     <DataTrigger TargetType="Border" Binding="{Binding IsOutbound}" Value="True">
-                                        <Setter Property="StrokeShape" Value="RoundRectangle 16,16,16,4" />
+                                        <Setter Property="StrokeShape" Value="RoundRectangle 18,18,18,5" />
                                         <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
                                         <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
                                         <Setter Property="HorizontalOptions" Value="End" />
                                     </DataTrigger>
                                 </Border.Triggers>
-                                <VerticalStackLayout Spacing="1">
-                                    <!-- Header row: sender name ("kdo" — the one real difference from a 1:1 bubble
-                                         in ChatThreadView, since "who sent this" isn't implicit in a group; hidden
-                                         for my own outbound messages) and the time, side by side on one line, with
-                                         the message text below — per the user's own requested layout. -->
-                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                <VerticalStackLayout Spacing="2">
+                                    <!-- Header row: TIME first, then the sender name ("kdo" — the one real
+                                         difference from a 1:1 bubble in ChatThreadView, since "who sent this"
+                                         isn't implicit in a group; hidden for my own outbound messages) right
+                                         next to it — "čas, vedle kdo" — with the message text below. -->
+                                    <HorizontalStackLayout Spacing="6">
                                         <Label
-                                            Grid.Column="0"
-                                            Text="{Binding SenderDisplayName}"
-                                            FontSize="11"
-                                            FontAttributes="Bold"
-                                            LineBreakMode="TailTruncation"
-                                            IsVisible="{Binding IsInbound}"
-                                            TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
-                                        <Label
-                                            Grid.Column="1"
                                             Text="{Binding SentAtUtc.LocalDateTime, StringFormat='{0:t}'}"
                                             FontSize="10"
                                             TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}">
@@ -144,7 +135,14 @@
                                                 </DataTrigger>
                                             </Label.Triggers>
                                         </Label>
-                                    </Grid>
+                                        <Label
+                                            Text="{Binding SenderDisplayName}"
+                                            FontSize="11"
+                                            FontAttributes="Bold"
+                                            LineBreakMode="TailTruncation"
+                                            IsVisible="{Binding IsInbound}"
+                                            TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
+                                    </HorizontalStackLayout>
 
                                     <Label Text="{Binding Text}" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" FontSize="14.5" LineBreakMode="WordWrap" IsVisible="{Binding HasText}">
                                         <Label.Triggers>

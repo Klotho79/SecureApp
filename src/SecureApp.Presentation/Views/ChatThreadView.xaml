@@ -25,8 +25,8 @@
                     <DataTemplate x:DataType="vm:ChatMessageItem">
                         <Grid Padding="6,2">
                             <Border
-                                Padding="10,6"
-                                StrokeShape="RoundRectangle 16,16,4,16"
+                                Padding="12,8"
+                                StrokeShape="RoundRectangle 18,18,5,18"
                                 StrokeThickness="1"
                                 Stroke="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}"
                                 BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray950}}"
@@ -34,13 +34,13 @@
                                 MaximumWidthRequest="340">
                                 <Border.Triggers>
                                     <DataTrigger TargetType="Border" Binding="{Binding IsOutbound}" Value="True">
-                                        <Setter Property="StrokeShape" Value="RoundRectangle 16,16,16,4" />
+                                        <Setter Property="StrokeShape" Value="RoundRectangle 18,18,18,5" />
                                         <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
                                         <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
                                         <Setter Property="HorizontalOptions" Value="End" />
                                     </DataTrigger>
                                 </Border.Triggers>
-                                <VerticalStackLayout Spacing="1">
+                                <VerticalStackLayout Spacing="2">
                                     <!-- Header row: the time, on its own line above the message text — a 1:1 thread
                                          has no per-message "kdo" label (the bubble side already says who), so this
                                          is just the time header half of the group-chat layout, kept consistent. -->
