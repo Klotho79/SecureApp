@@ -259,7 +259,11 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
         var groupMessageId = Guid.NewGuid();
         var plaintext = Encoding.UTF8.GetBytes(text);
         var otherMembers = _members.Where(m => !m.PublicKey.AsSpan().SequenceEqual(_localPublicKey)).ToList();
-        var unreachable = new List<string>();
+        // Each entry names WHO and WHY (2026-09-07 — "prosím doplň řádně chybová hlášení... aby
+        // bylo jasné kde nastala chyba"), not just a bare name — a per-member reason is what
+        // actually lets anyone tell "not paired yet" apart from "the send itself failed" apart from
+        // "not connected to the relay" without having to go dig through logs.
+        var undelivered = new List<(string Name, string Reason)>();
 
         try
         {
@@ -274,7 +278,7 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
                     // whole send, but kick off a resync in the background (2026-09-07) so a future
                     // message has a real chance: matches this app's "the app should reconnect on
                     // its own" recovery policy rather than requiring a manual reset tap first.
-                    unreachable.Add(member.DisplayName);
+                    undelivered.Add((member.DisplayName, "zatím nespárováno — appka se pokusí spárovat na pozadí"));
                     _ = TryBackgroundResyncAsync(member);
                     continue;
                 }
@@ -288,20 +292,24 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
                     if (_messageTransport.IsConnected)
                     {
                         try { await _messageTransport.SendEnvelopeAsync(envelope); }
-                        catch { /* stays Pending in storage, same policy ChatViewModel.SendAsync already uses */ }
+                        catch (Exception sendEx) { undelivered.Add((member.DisplayName, $"uloženo, ale nepodařilo se odeslat na relay: {sendEx.Message}")); /* stays Pending in storage, same policy ChatViewModel.SendAsync already uses */ }
+                    }
+                    else
+                    {
+                        undelivered.Add((member.DisplayName, "appka teď není připojená k relay — zůstává čekající, odešle se po obnovení spojení"));
                     }
                 }
-                catch
+                catch (Exception encryptEx)
                 {
                     // One member's send failing must never stop delivery to the rest of the group.
-                    unreachable.Add(member.DisplayName);
+                    undelivered.Add((member.DisplayName, $"šifrování/odeslání selhalo: {encryptEx.Message}"));
                 }
             }
 
             Messages.Add(new GroupMessageItem(Guid.NewGuid(), true, _currentUserService.Current.DisplayName, text, DateTimeOffset.UtcNow, attachmentId, attachmentName));
 
-            if (unreachable.Count > 0)
-                StatusErrorMessage = $"Nedoručeno: {string.Join(", ", unreachable)} (zatím nespárováno nebo offline).";
+            if (undelivered.Count > 0)
+                StatusErrorMessage = $"Nedoručeno {undelivered.Count} z {otherMembers.Count}: " + string.Join("; ", undelivered.Select(u => $"{u.Name} ({u.Reason})"));
         }
         catch (Exception ex)
         {

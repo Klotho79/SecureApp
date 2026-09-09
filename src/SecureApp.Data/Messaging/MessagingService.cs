@@ -52,6 +52,8 @@ public sealed class MessagingService : IMessagingService
 
     public async Task<(ChatSession Session, byte[] HandshakeCipherText)> CreateSessionAsync(string peerDisplayName, byte[] peerIdentityPublicKey, Guid peerRelayDeviceId, CancellationToken ct = default)
     {
+        await CloseAnyExistingSessionsAsync(peerIdentityPublicKey, ct);
+
         var localIdentityKeyId = await GetOrCreateLocalIdentityKeyIdAsync(ct);
         var localIdentityPublicKey = await _crypto.GetEncryptionPublicKeyAsync(localIdentityKeyId, ct);
 
@@ -68,6 +70,8 @@ public sealed class MessagingService : IMessagingService
 
     public async Task<ChatSession> AcceptSessionAsync(string peerDisplayName, byte[] peerIdentityPublicKey, Guid peerRelayDeviceId, byte[] handshakeCipherText, CancellationToken ct = default)
     {
+        await CloseAnyExistingSessionsAsync(peerIdentityPublicKey, ct);
+
         var localIdentityKeyId = await GetOrCreateLocalIdentityKeyIdAsync(ct);
         var localIdentityPublicKey = await _crypto.GetEncryptionPublicKeyAsync(localIdentityKeyId, ct);
 
@@ -82,6 +86,28 @@ public sealed class MessagingService : IMessagingService
 
         await _auditLogger.LogAsync(AuditAction.ChatSessionEstablished, details: $"role=responder;peer={peerDisplayName}", ct: ct);
         return session;
+    }
+
+    /// <summary>
+    /// Enforces "at most one non-Closed <see cref="ChatSession"/> per peer identity key" at the
+    /// root, in the one place every session-creating path already funnels through, rather than
+    /// relying on every caller to check-then-act correctly (2026-09-07, a real bug caught live):
+    /// two independent pairing paths racing for the same peer — say, a manual 1:1 pairing and a
+    /// group's tie-break auto-pair, both firing around the same time — could each see "no existing
+    /// session" via <see cref="FindExistingSessionAsync"/> and both go on to create one, leaving TWO
+    /// valid sessions for the same peer with independently-derived ratchet state. Nothing forced the
+    /// sender's and receiver's own session picks to agree after that — each side could keep
+    /// "successfully" auto-healing against its own copy while decrypting every single message from
+    /// the other side failed forever, since they were never actually the same session pair. Closing
+    /// whatever's already there FIRST, unconditionally, makes creating a session for a peer always
+    /// supersede anything before it — for every caller, not just the ones that remembered to check.
+    /// A no-op in the common case (the caller already checked and found nothing, so there's usually
+    /// nothing here to close); the loop only matters when a race actually happened.
+    /// </summary>
+    private async Task CloseAnyExistingSessionsAsync(byte[] peerIdentityPublicKey, CancellationToken ct)
+    {
+        while (await _sessionRepository.GetByPeerPublicKeyAsync(peerIdentityPublicKey, ct) is { } existing)
+            await CloseSessionAsync(existing.Id, ct);
     }
 
     private async Task InitializeStateAsync(Guid sessionId, byte[] localIdentityPublicKey, CancellationToken ct)
