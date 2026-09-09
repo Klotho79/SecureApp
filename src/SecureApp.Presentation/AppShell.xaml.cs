@@ -12,15 +12,18 @@ public partial class AppShell : Shell
 	{
 		InitializeComponent();
 
-		// Logbook (2026-09-09) — shown as a 5th tab only when enabled in Settings ("v nastavení
-		// přidej možnost zobrazení a schování logbooku" — the user's own explicit ask). Read once,
-		// here, at Shell construction time: .NET MAUI's TabBar has no platform-reliable way to
-		// toggle one tab's visibility live while the Shell is already running, so flipping the
-		// Settings switch takes effect the next time the app launches, not instantly — documented
-		// in SettingsPage's own copy next to the toggle, not silently different from what it implies.
+		// Logbook (2026-09-09) — shown as a tab only when enabled in Settings ("v nastavení přidej
+		// možnost zobrazení a schování logbooku" — the user's own explicit ask). Read once, here,
+		// at Shell construction time: .NET MAUI's TabBar has no platform-reliable way to toggle one
+		// tab's visibility live while the Shell is already running, so flipping the Settings switch
+		// takes effect the next time the app launches, not instantly — documented in SettingsPage's
+		// own copy next to the toggle. Inserted BEFORE Nastavení, not appended after it — the
+		// user's own explicit follow-up ask: "nastavení bych nechal jako poslední" (keep Settings
+		// last). Nastavení is XAML index 3 (Chaty/Knihovna/Dokumenty/Nastavení); inserting at that
+		// same index pushes it one slot right instead of landing after it.
 		if (Preferences.Default.Get(LogbookVisibilityPreferenceKey, false) && Items.Count > 0 && Items[0] is TabBar tabBar)
 		{
-			tabBar.Items.Add(new Tab
+			tabBar.Items.Insert(3, new Tab
 			{
 				Title = "📓 Logbook",
 				Items = { new ShellContent { ContentTemplate = new DataTemplate(typeof(LogbookPage)), Route = "LogbookTab" } }

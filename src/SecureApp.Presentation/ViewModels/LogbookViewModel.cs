@@ -16,11 +16,14 @@ namespace SecureApp.Presentation.ViewModels;
 /// <see cref="LogbookChecklistViewModel"/>) and a procedure log (record performing/observing a
 /// catalog item at a competency tier, which accumulates into the statistics list below it — the
 /// live-count equivalent of the reference logbook's "Kompetence dle…" tables, whose paper form is a
-/// single checkbox+signature per row instead). The catalog itself — which checklists exist, which
-/// procedure types exist — is Admin-only (<c>RbacAction.ManageLogbookCatalog</c>, the user's own
-/// explicit "položky zadá admin"); the add-forms for both stay collapsed behind their own toggle by
-/// default, same reasoning as <c>GroupChatViewModel.IsMembersExpanded</c> — a management form nobody
-/// but an admin ever opens shouldn't cost every other viewer screen space.
+/// single checkbox+signature per row instead). RBAC, per the user's own explicit split across two
+/// messages: any role can view/tick a checklist; Modifier and Admin alike can create/edit checklists,
+/// record procedures, and see the statistics rollup (<see cref="CanManageChecklists"/>/
+/// <see cref="CanRecordProcedure"/>/<see cref="CanViewStatistics"/>); only Admin can edit the
+/// procedure-TYPE catalog itself (<see cref="CanManageProcedureCatalog"/> — "položky zadá admin").
+/// Every admin-only-or-Modifier-only form stays collapsed behind its own toggle by default, same
+/// reasoning as <c>GroupChatViewModel.IsMembersExpanded</c> — a management form most viewers never
+/// open shouldn't cost them screen space.
 /// </summary>
 public sealed partial class LogbookViewModel : ObservableObject
 {
@@ -38,7 +41,16 @@ public sealed partial class LogbookViewModel : ObservableObject
     public partial bool HasNoChecklists { get; set; }
 
     [ObservableProperty]
-    public partial bool CanManageCatalog { get; set; }
+    public partial bool CanManageChecklists { get; set; }
+
+    [ObservableProperty]
+    public partial bool CanManageProcedureCatalog { get; set; }
+
+    [ObservableProperty]
+    public partial bool CanRecordProcedure { get; set; }
+
+    [ObservableProperty]
+    public partial bool CanViewStatistics { get; set; }
 
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
@@ -135,7 +147,11 @@ public sealed partial class LogbookViewModel : ObservableObject
         try
         {
             await _currentUserService.InitializeAsync();
-            CanManageCatalog = RoleAccessPolicy.IsAllowed(_currentUserService.Current.Role, RbacAction.ManageLogbookCatalog);
+            var role = _currentUserService.Current.Role;
+            CanManageChecklists = RoleAccessPolicy.IsAllowed(role, RbacAction.ManageLogbookChecklists);
+            CanManageProcedureCatalog = RoleAccessPolicy.IsAllowed(role, RbacAction.ManageLogbookProcedureCatalog);
+            CanRecordProcedure = RoleAccessPolicy.IsAllowed(role, RbacAction.RecordLogbookProcedure);
+            CanViewStatistics = RoleAccessPolicy.IsAllowed(role, RbacAction.ViewLogbookStatistics);
 
             var checklists = await _checklistRepository.GetAllAsync();
             Checklists = new ObservableCollection<LogbookChecklistListItem>(
@@ -146,7 +162,8 @@ public sealed partial class LogbookViewModel : ObservableObject
             ProcedureTypeOptions = new ObservableCollection<LogbookProcedureType>(_procedureTypes);
             SelectedProcedureType ??= ProcedureTypeOptions.FirstOrDefault();
 
-            await RefreshStatisticsAsync();
+            if (CanViewStatistics)
+                await RefreshStatisticsAsync();
         }
         catch (Exception ex)
         {
@@ -194,6 +211,7 @@ public sealed partial class LogbookViewModel : ObservableObject
     [RelayCommand]
     private async Task RecordProcedureAsync()
     {
+        if (!CanRecordProcedure) return;
         StatusErrorMessage = null;
         if (SelectedProcedureType is null)
         {
@@ -206,7 +224,8 @@ public sealed partial class LogbookViewModel : ObservableObject
             var entry = new LogbookProcedureEntry(SelectedProcedureType.Id, SelectedLevel, DateTimeOffset.UtcNow, NoteText);
             await _procedureEntryRepository.AddAsync(entry);
             NoteText = string.Empty;
-            await RefreshStatisticsAsync();
+            if (CanViewStatistics)
+                await RefreshStatisticsAsync();
         }
         catch (Exception ex)
         {
@@ -220,7 +239,7 @@ public sealed partial class LogbookViewModel : ObservableObject
     [RelayCommand]
     private async Task ConfirmAddChecklistAsync()
     {
-        if (!CanManageCatalog) return;
+        if (!CanManageChecklists) return;
         StatusErrorMessage = null;
 
         if (string.IsNullOrWhiteSpace(NewChecklistName))
@@ -254,7 +273,7 @@ public sealed partial class LogbookViewModel : ObservableObject
     [RelayCommand]
     private async Task ConfirmAddProcedureTypeAsync()
     {
-        if (!CanManageCatalog) return;
+        if (!CanManageProcedureCatalog) return;
         StatusErrorMessage = null;
 
         if (string.IsNullOrWhiteSpace(NewProcedureTypeName))

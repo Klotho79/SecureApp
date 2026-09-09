@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Security.Cryptography;
+using System.Text.Json;
 using SecureApp.Domain.Interfaces.Services;
 using SQLite;
 
@@ -90,9 +92,19 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
         ct.ThrowIfCancellationRequested();
 
         var schemaVersion = await connection.ExecuteScalarAsync<int>("PRAGMA user_version");
-        if (schemaVersion >= CurrentSchemaVersion)
-            return;
+        if (schemaVersion < CurrentSchemaVersion)
+            await ApplyPendingMigrationsAsync(connection, schemaVersion);
 
+        // Runs every time, not just on a fresh v0→vN migration (2026-09-09 — a real gap caught
+        // building this: a device already sitting at v8 from an earlier deploy, before this seed
+        // data existed, would otherwise never pick it up, since the version-gated block above is
+        // skipped entirely once schemaVersion >= CurrentSchemaVersion). Idempotent — checks the
+        // table is actually empty first, so it never re-adds anything a user deliberately deleted.
+        await SeedLogbookChecklistsIfEmptyAsync(connection);
+    }
+
+    private static async Task ApplyPendingMigrationsAsync(SQLiteAsyncConnection connection, int schemaVersion)
+    {
         await connection.ExecuteAsync("PRAGMA foreign_keys = ON");
 
         if (schemaVersion < 1)
@@ -407,5 +419,121 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
             )
             """);
         await connection.ExecuteAsync("CREATE INDEX IF NOT EXISTS ix_logbook_procedure_entries_type_id ON logbook_procedure_entries(procedure_type_id)");
+    }
+
+    /// <summary>
+    /// Pre-loads the five checklists straight out of the reference "Příručka a logbook začínajícího
+    /// anesteziologa" (KNTB Zlín ARIM) PDF the user attached — same "give it a non-empty floor before
+    /// anyone's had to type anything in" reasoning <c>LibraryViewModel.SeedCategories</c> already
+    /// established for the shared library's own category list. The reference PDF nests some of
+    /// these under sub-headings (e.g. "anesteziologický přístroj:" listing selftest/zdroje
+    /// plynů/odpařovač/… as its own group) — flattened here into individually-checkable items, since
+    /// <see cref="Entities.LogbookChecklistTemplate"/>'s own list is intentionally one flat level, not
+    /// a tree. The neuroaxiální-blokáda checklist's own "koagulační status" item folds in the
+    /// reference table's headline numbers (INR/APTT/Trc thresholds) rather than reproducing that
+    /// whole table as a separate, non-checkable checklist — a reasonable trim for this first pass,
+    /// not an oversight. Called from <see cref="MigrateAsync"/> on EVERY app start, not just a fresh
+    /// migration — see that call site's own remarks — so the empty-check here is what actually makes
+    /// this idempotent (never re-adds anything a user deliberately deleted).
+    /// </summary>
+    private static async Task SeedLogbookChecklistsIfEmptyAsync(SQLiteAsyncConnection connection)
+    {
+        var existingCount = await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM logbook_checklist_templates");
+        if (existingCount > 0)
+            return;
+
+        var now = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture);
+
+        var templates = new (string Name, string[] Items)[]
+        {
+            ("Den před anestezií", new[]
+            {
+                "Projít dokumentaci plánovaných pacientů v NIS: anamnézy, alergie, závěry konzilií, předanestetické vyšetření",
+                "Seznámit se s operačními výkony",
+                "Nastudovat specifika anestezie u daných výkonů",
+                "V případě jakýchkoli nejasností konzultovat VČAS školitele / atestovaného lékaře",
+                "Nastudovat doporučené postupy odd. ARIM k plánovaným výkonům",
+                "Projít si případné hrozící komplikace a jejich řešení (kniha: Naléhavé situace na operačním sále aneb Co dělat když… – Tomáš Vymazal)",
+                "Průběžně studovat: Praktická anesteziologie (Málek), Praktické postupy v anestezii (Jindrová), Anesteziologie nejen k atestaci (Vymazal), Larsen, UpToDate, orphananesthesia.eu, Doporučené postupy ČSARIM"
+            }),
+            ("Příchod na sál (ráno)", new[]
+            {
+                "Přijít na sál včas a připraven",
+                "Zkontrolovat operační program",
+                "Zjistit personální obsazení (koho volat v případě komplikací)",
+                "Anesteziologický přístroj: proveden selftest",
+                "Zdroje plynů",
+                "Odpařovač",
+                "Vápno",
+                "Odsávačka – odzkoušet",
+                "Těsnost systému – odzkoušet",
+                "Funkčnost a nastavení monitorace a alarmů",
+                "Vím, kde je defibrilátor",
+                "Vím, kde je ambuvak",
+                "Vím, kde jsou pomůcky na obtížnou intubaci",
+                "Vím, kde je videolaryngoskop",
+                "Vím, kde jsou přetlakové manžety",
+                "Vím, kde jsou infuzní roztoky",
+                "Vím, kde jsou léky: dantrolen, intralipid"
+            }),
+            ("Před celkovou anestezií (CA)", new[]
+            {
+                "Pacient: identita, informovaný souhlas, předoperační vyšetření",
+                "Ověření typu výkonu a operované strany",
+                "Lačnění",
+                "Alergie",
+                "Komplikace s CA v anamnéze",
+                "Monitorace dle typu výkonu – zajistit ještě před indukcí",
+                "Anest. přístroj: kontrola těsnosti okruhu, funkce odsávačky",
+                "Pomůcky k zajištění dýchacích cest",
+                "Léky: indukce, opioidy, relaxace, vasopresory, antagonizace",
+                "Funkční a spolehlivý žilní vstup",
+                "Plán A/B pro zajištění dýchacích cest",
+                "ATB profylaxe",
+                "Dostupnost krevních derivátů"
+            }),
+            ("Před RSI (SOAP-ME)", new[]
+            {
+                "S – Suction: funkční odsávačka umístěná u hlavy pacienta",
+                "O – Oxygen: zdroj 100% kyslíku, maska s rezervoárem, adekvátní preoxygenace",
+                "A – Airway: intubační rourka (zvolená velikost + jedna menší), laryngoskop (ověřené světlo), zavaděč a záložní pomůcky a plán",
+                "P – Positioning: optimalizace polohy pacienta (\"sniffing position\", nebo \"ramping position\" u obézních)",
+                "M – Monitoring: připojené a funkční EKG, pulzní oxymetr, neinvazivní měření tlaku a kapnografie (EtCO2)",
+                "E – Equipment / Emergency: zajištěný a funkční nitrožilní (IV/IO) přístup, připravené léky a záložní plán pro případ selhání intubace"
+            }),
+            ("Před neuroaxiální blokádou", new[]
+            {
+                "Pacient: identita, informovaný souhlas, předoperační vyšetření",
+                "Ověření typu výkonu a operované strany",
+                "Alergie",
+                "Komplikace se SA v anamnéze",
+                "Koagulační status: INR pod 1,4, APTT pod 42s, trombocyty nad 80–100 (viz doporučené postupy pro konkrétní antikoagulancia)",
+                "Kontraindikace: místo vpichu",
+                "Kontraindikace: celková infekce",
+                "Kontraindikace: neurologické onemocnění / neurologický deficit",
+                "Kontraindikace: KVS – šokový stav, aortální stenóza",
+                "Kontraindikace: zvýšený nitrolební tlak",
+                "Kontraindikace: nespolupráce pacienta",
+                "Kontraindikace: anatomie / operace páteře",
+                "Monitorace",
+                "i.v. vstup",
+                "Pomůcky a sterilita",
+                "Být připraven na konverzi do CA a řešení komplikací"
+            })
+        };
+
+        foreach (var (name, items) in templates)
+        {
+            await connection.ExecuteAsync(
+                """
+                INSERT INTO logbook_checklist_templates (id, name, items_json, created_at_utc, modified_at_utc)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                Guid.NewGuid().ToString(),
+                name,
+                JsonSerializer.Serialize(items),
+                now,
+                now);
+        }
     }
 }

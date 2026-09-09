@@ -20,7 +20,7 @@
                 <VerticalStackLayout Spacing="8">
                     <Grid ColumnDefinitions="*,Auto">
                         <Label Grid.Column="0" Text="Check-listy" Style="{StaticResource SectionHeader}" Margin="0" />
-                        <Button Grid.Column="1" Text="+ Nový" Style="{StaticResource SecondaryButton}" Command="{Binding ToggleAddingChecklistCommand}" IsVisible="{Binding CanManageCatalog}" />
+                        <Button Grid.Column="1" Text="+ Nový" Style="{StaticResource SecondaryButton}" Command="{Binding ToggleAddingChecklistCommand}" IsVisible="{Binding CanManageChecklists}" />
                     </Grid>
 
                     <Label Text="Zatím tu žádný check-list není." FontSize="12" TextColor="Gray" IsVisible="{Binding HasNoChecklists}" />
@@ -49,12 +49,12 @@
                 </VerticalStackLayout>
             </Border>
 
-            <!-- Zaznamenat výkon -->
-            <Border Style="{StaticResource CardBorder}">
+            <!-- Zaznamenat výkon — celá karta jen pro Modifier/Admin (Viewer nesmí zaznamenávat, viz LogbookViewModel's own remarks). -->
+            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanRecordProcedure}">
                 <VerticalStackLayout Spacing="8">
                     <Grid ColumnDefinitions="*,Auto">
                         <Label Grid.Column="0" Text="Zaznamenat výkon" Style="{StaticResource SectionHeader}" Margin="0" />
-                        <Button Grid.Column="1" Text="+ Nový typ" Style="{StaticResource SecondaryButton}" Command="{Binding ToggleAddingProcedureTypeCommand}" IsVisible="{Binding CanManageCatalog}" />
+                        <Button Grid.Column="1" Text="+ Nový typ" Style="{StaticResource SecondaryButton}" Command="{Binding ToggleAddingProcedureTypeCommand}" IsVisible="{Binding CanManageProcedureCatalog}" />
                     </Grid>
 
                     <Picker ItemsSource="{Binding ProcedureTypeOptions}" ItemDisplayBinding="{Binding Name}" SelectedItem="{Binding SelectedProcedureType}" Title="Typ výkonu" />
@@ -62,7 +62,7 @@
                     <Entry Text="{Binding NoteText}" Placeholder="Poznámka (nepovinné)" />
                     <Button Text="Zaznamenat" Command="{Binding RecordProcedureCommand}" />
 
-                    <!-- New procedure-type form — collapsed by default, same reasoning as the checklist one above. -->
+                    <!-- New procedure-type form — Admin-only, collapsed by default, same reasoning as the checklist one above. -->
                     <VerticalStackLayout Spacing="6" IsVisible="{Binding IsAddingProcedureType}">
                         <Entry Text="{Binding NewProcedureTypeName}" Placeholder="Název výkonu, např. &quot;CŽK&quot;" />
                         <Picker ItemsSource="{Binding CategoryOptions}" SelectedIndex="{Binding SelectedCategoryIndex}" Title="Kategorie" />
@@ -71,8 +71,8 @@
                 </VerticalStackLayout>
             </Border>
 
-            <!-- Statistika -->
-            <Border Style="{StaticResource CardBorder}">
+            <!-- Statistika — jen pro Modifier/Admin (viz LogbookViewModel's own remarks). -->
+            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanViewStatistics}">
                 <VerticalStackLayout Spacing="8">
                     <Label Text="Statistika" Style="{StaticResource SectionHeader}" Margin="0" />
                     <Label Text="Zatím žádné zaznamenané výkony." FontSize="12" TextColor="Gray" IsVisible="{Binding HasNoStatistics}" />
