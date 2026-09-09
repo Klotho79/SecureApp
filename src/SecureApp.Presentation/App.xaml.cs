@@ -3,6 +3,7 @@ using SecureApp.Domain.Entities;
 using SecureApp.Domain.Enums;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
+using SecureApp.Domain.ValueObjects;
 using SecureApp.Presentation.Chat;
 
 namespace SecureApp.Presentation;
@@ -24,6 +25,20 @@ public partial class App : Application
 		{
 			transport.PairingInviteReceived += OnPairingInviteReceived;
 			transport.GroupInviteReceived += OnGroupInviteReceived;
+
+			// 2026-09-09: a real, previously-flagged-but-deferred gap the user hit live — a
+			// ChatViewModel/GroupChatViewModel's own EnvelopeReceived subscription only exists
+			// while ITS specific page happens to be open, so an envelope arriving (live, or
+			// flushed from the relay's own outbox the moment a device reconnects) for any OTHER
+			// thread was simply lost: raised on this singleton event with nothing subscribed to
+			// catch it, while the relay had already deleted its own queued copy the instant it
+			// handed the frame over — not delayed, genuinely gone. Subscribed here, once, for the
+			// app's whole lifetime, so EVERY envelope gets decrypted and persisted regardless of
+			// what's on screen; a page's own handler running moments later for the same envelope
+			// is a safe no-op (see ReceiveMessageAsync's own idempotency guard) — whichever runs
+			// first "wins" the actual decrypt, opening that thread later just shows what's already
+			// in local storage.
+			transport.EnvelopeReceived += OnEnvelopeReceived;
 		}
 
 		// 2026-09-07: two rounds of direct user feedback, both pointing the same direction — the
@@ -150,6 +165,53 @@ public partial class App : Application
 			catch
 			{
 				// Best-effort — retried again next sweep.
+			}
+		}
+	}
+
+	/// <summary>
+	/// Always-on persistence (2026-09-09) — see this handler's own subscription comment above for
+	/// why it exists. Decrypts and stores every incoming envelope unconditionally, 1:1 or group
+	/// alike (<c>MessagingService.ReceiveMessageAsync</c> already handles both the same way, since a
+	/// group message is just an ordinary pairwise-session row with a couple of extra tags).
+	/// </summary>
+	private static async void OnEnvelopeReceived(object? sender, MessageEnvelope envelope)
+	{
+		var services = IPlatformApplication.Current?.Services;
+		if (services is null) return;
+
+		using var scope = services.CreateScope();
+		var messagingService = scope.ServiceProvider.GetRequiredService<IMessagingService>();
+
+		try
+		{
+			await messagingService.ReceiveMessageAsync(envelope);
+		}
+		catch
+		{
+			// A genuine ratchet decrypt failure (not the idempotency guard's silent-duplicate
+			// case, which never throws) — auto-heal the underlying session right here too, same
+			// reasoning as ChatViewModel/GroupChatViewModel's own TryAutoHealAsync, so the NEXT
+			// message has a real chance even with no page open to react to this one.
+			// SessionRecoveryHelper.ResyncAsync's own cooldown makes it safe for a page-level
+			// handler to also attempt this a moment later for the same peer.
+			try
+			{
+				var sessionRepository = scope.ServiceProvider.GetRequiredService<IChatSessionRepository>();
+				var session = await sessionRepository.GetByIdAsync(envelope.SessionId);
+				if (session?.PeerRelayDeviceId is { } relayDeviceId)
+				{
+					var messageTransport = scope.ServiceProvider.GetRequiredService<IMessageTransport>();
+					var transportSettings = scope.ServiceProvider.GetRequiredService<ITransportSettingsRepository>();
+					var currentUserService = scope.ServiceProvider.GetRequiredService<ICurrentUserService>();
+					await SessionRecoveryHelper.ResyncAsync(
+						messagingService, messageTransport, transportSettings, currentUserService,
+						session.PeerDisplayName, session.PeerIdentityPublicKey, relayDeviceId);
+				}
+			}
+			catch
+			{
+				// Best-effort — nothing further to do at this level.
 			}
 		}
 	}
