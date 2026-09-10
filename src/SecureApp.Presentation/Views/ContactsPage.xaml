@@ -48,22 +48,43 @@
 
                     <Label Text="Nic nenalezeno." FontSize="12" TextColor="Gray" IsVisible="{Binding HasNoResults}" />
 
-                    <CollectionView ItemsSource="{Binding PhoneDirectory}" SelectionMode="None">
+                    <!-- Sbalitelné sekce (2026-09-10 — "je to pěkně pomalé... rozděl to ať se toho
+                         tolik nenačítá"): ~130 řádků najednou v jednom flat seznamu bylo znatelně
+                         pomalé. Stejný vzor jako u rozbalovací statistiky v Logbooku — sbaleno ve
+                         výchozím stavu, řádky dané sekce se vykreslí, až když na ni ťuknete.
+                         Hledání sekce s výsledkem automaticky rozbalí (viz ApplyFilter). -->
+                    <CollectionView ItemsSource="{Binding PhoneSections}" SelectionMode="None">
                         <CollectionView.ItemsLayout>
-                            <LinearItemsLayout Orientation="Vertical" ItemSpacing="2" />
+                            <LinearItemsLayout Orientation="Vertical" ItemSpacing="6" />
                         </CollectionView.ItemsLayout>
                         <CollectionView.ItemTemplate>
-                            <DataTemplate x:DataType="contacts:PhoneDirectoryEntry">
-                                <Grid Padding="0,5" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
-                                    <Border Grid.Column="0" Padding="6,2" StrokeShape="RoundRectangle 6" Stroke="Transparent" BackgroundColor="{AppThemeBinding Light={StaticResource AccentSoft}, Dark={StaticResource AccentSoftDark}}" VerticalOptions="Center" WidthRequest="86" HorizontalOptions="Start">
-                                        <Label Text="{Binding Section}" FontSize="10.5" FontAttributes="Bold" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" LineBreakMode="TailTruncation" HorizontalTextAlignment="Center" />
-                                    </Border>
-                                    <Label Grid.Column="1" Text="{Binding Name}" FontSize="13.5" VerticalOptions="Center" LineBreakMode="TailTruncation" />
-                                    <!-- Zpět na prostý tučný text (2026-09-10 — pilulka z předchozí verze se
-                                         nezachovala), ale s předponou "kl." jako na straně 5 originálního PDF,
-                                         aby bylo jasné, že jde o klapku. -->
-                                    <Label Grid.Column="2" Text="{Binding Number, StringFormat='kl. {0}'}" FontSize="14.5" FontAttributes="Bold" VerticalOptions="Center" TextColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
-                                </Grid>
+                            <DataTemplate x:DataType="vm:ContactSectionGroup">
+                                <VerticalStackLayout Spacing="4">
+                                    <Grid ColumnDefinitions="*,Auto" Padding="0,2">
+                                        <Grid.GestureRecognizers>
+                                            <TapGestureRecognizer Command="{Binding ToggleExpandedCommand}" />
+                                        </Grid.GestureRecognizers>
+                                        <Label Grid.Column="0" Text="{Binding Name, StringFormat='{0} ▾'}" FontSize="13.5" FontAttributes="Bold" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}">
+                                            <Label.Triggers>
+                                                <DataTrigger TargetType="Label" Binding="{Binding IsExpanded}" Value="False">
+                                                    <Setter Property="Text" Value="{Binding Name, StringFormat='{0} ▸'}" />
+                                                </DataTrigger>
+                                            </Label.Triggers>
+                                        </Label>
+                                        <Label Grid.Column="1" Text="{Binding Count}" FontSize="12" TextColor="Gray" VerticalOptions="Center" />
+                                    </Grid>
+
+                                    <VerticalStackLayout Spacing="2" IsVisible="{Binding IsExpanded}" BindableLayout.ItemsSource="{Binding Entries}">
+                                        <BindableLayout.ItemTemplate>
+                                            <DataTemplate x:DataType="contacts:PhoneDirectoryEntry">
+                                                <Grid Padding="4,5,0,5" ColumnDefinitions="*,Auto">
+                                                    <Label Grid.Column="0" Text="{Binding Name}" FontSize="13.5" VerticalOptions="Center" LineBreakMode="TailTruncation" />
+                                                    <Label Grid.Column="1" Text="{Binding Number, StringFormat='kl. {0}'}" FontSize="14.5" FontAttributes="Bold" VerticalOptions="Center" TextColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </BindableLayout.ItemTemplate>
+                                    </VerticalStackLayout>
+                                </VerticalStackLayout>
                             </DataTemplate>
                         </CollectionView.ItemTemplate>
                     </CollectionView>
