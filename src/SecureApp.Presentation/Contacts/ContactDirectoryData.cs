@@ -1,10 +1,61 @@
+using System.Text.RegularExpressions;
+using Microsoft.Maui.Controls;
+
 namespace SecureApp.Presentation.Contacts;
 
 /// <summary>One row of the extension directory (2026-09-10, transcribed from the reference "Příručka a logbook začínajícího anesteziologa" PDF's own "Telefonní seznam" page) — <see cref="Name"/> is kept exactly as printed, including a handful of names truncated in the source table's own narrow columns (e.g. "Minařík,..."), rather than guessed.</summary>
 public sealed record PhoneDirectoryEntry(string Section, string Name, string Number);
 
-/// <summary>One row of "Kam volat při komplikacích s…" (2026-09-10) — a situation and who/what to contact for it; <see cref="Answer"/> may hold more than one line for a situation with several possible contacts.</summary>
-public sealed record QuickContactEntry(string Situation, string Answer);
+/// <summary>
+/// One row of "Kam volat při komplikacích s…" (2026-09-10) — a situation and who/what to contact
+/// for it; <see cref="Answer"/> may hold more than one line for a situation with several possible
+/// contacts.
+/// </summary>
+public sealed partial record QuickContactEntry(string Situation, string Answer)
+{
+    /// <summary>Matches "kl. 6654" or "kl. 2370, 6601" (comma-separated) — never overreaches into following non-numeric text like "kl. 6652, dále Turek" since the pattern stops at the first non-digit/comma/space character.</summary>
+    [GeneratedRegex(@"kl\.\s*\d+(?:\s*,\s*\d+)*")]
+    private static partial Regex ExtensionPattern();
+
+    // Matches ContactsPage.xaml's own Primary/PrimaryDark AppThemeBinding for the "kl. NNNN" style
+    // in the phone directory (2026-09-10, user's own ask: "v rychlych kontaktech... zvyraznit i v
+    // ostatnich zaloskach jako v tel seznamu") — hardcoded here rather than looked up from
+    // Application.Current.Resources at construction time, since Span (unlike a XAML element) has
+    // no AppThemeBinding markup extension available in code; SetAppThemeColor below is the code
+    // equivalent.
+    private static readonly Color ExtensionColorLight = Color.FromArgb("#14688A");
+    private static readonly Color ExtensionColorDark = Color.FromArgb("#6FC3E5");
+
+    /// <summary>
+    /// <see cref="Answer"/> broken into plain-text <see cref="Span"/>s and bold/accent-colored ones
+    /// wherever it names an extension — built once per entry (this data never changes at runtime)
+    /// rather than via a XAML value converter, since <see cref="FormattedString"/>/<see cref="Span"/>
+    /// are plain MAUI types this record can construct directly.
+    /// </summary>
+    public FormattedString FormattedAnswer
+    {
+        get
+        {
+            var formatted = new FormattedString();
+            var lastIndex = 0;
+            foreach (Match match in ExtensionPattern().Matches(Answer))
+            {
+                if (match.Index > lastIndex)
+                    formatted.Spans.Add(new Span { Text = Answer[lastIndex..match.Index] });
+
+                var extensionSpan = new Span { Text = match.Value, FontAttributes = FontAttributes.Bold };
+                extensionSpan.SetAppThemeColor(Span.TextColorProperty, ExtensionColorLight, ExtensionColorDark);
+                formatted.Spans.Add(extensionSpan);
+
+                lastIndex = match.Index + match.Length;
+            }
+            if (lastIndex < Answer.Length)
+                formatted.Spans.Add(new Span { Text = Answer[lastIndex..] });
+
+            return formatted;
+        }
+    }
+}
 
 /// <summary>
 /// Static reference data (2026-09-10, user's own ask: "doplň tel. seznam z logbook ale do
@@ -132,14 +183,14 @@ public static class ContactDirectoryData
         new("RTG", "lékaři", "2891"),
         new("RTG", "labor.", "2892"),
         new("RTG", "CT registrace", "2654"),
-        new("RTG", "ARIM II", "6651"),
-        new("RTG", "ARIM III", "6664"),
         new("RTG", "Mašláňová", "2148"),
         new("RTG", "DUP", "2112"),
         new("RTG", "KPR", "2222"),
         new("RTG", "porodnice", "2929"),
 
         // Mobily UPS
+        new("Mobily UPS", "ARIM II", "6651"),
+        new("Mobily UPS", "ARIM III", "6664"),
         new("Mobily UPS", "ARO-odd", "6601"),
         new("Mobily UPS", "ARO-KPR", "6654"),
         new("Mobily UPS", "ARO-chir.", "6602"),
@@ -164,9 +215,9 @@ public static class ContactDirectoryData
         new("Mobily UPS", "Předvolba", "57755"),
     ];
 
-    /// <summary>Sections in the order they should list, matching the reference PDF's own column order.</summary>
+    /// <summary>Display order — mostly the reference PDF's own column order, except Mobily UPS moved before ARO (2026-09-10, user's own ask).</summary>
     public static IReadOnlyList<string> Sections { get; } =
-        ["ARO", "Sály", "OUP", "Oddělení", "JIP", "Laboratoř", "Ambulance", "Ostatní", "RTG", "Mobily UPS"];
+        ["Mobily UPS", "ARO", "Sály", "OUP", "Oddělení", "JIP", "Laboratoř", "Ambulance", "Ostatní", "RTG"];
 
     /// <summary>"Kam volat v případě komplikací s…" — the reference PDF's own quick-lookup table.</summary>
     public static IReadOnlyList<QuickContactEntry> QuickContacts { get; } =

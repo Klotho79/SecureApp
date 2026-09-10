@@ -31,7 +31,10 @@
                                 <Border Style="{StaticResource CardBorder}" Margin="0" Padding="10,8" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
                                     <VerticalStackLayout Spacing="2">
                                         <Label Text="{Binding Situation}" FontSize="13.5" FontAttributes="Bold" />
-                                        <Label Text="{Binding Answer}" FontSize="12.5" LineBreakMode="WordWrap" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
+                                        <!-- Klapky zvýrazněné stejně jako v telefonním seznamu (2026-09-10, user's own
+                                             ask) — FormattedAnswer je předpočítaný FormattedString přímo na
+                                             QuickContactEntry, ne XAML converter (viz jeho vlastní poznámky). -->
+                                        <Label FormattedText="{Binding FormattedAnswer}" FontSize="12.5" LineBreakMode="WordWrap" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
                                     </VerticalStackLayout>
                                 </Border>
                             </DataTemplate>
