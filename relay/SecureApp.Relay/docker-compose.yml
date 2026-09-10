@@ -9,6 +9,10 @@ services:
       - SECUREAPP_RELAY_PORT=8080
       - SECUREAPP_RELAY_DB_PATH=/data/relay.db3
       - SECUREAPP_RELAY_LIBRARY_DIR=/data/library-files
+      # Public download page (2026-09-10, see Program.cs's own remarks) — put built release
+      # artifacts (e.g. secureapp-android.apk) directly into ./data/downloads/ on the Pi's host;
+      # served live from disk, no rebuild/redeploy needed to publish a new build.
+      - SECUREAPP_RELAY_DOWNLOADS_DIR=/data/downloads
     volumes:
       - ./data:/data
     ports:

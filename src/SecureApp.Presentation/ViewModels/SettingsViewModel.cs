@@ -78,6 +78,28 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool HasActivationStatus { get; set; }
 
+    // --- Join by invite code (2026-09-10) — the original pre-2026-09-06 registration path, kept
+    // working the whole time but unreachable from this UI until now: the user's own follow-up
+    // after asking how to let someone install the app at all — "zatím bez nutnosti zadávat email...
+    // jak jsi to vyřešil s těmi kódy?" (for now without needing an email — how did the old codes
+    // work?). A genuine second onboarding path alongside Aktivovat above, not a replacement: no
+    // email collected, no admin approval step to wait on — the code itself, shared out-of-band by
+    // whoever generated it (see GenerateInviteCommand below), is the only credential needed.
+    // IMessageTransport.RegisterAsync/IRelayAdminService.CreateInviteAsync were never removed when
+    // the activation-request flow superseded this in the UI, exactly so this stayed possible later.
+
+    [ObservableProperty]
+    public partial string JoinInviteCodeText { get; set; }
+
+    [ObservableProperty]
+    public partial string? GeneratedInviteCode { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasGeneratedInviteCode { get; set; }
+
+    [ObservableProperty]
+    public partial string? GeneratedInviteExpiryText { get; set; }
+
     [ObservableProperty]
     public partial string ConnectionStatusText { get; set; }
 
@@ -229,6 +251,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         DisplayName = string.Empty;
         RelayEndpointText = string.Empty;
         ActivationEmailText = string.Empty;
+        JoinInviteCodeText = string.Empty;
         ConnectionStatusText = "Odpojeno";
         IsNotConnected = true;
         IsNotRegistered = true;
@@ -256,6 +279,8 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnRelayErrorMessageChanged(string? value) => HasRelayError = !string.IsNullOrEmpty(value);
 
     partial void OnActivationStatusTextChanged(string? value) => HasActivationStatus = !string.IsNullOrEmpty(value);
+
+    partial void OnGeneratedInviteCodeChanged(string? value) => HasGeneratedInviteCode = !string.IsNullOrEmpty(value);
 
     partial void OnIsBusyWithRelayChanged(bool value) => CanUseRelayControls = !value;
 
@@ -608,6 +633,81 @@ public sealed partial class SettingsViewModel : ObservableObject
         finally
         {
             IsBusyWithRelay = false;
+        }
+    }
+
+    /// <summary>
+    /// The code-based alternative to <see cref="RequestActivationAsync"/> above (2026-09-10) — see
+    /// <see cref="JoinInviteCodeText"/>'s own remarks. Registers immediately, no admin approval to
+    /// wait for: whoever generated the code (<see cref="GenerateInviteAsync"/> below) already made
+    /// the trust decision by choosing to hand it out.
+    /// </summary>
+    [RelayCommand]
+    private async Task RegisterWithCodeAsync()
+    {
+        RelayErrorMessage = null;
+        if (!Uri.TryCreate(RelayEndpointText, UriKind.Absolute, out var endpoint))
+        {
+            RelayErrorMessage = "Zadejte platnou adresu relay serveru, např. ws://10.8.0.1:8080";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(JoinInviteCodeText))
+        {
+            RelayErrorMessage = "Zadejte kód pozvánky.";
+            return;
+        }
+
+        IsBusyWithRelay = true;
+        try
+        {
+            await _currentUserService.InitializeAsync();
+            await _messageTransport.RegisterAsync(endpoint, JoinInviteCodeText.Trim(), _currentUserService.Current.DisplayName);
+            IsRegistered = true;
+            JoinInviteCodeText = string.Empty;
+            await RefreshContactCardAsync();
+        }
+        catch (Exception ex)
+        {
+            RelayErrorMessage = $"Registrace kódem se nezdařila: {ex.Message}";
+        }
+        finally
+        {
+            IsBusyWithRelay = false;
+        }
+    }
+
+    /// <summary>
+    /// Admin-only counterpart to <see cref="RegisterWithCodeAsync"/> — mints the code a new device
+    /// pastes there. Same "type the admin secret fresh for this one action" pattern every other
+    /// admin command on this page already uses (<see cref="TryTakeAdminSecret"/>'s own remarks).
+    /// Fixed 60-minute validity — no UI field for it, kept deliberately simple.
+    /// </summary>
+    [RelayCommand]
+    private async Task GenerateInviteAsync()
+    {
+        AdminErrorMessage = null;
+        GeneratedInviteCode = null;
+        if (!Uri.TryCreate(RelayEndpointText, UriKind.Absolute, out var endpoint))
+        {
+            AdminErrorMessage = "Nejprve zadejte platnou adresu relay serveru výše.";
+            return;
+        }
+        if (!TryTakeAdminSecret(out var adminSecret)) return;
+
+        IsBusyWithAdmin = true;
+        try
+        {
+            var (code, expiresAtUtc) = await _relayAdminService.CreateInviteAsync(endpoint, adminSecret, displayNameHint: null, validForMinutes: 60);
+            GeneratedInviteCode = code;
+            GeneratedInviteExpiryText = $"Platí do {expiresAtUtc.LocalDateTime:g}";
+        }
+        catch (Exception ex)
+        {
+            AdminErrorMessage = $"Nepodařilo se vygenerovat kód: {ex.Message}";
+        }
+        finally
+        {
+            IsBusyWithAdmin = false;
         }
     }
 

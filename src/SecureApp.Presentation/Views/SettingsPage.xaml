@@ -57,6 +57,13 @@
                         <Entry Text="{Binding ActivationEmailText}" Placeholder="Váš e-mail (ideálně pracovní)" Keyboard="Email" />
                         <Button Text="Aktivovat" Command="{Binding RequestActivationCommand}" IsEnabled="{Binding CanUseRelayControls}" />
                         <Label Text="{Binding ActivationStatusText}" IsVisible="{Binding HasActivationStatus}" FontSize="12" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
+
+                        <!-- Mám kód pozvánky (2026-09-10) — alternativa k aktivaci výše, žádný
+                             e-mail, žádné čekání na schválení: kód sám o sobě je oprávnění, viz
+                             SettingsViewModel.RegisterWithCodeAsync's own remarks. -->
+                        <Label Text="nebo" FontSize="12" TextColor="Gray" HorizontalOptions="Center" Margin="0,4" />
+                        <Entry Text="{Binding JoinInviteCodeText}" Placeholder="Mám kód pozvánky" />
+                        <Button Text="Registrovat kódem" Style="{StaticResource SecondaryButton}" Command="{Binding RegisterWithCodeCommand}" IsEnabled="{Binding CanUseRelayControls}" />
                     </VerticalStackLayout>
 
                     <Button Text="Připojit" Command="{Binding ConnectToRelayCommand}" IsVisible="{Binding IsNotConnected}" IsEnabled="{Binding CanUseRelayControls}" />
@@ -128,6 +135,25 @@
                             </DataTemplate>
                         </CollectionView.ItemTemplate>
                     </CollectionView>
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Kódy pozvánky (2026-09-10) — pro rychlé přidání někoho bez e-mailu/schvalování,
+                 typicky když někomu jen dáváte appku na vyzkoušení: vygenerujete kód, řeknete/
+                 napíšete mu ho jinou cestou (osobně, SMS...), on ho vloží do "Mám kód pozvánky"
+                 výše. Viz SettingsViewModel.GenerateInviteAsync's own remarks. -->
+            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding IsAdmin}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Admin: Kódy pozvánky" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Label Text="Rychlá alternativa k aktivaci přes e-mail — kód platí 60 minut, kdokoli ho zná, se může zaregistrovat rovnou, bez čekání na schválení." FontSize="12" TextColor="Gray" />
+
+                    <Button Text="Vygenerovat kód" Style="{StaticResource SecondaryButton}" Command="{Binding GenerateInviteCommand}" IsEnabled="{Binding CanUseAdminControls}" />
+
+                    <VerticalStackLayout Spacing="4" IsVisible="{Binding HasGeneratedInviteCode}">
+                        <Label Text="{Binding GeneratedInviteCode}" FontSize="20" FontAttributes="Bold" FontFamily="Courier" HorizontalOptions="Center" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
+                        <Label Text="{Binding GeneratedInviteExpiryText}" FontSize="11" TextColor="Gray" HorizontalOptions="Center" />
+                        <Button Text="Kopírovat" Style="{StaticResource SecondaryButton}" Command="{Binding CopyGeneratedInviteCodeCommand}" />
+                    </VerticalStackLayout>
                 </VerticalStackLayout>
             </Border>
 

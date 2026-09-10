@@ -22,6 +22,18 @@ builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 
 // Same directory RelayDatabase resolves SECUREAPP_RELAY_DB_PATH into (the mounted /data volume in
 // production) — reused here rather than introducing a second env var, since the marker just needs
 // to land somewhere that survives a container restart and is visible to a host-side watcher.
+// Public download page (2026-09-10) — deliberately the ONE unauthenticated, no-device-credential
+// surface on this relay besides /health: a brand-new person has neither a device secret nor an
+// admin secret yet, so anything gating this would be a chicken-and-egg problem. Bounded exposure
+// the same way /health already is — this relay is never reachable outside the LAN/VPN in the first
+// place (see docker-compose.yml's own remarks), so "public" here means "anyone already on the
+// network", not the actual public internet. Files are read live from disk on every request (not
+// baked into the container image), so publishing a new build is just overwriting the file on the
+// Pi — no relay rebuild/redeploy needed for that alone.
+var downloadsDir = builder.Configuration["SECUREAPP_RELAY_DOWNLOADS_DIR"]
+    ?? Path.Combine(Path.GetDirectoryName(builder.Configuration["SECUREAPP_RELAY_DB_PATH"]) is { Length: > 0 } downloadsBaseDir ? downloadsBaseDir : AppContext.BaseDirectory, "downloads");
+Directory.CreateDirectory(downloadsDir);
+
 var deployMarkerPath = Path.Combine(
     Path.GetDirectoryName(builder.Configuration["SECUREAPP_RELAY_DB_PATH"]) is { Length: > 0 } dbDir ? dbDir : AppContext.BaseDirectory,
     "deploy-requested");
@@ -35,6 +47,25 @@ app.Services.GetRequiredService<RelayDatabase>().Initialize();
 app.UseWebSockets();
 
 app.MapGet("/health", () => Results.Ok());
+
+app.MapGet("/download", () =>
+{
+    var androidPath = Path.Combine(downloadsDir, "secureapp-android.apk");
+    var androidAvailable = File.Exists(androidPath);
+    var androidSize = androidAvailable ? $"{new FileInfo(androidPath).Length / 1024.0 / 1024.0:F0} MB" : null;
+
+    return Results.Content(DownloadPageHtml(androidAvailable, androidSize), "text/html; charset=utf-8");
+});
+
+app.MapGet("/download/android", async () =>
+{
+    var path = Path.Combine(downloadsDir, "secureapp-android.apk");
+    if (!File.Exists(path))
+        return Results.NotFound("Android verze zatím není nahraná.");
+
+    var bytes = await File.ReadAllBytesAsync(path);
+    return Results.File(bytes, "application/vnd.android.package-archive", "SecureApp.apk");
+});
 
 app.MapPost("/admin/invites", (HttpRequest request, CreateInviteRequest body, RelayDatabase db) =>
 {
@@ -515,6 +546,46 @@ static bool TryGetDeviceAuth(HttpRequest request, RelayDatabase db, out Guid dev
         return false;
 
     return db.TryAuthenticate(deviceId, secretHeader);
+}
+
+/// <summary>Plain, dependency-free HTML — no static-file middleware/Razor set up in this minimal-API project, and this is one small page, so an inline string is the simplest honest option.</summary>
+static string DownloadPageHtml(bool androidAvailable, string? androidSize)
+{
+    var androidSection = androidAvailable
+        ? $"""<a class="btn" href="/download/android">Stáhnout pro Android ({androidSize})</a>"""
+        : """<p class="muted">Android verze zatím není nahraná — zkuste to prosím později.</p>""";
+
+    return $$"""
+        <!doctype html>
+        <html lang="cs">
+        <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>SecureApp — stažení</title>
+        <style>
+            body { font-family: system-ui, sans-serif; max-width: 560px; margin: 40px auto; padding: 0 20px; line-height: 1.5; color: #1a1a1a; }
+            h1 { font-size: 22px; }
+            .btn { display: inline-block; background: #14688A; color: #fff; text-decoration: none; padding: 12px 20px; border-radius: 8px; font-weight: 600; margin: 12px 0; }
+            .muted { color: #666; font-size: 14px; }
+            ol { padding-left: 20px; }
+            li { margin-bottom: 8px; }
+        </style>
+        </head>
+        <body>
+        <h1>SecureApp</h1>
+        <p>Aplikace pro dokumenty, chat a Logbook oddělení ARIM.</p>
+        {{androidSection}}
+        <h2>Jak nainstalovat (Android)</h2>
+        <ol>
+            <li>Stáhněte soubor tlačítkem výše.</li>
+            <li>Otevřete stažený soubor — telefon se zeptá na povolení instalace z tohoto zdroje (prohlížeč/Soubory), povolte to.</li>
+            <li>Po nainstalování otevřete appku → Nastavení → Relay.</li>
+            <li>Buď <strong>Aktivovat</strong> (zadáte jméno a e-mail, počkáte na schválení administrátorem), nebo pokud máte <strong>kód pozvánky</strong> od administrátora, zadejte ho rovnou dole — registrace proběhne ihned.</li>
+        </ol>
+        <p class="muted">Tato stránka je dostupná jen v domácí síti / přes VPN, ne z veřejného internetu.</p>
+        </body>
+        </html>
+        """;
 }
 
 static object ToLibraryFileDto(LibraryFileRecord record) => new

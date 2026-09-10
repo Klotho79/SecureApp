@@ -51,4 +51,11 @@ public sealed partial class SettingsViewModel
         if (string.IsNullOrEmpty(SharedLibraryKeyBlob)) return;
         await Clipboard.Default.SetTextAsync(SharedLibraryKeyBlob);
     }
+
+    [RelayCommand]
+    private async Task CopyGeneratedInviteCodeAsync()
+    {
+        if (string.IsNullOrEmpty(GeneratedInviteCode)) return;
+        await Clipboard.Default.SetTextAsync(GeneratedInviteCode);
+    }
 }

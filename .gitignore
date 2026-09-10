@@ -15,6 +15,12 @@
 relay/SecureApp.Relay/data/
 relay/SecureApp.Relay/*.db3
 
+# Android release signing key (2026-09-10) — never commit the private key or its password; losing
+# this file means every future release build gets a NEW signature, and Android refuses to install
+# an update over an existing install signed with a different key (full uninstall would be needed on
+# every device). Keep a backup of this directory somewhere safe outside the repo.
+keystore/
+
 # OS cruft
 Thumbs.db
 .DS_Store
