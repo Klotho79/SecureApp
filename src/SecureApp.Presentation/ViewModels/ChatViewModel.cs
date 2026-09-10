@@ -192,6 +192,14 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
             }
 
             Messages = new ObservableCollection<ChatMessageItem>(items.OrderBy(m => m.SentAtUtc));
+
+            // Best-effort shared-library-key offer (2026-09-10) — see SharedLibraryKeySync's own
+            // remarks. Fired here too, not just at pairing time: a session paired BEFORE this
+            // mechanism existed never gets a fresh pairing event to hang the offer off of, so simply
+            // opening an already-established chat is what actually closes that gap (own cooldown
+            // keeps repeated opens from re-sending it every time).
+            if (session is not null)
+                _ = SharedLibraryKeySync.OfferKeyAsync(_libraryService, _messagingService, _messageTransport, session.Id);
         }
         catch (Exception ex)
         {

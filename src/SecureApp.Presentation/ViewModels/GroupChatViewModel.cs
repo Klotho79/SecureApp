@@ -389,7 +389,14 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
             catch { continue; }
 
             if (existing is not null)
-                continue; // already paired and healthy — nothing to do
+            {
+                // Already paired and healthy — nothing to resync, but still worth a best-effort
+                // shared-library-key offer (2026-09-10, own cooldown) for the same reason
+                // ChatViewModel.LoadAsync's own call does: a session paired before this mechanism
+                // existed never gets a fresh pairing event to hang the offer off of.
+                _ = SharedLibraryKeySync.OfferKeyAsync(_libraryService, _messagingService, _messageTransport, existing.Id);
+                continue;
+            }
 
             await TryBackgroundResyncAsync(member);
         }

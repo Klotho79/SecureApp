@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text;
 using SecureApp.Domain.Entities;
 using SecureApp.Domain.Interfaces.Services;
@@ -36,12 +37,28 @@ public static class SharedLibraryKeySync
     private const string PayloadPrefix = "shared-library-key:v1:";
 
     /// <summary>
+    /// Per-session cooldown (2026-09-10) — <see cref="OfferKeyAsync"/> is also called from
+    /// <c>ChatViewModel.LoadAsync</c> now (every time an EXISTING chat thread is simply opened, not
+    /// just at pairing time — see that call site's own remarks for why: an already-paired session
+    /// that predates this whole mechanism never gets a fresh pairing event to hang the offer off
+    /// of). Without a cooldown, reopening the same chat repeatedly would re-send the same system
+    /// payload every time — harmless to correctness (the peer just re-imports the identical key) but
+    /// wasteful. Mirrors <see cref="SessionRecoveryHelper"/>'s own process-wide cooldown dictionary
+    /// shape, just longer-lived: this isn't racing concurrent triggers, only rate-limiting a single
+    /// user's normal open-chat browsing.
+    /// </summary>
+    private static readonly TimeSpan _cooldown = TimeSpan.FromHours(6);
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, DateTimeOffset> _lastOfferedAtUtc = new();
+
+    /// <summary>
     /// Called from every pairing-completion site (initiator and responder alike, group fan-out
     /// included) the moment a session becomes usable — see call sites in <c>NewChatViewModel</c>,
     /// <c>App.OnPairingInviteReceived</c>/<c>OnGroupInviteReceived</c>, and
-    /// <c>GroupChatViewModel.BroadcastMembershipAsync</c>. A no-op (not an error) whenever this
-    /// device has no key of its own yet — nothing to offer; the peer who eventually generates or
-    /// imports one will offer it back over the same still-open session later.
+    /// <c>GroupChatViewModel.BroadcastMembershipAsync</c> — plus <c>ChatViewModel.LoadAsync</c> for
+    /// the already-paired-before-this-existed case. A no-op (not an error) whenever this device has
+    /// no key of its own yet — nothing to offer; the peer who eventually generates or imports one
+    /// will offer it back over the same still-open session later.
     /// </summary>
     public static async Task OfferKeyAsync(
         ISharedLibraryService sharedLibraryService,
@@ -52,8 +69,15 @@ public static class SharedLibraryKeySync
     {
         try
         {
+            var now = DateTimeOffset.UtcNow;
+            var lastOffered = _lastOfferedAtUtc.GetOrAdd(sessionId, DateTimeOffset.MinValue);
+            if (now - lastOffered < _cooldown)
+                return; // Already offered this session recently — see the cooldown's own remarks.
+
             if (!await sharedLibraryService.HasSharedKeyAsync(ct))
                 return;
+
+            _lastOfferedAtUtc[sessionId] = now;
 
             var keyBlob = await sharedLibraryService.ExportSharedKeyAsync(ct);
             var plaintext = Encoding.UTF8.GetBytes(PayloadPrefix + keyBlob);
