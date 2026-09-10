@@ -44,7 +44,7 @@
                 </VerticalStackLayout>
             </Border>
 
-            <!-- Zaznamenat výkon — celá karta jen pro Modifier/Admin (Viewer nesmí zaznamenávat, viz LogbookViewModel's own remarks). -->
+            <!-- Zaznamenat výkon — vidí a smí každá role, Viewer nevyjímaje (2026-09-10, viz RoleAccessPolicy's own remarks); IsVisible zůstává i tak, pro symetrii se stejným vzorem u ostatních karet. -->
             <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanRecordProcedure}">
                 <VerticalStackLayout Spacing="8">
                     <Label Text="Zaznamenat výkon" Style="{StaticResource SectionHeader}" Margin="0" />

@@ -16,14 +16,18 @@ namespace SecureApp.Presentation.ViewModels;
 /// <see cref="LogbookChecklistViewModel"/>) and a procedure log (record performing/observing a
 /// catalog item at a competency tier, which accumulates into the statistics list below it — the
 /// live-count equivalent of the reference logbook's "Kompetence dle…" tables, whose paper form is a
-/// single checkbox+signature per row instead). RBAC, per the user's own explicit split across two
-/// messages: any role can view/tick a checklist; Modifier and Admin alike can create/edit checklists,
-/// record procedures, and see the statistics rollup (<see cref="CanManageChecklists"/>/
-/// <see cref="CanRecordProcedure"/>/<see cref="CanViewStatistics"/>); only Admin can edit the
-/// procedure-TYPE catalog itself (<see cref="CanManageProcedureCatalog"/> — "položky zadá admin").
-/// Every admin-only-or-Modifier-only form stays collapsed behind its own toggle by default, same
-/// reasoning as <c>GroupChatViewModel.IsMembersExpanded</c> — a management form most viewers never
-/// open shouldn't cost them screen space.
+/// single checkbox+signature per row instead).
+///
+/// RBAC, current shape after a 2026-09-10 correction ("každý uživatel má právo zadávat výkony...
+/// ale přidávat typy výkonů do výběrového menu jen modifer a admin" — every role may WORK the
+/// Logbook day-to-day, only Modifier/Admin may edit its two CATALOGS): any role — Viewer included —
+/// may tick a checklist and record a procedure entry (<see cref="CanRecordProcedure"/>, picking an
+/// existing type from <see cref="ProcedureTypeOptions"/>); Modifier/Admin alike may create new
+/// checklist templates and see the statistics rollup (<see cref="CanManageChecklists"/>/
+/// <see cref="CanViewStatistics"/>); only Admin may add a new procedure TYPE to the catalog itself
+/// (<see cref="CanManageProcedureCatalog"/> — "položky zadá admin"). Creating either catalog item
+/// lives on the separate <see cref="LogbookManagePage"/> (2026-09-10 split), not here — this
+/// page is the daily-use surface only.
 /// </summary>
 public sealed partial class LogbookViewModel : ObservableObject
 {
