@@ -488,6 +488,41 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
     }
 
     /// <summary>
+    /// Voluntary self-removal (2026-09-10, user's own ask: "přidej možnost vystoupení z chatu") —
+    /// deliberately NOT gated behind <see cref="CanManageMembers"/>, unlike <see cref="RemoveAsync"/>
+    /// above: removing yourself needs no "authorized user" permission, only removing someone ELSE
+    /// does. Reuses the exact same <see cref="BroadcastMembershipAsync"/> every other membership
+    /// change already goes through, so every other member's device picks up the new (self-excluded)
+    /// snapshot the same way it would for any other membership change — no separate "someone left"
+    /// message type needed. Confirmation dialog lives in <c>GroupChatPage</c>'s code-behind, this
+    /// codebase's established convention; this method runs once the user has confirmed.
+    ///
+    /// Known gap, not fixed here (matches this app's already-documented "a founder can't hand off
+    /// the role" note): if the FOUNDER leaves, <c>GroupChat.FounderPublicKey</c> keeps pointing at a
+    /// public key no longer in the member list — deliberately out of scope for this pass, same as
+    /// every other founder-succession question already deferred.
+    /// </summary>
+    [RelayCommand]
+    private async Task LeaveGroupAsync()
+    {
+        var remaining = _members.Where(m => !m.PublicKey.AsSpan().SequenceEqual(_localPublicKey)).ToList();
+        await BroadcastMembershipAsync(remaining);
+
+        try
+        {
+            // Removes this device's own local copy too — after telling everyone else, staying
+            // around locally would just mean the group reappears the next time ANY membership
+            // change is rebroadcast by someone who doesn't yet know this device already left.
+            await _groupChatRepository.DeleteAsync(_groupChatId);
+            await Shell.Current.GoToAsync("..");
+        }
+        catch (Exception ex)
+        {
+            StatusErrorMessage = $"Skupina byla opuštěna, ale lokální záznam se nepodařilo smazat: {ex.Message}";
+        }
+    }
+
+    /// <summary>
     /// Replaces the group's full membership snapshot (2026-09-07 — see <c>IGroupMemberRepository.ReplaceAllAsync</c>'s
     /// own remarks on why this is always a full list, never a diff), persists it locally, and
     /// re-broadcasts it to every member including any brand new one — the same

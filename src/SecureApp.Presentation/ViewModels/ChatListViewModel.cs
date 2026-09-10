@@ -147,6 +147,63 @@ public sealed partial class ChatListViewModel : ObservableObject
         await LoadAsync();
     }
 
+    [ObservableProperty]
+    public partial string? DeleteErrorMessage { get; set; }
+
+    /// <summary>
+    /// Deletes a 1:1 chat from THIS device's own list only (2026-09-10, user's own ask: "mazání
+    /// chatu asi jen ze seznamu toho uživatele, který si to přeje, jinak bude pozvaný") —
+    /// deliberately local, not a two-sided "unpair" the peer's device is told about. Cascades the
+    /// session's own messages via the schema's own <c>ON DELETE CASCADE</c> (see
+    /// <c>SqlCipherConnectionFactory</c>) — <see cref="IChatSessionRepository.DeleteAsync"/> already
+    /// existed for exactly this, just never wired to any UI until now. The user's own explicit,
+    /// accepted tradeoff: since the peer's own session state is untouched, a later message from
+    /// them (or this device's own "unknown sender" auto-pair / resync sweeps) can silently recreate
+    /// a fresh session — deleting doesn't guarantee the peer stays gone, only that today's clutter
+    /// is gone right now. Confirmation dialog lives in <c>ChatListPage</c>'s code-behind.
+    /// </summary>
+    [RelayCommand]
+    private async Task DeleteSessionAsync(ChatSessionItem? item)
+    {
+        if (item is null) return;
+        DeleteErrorMessage = null;
+        try
+        {
+            await _sessionRepository.DeleteAsync(item.Id);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            DeleteErrorMessage = $"Nepodařilo se smazat chat s {item.PeerDisplayName}: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Same local-only deletion as <see cref="DeleteSessionAsync"/>, for a group instead — removes
+    /// this device's own <c>GroupChat</c> row (cascading its <c>GroupMember</c> rows via the schema's
+    /// own <c>ON DELETE CASCADE</c>) without notifying anyone else, unlike <see cref="GroupChatViewModel.LeaveGroupCommand"/>
+    /// (a real, broadcast "I'm out" that removes this device from the shared membership snapshot).
+    /// Deleting here does NOT do that — this device is still a member per every other participant's
+    /// own copy, so the group can reappear the next time someone else rebroadcasts a membership
+    /// change (the same "jinak bude pozvaný" tradeoff the user explicitly accepted). Choosing between
+    /// this and "Opustit" is deliberate: delete for clutter cleanup, leave for actually exiting.
+    /// </summary>
+    [RelayCommand]
+    private async Task DeleteGroupAsync(GroupChatListItem? item)
+    {
+        if (item is null) return;
+        DeleteErrorMessage = null;
+        try
+        {
+            await _groupChatRepository.DeleteAsync(item.Id);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            DeleteErrorMessage = $"Nepodařilo se smazat skupinu {item.Name}: {ex.Message}";
+        }
+    }
+
     private static string DescribeLastActivity(ChatSession session) => session.State switch
     {
         ChatSessionState.Closed => "Uzavřeno",

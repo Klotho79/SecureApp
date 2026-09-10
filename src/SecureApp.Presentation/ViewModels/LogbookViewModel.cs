@@ -47,6 +47,10 @@ public sealed partial class LogbookViewModel : ObservableObject
     [ObservableProperty]
     public partial bool CanManageProcedureCatalog { get; set; }
 
+    /// <summary>Gates the "⚙ Správa" button (2026-09-10) that navigates to <see cref="Views.LogbookManagePage"/> — visible whenever there's anything at all to manage there, whichever of the two underlying actions it actually is.</summary>
+    [ObservableProperty]
+    public partial bool CanManageAnything { get; set; }
+
     [ObservableProperty]
     public partial bool CanRecordProcedure { get; set; }
 
@@ -62,34 +66,6 @@ public sealed partial class LogbookViewModel : ObservableObject
     [ObservableProperty]
     public partial bool HasStatusError { get; set; }
 
-    // --- New checklist (admin-only, collapsed by default) ---
-
-    [ObservableProperty]
-    public partial bool IsAddingChecklist { get; set; }
-
-    [ObservableProperty]
-    public partial string NewChecklistName { get; set; }
-
-    /// <summary>One item per line — the simplest input shape for a variable-length list in a plain Editor, matching how the reference PDF's own checklists read as one line per item.</summary>
-    [ObservableProperty]
-    public partial string NewChecklistItemsText { get; set; }
-
-    // --- Procedure catalog (admin-only, collapsed by default) ---
-
-    [ObservableProperty]
-    public partial bool IsAddingProcedureType { get; set; }
-
-    [ObservableProperty]
-    public partial string NewProcedureTypeName { get; set; }
-
-    /// <summary>Czech labels for a plain string <c>Picker</c> — simpler and more reliable in XAML than binding a Picker straight to enum values, which needs a converter to render/select correctly. Index maps 1:1 to <see cref="LogbookProcedureCategory"/>'s declaration order.</summary>
-    public IReadOnlyList<string> CategoryOptions { get; } = ["Pracoviště", "Výkon", "Situace"];
-
-    [ObservableProperty]
-    public partial int SelectedCategoryIndex { get; set; }
-
-    private LogbookProcedureCategory NewProcedureTypeCategory => (LogbookProcedureCategory)SelectedCategoryIndex;
-
     // --- Logging a procedure ---
 
     [ObservableProperty]
@@ -98,7 +74,7 @@ public sealed partial class LogbookViewModel : ObservableObject
     [ObservableProperty]
     public partial LogbookProcedureType? SelectedProcedureType { get; set; }
 
-    /// <summary>Same plain-string-Picker reasoning as <see cref="CategoryOptions"/>. Index maps 1:1 to <see cref="LogbookCompetenceLevel"/>'s declaration order.</summary>
+    /// <summary>Same plain-string-Picker reasoning as <see cref="LogbookManageViewModel.CategoryOptions"/>. Index maps 1:1 to <see cref="LogbookCompetenceLevel"/>'s declaration order.</summary>
     public IReadOnlyList<string> LevelOptions { get; } = ["Viděl", "Pod dohledem", "Samostatně"];
 
     [ObservableProperty]
@@ -133,9 +109,6 @@ public sealed partial class LogbookViewModel : ObservableObject
         Checklists = [];
         ProcedureTypeOptions = [];
         Statistics = [];
-        NewChecklistName = string.Empty;
-        NewChecklistItemsText = string.Empty;
-        NewProcedureTypeName = string.Empty;
         NoteText = string.Empty;
         HasNoStatistics = true;
     }
@@ -157,6 +130,7 @@ public sealed partial class LogbookViewModel : ObservableObject
             var role = _currentUserService.Current.Role;
             CanManageChecklists = RoleAccessPolicy.IsAllowed(role, RbacAction.ManageLogbookChecklists);
             CanManageProcedureCatalog = RoleAccessPolicy.IsAllowed(role, RbacAction.ManageLogbookProcedureCatalog);
+            CanManageAnything = CanManageChecklists || CanManageProcedureCatalog;
             CanRecordProcedure = RoleAccessPolicy.IsAllowed(role, RbacAction.RecordLogbookProcedure);
             CanViewStatistics = RoleAccessPolicy.IsAllowed(role, RbacAction.ViewLogbookStatistics);
 
@@ -240,68 +214,12 @@ public sealed partial class LogbookViewModel : ObservableObject
         }
     }
 
+    /// <summary>Navigates to the catalog-management page (2026-09-10) — see <see cref="Views.LogbookManagePage"/>'s own remarks. Plain push, same as <see cref="OpenChecklistAsync"/> above; that page loads its own RBAC flags and data independently on <c>OnAppearing</c>, same pattern every other page in this app already uses.</summary>
     [RelayCommand]
-    private void ToggleAddingChecklist() => IsAddingChecklist = !IsAddingChecklist;
-
-    [RelayCommand]
-    private async Task ConfirmAddChecklistAsync()
+    private async Task OpenManageAsync()
     {
-        if (!CanManageChecklists) return;
-        StatusErrorMessage = null;
-
-        if (string.IsNullOrWhiteSpace(NewChecklistName))
-        {
-            StatusErrorMessage = "Zadejte název check-listu.";
-            return;
-        }
-
-        try
-        {
-            var items = NewChecklistItemsText
-                .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .ToList();
-            var template = new LogbookChecklistTemplate(NewChecklistName, items);
-            await _checklistRepository.AddAsync(template);
-
-            NewChecklistName = string.Empty;
-            NewChecklistItemsText = string.Empty;
-            IsAddingChecklist = false;
-            await LoadAsync();
-        }
-        catch (Exception ex)
-        {
-            StatusErrorMessage = $"Nepodařilo se vytvořit check-list: {ex.Message}";
-        }
-    }
-
-    [RelayCommand]
-    private void ToggleAddingProcedureType() => IsAddingProcedureType = !IsAddingProcedureType;
-
-    [RelayCommand]
-    private async Task ConfirmAddProcedureTypeAsync()
-    {
-        if (!CanManageProcedureCatalog) return;
-        StatusErrorMessage = null;
-
-        if (string.IsNullOrWhiteSpace(NewProcedureTypeName))
-        {
-            StatusErrorMessage = "Zadejte název výkonu.";
-            return;
-        }
-
-        try
-        {
-            var type = new LogbookProcedureType(NewProcedureTypeName, NewProcedureTypeCategory);
-            await _procedureTypeRepository.AddAsync(type);
-
-            NewProcedureTypeName = string.Empty;
-            IsAddingProcedureType = false;
-            await LoadAsync();
-        }
-        catch (Exception ex)
-        {
-            StatusErrorMessage = $"Nepodařilo se vytvořit typ výkonu: {ex.Message}";
-        }
+        if (!CanManageAnything) return;
+        await Shell.Current.GoToAsync(nameof(Views.LogbookManagePage));
     }
 }
 

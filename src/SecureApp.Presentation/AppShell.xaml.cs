@@ -57,5 +57,11 @@ public partial class AppShell : Shell
 		// query parameter that LogbookChecklistViewModel.ApplyQueryAttributes picks up. LogbookPage
 		// itself is the 5th TabBar tab added conditionally above, not a registered route.
 		Routing.RegisterRoute(nameof(LogbookChecklistPage), typeof(LogbookChecklistPage));
+
+		// Logbook catalog management (2026-09-10) — split out of LogbookPage itself (the user's own
+		// ask: keep daily-use actions — recording a procedure, ticking a checklist — off the same
+		// screen as admin/modifier catalog edits). Reached via a button on LogbookPage, no query
+		// parameters.
+		Routing.RegisterRoute(nameof(LogbookManagePage), typeof(LogbookManagePage));
 	}
 }

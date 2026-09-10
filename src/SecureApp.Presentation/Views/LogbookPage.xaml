@@ -10,7 +10,14 @@
     <ScrollView>
         <VerticalStackLayout Padding="16" Spacing="12">
 
-            <Label Text="Logbook" Style="{StaticResource PageTitle}" />
+            <Grid ColumnDefinitions="*,Auto">
+                <Label Grid.Column="0" Text="Logbook" Style="{StaticResource PageTitle}" />
+                <!-- Správa katalogu (2026-09-10) — vlastní stránka, viditelná jen když je vůbec co
+                     spravovat (aspoň jedno z obojího dovoleno); samotné zaznamenání výkonu/odškrtání
+                     check-listu zůstává tady, jen jejich SPRÁVA (nové typy/check-listy) se přesunula
+                     pryč, aby denní použití nesdílelo obrazovku s administrativou. -->
+                <Button Grid.Column="1" Text="⚙ Správa" Style="{StaticResource SecondaryButton}" Command="{Binding OpenManageCommand}" IsVisible="{Binding CanManageAnything}" VerticalOptions="Center" />
+            </Grid>
 
             <Label Text="{Binding StatusErrorMessage}" IsVisible="{Binding HasStatusError}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
             <ActivityIndicator IsRunning="{Binding IsLoading}" IsVisible="{Binding IsLoading}" HorizontalOptions="Center" />
@@ -18,10 +25,7 @@
             <!-- Check-listy -->
             <Border Style="{StaticResource CardBorder}">
                 <VerticalStackLayout Spacing="8">
-                    <Grid ColumnDefinitions="*,Auto">
-                        <Label Grid.Column="0" Text="Check-listy" Style="{StaticResource SectionHeader}" Margin="0" />
-                        <Button Grid.Column="1" Text="+ Nový" Style="{StaticResource SecondaryButton}" Command="{Binding ToggleAddingChecklistCommand}" IsVisible="{Binding CanManageChecklists}" />
-                    </Grid>
+                    <Label Text="Check-listy" Style="{StaticResource SectionHeader}" Margin="0" />
 
                     <Label Text="Zatím tu žádný check-list není." FontSize="12" TextColor="Gray" IsVisible="{Binding HasNoChecklists}" />
 
@@ -37,37 +41,18 @@
                             </DataTemplate>
                         </CollectionView.ItemTemplate>
                     </CollectionView>
-
-                    <!-- New checklist form — collapsed by default (2026-09-09, same reasoning as
-                         GroupChatViewModel.IsMembersExpanded: an admin-only form nobody else opens
-                         shouldn't cost every viewer screen space). -->
-                    <VerticalStackLayout Spacing="6" IsVisible="{Binding IsAddingChecklist}">
-                        <Entry Text="{Binding NewChecklistName}" Placeholder="Název check-listu, např. &quot;Před RSI&quot;" />
-                        <Editor Text="{Binding NewChecklistItemsText}" Placeholder="Jedna položka na řádek" HeightRequest="100" AutoSize="TextChanges" />
-                        <Button Text="Vytvořit check-list" Command="{Binding ConfirmAddChecklistCommand}" />
-                    </VerticalStackLayout>
                 </VerticalStackLayout>
             </Border>
 
             <!-- Zaznamenat výkon — celá karta jen pro Modifier/Admin (Viewer nesmí zaznamenávat, viz LogbookViewModel's own remarks). -->
             <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanRecordProcedure}">
                 <VerticalStackLayout Spacing="8">
-                    <Grid ColumnDefinitions="*,Auto">
-                        <Label Grid.Column="0" Text="Zaznamenat výkon" Style="{StaticResource SectionHeader}" Margin="0" />
-                        <Button Grid.Column="1" Text="+ Nový typ" Style="{StaticResource SecondaryButton}" Command="{Binding ToggleAddingProcedureTypeCommand}" IsVisible="{Binding CanManageProcedureCatalog}" />
-                    </Grid>
+                    <Label Text="Zaznamenat výkon" Style="{StaticResource SectionHeader}" Margin="0" />
 
                     <Picker ItemsSource="{Binding ProcedureTypeOptions}" ItemDisplayBinding="{Binding Name}" SelectedItem="{Binding SelectedProcedureType}" Title="Typ výkonu" />
                     <Picker ItemsSource="{Binding LevelOptions}" SelectedIndex="{Binding SelectedLevelIndex}" Title="Úroveň" />
                     <Entry Text="{Binding NoteText}" Placeholder="Poznámka (nepovinné)" />
                     <Button Text="Zaznamenat" Command="{Binding RecordProcedureCommand}" />
-
-                    <!-- New procedure-type form — Admin-only, collapsed by default, same reasoning as the checklist one above. -->
-                    <VerticalStackLayout Spacing="6" IsVisible="{Binding IsAddingProcedureType}">
-                        <Entry Text="{Binding NewProcedureTypeName}" Placeholder="Název výkonu, např. &quot;CŽK&quot;" />
-                        <Picker ItemsSource="{Binding CategoryOptions}" SelectedIndex="{Binding SelectedCategoryIndex}" Title="Kategorie" />
-                        <Button Text="Přidat typ výkonu" Command="{Binding ConfirmAddProcedureTypeCommand}" />
-                    </VerticalStackLayout>
                 </VerticalStackLayout>
             </Border>
 

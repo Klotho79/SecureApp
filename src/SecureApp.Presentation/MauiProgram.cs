@@ -142,6 +142,8 @@ public static class MauiProgram
 		builder.Services.AddTransient<LogbookPage>();
 		builder.Services.AddTransient<LogbookChecklistViewModel>();
 		builder.Services.AddTransient<LogbookChecklistPage>();
+		builder.Services.AddTransient<LogbookManageViewModel>();
+		builder.Services.AddTransient<LogbookManagePage>();
 
 		return builder.Build();
 	}

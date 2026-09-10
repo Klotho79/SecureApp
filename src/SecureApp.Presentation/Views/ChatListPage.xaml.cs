@@ -121,4 +121,40 @@ public partial class ChatListPage : ContentPage
         if (_viewModel.ResetErrorMessage is { } error)
             await DisplayAlertAsync("Obnovení se nezdařilo", error, "OK");
     }
+
+    /// <summary>See <see cref="ChatListViewModel.DeleteSessionAsync"/>'s own remarks on why this is local-only, not a two-sided unpair — the confirmation text below says so explicitly rather than leaving it implicit.</summary>
+    private async void OnDeleteSessionClicked(object? sender, EventArgs e)
+    {
+        if (sender is not Button { BindingContext: ChatSessionItem session }) return;
+
+        var confirmed = await DisplayAlertAsync(
+            "Smazat chat",
+            $"Smazat chat s '{session.PeerDisplayName}' jen z tohoto zařízení? Historie zpráv tady zmizí. Pokud vám tato osoba znovu napíše, appka se s ní může automaticky znovu spárovat.",
+            "Smazat",
+            "Storno");
+        if (!confirmed) return;
+
+        await _viewModel.DeleteSessionCommand.ExecuteAsync(session);
+
+        if (_viewModel.DeleteErrorMessage is { } error)
+            await DisplayAlertAsync("Smazání se nezdařilo", error, "OK");
+    }
+
+    /// <summary>See <see cref="ChatListViewModel.DeleteGroupAsync"/>'s own remarks — local-only, distinct from "Opustit" (leave) on <see cref="GroupChatPage"/> itself.</summary>
+    private async void OnDeleteGroupClicked(object? sender, EventArgs e)
+    {
+        if (sender is not Button { BindingContext: GroupChatListItem group }) return;
+
+        var confirmed = await DisplayAlertAsync(
+            "Smazat skupinu",
+            $"Smazat skupinu '{group.Name}' jen z tohoto zařízení? Historie zpráv tady zmizí, ale pro ostatní členy skupina dál existuje — pokud chcete opravdu vystoupit, otevřete skupinu a použijte '🚪 Opustit'.",
+            "Smazat",
+            "Storno");
+        if (!confirmed) return;
+
+        await _viewModel.DeleteGroupCommand.ExecuteAsync(group);
+
+        if (_viewModel.DeleteErrorMessage is { } error)
+            await DisplayAlertAsync("Smazání se nezdařilo", error, "OK");
+    }
 }

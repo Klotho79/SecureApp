@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="SecureApp.Presentation.Views.LogbookManagePage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
+    x:DataType="vm:LogbookManageViewModel"
+    Title="Správa logbooku">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="16" Spacing="12">
+
+            <Label Text="Správa logbooku" Style="{StaticResource PageTitle}" />
+            <Label Text="Přidávání nových check-listů a typů výkonů do katalogu — samotné zaznamenání provedeného výkonu zůstává na hlavní stránce Logbooku." FontSize="12" TextColor="Gray" />
+
+            <Label Text="{Binding StatusErrorMessage}" IsVisible="{Binding HasStatusError}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
+            <Label Text="{Binding StatusSuccessMessage}" IsVisible="{Binding HasStatusSuccess}" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" LineBreakMode="WordWrap" />
+
+            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanManageChecklists}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Nový check-list" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Entry Text="{Binding NewChecklistName}" Placeholder="Název check-listu, např. &quot;Před RSI&quot;" />
+                    <Editor Text="{Binding NewChecklistItemsText}" Placeholder="Jedna položka na řádek" HeightRequest="120" AutoSize="TextChanges" />
+                    <Button Text="Vytvořit check-list" Command="{Binding ConfirmAddChecklistCommand}" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanManageProcedureCatalog}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Nový typ výkonu" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Entry Text="{Binding NewProcedureTypeName}" Placeholder="Název výkonu, např. &quot;CŽK&quot;" />
+                    <Picker ItemsSource="{Binding CategoryOptions}" SelectedIndex="{Binding SelectedCategoryIndex}" Title="Kategorie" />
+                    <Button Text="Přidat typ výkonu" Command="{Binding ConfirmAddProcedureTypeCommand}" />
+                </VerticalStackLayout>
+            </Border>
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

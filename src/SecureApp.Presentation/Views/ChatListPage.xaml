@@ -49,16 +49,18 @@
                                 SelectionMode="Single"
                                 SelectionChanged="OnGroupSelected">
                                 <CollectionView.ItemsLayout>
-                                    <LinearItemsLayout Orientation="Vertical" ItemSpacing="8" />
+                                    <LinearItemsLayout Orientation="Vertical" ItemSpacing="6" />
                                 </CollectionView.ItemsLayout>
                                 <CollectionView.ItemTemplate>
                                     <DataTemplate x:DataType="vm:GroupChatListItem">
-                                        <Border Style="{StaticResource CardBorder}" Margin="0">
-                                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
-                                                <Border Grid.Column="0" WidthRequest="42" HeightRequest="42" Padding="0" StrokeShape="RoundRectangle 12" Stroke="Transparent" BackgroundColor="{AppThemeBinding Light={StaticResource AccentSoft}, Dark={StaticResource AccentSoftDark}}" VerticalOptions="Center">
-                                                    <Label Text="{Binding Initials}" FontFamily="SpectralSemibold" FontSize="14" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" HorizontalOptions="Center" VerticalOptions="Center" />
+                                        <Border Style="{StaticResource CardBorder}" Margin="0" Padding="10,8">
+                                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                                                <Border Grid.Column="0" WidthRequest="34" HeightRequest="34" Padding="0" StrokeShape="RoundRectangle 10" Stroke="Transparent" BackgroundColor="{AppThemeBinding Light={StaticResource AccentSoft}, Dark={StaticResource AccentSoftDark}}" VerticalOptions="Center">
+                                                    <Label Text="{Binding Initials}" FontFamily="SpectralSemibold" FontSize="12.5" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" HorizontalOptions="Center" VerticalOptions="Center" />
                                                 </Border>
-                                                <Label Grid.Column="1" Text="{Binding Name}" FontSize="15" FontAttributes="Bold" VerticalOptions="Center" />
+                                                <Label Grid.Column="1" Text="{Binding Name}" FontSize="14" FontAttributes="Bold" VerticalOptions="Center" />
+                                                <!-- Delete from THIS device's list only — see ChatListViewModel.DeleteGroupAsync's own remarks; distinct from "leave" (GroupChatPage's own 🚪 Opustit), which actually notifies the group. -->
+                                                <Button Grid.Column="2" Text="🗑" FontSize="13" Style="{StaticResource SecondaryButton}" WidthRequest="36" Padding="0" VerticalOptions="Center" Clicked="OnDeleteGroupClicked" />
                                             </Grid>
                                         </Border>
                                     </DataTemplate>
@@ -79,22 +81,24 @@
                             SelectionMode="Single"
                             SelectionChanged="OnSessionSelected">
                             <CollectionView.ItemsLayout>
-                                <LinearItemsLayout Orientation="Vertical" ItemSpacing="8" />
+                                <LinearItemsLayout Orientation="Vertical" ItemSpacing="6" />
                             </CollectionView.ItemsLayout>
                             <CollectionView.ItemTemplate>
                                 <DataTemplate x:DataType="vm:ChatSessionItem">
-                                    <Border Style="{StaticResource CardBorder}" Margin="0">
-                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-                                            <Border Grid.Column="0" WidthRequest="42" HeightRequest="42" Padding="0" StrokeShape="RoundRectangle 21" Stroke="Transparent" BackgroundColor="{AppThemeBinding Light={StaticResource AccentSoft}, Dark={StaticResource AccentSoftDark}}" VerticalOptions="Center">
-                                                <Label Text="{Binding Initials}" FontFamily="SpectralSemibold" FontSize="14" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" HorizontalOptions="Center" VerticalOptions="Center" />
+                                    <Border Style="{StaticResource CardBorder}" Margin="0" Padding="10,8">
+                                        <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="10">
+                                            <Border Grid.Column="0" WidthRequest="34" HeightRequest="34" Padding="0" StrokeShape="RoundRectangle 17" Stroke="Transparent" BackgroundColor="{AppThemeBinding Light={StaticResource AccentSoft}, Dark={StaticResource AccentSoftDark}}" VerticalOptions="Center">
+                                                <Label Text="{Binding Initials}" FontFamily="SpectralSemibold" FontSize="12.5" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" HorizontalOptions="Center" VerticalOptions="Center" />
                                             </Border>
-                                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="2">
-                                                <Label Text="{Binding PeerDisplayName}" FontSize="15" FontAttributes="Bold" />
-                                                <Label Text="{Binding LastActivityText}" FontSize="12.5" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" LineBreakMode="TailTruncation" />
+                                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
+                                                <Label Text="{Binding PeerDisplayName}" FontSize="14" FontAttributes="Bold" />
+                                                <Label Text="{Binding LastActivityText}" FontSize="11.5" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" LineBreakMode="TailTruncation" />
                                             </VerticalStackLayout>
                                             <!-- Reset/re-pair (2026-09-07) — recovery path for a session whose ratchet state has
                                                  become genuinely undecryptable, see ChatListViewModel.ResetSessionAsync's own remarks. -->
-                                            <Button Grid.Column="2" Text="↺" Style="{StaticResource SecondaryButton}" WidthRequest="44" Padding="0" VerticalOptions="Center" Clicked="OnResetSessionClicked" />
+                                            <Button Grid.Column="2" Text="↺" Style="{StaticResource SecondaryButton}" WidthRequest="36" Padding="0" VerticalOptions="Center" Clicked="OnResetSessionClicked" />
+                                            <!-- Delete from THIS device's list only (2026-09-10) — see ChatListViewModel.DeleteSessionAsync's own remarks. -->
+                                            <Button Grid.Column="3" Text="🗑" FontSize="13" Style="{StaticResource SecondaryButton}" WidthRequest="36" Padding="0" VerticalOptions="Center" Clicked="OnDeleteSessionClicked" />
                                         </Grid>
                                     </Border>
                                 </DataTemplate>

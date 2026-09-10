@@ -97,4 +97,17 @@ public partial class GroupChatPage : ContentPage
             await Shell.Current.DisplayAlertAsync($"Nepodařilo se nahrát '{picked.FileName}'", ex.Message, "OK");
         }
     }
+
+    /// <summary>Confirmation dialog lives here per this codebase's established convention — <see cref="GroupChatViewModel.LeaveGroupCommand"/> does the actual removal once confirmed.</summary>
+    private async void OnLeaveGroupClicked(object? sender, EventArgs e)
+    {
+        var confirmed = await Shell.Current.DisplayAlertAsync(
+            "Opustit skupinu",
+            $"Opravdu chcete opustit skupinu '{_viewModel.Title}'? Historie zpráv zůstane zachovaná, ale skupina zmizí z vašeho seznamu a ostatní členové uvidí, že jste odešli.",
+            "Opustit",
+            "Storno");
+        if (!confirmed) return;
+
+        await _viewModel.LeaveGroupCommand.ExecuteAsync(null);
+    }
 }
