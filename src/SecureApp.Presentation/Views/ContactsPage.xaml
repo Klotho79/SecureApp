@@ -54,16 +54,15 @@
                         </CollectionView.ItemsLayout>
                         <CollectionView.ItemTemplate>
                             <DataTemplate x:DataType="contacts:PhoneDirectoryEntry">
-                                <Grid Padding="0,6" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                                <Grid Padding="0,5" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
                                     <Border Grid.Column="0" Padding="6,2" StrokeShape="RoundRectangle 6" Stroke="Transparent" BackgroundColor="{AppThemeBinding Light={StaticResource AccentSoft}, Dark={StaticResource AccentSoftDark}}" VerticalOptions="Center" WidthRequest="86" HorizontalOptions="Start">
                                         <Label Text="{Binding Section}" FontSize="10.5" FontAttributes="Bold" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" LineBreakMode="TailTruncation" HorizontalTextAlignment="Center" />
                                     </Border>
                                     <Label Grid.Column="1" Text="{Binding Name}" FontSize="13.5" VerticalOptions="Center" LineBreakMode="TailTruncation" />
-                                    <!-- Klapky výrazně (2026-09-10, user's own ask) — its own solid pill instead of
-                                         plain bold text, so the number is the loudest thing on the row, not the name. -->
-                                    <Border Grid.Column="2" Padding="10,4" StrokeShape="RoundRectangle 8" Stroke="Transparent" BackgroundColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" VerticalOptions="Center" HorizontalOptions="End">
-                                        <Label Text="{Binding Number}" FontSize="16" FontAttributes="Bold" TextColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource PrimaryDarkText}}" />
-                                    </Border>
+                                    <!-- Zpět na prostý tučný text (2026-09-10 — pilulka z předchozí verze se
+                                         nezachovala), ale s předponou "kl." jako na straně 5 originálního PDF,
+                                         aby bylo jasné, že jde o klapku. -->
+                                    <Label Grid.Column="2" Text="{Binding Number, StringFormat='kl. {0}'}" FontSize="14.5" FontAttributes="Bold" VerticalOptions="Center" TextColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
                                 </Grid>
                             </DataTemplate>
                         </CollectionView.ItemTemplate>
