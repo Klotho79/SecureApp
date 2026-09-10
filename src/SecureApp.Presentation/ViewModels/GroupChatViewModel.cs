@@ -31,6 +31,7 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
     private readonly ISharedLibraryService _libraryService;
     private readonly IContactDirectoryService _contactDirectoryService;
     private readonly ITransportSettingsRepository _transportSettingsRepository;
+    private readonly IDiagnosticsReporter _diagnosticsReporter;
 
     private Guid _groupChatId;
     private byte[] _localPublicKey = [];
@@ -99,7 +100,8 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
         ICurrentUserService currentUserService,
         ISharedLibraryService libraryService,
         IContactDirectoryService contactDirectoryService,
-        ITransportSettingsRepository transportSettingsRepository)
+        ITransportSettingsRepository transportSettingsRepository,
+        IDiagnosticsReporter diagnosticsReporter)
     {
         _groupChatRepository = groupChatRepository ?? throw new ArgumentNullException(nameof(groupChatRepository));
         _groupMemberRepository = groupMemberRepository ?? throw new ArgumentNullException(nameof(groupMemberRepository));
@@ -111,6 +113,7 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
         _libraryService = libraryService ?? throw new ArgumentNullException(nameof(libraryService));
         _contactDirectoryService = contactDirectoryService ?? throw new ArgumentNullException(nameof(contactDirectoryService));
         _transportSettingsRepository = transportSettingsRepository ?? throw new ArgumentNullException(nameof(transportSettingsRepository));
+        _diagnosticsReporter = diagnosticsReporter ?? throw new ArgumentNullException(nameof(diagnosticsReporter));
 
         Title = "Skupina";
         Messages = [];
@@ -119,7 +122,11 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
         ComposeText = string.Empty;
     }
 
-    partial void OnStatusErrorMessageChanged(string? value) => HasStatusError = !string.IsNullOrEmpty(value);
+    partial void OnStatusErrorMessageChanged(string? value)
+    {
+        HasStatusError = !string.IsNullOrEmpty(value);
+        if (HasStatusError) _ = _diagnosticsReporter.ReportAsync(DiagnosticLogLevel.Error, value!, nameof(GroupChatViewModel));
+    }
 
     partial void OnComposeTextChanged(string value) => RecomputeCanSend();
 

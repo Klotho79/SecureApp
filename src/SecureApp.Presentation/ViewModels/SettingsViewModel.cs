@@ -28,6 +28,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly ISharedLibraryService _sharedLibraryService;
     private readonly IRelayAdminService _relayAdminService;
     private readonly IContactDirectoryService _contactDirectoryService;
+    private readonly IDiagnosticsReporter _diagnosticsReporter;
 
     private EventHandler<TransportConnectionState>? _connectionStateHandler;
     private IDispatcherTimer? _activationPollTimer;
@@ -181,6 +182,29 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool CanUseAdminControls { get; set; }
 
+    // --- Shared diagnostics log (2026-09-10) — see IDiagnosticsReporter's own remarks. Deliberately
+    // NOT gated behind IsAdmin/the admin secret: the whole point is any device can report to it and
+    // any device can read it, without needing an admin password each time — same reasoning
+    // /directory/members and /library/files already apply.
+
+    [ObservableProperty]
+    public partial ObservableCollection<DiagnosticLogItem> DiagnosticLogEntries { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsLoadingDiagnosticLog { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasNoDiagnosticLogEntries { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasDiagnosticLogEntries { get; set; }
+
+    [ObservableProperty]
+    public partial string? DiagnosticLogErrorMessage { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasDiagnosticLogError { get; set; }
+
     public SettingsViewModel(
         ICurrentUserService currentUserService,
         IMessagingService messagingService,
@@ -188,7 +212,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         IMessageTransport messageTransport,
         ISharedLibraryService sharedLibraryService,
         IRelayAdminService relayAdminService,
-        IContactDirectoryService contactDirectoryService)
+        IContactDirectoryService contactDirectoryService,
+        IDiagnosticsReporter diagnosticsReporter)
     {
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         _messagingService = messagingService ?? throw new ArgumentNullException(nameof(messagingService));
@@ -197,7 +222,10 @@ public sealed partial class SettingsViewModel : ObservableObject
         _sharedLibraryService = sharedLibraryService ?? throw new ArgumentNullException(nameof(sharedLibraryService));
         _relayAdminService = relayAdminService ?? throw new ArgumentNullException(nameof(relayAdminService));
         _contactDirectoryService = contactDirectoryService ?? throw new ArgumentNullException(nameof(contactDirectoryService));
+        _diagnosticsReporter = diagnosticsReporter ?? throw new ArgumentNullException(nameof(diagnosticsReporter));
 
+        DiagnosticLogEntries = [];
+        HasNoDiagnosticLogEntries = true;
         DisplayName = string.Empty;
         RelayEndpointText = string.Empty;
         ActivationEmailText = string.Empty;
@@ -249,6 +277,10 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     partial void OnHasNoPendingActivationsChanged(bool value) => HasPendingActivations = !value;
 
+    partial void OnDiagnosticLogErrorMessageChanged(string? value) => HasDiagnosticLogError = !string.IsNullOrEmpty(value);
+
+    partial void OnHasNoDiagnosticLogEntriesChanged(bool value) => HasDiagnosticLogEntries = !value;
+
     /// <summary>Writes through immediately, not gated behind the "Uložit" button — this is a per-device display preference (see <see cref="IsLogbookVisible"/>'s own remarks), not User data, so there's nothing to "save" beyond flipping the switch. <c>LoadAsync</c> below sets the initial value, which re-invokes this too — a harmless idempotent re-write of the same value.</summary>
     partial void OnIsLogbookVisibleChanged(bool value) => Preferences.Default.Set(AppShell.LogbookVisibilityPreferenceKey, value);
 
@@ -285,6 +317,12 @@ public sealed partial class SettingsViewModel : ObservableObject
         await RefreshContactCardAsync();
 
         HasSharedLibraryKey = await _sharedLibraryService.HasSharedKeyAsync();
+
+        // Diagnostic log auto-loads here (unlike pending activations below) since it needs no
+        // admin secret — LoadDiagnosticLogAsync already catches its own failures into
+        // DiagnosticLogErrorMessage rather than throwing, so a relay that's unreachable right now
+        // doesn't block the rest of this page from loading; "⟳ Obnovit" retries it explicitly.
+        await LoadDiagnosticLogAsync();
 
         // No auto-load of pending activations here anymore (2026-09-07) — that would need the
         // admin secret, which is never held between actions; the admin types it in and presses
@@ -613,6 +651,41 @@ public sealed partial class SettingsViewModel : ObservableObject
         _activationPollTimer = null;
     }
 
+    /// <summary>
+    /// Reads the whole community's recent shared diagnostics log (2026-09-10) — unlike everything
+    /// else this command sits next to, this genuinely needs no admin secret and no role check: it's
+    /// device-authenticated the same way <c>/directory/members</c> already is, since letting an AI
+    /// assistant (or any operator) see what's actually failing across every device, from just ONE
+    /// device's Settings page, is the entire point (see IDiagnosticsReporter's own remarks).
+    /// </summary>
+    [RelayCommand]
+    private async Task LoadDiagnosticLogAsync()
+    {
+        DiagnosticLogErrorMessage = null;
+        IsLoadingDiagnosticLog = true;
+        try
+        {
+            var entries = await _diagnosticsReporter.GetRecentAsync();
+            DiagnosticLogEntries = new ObservableCollection<DiagnosticLogItem>(entries.Select(ToDiagnosticLogItem));
+            HasNoDiagnosticLogEntries = DiagnosticLogEntries.Count == 0;
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLogErrorMessage = $"Nepodařilo se načíst diagnostický log: {ex.Message}";
+        }
+        finally
+        {
+            IsLoadingDiagnosticLog = false;
+        }
+    }
+
+    private static DiagnosticLogItem ToDiagnosticLogItem(DiagnosticLogEntry entry) => new(
+        entry.CreatedAtUtc.LocalDateTime.ToString("g"),
+        entry.Level.ToString(),
+        entry.DeviceDisplayName,
+        entry.Message,
+        entry.Context);
+
     [RelayCommand]
     private async Task ConnectToRelayAsync()
     {
@@ -708,3 +781,9 @@ public sealed partial class SettingsViewModel : ObservableObject
 
 /// <summary>One row in the admin's "Čekající aktivace" list — carries the same shared Approve/Reject <see cref="RelayCommand{T}"/> instances (bound per-item as <c>CommandParameter="{Binding Id}"</c> in the DataTemplate) rather than an <c>x:Reference</c> back to the page.</summary>
 public sealed record PendingActivationItem(Guid Id, string DisplayName, string Email, string KeyFingerprint, string CreatedText, ICommand ApproveCommand, ICommand RejectCommand);
+
+/// <summary>One row in the "Diagnostický log" list (2026-09-10) — display-only, no per-row command, unlike <see cref="PendingActivationItem"/>. <see cref="Level"/> stays the English enum name (<c>Error</c>/<c>Warning</c>/<c>Info</c>) — the XAML template colors it, doesn't translate it, same "wire-level concept stays English" call this codebase already made for <c>TransportConnectionState</c>. <see cref="HasContext"/> is precomputed here (not a converter) so the DataTemplate's <c>IsVisible</c> binding stays a plain bool — this codebase's established preference over introducing a new <c>IValueConverter</c> for one spot.</summary>
+public sealed record DiagnosticLogItem(string TimeText, string Level, string DeviceDisplayName, string Message, string? Context)
+{
+    public bool HasContext => !string.IsNullOrEmpty(Context);
+}

@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Maui.Storage;
 using SecureApp.Data;
 using SecureApp.Domain.Interfaces.Services;
+using SecureApp.Presentation.Diagnostics;
 using SecureApp.Presentation.Infrastructure;
 using SecureApp.Presentation.Library;
 using SecureApp.Presentation.Rendering;
@@ -104,6 +105,11 @@ public static class MauiProgram
 
 		// Member directory (2026-09-06) — same registration shape as ISharedLibraryService above.
 		builder.Services.AddSingleton<IContactDirectoryService, HttpContactDirectoryService>();
+
+		// Shared diagnostics log (2026-09-10) — same registration shape again. Singleton (not
+		// Scoped/Transient) so App.xaml.cs's own static handlers and the global AppDomain/
+		// TaskScheduler unhandled-exception hooks can resolve the exact same instance every time.
+		builder.Services.AddSingleton<IDiagnosticsReporter, HttpDiagnosticsReporter>();
 
 		// --- Milestone 3: Presentation (pages + view models) ---
 		builder.Services.AddTransient<DocumentBrowserViewModel>();

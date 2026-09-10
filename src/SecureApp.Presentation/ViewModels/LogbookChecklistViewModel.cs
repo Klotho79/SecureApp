@@ -2,7 +2,9 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SecureApp.Domain.Entities;
+using SecureApp.Domain.Enums;
 using SecureApp.Domain.Interfaces.Repositories;
+using SecureApp.Domain.Interfaces.Services;
 
 namespace SecureApp.Presentation.ViewModels;
 
@@ -14,6 +16,7 @@ namespace SecureApp.Presentation.ViewModels;
 public sealed partial class LogbookChecklistViewModel : ObservableObject, IQueryAttributable
 {
     private readonly ILogbookChecklistRepository _checklistRepository;
+    private readonly IDiagnosticsReporter _diagnosticsReporter;
 
     private Guid _checklistId;
 
@@ -32,14 +35,19 @@ public sealed partial class LogbookChecklistViewModel : ObservableObject, IQuery
     [ObservableProperty]
     public partial bool HasStatusError { get; set; }
 
-    public LogbookChecklistViewModel(ILogbookChecklistRepository checklistRepository)
+    public LogbookChecklistViewModel(ILogbookChecklistRepository checklistRepository, IDiagnosticsReporter diagnosticsReporter)
     {
         _checklistRepository = checklistRepository ?? throw new ArgumentNullException(nameof(checklistRepository));
+        _diagnosticsReporter = diagnosticsReporter ?? throw new ArgumentNullException(nameof(diagnosticsReporter));
         Title = "Check-list";
         Items = [];
     }
 
-    partial void OnStatusErrorMessageChanged(string? value) => HasStatusError = !string.IsNullOrEmpty(value);
+    partial void OnStatusErrorMessageChanged(string? value)
+    {
+        HasStatusError = !string.IsNullOrEmpty(value);
+        if (HasStatusError) _ = _diagnosticsReporter.ReportAsync(DiagnosticLogLevel.Error, value!, nameof(LogbookChecklistViewModel));
+    }
 
     public void ApplyQueryAttributes(IDictionary<string, object> query)
     {

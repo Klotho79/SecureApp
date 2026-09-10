@@ -14,6 +14,15 @@ public partial class App : Application
 	{
 		InitializeComponent();
 
+		// Shared diagnostics log (2026-09-10) — a genuine crash is exactly the class of failure
+		// this log exists for (see IDiagnosticsReporter's own remarks): the one thing worse than an
+		// error nobody can see remotely is a crash that kills the process before anything ELSE gets
+		// a chance to report it. Both handlers are itself best-effort (the reporter never throws —
+		// see HttpDiagnosticsReporter's own remarks — but resolving it from DI theoretically could
+		// if the container itself is in a bad state, hence the outer try/catch here too).
+		AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
+		TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
+
 		// 2026-09-06 pairing simplification: whichever side is online when the other calls
 		// CreateSessionAsync now gets the invite delivered automatically (see
 		// NewChatViewModel.CreateSessionAsync's own remarks) instead of needing a second manual
@@ -57,6 +66,35 @@ public partial class App : Application
 		// checks IsConnected on every tick, and reconnects the moment it can — no user action
 		// anywhere in it.
 		_ = RunConnectionSupervisorLoopAsync();
+	}
+
+	/// <summary>Best-effort resolve-and-report, shared by both global exception handlers below — never throws, since a handler for "something already went catastrophically wrong" is the last place that can afford to introduce a NEW exception.</summary>
+	private static void ReportFireAndForget(DiagnosticLogLevel level, string message, string context, Exception? exception)
+	{
+		try
+		{
+			var reporter = IPlatformApplication.Current?.Services.GetService<IDiagnosticsReporter>();
+			if (reporter is not null)
+				_ = reporter.ReportAsync(level, message, context, exception);
+		}
+		catch
+		{
+			// Truly nothing further to do — even resolving the reporter itself failed.
+		}
+	}
+
+	private static void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
+	{
+		var exception = e.ExceptionObject as Exception;
+		ReportFireAndForget(DiagnosticLogLevel.Error,
+			e.IsTerminating ? "Neošetřená výjimka — aplikace se ukončuje." : "Neošetřená výjimka.",
+			nameof(OnUnhandledException), exception);
+	}
+
+	private static void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
+	{
+		ReportFireAndForget(DiagnosticLogLevel.Error, "Nepozorovaná výjimka v úloze na pozadí.", nameof(OnUnobservedTaskException), e.Exception);
+		e.SetObserved(); // Prevents this from also crashing the process on runtimes that still enforce that.
 	}
 
 	private static readonly TimeSpan _supervisorTickInterval = TimeSpan.FromSeconds(10);
@@ -189,9 +227,11 @@ public partial class App : Application
 					messagingService, transport, transportSettings, currentUserService,
 					stale.PeerDisplayName, stale.PeerIdentityPublicKey, relayDeviceId);
 			}
-			catch
+			catch (Exception ex)
 			{
-				// Best-effort — retried again next sweep.
+				// Best-effort — retried again next sweep. Reported at Warning (not Error) since
+				// this is an expected, self-correcting retry loop, not a surprise.
+				ReportFireAndForget(DiagnosticLogLevel.Warning, $"Pozadí: obnovení relace s {stale.PeerDisplayName} se nepodařilo, zkusí se znovu při dalším průchodu.", nameof(RunStaleSessionSweepAsync), ex);
 			}
 		}
 	}
@@ -214,7 +254,7 @@ public partial class App : Application
 		{
 			await messagingService.ReceiveMessageAsync(envelope);
 		}
-		catch
+		catch (Exception ex)
 		{
 			// A genuine ratchet decrypt failure (not the idempotency guard's silent-duplicate
 			// case, which never throws) — auto-heal the underlying session right here too, same
@@ -222,6 +262,8 @@ public partial class App : Application
 			// message has a real chance even with no page open to react to this one.
 			// SessionRecoveryHelper.ResyncAsync's own cooldown makes it safe for a page-level
 			// handler to also attempt this a moment later for the same peer.
+			var reporter = scope.ServiceProvider.GetRequiredService<IDiagnosticsReporter>();
+			_ = reporter.ReportAsync(DiagnosticLogLevel.Error, "Přijatou zprávu se nepodařilo dešifrovat — spouští se automatické obnovení spojení.", nameof(OnEnvelopeReceived), ex);
 			try
 			{
 				var sessionRepository = scope.ServiceProvider.GetRequiredService<IChatSessionRepository>();
@@ -274,10 +316,11 @@ public partial class App : Application
 
 			await messagingService.AcceptSessionAsync(invite.InitiatorDisplayName, invite.InitiatorPublicKey, invite.InitiatorRelayDeviceId, invite.HandshakeCipherText);
 		}
-		catch
+		catch (Exception ex)
 		{
 			// Best-effort, same reasoning as AutoConnectRelayAsync below — the manual QR/copy-paste
 			// fallback the initiator's own screen still shows remains available either way.
+			ReportFireAndForget(DiagnosticLogLevel.Warning, $"Automatické spárování s {invite.InitiatorDisplayName} selhalo — zůstává dostupný ruční QR/kopírovací postup.", nameof(OnPairingInviteReceived), ex);
 		}
 	}
 

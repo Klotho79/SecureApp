@@ -24,6 +24,7 @@ public sealed partial class DocumentBrowserViewModel : ObservableObject
     private readonly IDocumentFolderRepository _folderRepository;
     private readonly IDocumentImportService _importService;
     private readonly ICurrentUserService _currentUserService;
+    private readonly IDiagnosticsReporter _diagnosticsReporter;
 
     private readonly Stack<(Guid? FolderId, string FolderName)> _breadcrumb = new();
     private Guid? _currentFolderId;
@@ -71,12 +72,14 @@ public sealed partial class DocumentBrowserViewModel : ObservableObject
         IDocumentRepository documentRepository,
         IDocumentFolderRepository folderRepository,
         IDocumentImportService importService,
-        ICurrentUserService currentUserService)
+        ICurrentUserService currentUserService,
+        IDiagnosticsReporter diagnosticsReporter)
     {
         _documentRepository = documentRepository ?? throw new ArgumentNullException(nameof(documentRepository));
         _folderRepository = folderRepository ?? throw new ArgumentNullException(nameof(folderRepository));
         _importService = importService ?? throw new ArgumentNullException(nameof(importService));
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
+        _diagnosticsReporter = diagnosticsReporter ?? throw new ArgumentNullException(nameof(diagnosticsReporter));
 
         Folders = [];
         Documents = [];
@@ -85,7 +88,11 @@ public sealed partial class DocumentBrowserViewModel : ObservableObject
         CanModifyContent = true;
     }
 
-    partial void OnStatusErrorMessageChanged(string? value) => HasStatusError = !string.IsNullOrEmpty(value);
+    partial void OnStatusErrorMessageChanged(string? value)
+    {
+        HasStatusError = !string.IsNullOrEmpty(value);
+        if (HasStatusError) _ = _diagnosticsReporter.ReportAsync(DiagnosticLogLevel.Error, value!, nameof(DocumentBrowserViewModel));
+    }
 
     partial void OnIsImportingChanged(bool value) => CanImport = !value;
 

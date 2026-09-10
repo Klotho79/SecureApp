@@ -3,6 +3,7 @@ using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SecureApp.Domain.Entities;
+using SecureApp.Domain.Enums;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Domain.ValueObjects;
@@ -28,6 +29,7 @@ public sealed partial class NewChatViewModel : ObservableObject
     private readonly ITransportSettingsRepository _transportSettingsRepository;
     private readonly IMessageTransport _messageTransport;
     private readonly IContactDirectoryService _contactDirectoryService;
+    private readonly IDiagnosticsReporter _diagnosticsReporter;
 
     /// <summary>Every other community member the relay already knows about — see the class-level remarks. Refreshed on page appear (<see cref="LoadMembersAsync"/>), not live-updated; a member who activates while this page is open just needs a pull-to-refresh-equivalent re-open, same freshness tradeoff <c>LibraryViewModel.Categories</c> already accepts.</summary>
     [ObservableProperty]
@@ -108,13 +110,15 @@ public sealed partial class NewChatViewModel : ObservableObject
         ICurrentUserService currentUserService,
         ITransportSettingsRepository transportSettingsRepository,
         IMessageTransport messageTransport,
-        IContactDirectoryService contactDirectoryService)
+        IContactDirectoryService contactDirectoryService,
+        IDiagnosticsReporter diagnosticsReporter)
     {
         _messagingService = messagingService ?? throw new ArgumentNullException(nameof(messagingService));
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         _transportSettingsRepository = transportSettingsRepository ?? throw new ArgumentNullException(nameof(transportSettingsRepository));
         _messageTransport = messageTransport ?? throw new ArgumentNullException(nameof(messageTransport));
         _contactDirectoryService = contactDirectoryService ?? throw new ArgumentNullException(nameof(contactDirectoryService));
+        _diagnosticsReporter = diagnosticsReporter ?? throw new ArgumentNullException(nameof(diagnosticsReporter));
 
         Members = [];
         HasNoMembers = true;
@@ -124,7 +128,11 @@ public sealed partial class NewChatViewModel : ObservableObject
         ScanInviteButtonText = "Naskenovat QR";
     }
 
-    partial void OnStatusErrorMessageChanged(string? value) => HasStatusError = !string.IsNullOrEmpty(value);
+    partial void OnStatusErrorMessageChanged(string? value)
+    {
+        HasStatusError = !string.IsNullOrEmpty(value);
+        if (HasStatusError) _ = _diagnosticsReporter.ReportAsync(DiagnosticLogLevel.Error, value!, nameof(NewChatViewModel));
+    }
 
     partial void OnStatusInfoMessageChanged(string? value) => HasStatusInfo = !string.IsNullOrEmpty(value);
 

@@ -36,3 +36,15 @@ public sealed record PublishDirectoryEntryRequest(string DisplayName, string Pub
 
 /// <summary>One other community member, resolvable straight into a chat session with no QR/paste step — <c>PublicKeyBase64</c> is the same chat-identity key a manually-shared contact card would have carried.</summary>
 public sealed record DirectoryMemberSummary(Guid DeviceId, string DisplayName, string PublicKeyBase64);
+
+// --- Shared diagnostics log (2026-09-10) — see IDiagnosticsReporter's own remarks for why this
+// exists: a place any device can report a problem to, and any device (or an operator with SSH into
+// the relay) can read from, so debugging a cross-device issue doesn't need physical access to every
+// device involved. Device-authenticated (X-Device-Id/X-Device-Secret), same as /directory/*  and
+// /library/files — not admin-gated, since any already-activated device is exactly who this should
+// be visible to.
+
+public sealed record ReportDiagnosticLogRequest(string Level, string Message, string? Context, string? ExceptionDetails);
+
+/// <summary><c>DeviceDisplayName</c> is resolved server-side against the CURRENT member directory, not stored at report time — see <c>RelayDatabase.GetRecentDiagnosticLogs</c>'s own remarks.</summary>
+public sealed record DiagnosticLogEntryDto(Guid Id, string DeviceDisplayName, string Level, string Message, string? Context, string? ExceptionDetails, DateTimeOffset CreatedAtUtc);

@@ -266,6 +266,32 @@ app.MapGet("/directory/members", (HttpRequest request, RelayDatabase db) =>
     return Results.Ok(members.Select(m => new DirectoryMemberSummary(m.DeviceId, m.DisplayName, Convert.ToBase64String(m.PublicKey))).ToList());
 });
 
+// --- Shared diagnostics log (2026-09-10) — see Contracts.cs's own remarks.
+
+app.MapPost("/diagnostics/logs", (HttpRequest request, ReportDiagnosticLogRequest body, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+
+    if (string.IsNullOrWhiteSpace(body.Level) || string.IsNullOrWhiteSpace(body.Message))
+        return Results.BadRequest("Level and Message are both required.");
+
+    db.InsertDiagnosticLog(deviceId, body.Level, body.Message, body.Context, body.ExceptionDetails);
+    return Results.Ok();
+});
+
+app.MapGet("/diagnostics/logs", (HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out _))
+        return Results.Unauthorized();
+
+    var limitRaw = request.Query["limit"].ToString();
+    var limit = int.TryParse(limitRaw, out var parsed) ? Math.Clamp(parsed, 1, 500) : 100;
+
+    var entries = db.GetRecentDiagnosticLogs(limit);
+    return Results.Ok(entries.Select(e => new DiagnosticLogEntryDto(e.Id, e.DeviceDisplayName, e.Level, e.Message, e.Context, e.ExceptionDetails, e.CreatedAtUtc)).ToList());
+});
+
 app.Map("/ws", async (HttpContext context, RelayDatabase db, ConnectionRegistry registry) =>
 {
     if (!context.WebSockets.IsWebSocketRequest)

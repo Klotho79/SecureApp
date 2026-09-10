@@ -31,6 +31,7 @@ public sealed partial class LogbookViewModel : ObservableObject
     private readonly ILogbookProcedureTypeRepository _procedureTypeRepository;
     private readonly ILogbookProcedureEntryRepository _procedureEntryRepository;
     private readonly ICurrentUserService _currentUserService;
+    private readonly IDiagnosticsReporter _diagnosticsReporter;
 
     private IReadOnlyList<LogbookProcedureType> _procedureTypes = [];
 
@@ -120,12 +121,14 @@ public sealed partial class LogbookViewModel : ObservableObject
         ILogbookChecklistRepository checklistRepository,
         ILogbookProcedureTypeRepository procedureTypeRepository,
         ILogbookProcedureEntryRepository procedureEntryRepository,
-        ICurrentUserService currentUserService)
+        ICurrentUserService currentUserService,
+        IDiagnosticsReporter diagnosticsReporter)
     {
         _checklistRepository = checklistRepository ?? throw new ArgumentNullException(nameof(checklistRepository));
         _procedureTypeRepository = procedureTypeRepository ?? throw new ArgumentNullException(nameof(procedureTypeRepository));
         _procedureEntryRepository = procedureEntryRepository ?? throw new ArgumentNullException(nameof(procedureEntryRepository));
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
+        _diagnosticsReporter = diagnosticsReporter ?? throw new ArgumentNullException(nameof(diagnosticsReporter));
 
         Checklists = [];
         ProcedureTypeOptions = [];
@@ -137,7 +140,11 @@ public sealed partial class LogbookViewModel : ObservableObject
         HasNoStatistics = true;
     }
 
-    partial void OnStatusErrorMessageChanged(string? value) => HasStatusError = !string.IsNullOrEmpty(value);
+    partial void OnStatusErrorMessageChanged(string? value)
+    {
+        HasStatusError = !string.IsNullOrEmpty(value);
+        if (HasStatusError) _ = _diagnosticsReporter.ReportAsync(DiagnosticLogLevel.Error, value!, nameof(LogbookViewModel));
+    }
 
     [RelayCommand]
     private async Task LoadAsync()

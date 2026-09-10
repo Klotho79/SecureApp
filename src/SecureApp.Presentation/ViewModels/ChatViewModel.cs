@@ -34,6 +34,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
     private readonly ITransportSettingsRepository _transportSettingsRepository;
     private readonly ICurrentUserService _currentUserService;
     private readonly IContactDirectoryService _contactDirectoryService;
+    private readonly IDiagnosticsReporter _diagnosticsReporter;
 
     private Guid _chatSessionId;
     private EventHandler<MessageEnvelope>? _envelopeReceivedHandler;
@@ -77,7 +78,8 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         ISharedLibraryService libraryService,
         ITransportSettingsRepository transportSettingsRepository,
         ICurrentUserService currentUserService,
-        IContactDirectoryService contactDirectoryService)
+        IContactDirectoryService contactDirectoryService,
+        IDiagnosticsReporter diagnosticsReporter)
     {
         _sessionRepository = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
         _messageRepository = messageRepository ?? throw new ArgumentNullException(nameof(messageRepository));
@@ -87,13 +89,18 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         _transportSettingsRepository = transportSettingsRepository ?? throw new ArgumentNullException(nameof(transportSettingsRepository));
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         _contactDirectoryService = contactDirectoryService ?? throw new ArgumentNullException(nameof(contactDirectoryService));
+        _diagnosticsReporter = diagnosticsReporter ?? throw new ArgumentNullException(nameof(diagnosticsReporter));
 
         Title = "Chat"; // "Chat" is used identically in Czech, kept as-is
         Messages = [];
         ComposeText = string.Empty;
     }
 
-    partial void OnStatusErrorMessageChanged(string? value) => HasStatusError = !string.IsNullOrEmpty(value);
+    partial void OnStatusErrorMessageChanged(string? value)
+    {
+        HasStatusError = !string.IsNullOrEmpty(value);
+        if (HasStatusError) _ = _diagnosticsReporter.ReportAsync(DiagnosticLogLevel.Error, value!, nameof(ChatViewModel));
+    }
 
     partial void OnComposeTextChanged(string value) => RecomputeCanSend();
 

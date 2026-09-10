@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SecureApp.Domain.Entities;
+using SecureApp.Domain.Enums;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Presentation.Chat;
@@ -29,6 +30,7 @@ public sealed partial class NewGroupViewModel : ObservableObject
     private readonly IMessageTransport _messageTransport;
     private readonly IGroupChatRepository _groupChatRepository;
     private readonly IGroupMemberRepository _groupMemberRepository;
+    private readonly IDiagnosticsReporter _diagnosticsReporter;
 
     [ObservableProperty]
     public partial string GroupNameText { get; set; }
@@ -64,7 +66,8 @@ public sealed partial class NewGroupViewModel : ObservableObject
         ITransportSettingsRepository transportSettingsRepository,
         IMessageTransport messageTransport,
         IGroupChatRepository groupChatRepository,
-        IGroupMemberRepository groupMemberRepository)
+        IGroupMemberRepository groupMemberRepository,
+        IDiagnosticsReporter diagnosticsReporter)
     {
         _contactDirectoryService = contactDirectoryService ?? throw new ArgumentNullException(nameof(contactDirectoryService));
         _messagingService = messagingService ?? throw new ArgumentNullException(nameof(messagingService));
@@ -73,13 +76,18 @@ public sealed partial class NewGroupViewModel : ObservableObject
         _messageTransport = messageTransport ?? throw new ArgumentNullException(nameof(messageTransport));
         _groupChatRepository = groupChatRepository ?? throw new ArgumentNullException(nameof(groupChatRepository));
         _groupMemberRepository = groupMemberRepository ?? throw new ArgumentNullException(nameof(groupMemberRepository));
+        _diagnosticsReporter = diagnosticsReporter ?? throw new ArgumentNullException(nameof(diagnosticsReporter));
 
         GroupNameText = string.Empty;
         Members = [];
         HasNoMembers = true;
     }
 
-    partial void OnStatusErrorMessageChanged(string? value) => HasStatusError = !string.IsNullOrEmpty(value);
+    partial void OnStatusErrorMessageChanged(string? value)
+    {
+        HasStatusError = !string.IsNullOrEmpty(value);
+        if (HasStatusError) _ = _diagnosticsReporter.ReportAsync(DiagnosticLogLevel.Error, value!, nameof(NewGroupViewModel));
+    }
 
     partial void OnCreatedGroupIdChanged(Guid? value) => HasCreatedGroup = value is not null;
 

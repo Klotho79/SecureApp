@@ -19,6 +19,7 @@ public sealed partial class LibraryViewModel : ObservableObject
 {
     private readonly ISharedLibraryService _libraryService;
     private readonly ICurrentUserService _currentUserService;
+    private readonly IDiagnosticsReporter _diagnosticsReporter;
 
     [ObservableProperty]
     public partial string SearchQuery { get; set; }
@@ -84,10 +85,11 @@ public sealed partial class LibraryViewModel : ObservableObject
     [ObservableProperty]
     public partial bool HasStatusError { get; set; }
 
-    public LibraryViewModel(ISharedLibraryService libraryService, ICurrentUserService currentUserService)
+    public LibraryViewModel(ISharedLibraryService libraryService, ICurrentUserService currentUserService, IDiagnosticsReporter diagnosticsReporter)
     {
         _libraryService = libraryService ?? throw new ArgumentNullException(nameof(libraryService));
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
+        _diagnosticsReporter = diagnosticsReporter ?? throw new ArgumentNullException(nameof(diagnosticsReporter));
 
         SearchQuery = string.Empty;
         FolderFilter = string.Empty;
@@ -101,7 +103,11 @@ public sealed partial class LibraryViewModel : ObservableObject
         RecomputeCanUpload();
     }
 
-    partial void OnStatusErrorMessageChanged(string? value) => HasStatusError = !string.IsNullOrEmpty(value);
+    partial void OnStatusErrorMessageChanged(string? value)
+    {
+        HasStatusError = !string.IsNullOrEmpty(value);
+        if (HasStatusError) _ = _diagnosticsReporter.ReportAsync(DiagnosticLogLevel.Error, value!, nameof(LibraryViewModel));
+    }
 
     partial void OnIsUploadingChanged(bool value) => RecomputeCanUpload();
 

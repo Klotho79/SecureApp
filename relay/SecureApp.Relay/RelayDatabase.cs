@@ -134,6 +134,26 @@ public sealed class RelayDatabase
                 updated_at_utc    TEXT NOT NULL
             )
             """);
+
+        // Shared diagnostics log (2026-09-10) — the user's own ask, straight after finishing the
+        // S23+ WireGuard tunnel: a place any device can report an error to, and any device (or an
+        // operator with SSH into the relay) can read from, instead of debugging always needing
+        // physical access to whichever device hit the problem. Plain SQLite like everything else
+        // here — device_id is stored raw (not resolved to a display name at write time) so a
+        // rename after the fact still shows up correctly when read back, same reasoning as
+        // directory_entries/DirectoryNameResolver already established for chat.
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS diagnostic_logs (
+                id                    TEXT PRIMARY KEY NOT NULL,
+                device_id             TEXT NOT NULL,
+                level                 TEXT NOT NULL,
+                message               TEXT NOT NULL,
+                context               TEXT NULL,
+                exception_details     TEXT NULL,
+                created_at_utc        TEXT NOT NULL
+            )
+            """);
+        Execute(connection, "CREATE INDEX IF NOT EXISTS ix_diagnostic_logs_created ON diagnostic_logs(created_at_utc)");
     }
 
     public string CreateInvite(string? displayNameHint, TimeSpan validFor, out DateTimeOffset expiresAtUtc)
@@ -421,6 +441,72 @@ public sealed class RelayDatabase
         using var reader = command.ExecuteReader();
         while (reader.Read())
             results.Add((Guid.Parse((string)reader["device_id"]), (string)reader["display_name"], (byte[])reader["public_key"]));
+        return results;
+    }
+
+    /// <summary>
+    /// Inserts one diagnostic log entry and, in the same call, prunes the table so it can't grow
+    /// unbounded on the Pi's limited disk: anything older than <see cref="DiagnosticLogRetention"/>
+    /// is deleted, and if the table still has more than <see cref="DiagnosticLogMaxRows"/> rows
+    /// after that (a genuine burst, not just old age), the oldest excess rows go too. A write-time
+    /// cost rather than a separate scheduled job — simple, and this table is never write-heavy
+    /// enough for that to matter.
+    /// </summary>
+    public void InsertDiagnosticLog(Guid deviceId, string level, string message, string? context, string? exceptionDetails)
+    {
+        using var connection = OpenConnection();
+        Execute(connection,
+            "INSERT INTO diagnostic_logs (id, device_id, level, message, context, exception_details, created_at_utc) VALUES (@id, @device, @level, @message, @context, @ex, @created)",
+            ("@id", Guid.NewGuid().ToString()), ("@device", deviceId.ToString()), ("@level", level), ("@message", message),
+            ("@context", (object?)context ?? DBNull.Value), ("@ex", (object?)exceptionDetails ?? DBNull.Value), ("@created", Format(DateTimeOffset.UtcNow)));
+
+        var cutoff = Format(DateTimeOffset.UtcNow - DiagnosticLogRetention);
+        Execute(connection, "DELETE FROM diagnostic_logs WHERE created_at_utc < @cutoff", ("@cutoff", cutoff));
+        Execute(connection,
+            "DELETE FROM diagnostic_logs WHERE id IN (SELECT id FROM diagnostic_logs ORDER BY created_at_utc DESC LIMIT -1 OFFSET @max)",
+            ("@max", DiagnosticLogMaxRows));
+    }
+
+    private static readonly TimeSpan DiagnosticLogRetention = TimeSpan.FromDays(30);
+    private const int DiagnosticLogMaxRows = 5000;
+
+    /// <summary>
+    /// Most recent entries, newest first, joined against the CURRENT <c>directory_entries</c> for
+    /// display name — resolved at read time rather than stored at write time, same
+    /// "don't trust a stale cached name" reasoning <c>DirectoryNameResolver</c> already established
+    /// for chat: a device renamed after reporting an error should still show its current name.
+    /// Falls back to a short id-based placeholder for a device that's never published to the
+    /// directory (reported before its first successful connect, or an old wiped-and-replaced
+    /// identity — see DEVELOPMENT_PLAN.md's own notes on what a device wipe does to its identity).
+    /// </summary>
+    public IReadOnlyList<(Guid Id, string DeviceDisplayName, string Level, string Message, string? Context, string? ExceptionDetails, DateTimeOffset CreatedAtUtc)> GetRecentDiagnosticLogs(int limit)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT l.id, l.device_id, l.level, l.message, l.context, l.exception_details, l.created_at_utc, d.display_name
+            FROM diagnostic_logs l
+            LEFT JOIN directory_entries d ON d.device_id = l.device_id
+            ORDER BY l.created_at_utc DESC
+            LIMIT @limit
+            """;
+        command.Parameters.AddWithValue("@limit", limit);
+
+        var results = new List<(Guid, string, string, string, string?, string?, DateTimeOffset)>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            var deviceId = (string)reader["device_id"];
+            var displayName = reader["display_name"] is string name ? name : $"Zařízení {deviceId[..8]}";
+            results.Add((
+                Guid.Parse((string)reader["id"]),
+                displayName,
+                (string)reader["level"],
+                (string)reader["message"],
+                reader["context"] is string ctx ? ctx : null,
+                reader["exception_details"] is string ex ? ex : null,
+                DateTimeOffset.Parse((string)reader["created_at_utc"], CultureInfo.InvariantCulture)));
+        }
         return results;
     }
 
