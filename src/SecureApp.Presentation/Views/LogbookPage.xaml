@@ -5,7 +5,13 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
     x:DataType="vm:LogbookViewModel"
-    Title="Logbook">
+    Title="Logbook"
+    Shell.NavBarIsVisible="False">
+    <!-- Shell's own top app bar (white "Logbook" text on the theme bar) duplicated the styled blue
+         PageTitle Label right below it (2026-09-10, user's own ask: keep the blue one, drop the
+         white one) — hidden here rather than just blanking Title, so no empty bar strip is left
+         behind either. Title itself stays set (used for things like the browser-tab/task-switcher
+         label on some platforms), just not shown as a visible bar on this page. -->
 
     <ScrollView>
         <VerticalStackLayout Padding="16" Spacing="12">

@@ -18,16 +18,17 @@ namespace SecureApp.Presentation.ViewModels;
 /// live-count equivalent of the reference logbook's "Kompetence dle…" tables, whose paper form is a
 /// single checkbox+signature per row instead).
 ///
-/// RBAC, current shape after a 2026-09-10 correction ("každý uživatel má právo zadávat výkony...
-/// ale přidávat typy výkonů do výběrového menu jen modifer a admin" — every role may WORK the
-/// Logbook day-to-day, only Modifier/Admin may edit its two CATALOGS): any role — Viewer included —
-/// may tick a checklist and record a procedure entry (<see cref="CanRecordProcedure"/>, picking an
-/// existing type from <see cref="ProcedureTypeOptions"/>); Modifier/Admin alike may create new
-/// checklist templates and see the statistics rollup (<see cref="CanManageChecklists"/>/
-/// <see cref="CanViewStatistics"/>); only Admin may add a new procedure TYPE to the catalog itself
-/// (<see cref="CanManageProcedureCatalog"/> — "položky zadá admin"). Creating either catalog item
-/// lives on the separate <see cref="LogbookManagePage"/> (2026-09-10 split), not here — this
-/// page is the daily-use surface only.
+/// RBAC, current shape after two 2026-09-10 corrections ("každý uživatel má právo zadávat
+/// výkony... ale přidávat typy výkonů do výběrového menu jen modifer a admin" — every role may
+/// WORK the Logbook day-to-day, only Modifier/Admin may edit its two CATALOGS): any role — Viewer
+/// included — may tick a checklist and record a procedure entry (<see cref="CanRecordProcedure"/>,
+/// picking an existing type from <see cref="ProcedureTypeOptions"/>); Modifier/Admin alike may
+/// create new checklist templates, add a new procedure TYPE to the catalog, and see the statistics
+/// rollup (<see cref="CanManageChecklists"/>/<see cref="CanManageProcedureCatalog"/>/
+/// <see cref="CanViewStatistics"/> — no Admin-only carve-out left anywhere here, see
+/// <c>RoleAccessPolicy</c>'s own remarks for the brief Admin-only period this walks back). Creating
+/// either catalog item lives on the separate <see cref="LogbookManagePage"/> (2026-09-10 split),
+/// not here — this page is the daily-use surface only.
 /// </summary>
 public sealed partial class LogbookViewModel : ObservableObject
 {

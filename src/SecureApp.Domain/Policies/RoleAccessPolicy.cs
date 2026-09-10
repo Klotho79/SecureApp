@@ -11,15 +11,13 @@ namespace SecureApp.Domain.Policies;
 /// to make Viewer read-only) EXCEPT <see cref="RbacAction.RecordLogbookProcedure"/> (2026-09-10,
 /// the user's own explicit correction after an earlier miscommunication: "každý uživatel má právo
 /// zadávat výkony... ale přidávat typy výkonů do výběrového menu jen modifer a admin" — every role,
-/// Viewer included, may log a procedure entry by picking an EXISTING type from the catalog; only
-/// Modifier/Admin may add a new type to that catalog in the first place, via the still-untouched
-/// <see cref="RbacAction.ManageLogbookProcedureCatalog"/> gate below). <see cref="Role.Modifier"/>
-/// and <see cref="Role.Admin"/> were fully equivalent until <see cref="RbacAction.ManageLogbookProcedureCatalog"/>
-/// (2026-09-09) — the FIRST actual use of the split this class's own earlier remarks had flagged as
-/// "reserved for future admin-only features": the user's own explicit call, "položky zadá admin",
-/// makes editing the Logbook's procedure-type catalog specifically Admin-only, while every other
-/// Logbook action (checklists, statistics) stays Modifier-equivalent-to-Admin, same as every other
-/// action here.
+/// Viewer included, may log a procedure entry by picking an EXISTING type from the catalog).
+/// <see cref="Role.Modifier"/> and <see cref="Role.Admin"/> are otherwise fully equivalent —
+/// including <see cref="RbacAction.ManageLogbookProcedureCatalog"/>, which briefly was Admin-only
+/// (2026-09-09, "položky zadá admin") before the user's own same-day-as-the-above follow-up walked
+/// that split back: "modifer a admin mohou přidávat typy výkonů i check listy" — Modifier manages
+/// both Logbook catalogs (checklists AND procedure types) exactly like Admin, no special carve-out
+/// anywhere in this app's RBAC left.
 /// </summary>
 public static class RoleAccessPolicy
 {
@@ -28,7 +26,6 @@ public static class RoleAccessPolicy
         (Role.Viewer, RbacAction.RecordLogbookProcedure) => true,
         (Role.Viewer, _) => false,
         (Role.Admin, _) => true,
-        (Role.Modifier, RbacAction.ManageLogbookProcedureCatalog) => false,
         (Role.Modifier, _) => true,
         _ => false
     };

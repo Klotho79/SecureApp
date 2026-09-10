@@ -23,10 +23,10 @@ public enum RbacAction
     /// <summary>Creating/editing the Logbook's checklists (name + item list) — Modifier-equivalent-to-Admin, same as most actions here, per the user's own follow-up ("modifer muže přidávat výkony do check listu"). Not Viewer, same reasoning as every other RbacAction.</summary>
     ManageLogbookChecklists,
 
-    /// <summary>Creating/editing the Logbook's procedure-TYPE catalog specifically (the master list a <see cref="Entities.LogbookProcedureEntry"/> logs against, which is what feeds <see cref="ViewLogbookStatistics"/>) — deliberately Admin-only, not also Modifier like <see cref="ManageLogbookChecklists"/> above (the user's own explicit split: "položky zadá admin"). The first real use of the Admin/Modifier distinction <c>RoleAccessPolicy</c>'s own remarks flagged as "reserved for future admin-only features".</summary>
+    /// <summary>Creating/editing the Logbook's procedure-TYPE catalog specifically (the master list a <see cref="Entities.LogbookProcedureEntry"/> logs against, which is what feeds <see cref="ViewLogbookStatistics"/>) — Modifier-equivalent-to-Admin, same as <see cref="ManageLogbookChecklists"/> above. Was briefly Admin-only (2026-09-09, "položky zadá admin") — walked back the same day by the user's own follow-up: "modifer a admin mohou přidávat typy výkonů i check listy".</summary>
     ManageLogbookProcedureCatalog,
 
-    /// <summary>Recording a Logbook procedure entry — picking an EXISTING type from the catalog and logging it. Allowed for every role, Viewer included (2026-09-10 correction of an earlier miscommunication: "každý uživatel má právo zadávat výkony" — everyone may log, only <see cref="ManageLogbookProcedureCatalog"/> stays gated).</summary>
+    /// <summary>Recording a Logbook procedure entry — picking an EXISTING type from the catalog and logging it. Allowed for every role, Viewer included (2026-09-10 correction of an earlier miscommunication: "každý uživatel má právo zadávat výkony" — everyone may log; adding a new type to that catalog stays gated behind <see cref="ManageLogbookProcedureCatalog"/>).</summary>
     RecordLogbookProcedure,
 
     /// <summary>Viewing the Logbook's statistics rollup — Modifier-equivalent-to-Admin, not Viewer (the user's own explicit "statistiku muže videt admin a modifer").</summary>

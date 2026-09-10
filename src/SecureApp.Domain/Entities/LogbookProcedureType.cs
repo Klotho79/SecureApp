@@ -4,12 +4,13 @@ using SecureApp.Domain.Enums;
 namespace SecureApp.Domain.Entities;
 
 /// <summary>
-/// One entry in the admin-managed catalog of loggable items (2026-09-09) — e.g. "CŽK", "Spinální
-/// anestezie", "Laryngospasmus", mirroring a row of one of the reference logbook's three
-/// "Kompetence dle…" tables (see <see cref="LogbookProcedureCategory"/>). Only an Admin-role device
-/// can create/edit these (<c>RbacAction.ManageLogbookCatalog</c> — the user's own explicit split:
-/// "položky zadá admin"); every other role just picks from the resulting list when logging a
-/// <see cref="LogbookProcedureEntry"/>.
+/// One entry in the Modifier/Admin-managed catalog of loggable items (2026-09-09) — e.g. "CŽK",
+/// "Spinální anestezie", "Laryngospasmus", mirroring a row of one of the reference logbook's three
+/// "Kompetence dle…" tables (see <see cref="LogbookProcedureCategory"/>). Gated behind
+/// <c>RbacAction.ManageLogbookProcedureCatalog</c> — briefly Admin-only (2026-09-09, "položky zadá
+/// admin"), walked back to Modifier-equivalent-to-Admin the same day ("modifer a admin mohou
+/// přidávat typy výkonů i check listy") — every role, Viewer included, may pick from the resulting
+/// list when logging a <see cref="LogbookProcedureEntry"/> (<c>RbacAction.RecordLogbookProcedure</c>).
 /// </summary>
 public sealed class LogbookProcedureType : Entity
 {
