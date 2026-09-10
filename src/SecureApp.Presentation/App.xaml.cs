@@ -428,7 +428,7 @@ public partial class App : Application
 
 		var configuration = await transportSettings.GetAsync();
 		var deviceId = configuration?.AssignedDeviceId
-			?? throw new InvalidOperationException("Register with a relay in Settings first.");
+			?? throw new InvalidOperationException("Nejprve se zaregistrujte u relay serveru v Nastavení.");
 		var publicKey = await messagingService.GetLocalIdentityPublicKeyAsync();
 		await currentUserService.InitializeAsync();
 		return new ContactCardBlob(currentUserService.Current.DisplayName, publicKey, deviceId);

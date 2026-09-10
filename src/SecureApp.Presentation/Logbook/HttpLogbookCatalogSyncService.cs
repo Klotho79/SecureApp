@@ -128,7 +128,7 @@ public sealed class HttpLogbookCatalogSyncService : ILogbookCatalogSyncService
     {
         var configuration = await _transportSettingsRepository.GetAsync(ct);
         var wsEndpoint = configuration?.EndpointUri
-            ?? throw new InvalidOperationException("No relay endpoint is configured yet — set one up in Settings first.");
+            ?? throw new InvalidOperationException("Zatím není nastavená adresa relay serveru — nastavte ji nejprve v Nastavení.");
 
         var scheme = wsEndpoint.Scheme switch
         {
@@ -143,9 +143,9 @@ public sealed class HttpLogbookCatalogSyncService : ILogbookCatalogSyncService
     {
         var configuration = await _transportSettingsRepository.GetAsync(ct);
         var deviceId = configuration?.AssignedDeviceId
-            ?? throw new InvalidOperationException("Register with a relay in Settings first.");
+            ?? throw new InvalidOperationException("Nejprve se zaregistrujte u relay serveru v Nastavení.");
         var secretBytes = await _vault.RetrieveSecretAsync(RelayDeviceVaultKeys.DeviceSecret, ct)
-            ?? throw new InvalidOperationException("Relay device secret is missing from the vault.");
+            ?? throw new InvalidOperationException("V úložišti chybí tajný klíč zařízení pro relay.");
 
         request.Headers.Add("X-Device-Id", deviceId.ToString());
         request.Headers.Add("X-Device-Secret", Encoding.UTF8.GetString(secretBytes));

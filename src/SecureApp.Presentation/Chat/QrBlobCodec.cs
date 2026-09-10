@@ -70,7 +70,7 @@ public static class QrBlobCodec
     {
         var nameBytes = Encoding.UTF8.GetBytes(card.DisplayName);
         if (nameBytes.Length > byte.MaxValue)
-            throw new InvalidOperationException("Display name is too long to fit in a QR-packed contact card.");
+            throw new InvalidOperationException("Zobrazované jméno je příliš dlouhé, aby se vešlo do QR kódu kontaktní karty.");
         writer.Write((byte)nameBytes.Length);
         writer.Write(nameBytes);
         WriteLengthPrefixed(writer, card.PublicKey);

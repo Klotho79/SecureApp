@@ -37,7 +37,7 @@ public sealed class HttpRelayAdminService : IRelayAdminService
         response.EnsureSuccessStatusCode();
 
         var result = await response.Content.ReadFromJsonAsync<InviteResponse>(HttpJsonOptions, ct)
-            ?? throw new InvalidOperationException("Relay returned an empty invite response.");
+            ?? throw new InvalidOperationException("Relay vrátil prázdnou odpověď na vytvoření pozvánky.");
         return (result.Code, result.ExpiresAtUtc);
     }
 
@@ -78,7 +78,7 @@ public sealed class HttpRelayAdminService : IRelayAdminService
         if (response.StatusCode == HttpStatusCode.Unauthorized)
             throw new InvalidOperationException("Relay odmítl zadané admin heslo.");
         if (response.StatusCode == HttpStatusCode.Conflict)
-            throw new InvalidOperationException("This request was already approved or rejected — nothing left to do.");
+            throw new InvalidOperationException("Tato žádost už byla schválena nebo zamítnuta — není co dělat.");
         response.EnsureSuccessStatusCode();
     }
 

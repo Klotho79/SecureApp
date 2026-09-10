@@ -73,7 +73,7 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
         response.EnsureSuccessStatusCode();
 
         var credential = await response.Content.ReadFromJsonAsync<DeviceCredential>(HttpJsonOptions, ct)
-            ?? throw new InvalidOperationException("Relay returned an empty registration response.");
+            ?? throw new InvalidOperationException("Relay vrátil prázdnou odpověď na registraci.");
 
         await _vault.StoreSecretAsync(RelayDeviceVaultKeys.DeviceSecret, Encoding.UTF8.GetBytes(credential.Secret), ct);
 
@@ -104,7 +104,7 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
         response.EnsureSuccessStatusCode();
 
         var result = await response.Content.ReadFromJsonAsync<ActivationRequestCreated>(HttpJsonOptions, ct)
-            ?? throw new InvalidOperationException("Relay returned an empty activation-request response.");
+            ?? throw new InvalidOperationException("Relay vrátil prázdnou odpověď na žádost o aktivaci.");
 
         var transportSettings = scope.ServiceProvider.GetRequiredService<ITransportSettingsRepository>();
         var configuration = await transportSettings.GetAsync(ct) ?? new TransportEndpointConfiguration(endpoint, isAutoConnectEnabled: true);
@@ -123,10 +123,10 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
         response.EnsureSuccessStatusCode();
 
         var result = await response.Content.ReadFromJsonAsync<ActivationStatusResult>(HttpJsonOptions, ct)
-            ?? throw new InvalidOperationException("Relay returned an empty activation-status response.");
+            ?? throw new InvalidOperationException("Relay vrátil prázdnou odpověď na stav aktivace.");
 
         if (!Enum.TryParse<ActivationRequestStatus>(result.Status, ignoreCase: true, out var status))
-            throw new InvalidOperationException($"Relay returned an unrecognized activation status '{result.Status}'.");
+            throw new InvalidOperationException($"Relay vrátil neznámý stav aktivace „{result.Status}“.");
 
         if (status == ActivationRequestStatus.Approved && result is { DeviceId: { } deviceId, Secret: { } secret })
         {
@@ -167,10 +167,10 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
         var transportSettings = scope.ServiceProvider.GetRequiredService<ITransportSettingsRepository>();
         var configuration = await transportSettings.GetAsync(ct);
         var deviceId = configuration?.AssignedDeviceId
-            ?? throw new InvalidOperationException("No device is registered with a relay yet — call RegisterAsync first.");
+            ?? throw new InvalidOperationException("Zatím není zaregistrováno žádné zařízení u relay serveru.");
 
         var secretBytes = await _vault.RetrieveSecretAsync(RelayDeviceVaultKeys.DeviceSecret, ct)
-            ?? throw new InvalidOperationException("Relay device secret is missing from the vault.");
+            ?? throw new InvalidOperationException("V úložišti chybí tajný klíč zařízení pro relay.");
         var secret = Encoding.UTF8.GetString(secretBytes);
 
         RaiseConnectionState(TransportConnectionState.Connecting);
@@ -185,7 +185,7 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
         {
             socket.Dispose();
             RaiseConnectionState(TransportConnectionState.Disconnected);
-            throw new InvalidOperationException("Relay authentication failed.");
+            throw new InvalidOperationException("Ověření u relay serveru selhalo.");
         }
 
         _socket = socket;
@@ -253,7 +253,7 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
     {
         ArgumentNullException.ThrowIfNull(envelope);
         if (_socket is not { State: WebSocketState.Open } socket)
-            throw new InvalidOperationException("Not connected to a relay.");
+            throw new InvalidOperationException("Není připojeno k relay serveru.");
 
         using var scope = _scopeFactory.CreateScope();
         var sessionRepository = scope.ServiceProvider.GetRequiredService<IChatSessionRepository>();
@@ -269,7 +269,7 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(inviteBlob);
         if (_socket is not { State: WebSocketState.Open } socket)
-            throw new InvalidOperationException("Not connected to a relay.");
+            throw new InvalidOperationException("Není připojeno k relay serveru.");
 
         await SendFrameAsync(socket, new WireFrame { Type = "pairing", RecipientDeviceId = recipientRelayDeviceId, PairingInviteBlob = inviteBlob }, ct);
     }
@@ -278,7 +278,7 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(groupInviteBlob);
         if (_socket is not { State: WebSocketState.Open } socket)
-            throw new InvalidOperationException("Not connected to a relay.");
+            throw new InvalidOperationException("Není připojeno k relay serveru.");
 
         await SendFrameAsync(socket, new WireFrame { Type = "group-invite", RecipientDeviceId = recipientRelayDeviceId, GroupInviteBlob = groupInviteBlob }, ct);
     }

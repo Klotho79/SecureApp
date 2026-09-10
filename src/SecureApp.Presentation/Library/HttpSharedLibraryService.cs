@@ -76,11 +76,11 @@ public sealed class HttpSharedLibraryService : ISharedLibraryService
         }
         catch (FormatException ex)
         {
-            throw new InvalidOperationException("That doesn't look like a valid shared library key.", ex);
+            throw new InvalidOperationException("Tohle nevypadá jako platný klíč sdílené knihovny.", ex);
         }
 
         if (key.Length != 32)
-            throw new InvalidOperationException("That doesn't look like a valid shared library key (wrong length).");
+            throw new InvalidOperationException("Tohle nevypadá jako platný klíč sdílené knihovny (špatná délka).");
 
         await _vault.StoreSecretAsync(SharedLibraryKeyVaultKey, key, ct);
     }
@@ -88,7 +88,7 @@ public sealed class HttpSharedLibraryService : ISharedLibraryService
     public async Task<string> ExportSharedKeyAsync(CancellationToken ct = default)
     {
         var key = await _vault.RetrieveSecretAsync(SharedLibraryKeyVaultKey, ct)
-            ?? throw new InvalidOperationException("No shared library key is set up yet on this device.");
+            ?? throw new InvalidOperationException("Na tomto zařízení zatím není nastavený žádný klíč sdílené knihovny.");
         return Convert.ToBase64String(key);
     }
 
@@ -117,7 +117,7 @@ public sealed class HttpSharedLibraryService : ISharedLibraryService
         response.EnsureSuccessStatusCode();
 
         var dto = await response.Content.ReadFromJsonAsync<LibraryFileDto>(HttpJsonOptions, ct)
-            ?? throw new InvalidOperationException("Relay returned an empty upload response.");
+            ?? throw new InvalidOperationException("Relay vrátil prázdnou odpověď při nahrávání.");
         return ToSummary(dto);
     }
 
@@ -163,7 +163,7 @@ public sealed class HttpSharedLibraryService : ISharedLibraryService
         }
         catch (Exception ex)
         {
-            throw new InvalidOperationException("Could not decrypt this library file — check your shared library key matches the uploader's.", ex);
+            throw new InvalidOperationException("Tento soubor se nepodařilo dešifrovat — zkontrolujte, že váš klíč sdílené knihovny odpovídá klíči toho, kdo soubor nahrál.", ex);
         }
 
         using var scope = _scopeFactory.CreateScope();
@@ -185,13 +185,13 @@ public sealed class HttpSharedLibraryService : ISharedLibraryService
 
     private async Task<byte[]> GetSharedKeyAsync(CancellationToken ct)
         => await _vault.RetrieveSecretAsync(SharedLibraryKeyVaultKey, ct)
-            ?? throw new InvalidOperationException("No shared library key is set up yet — generate or import one in Settings first.");
+            ?? throw new InvalidOperationException("Zatím nemáte nastavený klíč sdílené knihovny — nejprve ho vygenerujte nebo importujte v Nastavení.");
 
     private async Task<Uri> GetHttpEndpointAsync(CancellationToken ct)
     {
         var configuration = await _transportSettingsRepository.GetAsync(ct);
         var wsEndpoint = configuration?.EndpointUri
-            ?? throw new InvalidOperationException("No relay endpoint is configured yet — set one up in Settings first.");
+            ?? throw new InvalidOperationException("Zatím není nastavená adresa relay serveru — nastavte ji nejprve v Nastavení.");
 
         var scheme = wsEndpoint.Scheme switch
         {
@@ -206,9 +206,9 @@ public sealed class HttpSharedLibraryService : ISharedLibraryService
     {
         var configuration = await _transportSettingsRepository.GetAsync(ct);
         var deviceId = configuration?.AssignedDeviceId
-            ?? throw new InvalidOperationException("Register with a relay in Settings first.");
+            ?? throw new InvalidOperationException("Nejprve se zaregistrujte u relay serveru v Nastavení.");
         var secretBytes = await _vault.RetrieveSecretAsync(RelayDeviceVaultKeys.DeviceSecret, ct)
-            ?? throw new InvalidOperationException("Relay device secret is missing from the vault.");
+            ?? throw new InvalidOperationException("V úložišti chybí tajný klíč zařízení pro relay.");
 
         request.Headers.Add("X-Device-Id", deviceId.ToString());
         request.Headers.Add("X-Device-Secret", Encoding.UTF8.GetString(secretBytes));
@@ -226,7 +226,7 @@ public sealed class HttpSharedLibraryService : ISharedLibraryService
     private static (byte[] Nonce, byte[] AuthTag, byte[] CipherText) Split(byte[] wireBytes)
     {
         if (wireBytes.Length < NonceLength + AuthTagLength)
-            throw new InvalidOperationException("Downloaded library file is too short to contain a valid envelope.");
+            throw new InvalidOperationException("Stažený soubor ze sdílené knihovny je příliš krátký, aby mohl obsahovat platná data.");
 
         var nonce = wireBytes[..NonceLength];
         var authTag = wireBytes[NonceLength..(NonceLength + AuthTagLength)];

@@ -282,6 +282,6 @@ public sealed class DocumentRenderingService : IDocumentRenderingService
         }
 
         return source.Resize(new SKImageInfo(targetWidth, targetHeight), SKSamplingOptions.Default)
-            ?? throw new InvalidOperationException("Failed to resize a rendered page.");
+            ?? throw new InvalidOperationException("Nepodařilo se změnit velikost vykreslené stránky.");
     }
 }
