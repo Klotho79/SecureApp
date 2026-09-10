@@ -23,9 +23,9 @@
             <CollectionView ItemsSource="{Binding Messages}" ItemsUpdatingScrollMode="KeepLastItemInView" Margin="12,12,12,4">
                 <CollectionView.ItemTemplate>
                     <DataTemplate x:DataType="vm:ChatMessageItem">
-                        <Grid Padding="4,1">
+                        <Grid Padding="3,0">
                             <Border
-                                Padding="9,5"
+                                Padding="7,3"
                                 StrokeShape="RoundRectangle 18,18,5,18"
                                 StrokeThickness="1"
                                 Stroke="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}"
@@ -40,13 +40,13 @@
                                         <Setter Property="HorizontalOptions" Value="End" />
                                     </DataTrigger>
                                 </Border.Triggers>
-                                <VerticalStackLayout Spacing="1">
+                                <VerticalStackLayout Spacing="0">
                                     <!-- Header row: the time, on its own line above the message text — a 1:1 thread
                                          has no per-message "kdo" label (the bubble side already says who), so this
                                          is just the time header half of the group-chat layout, kept consistent. -->
                                     <Label
                                         Text="{Binding SentAtUtc.LocalDateTime, StringFormat='{0:t}'}"
-                                        FontSize="10"
+                                        FontSize="9"
                                         HorizontalOptions="End"
                                         TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}">
                                         <Label.Triggers>
@@ -56,7 +56,7 @@
                                         </Label.Triggers>
                                     </Label>
 
-                                    <Label Text="{Binding Text}" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" FontSize="13.5" LineBreakMode="WordWrap" IsVisible="{Binding HasText}">
+                                    <Label Text="{Binding Text}" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" FontSize="13" LineBreakMode="WordWrap" IsVisible="{Binding HasText}">
                                         <Label.Triggers>
                                             <DataTrigger TargetType="Label" Binding="{Binding IsOutbound}" Value="True">
                                                 <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource PrimaryDarkText}}" />
