@@ -252,7 +252,32 @@ public partial class App : Application
 
 		try
 		{
-			await messagingService.ReceiveMessageAsync(envelope);
+			var message = await messagingService.ReceiveMessageAsync(envelope);
+
+			// Shared-library-key offer arriving (2026-09-10) — see SharedLibraryKeySync's own
+			// remarks. Decrypt-and-import right here, unconditionally, regardless of whether any
+			// chat page happens to be open — same "always-on persistence" reasoning this handler's
+			// own subscription comment already established for ordinary messages. Best-effort: a
+			// malformed/foreign system payload, or an import failure (e.g. this device somehow
+			// already has a DIFFERENT key — see ImportSharedKeyAsync's own remarks on why that's
+			// never silently overwritten... actually it just overwrites, which is fine, the whole
+			// community shares exactly one key) never surfaces as an error to the user.
+			if (envelope.IsSystemPayload)
+			{
+				try
+				{
+					var plaintext = await messagingService.DecryptMessageAsync(message.Id);
+					if (SharedLibraryKeySync.TryParseKeyOffer(plaintext, out var keyBlob))
+					{
+						var sharedLibraryService = scope.ServiceProvider.GetRequiredService<ISharedLibraryService>();
+						await sharedLibraryService.ImportSharedKeyAsync(keyBlob);
+					}
+				}
+				catch
+				{
+					// Best-effort — nothing further to do at this level.
+				}
+			}
 		}
 		catch (Exception ex)
 		{
@@ -314,7 +339,18 @@ public partial class App : Application
 			if (await messagingService.FindExistingSessionAsync(invite.InitiatorPublicKey) is { } existingSession)
 				await messagingService.CloseSessionAsync(existingSession.Id);
 
-			await messagingService.AcceptSessionAsync(invite.InitiatorDisplayName, invite.InitiatorPublicKey, invite.InitiatorRelayDeviceId, invite.HandshakeCipherText);
+			var acceptedSession = await messagingService.AcceptSessionAsync(invite.InitiatorDisplayName, invite.InitiatorPublicKey, invite.InitiatorRelayDeviceId, invite.HandshakeCipherText);
+
+			// Best-effort shared-library-key offer (2026-09-10) — see SharedLibraryKeySync's own
+			// remarks; this is the auto-pairing counterpart of NewChatViewModel.AcceptInviteAsync's
+			// own manual-paste call, so a fully automatic pairing gets the same treatment.
+			// Awaited (not fire-and-forget) — this handler's own `using var scope` above disposes
+			// at method exit, and OfferKeyAsync needs that scope's services to still be alive while
+			// it runs; it's already internally best-effort (never throws), so awaiting costs nothing
+			// but a few more milliseconds on this background event handler.
+			var sharedLibraryService = scope.ServiceProvider.GetRequiredService<ISharedLibraryService>();
+			var messageTransportForOffer = scope.ServiceProvider.GetRequiredService<IMessageTransport>();
+			await SharedLibraryKeySync.OfferKeyAsync(sharedLibraryService, messagingService, messageTransportForOffer, acceptedSession.Id);
 		}
 		catch (Exception ex)
 		{
@@ -387,7 +423,7 @@ public partial class App : Application
 				try
 				{
 					var ownCard = await BuildOwnContactCardAsync(scope.ServiceProvider);
-					var (_, handshakeCipherText) = await messagingService.CreateSessionAsync(member.DisplayName, member.PublicKey, member.RelayDeviceId);
+					var (newMemberSession, handshakeCipherText) = await messagingService.CreateSessionAsync(member.DisplayName, member.PublicKey, member.RelayDeviceId);
 					var chatInvite = new ChatInviteBlob(ownCard.DisplayName, ownCard.PublicKey, ownCard.RelayDeviceId, handshakeCipherText);
 
 					if (messageTransport.IsConnected)
@@ -396,6 +432,12 @@ public partial class App : Application
 					// same "stays Pending, no error surfaced" policy this app already uses elsewhere
 					// (ChatViewModel.SendAsync). No manual QR/copy fallback UI for this particular
 					// gap in this pass — a later reconnect + a fresh group resync would recover it.
+
+					// Best-effort shared-library-key offer (2026-09-10) — see SharedLibraryKeySync's
+					// own remarks; a brand new group member is exactly the case the user's own
+					// objection was about, so this new pairwise session gets the same offer too.
+					var sharedLibraryServiceForMember = scope.ServiceProvider.GetRequiredService<ISharedLibraryService>();
+					await SharedLibraryKeySync.OfferKeyAsync(sharedLibraryServiceForMember, messagingService, messageTransport, newMemberSession.Id);
 				}
 				catch
 				{

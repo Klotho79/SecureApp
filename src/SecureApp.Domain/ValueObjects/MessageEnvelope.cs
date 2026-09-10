@@ -15,6 +15,7 @@ namespace SecureApp.Domain.ValueObjects;
 /// same-device correlation only and was never itself cross-device-resolvable.
 /// </summary>
 /// <summary><see cref="GroupChatId"/>/<see cref="GroupMessageId"/> (2026-09-07): set when this envelope is one leg of a group message's pairwise fan-out — see <c>GroupChat</c>'s own remarks on the crypto design. Both null for an ordinary 1:1 message.</summary>
+/// <summary><see cref="IsSystemPayload"/> (2026-09-10): mirrors <see cref="Entities.Message.IsSystemPayload"/> — see its own remarks. Carried on the wire so the receiving side's <c>App.OnEnvelopeReceived</c> can react to it before the decrypted plaintext even needs a UI thread open.</summary>
 public sealed record MessageEnvelope(
     Guid SessionId,
     Guid SenderUserId,
@@ -24,4 +25,5 @@ public sealed record MessageEnvelope(
     Guid? AttachmentLibraryFileId = null,
     string? AttachmentFileName = null,
     Guid? GroupChatId = null,
-    Guid? GroupMessageId = null);
+    Guid? GroupMessageId = null,
+    bool IsSystemPayload = false);

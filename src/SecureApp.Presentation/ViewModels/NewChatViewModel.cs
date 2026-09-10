@@ -30,6 +30,7 @@ public sealed partial class NewChatViewModel : ObservableObject
     private readonly IMessageTransport _messageTransport;
     private readonly IContactDirectoryService _contactDirectoryService;
     private readonly IDiagnosticsReporter _diagnosticsReporter;
+    private readonly ISharedLibraryService _sharedLibraryService;
 
     /// <summary>Every other community member the relay already knows about — see the class-level remarks. Refreshed on page appear (<see cref="LoadMembersAsync"/>), not live-updated; a member who activates while this page is open just needs a pull-to-refresh-equivalent re-open, same freshness tradeoff <c>LibraryViewModel.Categories</c> already accepts.</summary>
     [ObservableProperty]
@@ -111,7 +112,8 @@ public sealed partial class NewChatViewModel : ObservableObject
         ITransportSettingsRepository transportSettingsRepository,
         IMessageTransport messageTransport,
         IContactDirectoryService contactDirectoryService,
-        IDiagnosticsReporter diagnosticsReporter)
+        IDiagnosticsReporter diagnosticsReporter,
+        ISharedLibraryService sharedLibraryService)
     {
         _messagingService = messagingService ?? throw new ArgumentNullException(nameof(messagingService));
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
@@ -119,6 +121,7 @@ public sealed partial class NewChatViewModel : ObservableObject
         _messageTransport = messageTransport ?? throw new ArgumentNullException(nameof(messageTransport));
         _contactDirectoryService = contactDirectoryService ?? throw new ArgumentNullException(nameof(contactDirectoryService));
         _diagnosticsReporter = diagnosticsReporter ?? throw new ArgumentNullException(nameof(diagnosticsReporter));
+        _sharedLibraryService = sharedLibraryService ?? throw new ArgumentNullException(nameof(sharedLibraryService));
 
         Members = [];
         HasNoMembers = true;
@@ -251,6 +254,11 @@ public sealed partial class NewChatViewModel : ObservableObject
                 // remarks (2026-09-06) for why this auto-navigates instead of waiting for a second
                 // "Open Chat" tap the user rightly called out as pointless extra friction.
                 CreatedSession = existing;
+                // Already paired but might not have the shared library key yet (e.g. this device
+                // generated/imported one after pairing originally happened) — see
+                // SharedLibraryKeySync's own remarks. Fire-and-forget: best-effort by design, never
+                // blocks jumping into the chat.
+                _ = SharedLibraryKeySync.OfferKeyAsync(_sharedLibraryService, _messagingService, _messageTransport, existing.Id);
                 await OpenCreatedChatCommand.ExecuteAsync(null);
                 return;
             }
@@ -284,6 +292,12 @@ public sealed partial class NewChatViewModel : ObservableObject
                 // "never let live-send failure block the user" policy ChatViewModel.SendAsync
                 // already established for ordinary messages.
             }
+
+            // Best-effort shared-library-key offer (2026-09-10) — see SharedLibraryKeySync's own
+            // remarks. Fired unconditionally, not just on the deliveredAutomatically branch: even a
+            // manually QR/copy-paste-completed pairing (the peer runs AcceptInviteAsync, which
+            // offers the key back from ITS side too) ends up with the key eventually either way.
+            _ = SharedLibraryKeySync.OfferKeyAsync(_sharedLibraryService, _messagingService, _messageTransport, session.Id);
 
             if (deliveredAutomatically)
             {
@@ -344,6 +358,10 @@ public sealed partial class NewChatViewModel : ObservableObject
                 AcceptedSession = await _messagingService.AcceptSessionAsync(
                     invite.InitiatorDisplayName, invite.InitiatorPublicKey, invite.InitiatorRelayDeviceId, invite.HandshakeCipherText);
             }
+
+            // Best-effort shared-library-key offer (2026-09-10) — see SharedLibraryKeySync's own
+            // remarks; same call as CreateSessionWithPeerAsync's own, from the responder's side.
+            _ = SharedLibraryKeySync.OfferKeyAsync(_sharedLibraryService, _messagingService, _messageTransport, AcceptedSession.Id);
 
             // Nothing further to show either way — jump straight in, same reasoning as
             // CreateSessionAsync's own already-paired branch (2026-09-06).

@@ -31,6 +31,7 @@ public sealed partial class NewGroupViewModel : ObservableObject
     private readonly IGroupChatRepository _groupChatRepository;
     private readonly IGroupMemberRepository _groupMemberRepository;
     private readonly IDiagnosticsReporter _diagnosticsReporter;
+    private readonly ISharedLibraryService _sharedLibraryService;
 
     [ObservableProperty]
     public partial string GroupNameText { get; set; }
@@ -67,7 +68,8 @@ public sealed partial class NewGroupViewModel : ObservableObject
         IMessageTransport messageTransport,
         IGroupChatRepository groupChatRepository,
         IGroupMemberRepository groupMemberRepository,
-        IDiagnosticsReporter diagnosticsReporter)
+        IDiagnosticsReporter diagnosticsReporter,
+        ISharedLibraryService sharedLibraryService)
     {
         _contactDirectoryService = contactDirectoryService ?? throw new ArgumentNullException(nameof(contactDirectoryService));
         _messagingService = messagingService ?? throw new ArgumentNullException(nameof(messagingService));
@@ -77,6 +79,7 @@ public sealed partial class NewGroupViewModel : ObservableObject
         _groupChatRepository = groupChatRepository ?? throw new ArgumentNullException(nameof(groupChatRepository));
         _groupMemberRepository = groupMemberRepository ?? throw new ArgumentNullException(nameof(groupMemberRepository));
         _diagnosticsReporter = diagnosticsReporter ?? throw new ArgumentNullException(nameof(diagnosticsReporter));
+        _sharedLibraryService = sharedLibraryService ?? throw new ArgumentNullException(nameof(sharedLibraryService));
 
         GroupNameText = string.Empty;
         Members = [];
@@ -196,11 +199,16 @@ public sealed partial class NewGroupViewModel : ObservableObject
                     // race to break here (nobody else has this group id yet), unlike the
                     // member-to-member pairing App.xaml.cs's OnGroupInviteReceived has to
                     // deterministically tie-break once the invite fans out to them.
-                    if (await _messagingService.FindExistingSessionAsync(member.PublicKey) is null)
-                        await _messagingService.CreateSessionAsync(member.DisplayName, member.PublicKey, member.RelayDeviceId);
+                    var memberSession = await _messagingService.FindExistingSessionAsync(member.PublicKey);
+                    if (memberSession is null)
+                        (memberSession, _) = await _messagingService.CreateSessionAsync(member.DisplayName, member.PublicKey, member.RelayDeviceId);
 
                     if (_messageTransport.IsConnected)
                         await _messageTransport.SendGroupInviteAsync(member.RelayDeviceId, inviteBlob);
+
+                    // Best-effort shared-library-key offer (2026-09-10) — see SharedLibraryKeySync's
+                    // own remarks; the founder's own direct pairing with each initial member too.
+                    await SharedLibraryKeySync.OfferKeyAsync(_sharedLibraryService, _messagingService, _messageTransport, memberSession.Id);
                 }
                 catch
                 {

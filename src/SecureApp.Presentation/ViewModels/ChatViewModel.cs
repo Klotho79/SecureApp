@@ -182,6 +182,11 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
                 // not mixed into this direct 1:1 conversation.
                 if (message.GroupChatId is not null) continue;
 
+                // System-carried machinery (2026-09-10, e.g. SharedLibraryKeySync's key offers) —
+                // never a real chat message, same "filter it back out of this thread" treatment as
+                // GroupChatId above, for the opposite reason (belongs nowhere visible at all).
+                if (message.IsSystemPayload) continue;
+
                 var text = await TryDecryptAsync(message);
                 items.Add(new ChatMessageItem(message.Id, message.Direction == MessageDirection.Outbound, text, message.CreatedAtUtc, message.Status, message.AttachmentLibraryFileId, message.AttachmentFileName));
             }
@@ -347,6 +352,11 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         // them arrives — a real bug caught live, not a hypothetical). Group traffic belongs in the
         // group's own thread only.
         if (envelope.GroupChatId is not null) return;
+
+        // System-carried machinery (2026-09-10) — see the LoadAsync filter's own remarks just
+        // above. App.OnEnvelopeReceived's app-wide handler already decrypted-and-imported this one
+        // (or will, via the same idempotent ReceiveMessageAsync call below); nothing further to show.
+        if (envelope.IsSystemPayload) return;
 
         try
         {

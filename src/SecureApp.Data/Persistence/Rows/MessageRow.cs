@@ -23,6 +23,7 @@ internal sealed class MessageRow
     [Column("attachment_file_name")] public string? AttachmentFileName { get; set; }
     [Column("group_chat_id")] public string? GroupChatId { get; set; }
     [Column("group_message_id")] public string? GroupMessageId { get; set; }
+    [Column("is_system_payload")] public bool IsSystemPayload { get; set; }
     [Column("delivered_at_utc")] public string? DeliveredAtUtc { get; set; }
     [Column("read_at_utc")] public string? ReadAtUtc { get; set; }
     [Column("created_at_utc")] public string CreatedAtUtc { get; set; } = string.Empty;

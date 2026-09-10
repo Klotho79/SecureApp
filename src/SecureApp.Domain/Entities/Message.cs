@@ -58,6 +58,19 @@ public sealed class Message : Entity
     public DateTimeOffset? DeliveredAtUtc { get; private set; }
     public DateTimeOffset? ReadAtUtc { get; private set; }
 
+    /// <summary>
+    /// Set (2026-09-10) for a message that carries app-internal machinery over the same E2EE
+    /// pairwise ratchet — currently just the shared library key auto-offer (see
+    /// <c>SharedLibraryKeySync</c> in the Presentation layer): the user's own objection was "pokud
+    /// je v chatu kde maji pristup uzivatele proc nemaji klic?" (if they're already trusted enough
+    /// to be in a chat, why don't they have the key?) — answered by riding the already-established,
+    /// already-authenticated ratchet instead of a manual copy/paste. Never shown in
+    /// <c>ChatViewModel</c>/<c>GroupChatViewModel</c>'s own thread — filtered out the exact same way
+    /// <see cref="GroupChatId"/> already is for the opposite reason (belongs elsewhere, not this
+    /// thread); this one belongs nowhere visible at all.
+    /// </summary>
+    public bool IsSystemPayload { get; private set; }
+
     private Message()
     {
         // Reserved for materialization by persistence/serialization infrastructure.
@@ -74,7 +87,8 @@ public sealed class Message : Entity
         Guid? attachmentLibraryFileId = null,
         string? attachmentFileName = null,
         Guid? groupChatId = null,
-        Guid? groupMessageId = null)
+        Guid? groupMessageId = null,
+        bool isSystemPayload = false)
     {
         if (chatSessionId == Guid.Empty)
             throw new ArgumentException("Chat session id cannot be empty.", nameof(chatSessionId));
@@ -88,6 +102,7 @@ public sealed class Message : Entity
         AttachmentFileName = attachmentFileName;
         GroupChatId = groupChatId;
         GroupMessageId = groupMessageId;
+        IsSystemPayload = isSystemPayload;
         Status = MessageStatus.Pending;
     }
 

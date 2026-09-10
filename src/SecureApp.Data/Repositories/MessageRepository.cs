@@ -54,9 +54,9 @@ public sealed class MessageRepository : IMessageRepository
                 header_dh_public_key, header_previous_chain_length, header_message_number,
                 payload_key_id, payload_algorithm, payload_cipher_text, payload_nonce, payload_auth_tag,
                 attachment_document_id, attachment_library_file_id, attachment_file_name,
-                group_chat_id, group_message_id,
+                group_chat_id, group_message_id, is_system_payload,
                 delivered_at_utc, read_at_utc, created_at_utc, modified_at_utc
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             message.Id.ToString(),
             message.ChatSessionId.ToString(),
@@ -75,6 +75,7 @@ public sealed class MessageRepository : IMessageRepository
             message.AttachmentFileName,
             message.GroupChatId?.ToString(),
             message.GroupMessageId?.ToString(),
+            message.IsSystemPayload,
             message.DeliveredAtUtc is null ? null : Format(message.DeliveredAtUtc.Value),
             message.ReadAtUtc is null ? null : Format(message.ReadAtUtc.Value),
             Format(message.CreatedAtUtc),
@@ -118,6 +119,7 @@ public sealed class MessageRepository : IMessageRepository
         EntityMaterializer.Set(entity, nameof(Message.AttachmentFileName), row.AttachmentFileName);
         EntityMaterializer.Set(entity, nameof(Message.GroupChatId), row.GroupChatId is null ? null : (Guid?)Guid.Parse(row.GroupChatId));
         EntityMaterializer.Set(entity, nameof(Message.GroupMessageId), row.GroupMessageId is null ? null : (Guid?)Guid.Parse(row.GroupMessageId));
+        EntityMaterializer.Set(entity, nameof(Message.IsSystemPayload), row.IsSystemPayload);
         EntityMaterializer.Set(entity, nameof(Message.DeliveredAtUtc), row.DeliveredAtUtc is null ? null : (DateTimeOffset?)Parse(row.DeliveredAtUtc));
         EntityMaterializer.Set(entity, nameof(Message.ReadAtUtc), row.ReadAtUtc is null ? null : (DateTimeOffset?)Parse(row.ReadAtUtc));
         return entity;

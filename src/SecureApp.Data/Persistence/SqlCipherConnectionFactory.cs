@@ -20,7 +20,7 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
 {
     private const string DatabaseKeyVaultName = "sqlcipher:database-key";
     private const int DatabaseKeySizeBytes = 32; // 256-bit, used as a raw SQLCipher key (not a passphrase put through PBKDF2)
-    private const int CurrentSchemaVersion = 9;
+    private const int CurrentSchemaVersion = 10;
 
     private readonly DataStorageOptions _options;
     private readonly ISecureVaultKeyStore _vault;
@@ -133,6 +133,9 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
 
         if (schemaVersion < 9)
             await ApplyV9SchemaAsync(connection);
+
+        if (schemaVersion < 10)
+            await ApplyV10SchemaAsync(connection);
 
         await connection.ExecuteAsync($"PRAGMA user_version = {CurrentSchemaVersion}");
     }
@@ -438,6 +441,19 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
     {
         await connection.ExecuteAsync("ALTER TABLE logbook_procedure_types ADD COLUMN abbreviation TEXT NOT NULL DEFAULT ''");
         await connection.ExecuteAsync("ALTER TABLE logbook_procedure_entries ADD COLUMN place TEXT NULL");
+    }
+
+    /// <summary>
+    /// Backs <see cref="Entities.Message.IsSystemPayload"/> (2026-09-10) — see its own remarks: the
+    /// shared library key now auto-offers itself over an already-paired chat session instead of
+    /// needing a manual copy/paste, and this column is what lets a system-carried message stay
+    /// invisible in <c>ChatViewModel</c>/<c>GroupChatViewModel</c>'s own thread (same filtering
+    /// approach already proven for <c>group_chat_id</c>). Additive, defaults every existing row to
+    /// 0/false — nothing already stored was ever a system payload, since this whole mechanism is new.
+    /// </summary>
+    private static async Task ApplyV10SchemaAsync(SQLiteAsyncConnection connection)
+    {
+        await connection.ExecuteAsync("ALTER TABLE messages ADD COLUMN is_system_payload INTEGER NOT NULL DEFAULT 0");
     }
 
     /// <summary>

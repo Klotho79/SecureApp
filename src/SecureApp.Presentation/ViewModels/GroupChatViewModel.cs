@@ -556,11 +556,17 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
 
                 try
                 {
-                    if (await _messagingService.FindExistingSessionAsync(member.PublicKey) is null)
-                        await _messagingService.CreateSessionAsync(member.DisplayName, member.PublicKey, member.RelayDeviceId);
+                    var memberSession = await _messagingService.FindExistingSessionAsync(member.PublicKey);
+                    if (memberSession is null)
+                        (memberSession, _) = await _messagingService.CreateSessionAsync(member.DisplayName, member.PublicKey, member.RelayDeviceId);
 
                     if (_messageTransport.IsConnected)
                         await _messageTransport.SendGroupInviteAsync(member.RelayDeviceId, inviteBlob);
+
+                    // Best-effort shared-library-key offer (2026-09-10) — see SharedLibraryKeySync's
+                    // own remarks; every group member's pairwise session gets the same offer a 1:1
+                    // pairing already would.
+                    await SharedLibraryKeySync.OfferKeyAsync(_libraryService, _messagingService, _messageTransport, memberSession.Id);
                 }
                 catch
                 {
