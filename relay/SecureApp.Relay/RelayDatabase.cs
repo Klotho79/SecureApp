@@ -173,11 +173,24 @@ public sealed class RelayDatabase
             CREATE TABLE IF NOT EXISTS logbook_procedure_types (
                 id                TEXT PRIMARY KEY NOT NULL,
                 name              TEXT NOT NULL,
+                abbreviation      TEXT NOT NULL DEFAULT '',
                 category          TEXT NOT NULL,
                 created_at_utc    TEXT NOT NULL,
                 updated_at_utc    TEXT NOT NULL
             )
             """);
+        // Additive column for a relay data directory that already has this table from before
+        // 2026-09-10 — SQLite has no "ADD COLUMN IF NOT EXISTS", so this is guarded by checking
+        // pragma_table_info first; a fresh CREATE TABLE above already includes it, so this is a
+        // no-op there.
+        var hasAbbreviationColumn = false;
+        using (var checkCommand = connection.CreateCommand())
+        {
+            checkCommand.CommandText = "SELECT COUNT(*) FROM pragma_table_info('logbook_procedure_types') WHERE name = 'abbreviation'";
+            hasAbbreviationColumn = Convert.ToInt64(checkCommand.ExecuteScalar()) > 0;
+        }
+        if (!hasAbbreviationColumn)
+            Execute(connection, "ALTER TABLE logbook_procedure_types ADD COLUMN abbreviation TEXT NOT NULL DEFAULT ''");
     }
 
     public string CreateInvite(string? displayNameHint, TimeSpan validFor, out DateTimeOffset expiresAtUtc)
@@ -558,28 +571,42 @@ public sealed class RelayDatabase
         return results;
     }
 
-    public void UpsertLogbookProcedureType(Guid id, string name, string category, DateTimeOffset createdAtUtc)
+    public void UpsertLogbookProcedureType(Guid id, string name, string abbreviation, string category, DateTimeOffset createdAtUtc)
     {
         using var connection = OpenConnection();
         Execute(connection,
             """
-            INSERT INTO logbook_procedure_types (id, name, category, created_at_utc, updated_at_utc) VALUES (@id, @name, @category, @created, @now)
-            ON CONFLICT(id) DO UPDATE SET name = @name, category = @category, updated_at_utc = @now
+            INSERT INTO logbook_procedure_types (id, name, abbreviation, category, created_at_utc, updated_at_utc) VALUES (@id, @name, @abbr, @category, @created, @now)
+            ON CONFLICT(id) DO UPDATE SET name = @name, abbreviation = @abbr, category = @category, updated_at_utc = @now
             """,
-            ("@id", id.ToString()), ("@name", name), ("@category", category), ("@created", Format(createdAtUtc)), ("@now", Format(DateTimeOffset.UtcNow)));
+            ("@id", id.ToString()), ("@name", name), ("@abbr", abbreviation), ("@category", category), ("@created", Format(createdAtUtc)), ("@now", Format(DateTimeOffset.UtcNow)));
     }
 
-    public IReadOnlyList<(Guid Id, string Name, string Category, DateTimeOffset CreatedAtUtc)> GetLogbookProcedureTypes()
+    public IReadOnlyList<(Guid Id, string Name, string Abbreviation, string Category, DateTimeOffset CreatedAtUtc)> GetLogbookProcedureTypes()
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT id, name, category, created_at_utc FROM logbook_procedure_types ORDER BY name";
+        command.CommandText = "SELECT id, name, abbreviation, category, created_at_utc FROM logbook_procedure_types ORDER BY name";
 
-        var results = new List<(Guid, string, string, DateTimeOffset)>();
+        var results = new List<(Guid, string, string, string, DateTimeOffset)>();
         using var reader = command.ExecuteReader();
         while (reader.Read())
-            results.Add((Guid.Parse((string)reader["id"]), (string)reader["name"], (string)reader["category"], DateTimeOffset.Parse((string)reader["created_at_utc"], CultureInfo.InvariantCulture)));
+            results.Add((Guid.Parse((string)reader["id"]), (string)reader["name"], (string)reader["abbreviation"], (string)reader["category"], DateTimeOffset.Parse((string)reader["created_at_utc"], CultureInfo.InvariantCulture)));
         return results;
+    }
+
+    /// <summary>Removes a checklist from the shared relay catalog (2026-09-10) — see <c>ILogbookCatalogSyncService.DeleteChecklistAsync</c>'s own remarks for why relay-side deletion (not just local) is what actually makes a delete stick.</summary>
+    public void DeleteLogbookChecklist(Guid id)
+    {
+        using var connection = OpenConnection();
+        Execute(connection, "DELETE FROM logbook_checklists WHERE id = @id", ("@id", id.ToString()));
+    }
+
+    /// <summary>See <see cref="DeleteLogbookChecklist"/>'s own remarks.</summary>
+    public void DeleteLogbookProcedureType(Guid id)
+    {
+        using var connection = OpenConnection();
+        Execute(connection, "DELETE FROM logbook_procedure_types WHERE id = @id", ("@id", id.ToString()));
     }
 
     private static LibraryFileRecord ReadLibraryFileRecord(SqliteDataReader reader) => new(

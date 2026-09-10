@@ -20,7 +20,7 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
 {
     private const string DatabaseKeyVaultName = "sqlcipher:database-key";
     private const int DatabaseKeySizeBytes = 32; // 256-bit, used as a raw SQLCipher key (not a passphrase put through PBKDF2)
-    private const int CurrentSchemaVersion = 8;
+    private const int CurrentSchemaVersion = 9;
 
     private readonly DataStorageOptions _options;
     private readonly ISecureVaultKeyStore _vault;
@@ -130,6 +130,9 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
 
         if (schemaVersion < 8)
             await ApplyV8SchemaAsync(connection);
+
+        if (schemaVersion < 9)
+            await ApplyV9SchemaAsync(connection);
 
         await connection.ExecuteAsync($"PRAGMA user_version = {CurrentSchemaVersion}");
     }
@@ -419,6 +422,22 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
             )
             """);
         await connection.ExecuteAsync("CREATE INDEX IF NOT EXISTS ix_logbook_procedure_entries_type_id ON logbook_procedure_entries(procedure_type_id)");
+    }
+
+    /// <summary>
+    /// Two Logbook refinements requested together (2026-09-10): a required short code on each
+    /// procedure type (see <c>LogbookProcedureType.Abbreviation</c>'s own remarks — the statistics
+    /// view leads with it) and an optional place on each logged entry (see
+    /// <c>LogbookProcedureEntry.Place</c>'s own remarks). Both additive columns — existing
+    /// <c>logbook_procedure_types</c> rows backfill to an empty abbreviation (there were none
+    /// pre-seeded, unlike the checklists, so this never actually fires against real data on a
+    /// device that's been storing its own types already) rather than leaving a NULL a NOT NULL
+    /// column can't hold.
+    /// </summary>
+    private static async Task ApplyV9SchemaAsync(SQLiteAsyncConnection connection)
+    {
+        await connection.ExecuteAsync("ALTER TABLE logbook_procedure_types ADD COLUMN abbreviation TEXT NOT NULL DEFAULT ''");
+        await connection.ExecuteAsync("ALTER TABLE logbook_procedure_entries ADD COLUMN place TEXT NULL");
     }
 
     /// <summary>

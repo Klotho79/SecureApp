@@ -320,10 +320,10 @@ app.MapPost("/logbook/procedure-types", (HttpRequest request, LogbookProcedureTy
     if (!TryGetDeviceAuth(request, db, out _))
         return Results.Unauthorized();
 
-    if (string.IsNullOrWhiteSpace(body.Name) || string.IsNullOrWhiteSpace(body.Category))
-        return Results.BadRequest("Name and Category are both required.");
+    if (string.IsNullOrWhiteSpace(body.Name) || string.IsNullOrWhiteSpace(body.Abbreviation) || string.IsNullOrWhiteSpace(body.Category))
+        return Results.BadRequest("Name, Abbreviation, and Category are all required.");
 
-    db.UpsertLogbookProcedureType(body.Id, body.Name, body.Category, body.CreatedAtUtc);
+    db.UpsertLogbookProcedureType(body.Id, body.Name, body.Abbreviation, body.Category, body.CreatedAtUtc);
     return Results.Ok();
 });
 
@@ -333,7 +333,29 @@ app.MapGet("/logbook/procedure-types", (HttpRequest request, RelayDatabase db) =
         return Results.Unauthorized();
 
     var entries = db.GetLogbookProcedureTypes();
-    return Results.Ok(entries.Select(e => new LogbookProcedureTypeDto(e.Id, e.Name, e.Category, e.CreatedAtUtc)).ToList());
+    return Results.Ok(entries.Select(e => new LogbookProcedureTypeDto(e.Id, e.Name, e.Abbreviation, e.Category, e.CreatedAtUtc)).ToList());
+});
+
+// Deletion (2026-09-10) — device-authenticated same as everything else here, not restricted to
+// the uploader/creator: the app's own RoleAccessPolicy (Modifier/Admin for either catalog) is what
+// actually gates who gets to press the button, same trust model this whole sync feature already
+// has (the relay trusts any already-activated device, RBAC is enforced client-side throughout).
+app.MapDelete("/logbook/checklists/{id:guid}", (Guid id, HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out _))
+        return Results.Unauthorized();
+
+    db.DeleteLogbookChecklist(id);
+    return Results.NoContent();
+});
+
+app.MapDelete("/logbook/procedure-types/{id:guid}", (Guid id, HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out _))
+        return Results.Unauthorized();
+
+    db.DeleteLogbookProcedureType(id);
+    return Results.NoContent();
 });
 
 app.Map("/ws", async (HttpContext context, RelayDatabase db, ConnectionRegistry registry) =>

@@ -31,14 +31,15 @@ public sealed class LogbookProcedureEntryRepository : ILogbookProcedureEntryRepo
         var connection = await _connectionFactory.GetConnectionAsync(ct);
         await connection.ExecuteAsync(
             """
-            INSERT INTO logbook_procedure_entries (id, procedure_type_id, level, performed_at_utc, note, created_at_utc, modified_at_utc)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO logbook_procedure_entries (id, procedure_type_id, level, performed_at_utc, note, place, created_at_utc, modified_at_utc)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             entry.Id.ToString(),
             entry.ProcedureTypeId.ToString(),
             (int)entry.Level,
             Format(entry.PerformedAtUtc),
             entry.Note,
+            entry.Place,
             Format(entry.CreatedAtUtc),
             Format(entry.ModifiedAtUtc));
     }
@@ -59,6 +60,7 @@ public sealed class LogbookProcedureEntryRepository : ILogbookProcedureEntryRepo
         EntityMaterializer.Set(entity, nameof(LogbookProcedureEntry.Level), (LogbookCompetenceLevel)row.Level);
         EntityMaterializer.Set(entity, nameof(LogbookProcedureEntry.PerformedAtUtc), Parse(row.PerformedAtUtc));
         EntityMaterializer.Set(entity, nameof(LogbookProcedureEntry.Note), row.Note);
+        EntityMaterializer.Set(entity, nameof(LogbookProcedureEntry.Place), row.Place);
         return entity;
     }
 

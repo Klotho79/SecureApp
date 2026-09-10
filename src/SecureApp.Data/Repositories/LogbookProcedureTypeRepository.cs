@@ -38,11 +38,12 @@ public sealed class LogbookProcedureTypeRepository : ILogbookProcedureTypeReposi
         var connection = await _connectionFactory.GetConnectionAsync(ct);
         await connection.ExecuteAsync(
             """
-            INSERT INTO logbook_procedure_types (id, name, category, created_at_utc, modified_at_utc)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO logbook_procedure_types (id, name, abbreviation, category, created_at_utc, modified_at_utc)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
             type.Id.ToString(),
             type.Name,
+            type.Abbreviation,
             (int)type.Category,
             Format(type.CreatedAtUtc),
             Format(type.ModifiedAtUtc));
@@ -55,10 +56,11 @@ public sealed class LogbookProcedureTypeRepository : ILogbookProcedureTypeReposi
         var rowsAffected = await connection.ExecuteAsync(
             """
             UPDATE logbook_procedure_types
-            SET name = ?, category = ?, modified_at_utc = ?
+            SET name = ?, abbreviation = ?, category = ?, modified_at_utc = ?
             WHERE id = ?
             """,
             type.Name,
+            type.Abbreviation,
             (int)type.Category,
             Format(type.ModifiedAtUtc),
             type.Id.ToString());
@@ -80,6 +82,7 @@ public sealed class LogbookProcedureTypeRepository : ILogbookProcedureTypeReposi
         EntityMaterializer.Set(entity, nameof(Entity.CreatedAtUtc), Parse(row.CreatedAtUtc));
         EntityMaterializer.Set(entity, nameof(Entity.ModifiedAtUtc), Parse(row.ModifiedAtUtc));
         EntityMaterializer.Set(entity, nameof(LogbookProcedureType.Name), row.Name);
+        EntityMaterializer.Set(entity, nameof(LogbookProcedureType.Abbreviation), row.Abbreviation);
         EntityMaterializer.Set(entity, nameof(LogbookProcedureType.Category), (LogbookProcedureCategory)row.Category);
         return entity;
     }

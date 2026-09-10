@@ -91,10 +91,14 @@ public sealed partial class LogbookViewModel : ObservableObject
     [ObservableProperty]
     public partial string NoteText { get; set; }
 
+    /// <summary>See <see cref="LogbookProcedureEntry.Place"/>'s own remarks.</summary>
+    [ObservableProperty]
+    public partial string PlaceText { get; set; }
+
     // --- Statistics ---
 
     [ObservableProperty]
-    public partial ObservableCollection<LogbookStatItem> Statistics { get; set; }
+    public partial ObservableCollection<LogbookStatGroupItem> Statistics { get; set; }
 
     [ObservableProperty]
     public partial bool HasNoStatistics { get; set; }
@@ -118,6 +122,7 @@ public sealed partial class LogbookViewModel : ObservableObject
         ProcedureTypeOptions = [];
         Statistics = [];
         NoteText = string.Empty;
+        PlaceText = string.Empty;
         HasNoStatistics = true;
     }
 
@@ -201,31 +206,54 @@ public sealed partial class LogbookViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Rebuilt (2026-09-10, "statistiku je třeba lépe formátovat... aby ve statistice bylo vidět
+    /// zkratka výkonu, počet a po rozkliknutí ostatní údaje") — one collapsed row per procedure
+    /// type leading with its <see cref="LogbookProcedureType.Abbreviation"/> and a total count
+    /// (instead of the old always-expanded Seen/Supervised/Independent breakdown text), each
+    /// carrying its own individual <see cref="LogbookProcedureEntry"/> rows (date, level, note,
+    /// place) for <see cref="LogbookStatGroupItem.ToggleExpandedCommand"/> to reveal — see that
+    /// class's own remarks for why it's a small <c>ObservableObject</c> rather than a plain record.
+    /// </summary>
     private async Task RefreshStatisticsAsync()
     {
-        var entries = await _procedureEntryRepository.GetAllAsync();
+        var entries = await _procedureEntryRepository.GetAllAsync(); // already ordered by performed_at_utc DESC
         var typeById = _procedureTypes.ToDictionary(t => t.Id);
 
-        var stats = entries
+        var groups = entries
             .Where(e => typeById.ContainsKey(e.ProcedureTypeId))
             .GroupBy(e => e.ProcedureTypeId)
             .Select(g =>
             {
                 var type = typeById[g.Key];
-                return new LogbookStatItem(
-                    type.Name,
-                    type.Category,
-                    Seen: g.Count(e => e.Level == LogbookCompetenceLevel.Seen),
-                    Supervised: g.Count(e => e.Level == LogbookCompetenceLevel.Supervised),
-                    Independent: g.Count(e => e.Level == LogbookCompetenceLevel.Independent));
+                var entryItems = g
+                    .Select(e => new LogbookStatEntryItem(e.PerformedAtUtc.LocalDateTime.ToString("g"), DescribeLevel(e.Level), e.Note, e.Place))
+                    .ToList();
+                return new LogbookStatGroupItem(type.Abbreviation, type.Name, DescribeCategory(type.Category), type.Category, entryItems);
             })
             .OrderBy(s => s.Category)
-            .ThenBy(s => s.Name)
+            .ThenBy(s => s.Abbreviation)
             .ToList();
 
-        Statistics = new ObservableCollection<LogbookStatItem>(stats);
+        Statistics = new ObservableCollection<LogbookStatGroupItem>(groups);
         HasNoStatistics = Statistics.Count == 0;
     }
+
+    private static string DescribeLevel(LogbookCompetenceLevel level) => level switch
+    {
+        LogbookCompetenceLevel.Seen => "Viděl",
+        LogbookCompetenceLevel.Supervised => "Pod dohledem",
+        LogbookCompetenceLevel.Independent => "Samostatně",
+        _ => level.ToString()
+    };
+
+    private static string DescribeCategory(LogbookProcedureCategory category) => category switch
+    {
+        LogbookProcedureCategory.Workplace => "Pracoviště",
+        LogbookProcedureCategory.Procedure => "Výkon",
+        LogbookProcedureCategory.Situation => "Situace",
+        _ => category.ToString()
+    };
 
     [RelayCommand]
     private async Task OpenChecklistAsync(LogbookChecklistListItem? item)
@@ -247,9 +275,10 @@ public sealed partial class LogbookViewModel : ObservableObject
 
         try
         {
-            var entry = new LogbookProcedureEntry(SelectedProcedureType.Id, SelectedLevel, DateTimeOffset.UtcNow, NoteText);
+            var entry = new LogbookProcedureEntry(SelectedProcedureType.Id, SelectedLevel, DateTimeOffset.UtcNow, NoteText, PlaceText);
             await _procedureEntryRepository.AddAsync(entry);
             NoteText = string.Empty;
+            PlaceText = string.Empty;
             if (CanViewStatistics)
                 await RefreshStatisticsAsync();
         }
@@ -270,18 +299,44 @@ public sealed partial class LogbookViewModel : ObservableObject
 
 public sealed record LogbookChecklistListItem(Guid Id, string Name, int ItemCount);
 
-/// <summary>One row of the statistics view — the live-count equivalent of one row of the reference logbook's "Kompetence dle…" tables.</summary>
-public sealed record LogbookStatItem(string Name, LogbookProcedureCategory Category, int Seen, int Supervised, int Independent)
+/// <summary>One individual logged instance within an expanded <see cref="LogbookStatGroupItem"/> — the "ostatní údaje" (date, level, note, place) revealed on tap (2026-09-10).</summary>
+public sealed record LogbookStatEntryItem(string DateText, string LevelLabel, string? Note, string? Place)
 {
-    public int Total => Seen + Supervised + Independent;
+    public bool HasNote => !string.IsNullOrEmpty(Note);
+    public bool HasPlace => !string.IsNullOrEmpty(Place);
+}
 
-    public string SummaryText => $"viděl {Seen} · pod dohledem {Supervised} · samostatně {Independent}";
+/// <summary>
+/// One row of the statistics view (2026-09-10 reformat) — collapsed by default, leading with the
+/// procedure type's <see cref="LogbookProcedureType.Abbreviation"/> and a total count; tapping
+/// reveals the individual <see cref="Entries"/> underneath (date/level/note/place each). A small
+/// <c>ObservableObject</c> rather than a plain record specifically because <see cref="IsExpanded"/>
+/// is genuinely mutable per-row UI state that needs to notify the CollectionView's DataTemplate
+/// live — the shared-command-on-a-record pattern this codebase uses elsewhere (e.g.
+/// <c>GroupMemberItem</c>) is for delegating an ACTION back to the owning ViewModel, not for state
+/// that's entirely local to the row itself, which is what this is.
+/// </summary>
+public sealed partial class LogbookStatGroupItem : ObservableObject
+{
+    public string Abbreviation { get; }
+    public string Name { get; }
+    public string CategoryLabel { get; }
+    internal LogbookProcedureCategory Category { get; }
+    public IReadOnlyList<LogbookStatEntryItem> Entries { get; }
+    public int Count => Entries.Count;
 
-    public string CategoryLabel => Category switch
+    [ObservableProperty]
+    public partial bool IsExpanded { get; set; }
+
+    public LogbookStatGroupItem(string abbreviation, string name, string categoryLabel, LogbookProcedureCategory category, IReadOnlyList<LogbookStatEntryItem> entries)
     {
-        LogbookProcedureCategory.Workplace => "Pracoviště",
-        LogbookProcedureCategory.Procedure => "Výkon",
-        LogbookProcedureCategory.Situation => "Situace",
-        _ => Category.ToString()
-    };
+        Abbreviation = abbreviation;
+        Name = name;
+        CategoryLabel = categoryLabel;
+        Category = category;
+        Entries = entries;
+    }
+
+    [RelayCommand]
+    private void ToggleExpanded() => IsExpanded = !IsExpanded;
 }

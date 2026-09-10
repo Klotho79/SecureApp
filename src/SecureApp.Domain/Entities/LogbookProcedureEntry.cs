@@ -17,12 +17,15 @@ public sealed class LogbookProcedureEntry : Entity
     public DateTimeOffset PerformedAtUtc { get; private set; }
     public string? Note { get; private set; }
 
+    /// <summary>Where it was performed (2026-09-10, "seznam: datum, poznámka, místo") — free text, e.g. a ward/OR name; optional, same shape as <see cref="Note"/>.</summary>
+    public string? Place { get; private set; }
+
     private LogbookProcedureEntry()
     {
         // Reserved for materialization by persistence infrastructure.
     }
 
-    public LogbookProcedureEntry(Guid procedureTypeId, LogbookCompetenceLevel level, DateTimeOffset performedAtUtc, string? note = null)
+    public LogbookProcedureEntry(Guid procedureTypeId, LogbookCompetenceLevel level, DateTimeOffset performedAtUtc, string? note = null, string? place = null)
     {
         if (procedureTypeId == Guid.Empty)
             throw new ArgumentException("Procedure type id cannot be empty.", nameof(procedureTypeId));
@@ -31,5 +34,6 @@ public sealed class LogbookProcedureEntry : Entity
         Level = level;
         PerformedAtUtc = performedAtUtc;
         Note = string.IsNullOrWhiteSpace(note) ? null : note;
+        Place = string.IsNullOrWhiteSpace(place) ? null : place;
     }
 }

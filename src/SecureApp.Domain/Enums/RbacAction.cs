@@ -29,6 +29,6 @@ public enum RbacAction
     /// <summary>Recording a Logbook procedure entry — picking an EXISTING type from the catalog and logging it. Allowed for every role, Viewer included (2026-09-10 correction of an earlier miscommunication: "každý uživatel má právo zadávat výkony" — everyone may log; adding a new type to that catalog stays gated behind <see cref="ManageLogbookProcedureCatalog"/>).</summary>
     RecordLogbookProcedure,
 
-    /// <summary>Viewing the Logbook's statistics rollup — Modifier-equivalent-to-Admin, not Viewer (the user's own explicit "statistiku muže videt admin a modifer").</summary>
+    /// <summary>Viewing the Logbook's statistics rollup — allowed for every role, Viewer included (2026-09-10 correction: "statistiku by měl vidět i viewer"; briefly Modifier/Admin-only before this).</summary>
     ViewLogbookStatistics
 }

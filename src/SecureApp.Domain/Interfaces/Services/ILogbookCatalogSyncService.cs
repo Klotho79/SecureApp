@@ -33,4 +33,17 @@ public interface ILogbookCatalogSyncService
 
     /// <summary>See <see cref="FetchChecklistsAsync"/>'s own remarks.</summary>
     Task<IReadOnlyList<LogbookProcedureType>> FetchProcedureTypesAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Removes a checklist from the shared relay catalog too (2026-09-10, "taky přidej úpravy
+    /// položek (odstranění)") — deleting only the LOCAL copy wouldn't stick: the next
+    /// <see cref="FetchChecklistsAsync"/> on this same device would just pull it straight back in,
+    /// since a locally-missing id looks identical to "never synced yet". Best-effort like
+    /// <see cref="PublishChecklistAsync"/> — callers should surface a failure (the item stays live
+    /// for everyone else until this succeeds).
+    /// </summary>
+    Task<bool> DeleteChecklistAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>See <see cref="DeleteChecklistAsync"/>'s own remarks.</summary>
+    Task<bool> DeleteProcedureTypeAsync(Guid id, CancellationToken ct = default);
 }

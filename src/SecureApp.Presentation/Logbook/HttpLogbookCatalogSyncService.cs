@@ -56,8 +56,40 @@ public sealed class HttpLogbookCatalogSyncService : ILogbookCatalogSyncService
             var endpoint = await GetHttpEndpointAsync(ct);
             using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(endpoint, "logbook/procedure-types"))
             {
-                Content = JsonContent.Create(new LogbookProcedureTypeDto(type.Id, type.Name, type.Category.ToString(), type.CreatedAtUtc), options: HttpJsonOptions)
+                Content = JsonContent.Create(new LogbookProcedureTypeDto(type.Id, type.Name, type.Abbreviation, type.Category.ToString(), type.CreatedAtUtc), options: HttpJsonOptions)
             };
+            await AddDeviceAuthAsync(request, ct);
+            using var response = await _httpClient.SendAsync(request, ct);
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public async Task<bool> DeleteChecklistAsync(Guid id, CancellationToken ct = default)
+    {
+        try
+        {
+            var endpoint = await GetHttpEndpointAsync(ct);
+            using var request = new HttpRequestMessage(HttpMethod.Delete, new Uri(endpoint, $"logbook/checklists/{id}"));
+            await AddDeviceAuthAsync(request, ct);
+            using var response = await _httpClient.SendAsync(request, ct);
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public async Task<bool> DeleteProcedureTypeAsync(Guid id, CancellationToken ct = default)
+    {
+        try
+        {
+            var endpoint = await GetHttpEndpointAsync(ct);
+            using var request = new HttpRequestMessage(HttpMethod.Delete, new Uri(endpoint, $"logbook/procedure-types/{id}"));
             await AddDeviceAuthAsync(request, ct);
             using var response = await _httpClient.SendAsync(request, ct);
             return response.IsSuccessStatusCode;
@@ -89,7 +121,7 @@ public sealed class HttpLogbookCatalogSyncService : ILogbookCatalogSyncService
         response.EnsureSuccessStatusCode();
 
         var dtos = await response.Content.ReadFromJsonAsync<List<LogbookProcedureTypeDto>>(HttpJsonOptions, ct) ?? [];
-        return dtos.Select(d => new LogbookProcedureType(d.Id, d.Name, Enum.Parse<LogbookProcedureCategory>(d.Category))).ToList();
+        return dtos.Select(d => new LogbookProcedureType(d.Id, d.Name, d.Abbreviation, Enum.Parse<LogbookProcedureCategory>(d.Category))).ToList();
     }
 
     private async Task<Uri> GetHttpEndpointAsync(CancellationToken ct)
@@ -120,5 +152,5 @@ public sealed class HttpLogbookCatalogSyncService : ILogbookCatalogSyncService
     }
 
     private sealed record LogbookChecklistDto(Guid Id, string Name, IReadOnlyList<string> Items, DateTimeOffset CreatedAtUtc);
-    private sealed record LogbookProcedureTypeDto(Guid Id, string Name, string Category, DateTimeOffset CreatedAtUtc);
+    private sealed record LogbookProcedureTypeDto(Guid Id, string Name, string Abbreviation, string Category, DateTimeOffset CreatedAtUtc);
 }

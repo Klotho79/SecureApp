@@ -11,7 +11,7 @@
         <VerticalStackLayout Padding="16" Spacing="12">
 
             <Label Text="Správa logbooku" Style="{StaticResource PageTitle}" />
-            <Label Text="Přidávání nových check-listů a typů výkonů do katalogu — projeví se u všech uživatelů. Samotné zaznamenání provedeného výkonu zůstává na hlavní stránce Logbooku a je jen vaše." FontSize="12" TextColor="Gray" />
+            <Label Text="Přidávání a mazání check-listů a typů výkonů v katalogu — projeví se u všech uživatelů. Samotné zaznamenání provedeného výkonu zůstává na hlavní stránce Logbooku a je jen vaše." FontSize="12" TextColor="Gray" />
 
             <Label Text="{Binding StatusErrorMessage}" IsVisible="{Binding HasStatusError}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
             <Label Text="{Binding StatusSuccessMessage}" IsVisible="{Binding HasStatusSuccess}" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" LineBreakMode="WordWrap" />
@@ -22,15 +22,61 @@
                     <Entry Text="{Binding NewChecklistName}" Placeholder="Název check-listu, např. &quot;Před RSI&quot;" />
                     <Editor Text="{Binding NewChecklistItemsText}" Placeholder="Jedna položka na řádek" HeightRequest="120" AutoSize="TextChanges" />
                     <Button Text="Vytvořit check-list" Command="{Binding ConfirmAddChecklistCommand}" />
+
+                    <BoxView HeightRequest="1" Color="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}" Margin="0,6" />
+
+                    <Label Text="Existující check-listy" FontSize="12.5" FontAttributes="Bold" />
+                    <Label Text="Zatím žádné." FontSize="12" TextColor="Gray" IsVisible="{Binding HasNoChecklists}" />
+                    <CollectionView ItemsSource="{Binding Checklists}" SelectionMode="None">
+                        <CollectionView.ItemsLayout>
+                            <LinearItemsLayout Orientation="Vertical" ItemSpacing="4" />
+                        </CollectionView.ItemsLayout>
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:LogbookManageChecklistItem">
+                                <Grid Padding="0,4" ColumnDefinitions="*,Auto">
+                                    <VerticalStackLayout Grid.Column="0" VerticalOptions="Center">
+                                        <Label Text="{Binding Name}" FontSize="14" />
+                                        <Label Text="{Binding ItemCount, StringFormat='{0} položek'}" FontSize="11" TextColor="Gray" />
+                                    </VerticalStackLayout>
+                                    <Button Grid.Column="1" Text="🗑" FontSize="13" Style="{StaticResource SecondaryButton}" WidthRequest="36" Padding="0" VerticalOptions="Center" Clicked="OnDeleteChecklistClicked" />
+                                </Grid>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
                 </VerticalStackLayout>
             </Border>
 
             <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanManageProcedureCatalog}">
                 <VerticalStackLayout Spacing="8">
                     <Label Text="Nový typ výkonu" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Entry Text="{Binding NewProcedureTypeName}" Placeholder="Název výkonu, např. &quot;CŽK&quot;" />
+                    <Entry Text="{Binding NewProcedureTypeName}" Placeholder="Název výkonu, např. &quot;Centrální žilní katetr&quot;" />
+                    <Entry Text="{Binding NewProcedureTypeAbbreviation}" Placeholder="Zkratka, např. &quot;CŽK&quot; — povede statistiku" />
                     <Picker ItemsSource="{Binding CategoryOptions}" SelectedIndex="{Binding SelectedCategoryIndex}" Title="Kategorie" />
                     <Button Text="Přidat typ výkonu" Command="{Binding ConfirmAddProcedureTypeCommand}" />
+
+                    <BoxView HeightRequest="1" Color="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}" Margin="0,6" />
+
+                    <Label Text="Existující typy výkonů" FontSize="12.5" FontAttributes="Bold" />
+                    <Label Text="Zatím žádné." FontSize="12" TextColor="Gray" IsVisible="{Binding HasNoProcedureTypes}" />
+                    <CollectionView ItemsSource="{Binding ProcedureTypes}" SelectionMode="None">
+                        <CollectionView.ItemsLayout>
+                            <LinearItemsLayout Orientation="Vertical" ItemSpacing="4" />
+                        </CollectionView.ItemsLayout>
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:LogbookManageProcedureTypeItem">
+                                <Grid Padding="0,4" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                                    <Border Grid.Column="0" Padding="6,2" StrokeShape="RoundRectangle 6" Stroke="Transparent" BackgroundColor="{AppThemeBinding Light={StaticResource AccentSoft}, Dark={StaticResource AccentSoftDark}}" VerticalOptions="Center">
+                                        <Label Text="{Binding Abbreviation}" FontSize="12" FontAttributes="Bold" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
+                                    </Border>
+                                    <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+                                        <Label Text="{Binding Name}" FontSize="14" />
+                                        <Label Text="{Binding CategoryLabel}" FontSize="11" TextColor="Gray" />
+                                    </VerticalStackLayout>
+                                    <Button Grid.Column="2" Text="🗑" FontSize="13" Style="{StaticResource SecondaryButton}" WidthRequest="36" Padding="0" VerticalOptions="Center" Clicked="OnDeleteProcedureTypeClicked" />
+                                </Grid>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
                 </VerticalStackLayout>
             </Border>
 

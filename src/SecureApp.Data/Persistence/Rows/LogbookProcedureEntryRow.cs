@@ -11,6 +11,7 @@ internal sealed class LogbookProcedureEntryRow
     [Column("level")] public int Level { get; set; }
     [Column("performed_at_utc")] public string PerformedAtUtc { get; set; } = string.Empty;
     [Column("note")] public string? Note { get; set; }
+    [Column("place")] public string? Place { get; set; }
     [Column("created_at_utc")] public string CreatedAtUtc { get; set; } = string.Empty;
     [Column("modified_at_utc")] public string ModifiedAtUtc { get; set; } = string.Empty;
 }

@@ -54,4 +54,4 @@ public sealed record DiagnosticLogEntryDto(Guid Id, string DeviceDisplayName, st
 
 public sealed record LogbookChecklistDto(Guid Id, string Name, IReadOnlyList<string> Items, DateTimeOffset CreatedAtUtc);
 
-public sealed record LogbookProcedureTypeDto(Guid Id, string Name, string Category, DateTimeOffset CreatedAtUtc);
+public sealed record LogbookProcedureTypeDto(Guid Id, string Name, string Abbreviation, string Category, DateTimeOffset CreatedAtUtc);
