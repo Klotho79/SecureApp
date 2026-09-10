@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="SecureApp.Presentation.Views.ContactsPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
+    xmlns:contacts="clr-namespace:SecureApp.Presentation.Contacts"
+    x:DataType="vm:ContactsViewModel"
+    Title="Kontakty"
+    Shell.NavBarIsVisible="False">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="16" Spacing="12">
+
+            <Label Text="Kontakty" Style="{StaticResource PageTitle}" />
+
+            <!-- Rychlé kontakty first — "kam volat při komplikacích" is exactly the thing you need
+                 fast in a real situation, so it leads rather than the much longer extension list
+                 below it (2026-09-10, transcribed from the reference logbook PDF). -->
+            <Border Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Rychlé kontakty" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Label Text="Kam volat v případě komplikací s…" FontSize="12" TextColor="Gray" />
+
+                    <CollectionView ItemsSource="{Binding QuickContacts}" SelectionMode="None">
+                        <CollectionView.ItemsLayout>
+                            <LinearItemsLayout Orientation="Vertical" ItemSpacing="6" />
+                        </CollectionView.ItemsLayout>
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="contacts:QuickContactEntry">
+                                <Border Style="{StaticResource CardBorder}" Margin="0" Padding="10,8" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
+                                    <VerticalStackLayout Spacing="2">
+                                        <Label Text="{Binding Situation}" FontSize="13.5" FontAttributes="Bold" />
+                                        <Label Text="{Binding Answer}" FontSize="12.5" LineBreakMode="WordWrap" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
+                                    </VerticalStackLayout>
+                                </Border>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                </VerticalStackLayout>
+            </Border>
+
+            <Border Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Telefonní seznam" Style="{StaticResource SectionHeader}" Margin="0" />
+
+                    <SearchBar Text="{Binding SearchQuery}" Placeholder="Hledat jméno, oddělení nebo klapku…" />
+
+                    <Label Text="Nic nenalezeno." FontSize="12" TextColor="Gray" IsVisible="{Binding HasNoResults}" />
+
+                    <CollectionView ItemsSource="{Binding PhoneDirectory}" SelectionMode="None">
+                        <CollectionView.ItemsLayout>
+                            <LinearItemsLayout Orientation="Vertical" ItemSpacing="2" />
+                        </CollectionView.ItemsLayout>
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="contacts:PhoneDirectoryEntry">
+                                <Grid Padding="0,5" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                                    <Border Grid.Column="0" Padding="6,2" StrokeShape="RoundRectangle 6" Stroke="Transparent" BackgroundColor="{AppThemeBinding Light={StaticResource AccentSoft}, Dark={StaticResource AccentSoftDark}}" VerticalOptions="Center" WidthRequest="86" HorizontalOptions="Start">
+                                        <Label Text="{Binding Section}" FontSize="10.5" FontAttributes="Bold" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" LineBreakMode="TailTruncation" HorizontalTextAlignment="Center" />
+                                    </Border>
+                                    <Label Grid.Column="1" Text="{Binding Name}" FontSize="13.5" VerticalOptions="Center" LineBreakMode="TailTruncation" />
+                                    <Label Grid.Column="2" Text="{Binding Number}" FontSize="13.5" FontAttributes="Bold" VerticalOptions="Center" />
+                                </Grid>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                </VerticalStackLayout>
+            </Border>
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

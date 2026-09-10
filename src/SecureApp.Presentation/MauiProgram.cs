@@ -149,6 +149,10 @@ public static class MauiProgram
 		builder.Services.AddTransient<LogbookManageViewModel>();
 		builder.Services.AddTransient<LogbookManagePage>();
 
+		// Kontakty (2026-09-10) — telefonní seznam + rychlé kontakty, its own standalone tab.
+		builder.Services.AddTransient<ContactsViewModel>();
+		builder.Services.AddTransient<ContactsPage>();
+
 		return builder.Build();
 	}
 }

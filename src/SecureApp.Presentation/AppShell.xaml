@@ -23,6 +23,15 @@
         <Tab Title="🗂 Dokumenty">
             <ShellContent ContentTemplate="{DataTemplate views:DocumentBrowserPage}" Route="DocumentBrowser" />
         </Tab>
+        <!-- Kontakty (2026-09-10) — telefonní seznam + rychlé kontakty, user's own ask for its own
+             standalone menu, separate from Logbook. Always visible (no Settings toggle the way
+             Logbook has) — it's a single lightweight read-only reference page, not a whole
+             subsystem with RBAC/admin forms, so tab-crowding isn't the same concern here. Inserted
+             BEFORE Nastavení, same "keep Settings last" convention as Logbook's own insertion in
+             AppShell.xaml.cs (which now targets one index further right to still land before it). -->
+        <Tab Title="☎ Kontakty">
+            <ShellContent ContentTemplate="{DataTemplate views:ContactsPage}" Route="ContactsTab" />
+        </Tab>
         <Tab Title="⚙ Nastavení">
             <ShellContent ContentTemplate="{DataTemplate views:SettingsPage}" Route="SettingsTab" />
         </Tab>
