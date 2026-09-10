@@ -24,6 +24,7 @@ public sealed partial class LogbookManageViewModel : ObservableObject
     private readonly ILogbookProcedureTypeRepository _procedureTypeRepository;
     private readonly ICurrentUserService _currentUserService;
     private readonly IDiagnosticsReporter _diagnosticsReporter;
+    private readonly ILogbookCatalogSyncService _catalogSyncService;
 
     [ObservableProperty]
     public partial bool CanManageChecklists { get; set; }
@@ -69,12 +70,14 @@ public sealed partial class LogbookManageViewModel : ObservableObject
         ILogbookChecklistRepository checklistRepository,
         ILogbookProcedureTypeRepository procedureTypeRepository,
         ICurrentUserService currentUserService,
-        IDiagnosticsReporter diagnosticsReporter)
+        IDiagnosticsReporter diagnosticsReporter,
+        ILogbookCatalogSyncService catalogSyncService)
     {
         _checklistRepository = checklistRepository ?? throw new ArgumentNullException(nameof(checklistRepository));
         _procedureTypeRepository = procedureTypeRepository ?? throw new ArgumentNullException(nameof(procedureTypeRepository));
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         _diagnosticsReporter = diagnosticsReporter ?? throw new ArgumentNullException(nameof(diagnosticsReporter));
+        _catalogSyncService = catalogSyncService ?? throw new ArgumentNullException(nameof(catalogSyncService));
 
         NewChecklistName = string.Empty;
         NewChecklistItemsText = string.Empty;
@@ -119,7 +122,14 @@ public sealed partial class LogbookManageViewModel : ObservableObject
             var template = new LogbookChecklistTemplate(NewChecklistName, items);
             await _checklistRepository.AddAsync(template);
 
-            StatusSuccessMessage = $"Check-list „{template.Name}“ byl vytvořen.";
+            // Shares it with every other device (2026-09-10, user's own ask) — a failure here is
+            // surfaced, unlike LogbookViewModel.SyncCatalogFromRelayAsync's own silent read-side
+            // best-effort: this is the moment someone's actively waiting to know whether it worked,
+            // not a background refresh. The checklist still exists locally either way.
+            var shared = await _catalogSyncService.PublishChecklistAsync(template);
+            StatusSuccessMessage = shared
+                ? $"Check-list „{template.Name}“ byl vytvořen a sdílen se všemi."
+                : $"Check-list „{template.Name}“ byl vytvořen lokálně, ale nepodařilo se ho sdílet s ostatními (zkontrolujte připojení k relay) — zatím ho uvidíte jen vy.";
             NewChecklistName = string.Empty;
             NewChecklistItemsText = string.Empty;
         }
@@ -147,7 +157,10 @@ public sealed partial class LogbookManageViewModel : ObservableObject
             var type = new LogbookProcedureType(NewProcedureTypeName, NewProcedureTypeCategory);
             await _procedureTypeRepository.AddAsync(type);
 
-            StatusSuccessMessage = $"Typ výkonu „{type.Name}“ byl přidán.";
+            var shared = await _catalogSyncService.PublishProcedureTypeAsync(type);
+            StatusSuccessMessage = shared
+                ? $"Typ výkonu „{type.Name}“ byl přidán a sdílen se všemi."
+                : $"Typ výkonu „{type.Name}“ byl přidán lokálně, ale nepodařilo se ho sdílet s ostatními (zkontrolujte připojení k relay) — zatím ho uvidíte jen vy.";
             NewProcedureTypeName = string.Empty;
         }
         catch (Exception ex)

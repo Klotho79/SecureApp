@@ -292,6 +292,50 @@ app.MapGet("/diagnostics/logs", (HttpRequest request, RelayDatabase db) =>
     return Results.Ok(entries.Select(e => new DiagnosticLogEntryDto(e.Id, e.DeviceDisplayName, e.Level, e.Message, e.Context, e.ExceptionDetails, e.CreatedAtUtc)).ToList());
 });
 
+// --- Logbook catalog sync (2026-09-10) — see Contracts.cs's own remarks.
+
+app.MapPost("/logbook/checklists", (HttpRequest request, LogbookChecklistDto body, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out _))
+        return Results.Unauthorized();
+
+    if (string.IsNullOrWhiteSpace(body.Name))
+        return Results.BadRequest("Name is required.");
+
+    db.UpsertLogbookChecklist(body.Id, body.Name, System.Text.Json.JsonSerializer.Serialize(body.Items), body.CreatedAtUtc);
+    return Results.Ok();
+});
+
+app.MapGet("/logbook/checklists", (HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out _))
+        return Results.Unauthorized();
+
+    var entries = db.GetLogbookChecklists();
+    return Results.Ok(entries.Select(e => new LogbookChecklistDto(e.Id, e.Name, System.Text.Json.JsonSerializer.Deserialize<List<string>>(e.ItemsJson) ?? [], e.CreatedAtUtc)).ToList());
+});
+
+app.MapPost("/logbook/procedure-types", (HttpRequest request, LogbookProcedureTypeDto body, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out _))
+        return Results.Unauthorized();
+
+    if (string.IsNullOrWhiteSpace(body.Name) || string.IsNullOrWhiteSpace(body.Category))
+        return Results.BadRequest("Name and Category are both required.");
+
+    db.UpsertLogbookProcedureType(body.Id, body.Name, body.Category, body.CreatedAtUtc);
+    return Results.Ok();
+});
+
+app.MapGet("/logbook/procedure-types", (HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out _))
+        return Results.Unauthorized();
+
+    var entries = db.GetLogbookProcedureTypes();
+    return Results.Ok(entries.Select(e => new LogbookProcedureTypeDto(e.Id, e.Name, e.Category, e.CreatedAtUtc)).ToList());
+});
+
 app.Map("/ws", async (HttpContext context, RelayDatabase db, ConnectionRegistry registry) =>
 {
     if (!context.WebSockets.IsWebSocketRequest)

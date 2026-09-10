@@ -281,8 +281,21 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     partial void OnHasNoDiagnosticLogEntriesChanged(bool value) => HasDiagnosticLogEntries = !value;
 
-    /// <summary>Writes through immediately, not gated behind the "Uložit" button — this is a per-device display preference (see <see cref="IsLogbookVisible"/>'s own remarks), not User data, so there's nothing to "save" beyond flipping the switch. <c>LoadAsync</c> below sets the initial value, which re-invokes this too — a harmless idempotent re-write of the same value.</summary>
-    partial void OnIsLogbookVisibleChanged(bool value) => Preferences.Default.Set(AppShell.LogbookVisibilityPreferenceKey, value);
+    /// <summary>
+    /// Writes through immediately, not gated behind the "Uložit" button — this is a per-device
+    /// display preference (see <see cref="IsLogbookVisible"/>'s own remarks), not User data, so
+    /// there's nothing to "save" beyond flipping the switch. <c>LoadAsync</c> below sets the
+    /// initial value, which re-invokes this too — a harmless idempotent re-write of the same value.
+    /// Also applies the change to the actual TabBar right away (2026-09-10, user's own ask: no
+    /// restart needed) via <see cref="AppShell.ApplyLogbookTabVisibility"/> — <c>Shell.Current</c>
+    /// is always the app's one <see cref="AppShell"/> instance in this app (there's only ever one
+    /// Shell), so the cast is safe without a null-forgiving check beyond the `as` itself.
+    /// </summary>
+    partial void OnIsLogbookVisibleChanged(bool value)
+    {
+        Preferences.Default.Set(AppShell.LogbookVisibilityPreferenceKey, value);
+        (Shell.Current as AppShell)?.ApplyLogbookTabVisibility(value);
+    }
 
     [RelayCommand]
     private async Task LoadAsync()

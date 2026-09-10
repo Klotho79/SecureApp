@@ -32,6 +32,7 @@ public sealed partial class LogbookViewModel : ObservableObject
     private readonly ILogbookProcedureEntryRepository _procedureEntryRepository;
     private readonly ICurrentUserService _currentUserService;
     private readonly IDiagnosticsReporter _diagnosticsReporter;
+    private readonly ILogbookCatalogSyncService _catalogSyncService;
 
     private IReadOnlyList<LogbookProcedureType> _procedureTypes = [];
 
@@ -98,13 +99,15 @@ public sealed partial class LogbookViewModel : ObservableObject
         ILogbookProcedureTypeRepository procedureTypeRepository,
         ILogbookProcedureEntryRepository procedureEntryRepository,
         ICurrentUserService currentUserService,
-        IDiagnosticsReporter diagnosticsReporter)
+        IDiagnosticsReporter diagnosticsReporter,
+        ILogbookCatalogSyncService catalogSyncService)
     {
         _checklistRepository = checklistRepository ?? throw new ArgumentNullException(nameof(checklistRepository));
         _procedureTypeRepository = procedureTypeRepository ?? throw new ArgumentNullException(nameof(procedureTypeRepository));
         _procedureEntryRepository = procedureEntryRepository ?? throw new ArgumentNullException(nameof(procedureEntryRepository));
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         _diagnosticsReporter = diagnosticsReporter ?? throw new ArgumentNullException(nameof(diagnosticsReporter));
+        _catalogSyncService = catalogSyncService ?? throw new ArgumentNullException(nameof(catalogSyncService));
 
         Checklists = [];
         ProcedureTypeOptions = [];
@@ -134,6 +137,12 @@ public sealed partial class LogbookViewModel : ObservableObject
             CanRecordProcedure = RoleAccessPolicy.IsAllowed(role, RbacAction.RecordLogbookProcedure);
             CanViewStatistics = RoleAccessPolicy.IsAllowed(role, RbacAction.ViewLogbookStatistics);
 
+            // Pulls in whatever another device has published to the shared catalog since this
+            // device last loaded (2026-09-10, user's own ask — see SyncCatalogFromRelayAsync's own
+            // remarks) before reading the local repositories below, so a fresh item shows up in the
+            // same page load that fetched it, not a load after.
+            await SyncCatalogFromRelayAsync();
+
             var checklists = await _checklistRepository.GetAllAsync();
             Checklists = new ObservableCollection<LogbookChecklistListItem>(
                 checklists.Select(c => new LogbookChecklistListItem(c.Id, c.Name, c.Items.Count)));
@@ -153,6 +162,37 @@ public sealed partial class LogbookViewModel : ObservableObject
         finally
         {
             IsLoading = false;
+        }
+    }
+
+    /// <summary>
+    /// Pulls any checklist/procedure-type this device doesn't have yet from the relay's shared
+    /// catalog (2026-09-10, user's own ask: "nové výkony nebo nové check listy se mají projevit u
+    /// všech uživatelů") — best-effort and silent (unlike a publish failure, which
+    /// <c>LogbookManageViewModel</c> DOES surface to the user, since that's the moment someone is
+    /// actively waiting to know whether sharing worked): a relay that's unreachable right now just
+    /// means this device keeps whatever it already has locally and tries again the next time this
+    /// page loads, same policy every other read-side sync in this app already follows. Matches by
+    /// id (see <see cref="LogbookChecklistTemplate"/>/<see cref="LogbookProcedureType"/>'s own
+    /// <c>Guid id</c> constructors) so a repeat sync never creates a duplicate local copy.
+    /// </summary>
+    private async Task SyncCatalogFromRelayAsync()
+    {
+        try
+        {
+            var localChecklistIds = (await _checklistRepository.GetAllAsync()).Select(c => c.Id).ToHashSet();
+            var remoteChecklists = await _catalogSyncService.FetchChecklistsAsync();
+            foreach (var remote in remoteChecklists.Where(r => !localChecklistIds.Contains(r.Id)))
+                await _checklistRepository.AddAsync(remote);
+
+            var localTypeIds = (await _procedureTypeRepository.GetAllAsync()).Select(t => t.Id).ToHashSet();
+            var remoteTypes = await _catalogSyncService.FetchProcedureTypesAsync();
+            foreach (var remote in remoteTypes.Where(r => !localTypeIds.Contains(r.Id)))
+                await _procedureTypeRepository.AddAsync(remote);
+        }
+        catch
+        {
+            // Best-effort — see this method's own remarks.
         }
     }
 

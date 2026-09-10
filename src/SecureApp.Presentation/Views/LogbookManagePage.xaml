@@ -11,7 +11,7 @@
         <VerticalStackLayout Padding="16" Spacing="12">
 
             <Label Text="Správa logbooku" Style="{StaticResource PageTitle}" />
-            <Label Text="Přidávání nových check-listů a typů výkonů do katalogu — samotné zaznamenání provedeného výkonu zůstává na hlavní stránce Logbooku." FontSize="12" TextColor="Gray" />
+            <Label Text="Přidávání nových check-listů a typů výkonů do katalogu — projeví se u všech uživatelů. Samotné zaznamenání provedeného výkonu zůstává na hlavní stránce Logbooku a je jen vaše." FontSize="12" TextColor="Gray" />
 
             <Label Text="{Binding StatusErrorMessage}" IsVisible="{Binding HasStatusError}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
             <Label Text="{Binding StatusSuccessMessage}" IsVisible="{Binding HasStatusSuccess}" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" LineBreakMode="WordWrap" />

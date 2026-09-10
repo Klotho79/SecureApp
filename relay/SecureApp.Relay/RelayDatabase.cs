@@ -154,6 +154,30 @@ public sealed class RelayDatabase
             )
             """);
         Execute(connection, "CREATE INDEX IF NOT EXISTS ix_diagnostic_logs_created ON diagnostic_logs(created_at_utc)");
+
+        // Logbook catalog sync (2026-09-10) — see ILogbookCatalogSyncService's own remarks for why
+        // this is plaintext (reference/protocol content, not patient data) and device-authenticated
+        // rather than admin-gated. Upsert-by-id (see UpsertLogbookChecklist/UpsertLogbookProcedureType)
+        // rather than insert-only, so a future edit-and-republish doesn't need a separate code path —
+        // nothing calls that yet, but the shape costs nothing extra today.
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS logbook_checklists (
+                id                TEXT PRIMARY KEY NOT NULL,
+                name              TEXT NOT NULL,
+                items_json        TEXT NOT NULL,
+                created_at_utc    TEXT NOT NULL,
+                updated_at_utc    TEXT NOT NULL
+            )
+            """);
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS logbook_procedure_types (
+                id                TEXT PRIMARY KEY NOT NULL,
+                name              TEXT NOT NULL,
+                category          TEXT NOT NULL,
+                created_at_utc    TEXT NOT NULL,
+                updated_at_utc    TEXT NOT NULL
+            )
+            """);
     }
 
     public string CreateInvite(string? displayNameHint, TimeSpan validFor, out DateTimeOffset expiresAtUtc)
@@ -507,6 +531,54 @@ public sealed class RelayDatabase
                 reader["exception_details"] is string ex ? ex : null,
                 DateTimeOffset.Parse((string)reader["created_at_utc"], CultureInfo.InvariantCulture)));
         }
+        return results;
+    }
+
+    public void UpsertLogbookChecklist(Guid id, string name, string itemsJson, DateTimeOffset createdAtUtc)
+    {
+        using var connection = OpenConnection();
+        Execute(connection,
+            """
+            INSERT INTO logbook_checklists (id, name, items_json, created_at_utc, updated_at_utc) VALUES (@id, @name, @items, @created, @now)
+            ON CONFLICT(id) DO UPDATE SET name = @name, items_json = @items, updated_at_utc = @now
+            """,
+            ("@id", id.ToString()), ("@name", name), ("@items", itemsJson), ("@created", Format(createdAtUtc)), ("@now", Format(DateTimeOffset.UtcNow)));
+    }
+
+    public IReadOnlyList<(Guid Id, string Name, string ItemsJson, DateTimeOffset CreatedAtUtc)> GetLogbookChecklists()
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id, name, items_json, created_at_utc FROM logbook_checklists ORDER BY name";
+
+        var results = new List<(Guid, string, string, DateTimeOffset)>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            results.Add((Guid.Parse((string)reader["id"]), (string)reader["name"], (string)reader["items_json"], DateTimeOffset.Parse((string)reader["created_at_utc"], CultureInfo.InvariantCulture)));
+        return results;
+    }
+
+    public void UpsertLogbookProcedureType(Guid id, string name, string category, DateTimeOffset createdAtUtc)
+    {
+        using var connection = OpenConnection();
+        Execute(connection,
+            """
+            INSERT INTO logbook_procedure_types (id, name, category, created_at_utc, updated_at_utc) VALUES (@id, @name, @category, @created, @now)
+            ON CONFLICT(id) DO UPDATE SET name = @name, category = @category, updated_at_utc = @now
+            """,
+            ("@id", id.ToString()), ("@name", name), ("@category", category), ("@created", Format(createdAtUtc)), ("@now", Format(DateTimeOffset.UtcNow)));
+    }
+
+    public IReadOnlyList<(Guid Id, string Name, string Category, DateTimeOffset CreatedAtUtc)> GetLogbookProcedureTypes()
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id, name, category, created_at_utc FROM logbook_procedure_types ORDER BY name";
+
+        var results = new List<(Guid, string, string, DateTimeOffset)>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            results.Add((Guid.Parse((string)reader["id"]), (string)reader["name"], (string)reader["category"], DateTimeOffset.Parse((string)reader["created_at_utc"], CultureInfo.InvariantCulture)));
         return results;
     }
 

@@ -41,6 +41,22 @@ public sealed class LogbookChecklistTemplate : Entity
         Items = items?.Where(i => !string.IsNullOrWhiteSpace(i)).ToList() ?? [];
     }
 
+    /// <summary>
+    /// Reconstructs a checklist with an EXISTING id (2026-09-10) — same reasoning as
+    /// <see cref="GroupChat"/>'s own <c>Guid id</c> constructor: syncing this catalog across every
+    /// device via the relay (see <c>ILogbookCatalogSyncService</c>) needs a device that already has
+    /// an item to recognize it as "already known" rather than minting a duplicate local copy with a
+    /// fresh id every time it re-fetches the same shared catalog.
+    /// </summary>
+    public LogbookChecklistTemplate(Guid id, string name, IReadOnlyList<string> items) : base(id)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            throw new ArgumentException("Checklist name cannot be empty.", nameof(name));
+
+        Name = name;
+        Items = items?.Where(i => !string.IsNullOrWhiteSpace(i)).ToList() ?? [];
+    }
+
     public void Rename(string name)
     {
         if (string.IsNullOrWhiteSpace(name))

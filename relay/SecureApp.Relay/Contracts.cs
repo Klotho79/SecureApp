@@ -48,3 +48,10 @@ public sealed record ReportDiagnosticLogRequest(string Level, string Message, st
 
 /// <summary><c>DeviceDisplayName</c> is resolved server-side against the CURRENT member directory, not stored at report time — see <c>RelayDatabase.GetRecentDiagnosticLogs</c>'s own remarks.</summary>
 public sealed record DiagnosticLogEntryDto(Guid Id, string DeviceDisplayName, string Level, string Message, string? Context, string? ExceptionDetails, DateTimeOffset CreatedAtUtc);
+
+// --- Logbook catalog sync (2026-09-10) — see ILogbookCatalogSyncService's own remarks. Same
+// device-authenticated (X-Device-Id/X-Device-Secret), not-admin-gated shape as everything above.
+
+public sealed record LogbookChecklistDto(Guid Id, string Name, IReadOnlyList<string> Items, DateTimeOffset CreatedAtUtc);
+
+public sealed record LogbookProcedureTypeDto(Guid Id, string Name, string Category, DateTimeOffset CreatedAtUtc);

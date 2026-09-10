@@ -5,6 +5,7 @@ using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Presentation.Diagnostics;
 using SecureApp.Presentation.Infrastructure;
 using SecureApp.Presentation.Library;
+using SecureApp.Presentation.Logbook;
 using SecureApp.Presentation.Rendering;
 using SecureApp.Presentation.Transport;
 using SecureApp.Presentation.ViewModels;
@@ -110,6 +111,9 @@ public static class MauiProgram
 		// Scoped/Transient) so App.xaml.cs's own static handlers and the global AppDomain/
 		// TaskScheduler unhandled-exception hooks can resolve the exact same instance every time.
 		builder.Services.AddSingleton<IDiagnosticsReporter, HttpDiagnosticsReporter>();
+
+		// Logbook catalog sync (2026-09-10) — same registration shape again.
+		builder.Services.AddSingleton<ILogbookCatalogSyncService, HttpLogbookCatalogSyncService>();
 
 		// --- Milestone 3: Presentation (pages + view models) ---
 		builder.Services.AddTransient<DocumentBrowserViewModel>();

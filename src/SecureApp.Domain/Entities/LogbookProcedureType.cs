@@ -31,6 +31,16 @@ public sealed class LogbookProcedureType : Entity
         Category = category;
     }
 
+    /// <summary>Reconstructs a procedure type with an EXISTING id (2026-09-10) — same reasoning as <see cref="LogbookChecklistTemplate"/>'s own <c>Guid id</c> constructor, for the same catalog-sync purpose.</summary>
+    public LogbookProcedureType(Guid id, string name, LogbookProcedureCategory category) : base(id)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            throw new ArgumentException("Procedure type name cannot be empty.", nameof(name));
+
+        Name = name;
+        Category = category;
+    }
+
     public void Rename(string name)
     {
         if (string.IsNullOrWhiteSpace(name))
