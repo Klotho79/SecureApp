@@ -197,13 +197,13 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
 
             _members = await _groupMemberRepository.GetByGroupAsync(_groupChatId);
 
-            // 2026-09-11 perf: render members + messages FIRST using the locally-stored names (no
-            // network), then refresh from the relay directory in the background — see
-            // RefreshNamesInBackgroundAsync. Opening a group used to await a directory fetch before
-            // showing anything; DirectoryNameResolver.Resolve already falls back to the local name
-            // when the directory dictionary is empty, so starting empty is correct, just not yet
-            // refreshed. Reused by the background refresh to rebuild these chips with current names.
-            _directoryNames = new Dictionary<string, string>();
+            // 2026-09-11 perf: render members + messages FIRST using the last-known directory names
+            // (process-wide cache, no network), then refresh from the relay in the background — see
+            // RefreshNamesInBackgroundAsync. Using LastKnown (not an empty dict) means the common case
+            // — the directory hasn't changed since it was last fetched this session — needs NO rebuild
+            // after the background refresh, eliminating the open-time re-render flicker. First open of
+            // the session still falls back to local names, then does one refresh.
+            _directoryNames = DirectoryNameResolver.LastKnown;
             RebuildMemberList();
 
             await LoadMessagesAsync();
@@ -255,7 +255,9 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
         try
         {
             var names = await DirectoryNameResolver.BuildAsync(_contactDirectoryService);
-            if (names.Count == 0) return; // nothing fresher than what we already showed
+            if (names.Count == 0) return; // fetch failed — keep what we already showed
+            if (DirectoryNameResolver.AreEquivalent(names, _directoryNames))
+                return; // same names we already rendered with — no rebuild, no flicker
 
             _directoryNames = names;
             RebuildMemberList();
@@ -263,7 +265,7 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
         }
         catch
         {
-            // Best-effort — the names already on screen (local fallback) stay as they are.
+            // Best-effort — the names already on screen stay as they are.
         }
     }
 
