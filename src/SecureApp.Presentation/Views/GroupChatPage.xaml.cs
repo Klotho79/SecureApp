@@ -16,6 +16,8 @@ public partial class GroupChatPage : ContentPage
         BindingContext = _viewModel = viewModel;
         _libraryService = libraryService ?? throw new ArgumentNullException(nameof(libraryService));
         _viewModel.ScrollToBottomRequested += ScrollToLatest;
+        _viewModel.ScrollAnchorRequested += ScrollToAnchor;
+        MessagesView.Scrolled += OnMessagesScrolled;
     }
 
     private void ScrollToLatest()
@@ -27,7 +29,23 @@ public partial class GroupChatPage : ContentPage
             var messages = _viewModel.Messages;
             if (messages is null || messages.Count == 0) return;
             try { MessagesView.ScrollTo(messages[^1], position: ScrollToPosition.End, animate: false); }
-            catch { /* layout not ready yet — KeepLastItemInView still covers new items */ }
+            catch { /* layout not ready yet — harmless */ }
+        });
+    }
+
+    /// <summary>Scroll-up history paging — only on a genuine upward scroll to the top, so it never fires during the initial layout/scroll-to-newest (see ChatThreadView.OnMessagesScrolled).</summary>
+    private void OnMessagesScrolled(object? sender, ItemsViewScrolledEventArgs e)
+    {
+        if (e.VerticalDelta < 0 && e.FirstVisibleItemIndex <= 2 && _viewModel.HasOlderMessages && _viewModel.LoadOlderCommand.CanExecute(null))
+            _viewModel.LoadOlderCommand.Execute(null);
+    }
+
+    private void ScrollToAnchor(GroupMessageItem anchor)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            try { MessagesView.ScrollTo(anchor, position: ScrollToPosition.Start, animate: false); }
+            catch { /* layout not ready — harmless */ }
         });
     }
 

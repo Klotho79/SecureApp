@@ -40,6 +40,22 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
     private IReadOnlyDictionary<string, string> _directoryNames = new Dictionary<string, string>();
     private EventHandler<MessageEnvelope>? _envelopeReceivedHandler;
 
+    // On-demand history pagination + a per-session sender-name map, mirroring ChatViewModel
+    // (2026-09-11). _olderLogicalRows holds the deduped older logical messages (undecrypted), oldest
+    // first, revealed a page at a time on scroll-up. _sessionNameById avoids the old per-message DB
+    // query that resolved each sender's name — built once per load instead.
+    private readonly List<Message> _olderLogicalRows = [];
+    private Dictionary<Guid, string> _sessionNameById = [];
+    private bool _isLoadingOlder;
+    private const int InitialMessageCount = 20;
+    private const int OlderPageSize = 20;
+
+    /// <summary>Raised after older history is prepended, carrying the previously-top item so the page can re-anchor (no jump) — mirrors ChatViewModel.ScrollAnchorRequested.</summary>
+    public event Action<GroupMessageItem>? ScrollAnchorRequested;
+
+    /// <summary>True while older group history remains unrevealed.</summary>
+    public bool HasOlderMessages => _olderLogicalRows.Count > 0;
+
     [ObservableProperty]
     public partial string Title { get; set; }
 
@@ -253,44 +269,105 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
 
     private async Task LoadMessagesAsync()
     {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        // Build the sender-name map ONCE from all sessions, instead of a DB query per message (the
+        // old ResolveSenderDisplayNameAsync did GetByIdAsync for every single message — dozens of
+        // round trips on the UI thread, the real cost of opening a busy group). 2026-09-11.
+        var allSessions = await _chatSessionRepository.GetAllAsync();
+        _sessionNameById = allSessions.ToDictionary(
+            s => s.Id,
+            s => DirectoryNameResolver.Resolve(_directoryNames, s.PeerIdentityPublicKey, s.PeerDisplayName));
+        var tSessions = sw.ElapsedMilliseconds;
+
         var rawMessages = await _messageRepository.GetByGroupAsync(_groupChatId);
+        var tQuery = sw.ElapsedMilliseconds;
 
-        // A sender's own outbound message exists as one Message row per OTHER member it fanned out
-        // to (all sharing the same GroupMessageId) — collapse those back into a single bubble here,
-        // keeping only the first. Inbound messages never need this: each arrives as exactly one row.
+        // Collapse each logical message down to one row (a sender's own message fans out as one row
+        // per other member, all sharing GroupMessageId) and drop system payloads — all without
+        // decrypting anything yet.
         var seenOutboundGroupMessageIds = new HashSet<Guid>();
-        var items = new List<GroupMessageItem>();
-
+        var logical = new List<Message>();
         foreach (var message in rawMessages.OrderBy(m => m.CreatedAtUtc))
         {
-            // System-carried machinery (2026-09-11, e.g. a group-tagged delete command) — never a
-            // real chat message; filter it out of the visible thread, same as ChatViewModel does.
             if (message.IsSystemPayload) continue;
-
-            if (message.Direction == MessageDirection.Outbound)
-            {
-                if (message.GroupMessageId is { } groupMessageId && !seenOutboundGroupMessageIds.Add(groupMessageId))
-                    continue; // already rendered this logical message from an earlier fan-out leg
-            }
-
-            var isOwn = message.Direction == MessageDirection.Outbound;
-            var senderName = isOwn
-                ? _currentUserService.Current.DisplayName
-                : await ResolveSenderDisplayNameAsync(message.ChatSessionId);
-
-            var text = await TryDecryptAsync(message);
-            var canDelete = RoleAccessPolicy.CanDeleteMessage(_currentUserService.Current.Role, isOwn, message.SenderRole);
-            items.Add(new GroupMessageItem(message.Id, isOwn, senderName, text, message.CreatedAtUtc, message.AttachmentLibraryFileId, message.AttachmentFileName, canDelete, message.GroupMessageId));
+            if (message.Direction == MessageDirection.Outbound
+                && message.GroupMessageId is { } gid && !seenOutboundGroupMessageIds.Add(gid))
+                continue; // already have this logical message from an earlier fan-out leg
+            logical.Add(message);
         }
 
-        Messages = new ObservableCollection<GroupMessageItem>(items.OrderBy(m => m.SentAtUtc));
+        var initialStart = Math.Max(0, logical.Count - InitialMessageCount);
+        var initialRows = logical.Skip(initialStart).ToList();
+        _olderLogicalRows.Clear();
+        _olderLogicalRows.AddRange(logical.Take(initialStart));
+
+        var currentRole = _currentUserService.Current.Role;
+        var initialItems = await Task.Run(async () =>
+        {
+            var list = new List<GroupMessageItem>(initialRows.Count);
+            foreach (var message in initialRows)
+                list.Add(await BuildItemAsync(message, currentRole));
+            return list;
+        });
+        var tDecrypt = sw.ElapsedMilliseconds;
+
+        Messages = new ObservableCollection<GroupMessageItem>(initialItems);
+        ScrollToBottomRequested?.Invoke();
+
+        _ = _diagnosticsReporter.ReportAsync(DiagnosticLogLevel.Info,
+            $"Group load ms: sessions={tSessions} query={tQuery} decrypt={tDecrypt} total={sw.ElapsedMilliseconds} (logical={logical.Count}, shown={initialItems.Count})",
+            nameof(GroupChatViewModel));
     }
 
-    private async Task<string> ResolveSenderDisplayNameAsync(Guid chatSessionId)
+    /// <summary>Builds one group thread item from an already-loaded row (decrypt without a re-fetch + name from the preloaded map + delete-gating) — shared by initial load, older-page load, and live receive.</summary>
+    private async Task<GroupMessageItem> BuildItemAsync(Message message, Role currentRole)
     {
-        var session = await _chatSessionRepository.GetByIdAsync(chatSessionId);
-        if (session is null) return "Neznámý člen";
-        return DirectoryNameResolver.Resolve(_directoryNames, session.PeerIdentityPublicKey, session.PeerDisplayName);
+        var isOwn = message.Direction == MessageDirection.Outbound;
+        var senderName = isOwn
+            ? _currentUserService.Current.DisplayName
+            : (_sessionNameById.TryGetValue(message.ChatSessionId, out var name) ? name : "Neznámý člen");
+        var text = await TryDecryptAsync(message);
+        var canDelete = RoleAccessPolicy.CanDeleteMessage(currentRole, isOwn, message.SenderRole);
+        return new GroupMessageItem(message.Id, isOwn, senderName, text, message.CreatedAtUtc, message.AttachmentLibraryFileId, message.AttachmentFileName, canDelete, message.GroupMessageId);
+    }
+
+    /// <summary>Reveals the next older page of group history on scroll-up (2026-09-11) — mirrors ChatViewModel.LoadOlderAsync, including the re-anchor so the view never jumps.</summary>
+    [RelayCommand]
+    private async Task LoadOlderAsync()
+    {
+        if (_isLoadingOlder || _olderLogicalRows.Count == 0) return;
+        _isLoadingOlder = true;
+        try
+        {
+            var pageStart = Math.Max(0, _olderLogicalRows.Count - OlderPageSize);
+            var pageRows = _olderLogicalRows.Skip(pageStart).ToList();
+            _olderLogicalRows.RemoveRange(pageStart, _olderLogicalRows.Count - pageStart);
+
+            var currentRole = _currentUserService.Current.Role;
+            var pageItems = await Task.Run(async () =>
+            {
+                var list = new List<GroupMessageItem>(pageRows.Count);
+                foreach (var message in pageRows)
+                    list.Add(await BuildItemAsync(message, currentRole));
+                return list;
+            });
+
+            var anchor = Messages.Count > 0 ? Messages[0] : null;
+            for (var i = pageItems.Count - 1; i >= 0; i--)
+                Messages.Insert(0, pageItems[i]);
+
+            if (anchor is not null)
+                ScrollAnchorRequested?.Invoke(anchor);
+        }
+        catch
+        {
+            // Best-effort — the thread stays usable; next scroll-up retries.
+        }
+        finally
+        {
+            _isLoadingOlder = false;
+        }
     }
 
     private async Task<string> TryDecryptAsync(Message message)
@@ -793,7 +870,20 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
         try
         {
             var message = await _messagingService.ReceiveMessageAsync(envelope);
-            var senderName = await ResolveSenderDisplayNameAsync(message.ChatSessionId);
+            // Resolve the sender name from the preloaded map; if this is a brand-new session not yet
+            // in it, fall back to a one-off lookup so a just-added member still shows a name.
+            string senderName;
+            if (_sessionNameById.TryGetValue(message.ChatSessionId, out var mapped))
+            {
+                senderName = mapped;
+            }
+            else
+            {
+                var session = await _chatSessionRepository.GetByIdAsync(message.ChatSessionId);
+                senderName = session is null ? "Neznámý člen" : DirectoryNameResolver.Resolve(_directoryNames, session.PeerIdentityPublicKey, session.PeerDisplayName);
+                if (session is not null) _sessionNameById[message.ChatSessionId] = senderName;
+            }
+
             var text = await TryDecryptAsync(message);
             var canDelete = RoleAccessPolicy.CanDeleteMessage(_currentUserService.Current.Role, false, message.SenderRole);
             Messages.Add(new GroupMessageItem(message.Id, false, senderName, text, message.CreatedAtUtc, message.AttachmentLibraryFileId, message.AttachmentFileName, canDelete, message.GroupMessageId));
