@@ -1,3 +1,4 @@
+using Microsoft.Maui.Dispatching;
 using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Domain.ValueObjects;
 using SecureApp.Presentation.ViewModels;
@@ -52,8 +53,15 @@ public partial class GroupChatPage : ContentPage
     protected override void OnAppearing()
     {
         base.OnAppearing();
-        _viewModel.LoadCommand.Execute(null);
         _viewModel.StartListening();
+
+        // Defer the data load until the push animation has finished (2026-09-11). Populating the
+        // CollectionView is the heaviest UI-thread work on open; doing it while the page is still
+        // sliding in left-to-right janked the slide mid-way (freeze + spinner + snap — the
+        // unprofessional stutter the user reported). Showing the spinner up front lets the page slide
+        // in smoothly on an unburdened UI thread, then the content renders once it has arrived.
+        _viewModel.IsLoading = true;
+        Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(300), () => _viewModel.LoadCommand.Execute(null));
     }
 
     protected override void OnDisappearing()

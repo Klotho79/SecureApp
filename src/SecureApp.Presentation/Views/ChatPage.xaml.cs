@@ -1,3 +1,4 @@
+using Microsoft.Maui.Dispatching;
 using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Presentation.ViewModels;
 
@@ -18,8 +19,13 @@ public partial class ChatPage : ContentPage
     protected override void OnAppearing()
     {
         base.OnAppearing();
-        _viewModel.LoadCommand.Execute(null);
         _viewModel.StartListening();
+
+        // Defer the load until the push animation finishes so populating the thread doesn't jank the
+        // slide-in (2026-09-11) — see GroupChatPage.OnAppearing's own remarks. Only affects the phone
+        // push host; the wide-layout detail pane (ChatListPage) drives the load its own way.
+        _viewModel.IsLoading = true;
+        Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(300), () => _viewModel.LoadCommand.Execute(null));
     }
 
     protected override void OnDisappearing()

@@ -271,19 +271,15 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
 
     private async Task LoadMessagesAsync()
     {
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-
         // Build the sender-name map ONCE from all sessions, instead of a DB query per message (the
         // old ResolveSenderDisplayNameAsync did GetByIdAsync for every single message — dozens of
-        // round trips on the UI thread, the real cost of opening a busy group). 2026-09-11.
+        // round trips on the UI thread, part of the real cost of opening a busy group). 2026-09-11.
         var allSessions = await _chatSessionRepository.GetAllAsync();
         _sessionNameById = allSessions.ToDictionary(
             s => s.Id,
             s => DirectoryNameResolver.Resolve(_directoryNames, s.PeerIdentityPublicKey, s.PeerDisplayName));
-        var tSessions = sw.ElapsedMilliseconds;
 
         var rawMessages = await _messageRepository.GetByGroupAsync(_groupChatId);
-        var tQuery = sw.ElapsedMilliseconds;
 
         // Collapse each logical message down to one row (a sender's own message fans out as one row
         // per other member, all sharing GroupMessageId) and drop system payloads — all without
@@ -312,14 +308,9 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
                 list.Add(await BuildItemAsync(message, currentRole));
             return list;
         });
-        var tDecrypt = sw.ElapsedMilliseconds;
 
         Messages = new ObservableCollection<GroupMessageItem>(initialItems);
         ScrollToBottomRequested?.Invoke();
-
-        _ = _diagnosticsReporter.ReportAsync(DiagnosticLogLevel.Info,
-            $"Group load ms: sessions={tSessions} query={tQuery} decrypt={tDecrypt} total={sw.ElapsedMilliseconds} (logical={logical.Count}, shown={initialItems.Count})",
-            nameof(GroupChatViewModel));
     }
 
     /// <summary>Builds one group thread item from an already-loaded row (decrypt without a re-fetch + name from the preloaded map + delete-gating) — shared by initial load, older-page load, and live receive.</summary>
