@@ -60,5 +60,8 @@ public interface IMessagingService
     /// <summary>On-demand plaintext decrypt, mirroring the document viewer's decrypt-on-demand pattern.</summary>
     Task<byte[]> DecryptMessageAsync(Guid messageId, CancellationToken ct = default);
 
+    /// <summary>Decrypts an already-loaded message's stored payload directly, without re-fetching the row by id (2026-09-11 perf) — for the chat-load path, which already holds every <see cref="Message"/> from <c>GetBySessionAsync</c> and would otherwise do one extra DB round trip per message just to decrypt it.</summary>
+    Task<byte[]> DecryptMessageAsync(Message message, CancellationToken ct = default);
+
     Task CloseSessionAsync(Guid sessionId, CancellationToken ct = default);
 }

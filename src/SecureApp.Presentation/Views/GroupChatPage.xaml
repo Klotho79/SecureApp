@@ -146,19 +146,22 @@
                                             LineBreakMode="TailTruncation"
                                             IsVisible="{Binding IsInbound}"
                                             TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
-                                        <!-- Delete (2026-09-11) — only shown when this user may delete this message
+                                        <!-- Delete (2026-09-11) — a plain tappable Label, not a Button, so it
+                                             doesn't inflate the bubble with an Android Button's ~48dp minimum
+                                             height. Only shown when this user may delete this message
                                              (RoleAccessPolicy.CanDeleteMessage). Deletes for the whole group. -->
-                                        <Button
+                                        <Label
                                             Text="🗑"
-                                            FontSize="10"
-                                            Padding="0"
-                                            WidthRequest="24"
-                                            HeightRequest="20"
-                                            BackgroundColor="Transparent"
+                                            FontSize="11"
+                                            VerticalOptions="Center"
                                             TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}"
-                                            IsVisible="{Binding CanDelete}"
-                                            Command="{Binding Source={x:Reference GroupChatRoot}, Path=BindingContext.DeleteMessageCommand}"
-                                            CommandParameter="{Binding .}" />
+                                            IsVisible="{Binding CanDelete}">
+                                            <Label.GestureRecognizers>
+                                                <TapGestureRecognizer
+                                                    Command="{Binding Source={x:Reference GroupChatRoot}, Path=BindingContext.DeleteMessageCommand}"
+                                                    CommandParameter="{Binding .}" />
+                                            </Label.GestureRecognizers>
+                                        </Label>
                                     </HorizontalStackLayout>
 
                                     <Label Text="{Binding Text}" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" FontSize="13" LineBreakMode="WordWrap" IsVisible="{Binding HasText}">

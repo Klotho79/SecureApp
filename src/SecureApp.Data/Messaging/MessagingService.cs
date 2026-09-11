@@ -227,6 +227,12 @@ public sealed class MessagingService : IMessagingService
         return await _crypto.DecryptAsync(message.Payload, ct);
     }
 
+    public Task<byte[]> DecryptMessageAsync(Message message, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        return _crypto.DecryptAsync(message.Payload, ct);
+    }
+
     public async Task CloseSessionAsync(Guid sessionId, CancellationToken ct = default)
     {
         var session = await _sessionRepository.GetByIdAsync(sessionId, ct) ?? throw new ChatSessionNotFoundException(sessionId);

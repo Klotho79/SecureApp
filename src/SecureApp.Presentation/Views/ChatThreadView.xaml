@@ -44,20 +44,24 @@
                                     <!-- Header row: a delete button (only when this user may delete this message — see
                                          RoleAccessPolicy.CanDeleteMessage) at the start, the time at the end. A 1:1 thread
                                          has no per-message "kdo" label (the bubble side already says who). -->
-                                    <Grid ColumnDefinitions="Auto,*">
-                                        <Button
+                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                        <!-- Delete: a plain tappable Label, not a Button — an Android Button
+                                             forces a ~48dp minimum height that inflated the whole bubble. A
+                                             Label has no touch-target minimum, so the header stays a single
+                                             compact line aligned with the time. -->
+                                        <Label
                                             Grid.Column="0"
                                             Text="🗑"
-                                            FontSize="10"
-                                            Padding="0"
-                                            WidthRequest="24"
-                                            HeightRequest="20"
-                                            BackgroundColor="Transparent"
-                                            TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}"
-                                            HorizontalOptions="Start"
+                                            FontSize="11"
+                                            VerticalOptions="Center"
                                             IsVisible="{Binding CanDelete}"
-                                            Command="{Binding Source={x:Reference ChatThreadRoot}, Path=BindingContext.DeleteMessageCommand}"
-                                            CommandParameter="{Binding .}" />
+                                            TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}">
+                                            <Label.GestureRecognizers>
+                                                <TapGestureRecognizer
+                                                    Command="{Binding Source={x:Reference ChatThreadRoot}, Path=BindingContext.DeleteMessageCommand}"
+                                                    CommandParameter="{Binding .}" />
+                                            </Label.GestureRecognizers>
+                                        </Label>
                                         <Label
                                             Grid.Column="1"
                                             Text="{Binding SentAtUtc.LocalDateTime, StringFormat='{0:t}'}"

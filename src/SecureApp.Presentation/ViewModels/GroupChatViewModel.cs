@@ -297,7 +297,7 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
     {
         try
         {
-            var plaintext = await _messagingService.DecryptMessageAsync(message.Id);
+            var plaintext = await _messagingService.DecryptMessageAsync(message); // already-loaded payload, no re-fetch
             return Encoding.UTF8.GetString(plaintext);
         }
         catch

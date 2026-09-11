@@ -161,6 +161,9 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
     /// <summary>Raised once the thread has been (re)populated so the hosting view can scroll to the newest message — see ChatThreadView's own subscription. Kept as a plain event (not a bound property) since "scroll now" is a one-shot action, not state.</summary>
     public event Action? ScrollToBottomRequested;
 
+    /// <summary>How many of the newest messages to decrypt and show immediately on open (2026-09-11 perf, the user's own ask: "nemusí se načíst celý chat ale třeba jen posledních 5-10 zpráv"). The rest are decrypted and prepended in the background — see LoadOlderInBackgroundAsync.</summary>
+    private const int InitialMessageCount = 12;
+
     [RelayCommand]
     private async Task LoadAsync()
     {
@@ -168,45 +171,48 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         StatusErrorMessage = null;
         try
         {
-            // 2026-09-11 perf: render the locally-stored thread FIRST, before any network call.
-            // Opening a chat used to await EnsureConnectedAsync() (a relay connect) AND
-            // DirectoryNameResolver.BuildAsync() (a relay directory fetch) before showing a single
-            // message — so on a slow link (WireGuard/mobile) the thread sat blank behind a spinner
-            // for seconds even though every message was already in the local encrypted DB. Now the
-            // network work (connect, fresh peer-name resolution, key offer) all happens in the
-            // background AFTER the messages are on screen — see RefreshInBackgroundAsync below.
+            // 2026-09-11 perf: render only the NEWEST few messages from local storage FIRST, before
+            // any network call and without decrypting the whole thread. Opening a chat used to await
+            // a relay connect AND a directory fetch AND decrypt every message before showing a single
+            // one — so on a slow link a long thread sat blank behind a spinner. Now: decrypt just the
+            // last InitialMessageCount, show them, and push both the older messages and all network
+            // work (connect, name refresh, key offer) to the background.
             await _currentUserService.InitializeAsync(); // in-memory-cached after first call; needed for delete gating
             var session = await _sessionRepository.GetByIdAsync(_chatSessionId);
 
             // Show the name we already have locally immediately; the directory may refine it later.
             Title = session?.PeerDisplayName ?? "Chat";
 
-            var messages = await _messageRepository.GetBySessionAsync(_chatSessionId);
             var currentRole = _currentUserService.Current.Role;
-            var items = new List<ChatMessageItem>();
-            foreach (var message in messages)
+
+            // Cheap: filter + order by the row metadata only (no decryption yet).
+            var allRows = await _messageRepository.GetBySessionAsync(_chatSessionId);
+            var visible = allRows
+                .Where(m => m.GroupChatId is null && !m.IsSystemPayload) // 1:1 only; system payloads never shown — see the receive path's own remarks
+                .OrderBy(m => m.CreatedAtUtc)
+                .ToList();
+
+            var initialStart = Math.Max(0, visible.Count - InitialMessageCount);
+            var initialRows = visible.Skip(initialStart).ToList();
+            var olderRows = visible.Take(initialStart).ToList();
+
+            // Decrypt off the UI thread so the per-message crypto never stutters the open/scroll
+            // animation (2026-09-11 — the user reported jank on an S23+). The continuation resumes on
+            // the UI thread, where the bound collection must be assigned.
+            var initialItems = await Task.Run(async () =>
             {
-                // Same reasoning as HandleEnvelopeReceivedAsync's own remarks — a group message
-                // fans out over this same pairwise session, so GetBySessionAsync returns those rows
-                // too; they belong in the group's own thread (GroupChatViewModel.LoadMessagesAsync),
-                // not mixed into this direct 1:1 conversation.
-                if (message.GroupChatId is not null) continue;
+                var list = new List<ChatMessageItem>(initialRows.Count);
+                foreach (var message in initialRows)
+                    list.Add(await BuildItemAsync(message, currentRole));
+                return list;
+            });
 
-                // System-carried machinery (2026-09-10, e.g. SharedLibraryKeySync's key offers) —
-                // never a real chat message, same "filter it back out of this thread" treatment as
-                // GroupChatId above, for the opposite reason (belongs nowhere visible at all).
-                if (message.IsSystemPayload) continue;
-
-                var text = await TryDecryptAsync(message);
-                var isOwn = message.Direction == MessageDirection.Outbound;
-                var canDelete = RoleAccessPolicy.CanDeleteMessage(currentRole, isOwn, message.SenderRole);
-                items.Add(new ChatMessageItem(message.Id, isOwn, text, message.CreatedAtUtc, message.Status, message.AttachmentLibraryFileId, message.AttachmentFileName, canDelete, message.OriginMessageId));
-            }
-
-            Messages = new ObservableCollection<ChatMessageItem>(items.OrderBy(m => m.SentAtUtc));
-            IsLoading = false; // messages are on screen now — stop the spinner before the background work
+            Messages = new ObservableCollection<ChatMessageItem>(initialItems);
+            IsLoading = false; // newest messages are on screen now — stop the spinner
             ScrollToBottomRequested?.Invoke();
 
+            // Older messages + all network work, off the critical path.
+            _ = LoadOlderInBackgroundAsync(olderRows, currentRole);
             _ = RefreshInBackgroundAsync(session);
         }
         catch (Exception ex)
@@ -216,6 +222,52 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         finally
         {
             IsLoading = false;
+        }
+    }
+
+    /// <summary>Builds one thread item from an already-loaded message row (decrypt + delete-gating) — shared by the initial load, the background older-message load, and the live receive path.</summary>
+    private async Task<ChatMessageItem> BuildItemAsync(Message message, Role currentRole)
+    {
+        var text = await TryDecryptAsync(message);
+        var isOwn = message.Direction == MessageDirection.Outbound;
+        var canDelete = RoleAccessPolicy.CanDeleteMessage(currentRole, isOwn, message.SenderRole);
+        return new ChatMessageItem(message.Id, isOwn, text, message.CreatedAtUtc, message.Status, message.AttachmentLibraryFileId, message.AttachmentFileName, canDelete, message.OriginMessageId);
+    }
+
+    /// <summary>
+    /// Decrypts the older (already-on-screen-scroll-up) messages after the newest batch is visible,
+    /// then prepends them (2026-09-11 perf). The CollectionView's KeepLastItemInView keeps the newest
+    /// message anchored while these insert above the viewport, so scrolling up reveals full history
+    /// without the open ever having waited for it. A no-op when the thread is short enough to fit the
+    /// initial batch.
+    /// </summary>
+    private async Task LoadOlderInBackgroundAsync(List<Message> olderRows, Role currentRole)
+    {
+        if (olderRows.Count == 0) return;
+
+        try
+        {
+            // Decrypt off the UI thread (see the initial batch's own remarks), then marshal only the
+            // cheap collection inserts back onto it.
+            var olderItems = await Task.Run(async () =>
+            {
+                var list = new List<ChatMessageItem>(olderRows.Count);
+                foreach (var message in olderRows)
+                    list.Add(await BuildItemAsync(message, currentRole));
+                return list;
+            });
+
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                // Insert oldest-first at the front so final order stays chronological.
+                for (var i = olderItems.Count - 1; i >= 0; i--)
+                    Messages.Insert(0, olderItems[i]);
+            });
+        }
+        catch
+        {
+            // Best-effort — the newest messages are already usable; a failure here just means
+            // scroll-up history isn't backfilled this open, not a broken chat.
         }
     }
 
@@ -363,7 +415,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
     {
         try
         {
-            var plaintext = await _messagingService.DecryptMessageAsync(message.Id);
+            var plaintext = await _messagingService.DecryptMessageAsync(message); // already-loaded payload, no re-fetch
             return Encoding.UTF8.GetString(plaintext);
         }
         catch (Exception)
