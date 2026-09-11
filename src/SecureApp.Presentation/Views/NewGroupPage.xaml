@@ -4,6 +4,7 @@
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
+    xmlns:controls="clr-namespace:SecureApp.Presentation.Controls"
     x:DataType="vm:NewGroupViewModel"
     Title="Nová skupina">
 
@@ -11,7 +12,7 @@
         <VerticalStackLayout Padding="20" Spacing="12">
 
             <Label Text="{Binding StatusErrorMessage}" IsVisible="{Binding HasStatusError}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
-            <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" HorizontalOptions="Center" />
+            <controls:DelayedActivityIndicator IsBusy="{Binding IsBusy}" HorizontalOptions="Center" />
 
             <Border Style="{StaticResource CardBorder}">
                 <VerticalStackLayout Spacing="8">
@@ -20,7 +21,7 @@
 
                     <Label Text="Členové" FontAttributes="Bold" Margin="0,8,0,0" />
                     <Label Text="Vyberte, koho chcete do skupiny přidat — jsou to všichni, kdo už mají aktivované zařízení." FontSize="12" TextColor="Gray" />
-                    <ActivityIndicator IsRunning="{Binding IsLoadingMembers}" IsVisible="{Binding IsLoadingMembers}" HorizontalOptions="Center" />
+                    <controls:DelayedActivityIndicator IsBusy="{Binding IsLoadingMembers}" HorizontalOptions="Center" />
                     <Label Text="Zatím tu nikdo není — buď jsi jediný aktivovaný, nebo se ostatní ještě nepřipojili." FontSize="12" TextColor="Gray" IsVisible="{Binding HasNoMembers}" />
 
                     <CollectionView ItemsSource="{Binding Members}" SelectionMode="None">

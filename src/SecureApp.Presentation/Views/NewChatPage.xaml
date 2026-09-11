@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
     xmlns:zxing="clr-namespace:ZXing.Net.Maui.Controls;assembly=ZXing.Net.MAUI.Controls"
+    xmlns:controls="clr-namespace:SecureApp.Presentation.Controls"
     x:DataType="vm:NewChatViewModel"
     Title="Nový chat">
 
@@ -13,7 +14,7 @@
 
             <Label Text="{Binding StatusErrorMessage}" IsVisible="{Binding HasStatusError}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
             <Label Text="{Binding StatusInfoMessage}" IsVisible="{Binding HasStatusInfo}" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" LineBreakMode="WordWrap" />
-            <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" HorizontalOptions="Center" />
+            <controls:DelayedActivityIndicator IsBusy="{Binding IsBusy}" HorizontalOptions="Center" />
 
             <!-- Member directory (2026-09-06) — the primary, one-tap path: everyone here already
                  went through admin-approved activation, so no contact-card exchange is needed at
@@ -23,7 +24,7 @@
                 <VerticalStackLayout Spacing="8">
                     <Label Text="Chat s někým z komunity" Style="{StaticResource SectionHeader}" Margin="0" />
                     <Label Text="Klepnutím na jméno appka sama založí zabezpečený chat — žádné kartičky ani kódy." FontSize="12" TextColor="Gray" />
-                    <ActivityIndicator IsRunning="{Binding IsLoadingMembers}" IsVisible="{Binding IsLoadingMembers}" HorizontalOptions="Center" />
+                    <controls:DelayedActivityIndicator IsBusy="{Binding IsLoadingMembers}" HorizontalOptions="Center" />
                     <Label Text="Zatím tu nikdo není — buď jsi jediný aktivovaný, nebo se ostatní ještě nepřipojili." FontSize="12" TextColor="Gray" IsVisible="{Binding HasNoMembers}" />
                     <CollectionView ItemsSource="{Binding Members}" SelectionMode="None">
                         <CollectionView.ItemsLayout>

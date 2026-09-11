@@ -4,6 +4,7 @@
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
+    xmlns:controls="clr-namespace:SecureApp.Presentation.Controls"
     x:DataType="vm:GroupChatViewModel"
     Title="{Binding Title}"
     x:Name="GroupChatRoot">
@@ -84,7 +85,7 @@
 
                 <!-- Add-member picker — reuses the same relay member directory "New Chat"/"New Group" already use. -->
                 <VerticalStackLayout Spacing="6" IsVisible="{Binding IsShowingAddMember}">
-                    <ActivityIndicator IsRunning="{Binding IsLoadingAddableMembers}" IsVisible="{Binding IsLoadingAddableMembers}" HorizontalOptions="Center" />
+                    <controls:DelayedActivityIndicator IsBusy="{Binding IsLoadingAddableMembers}" HorizontalOptions="Center" />
                     <CollectionView ItemsSource="{Binding AddableMembers}" SelectionMode="None" HeightRequest="140">
                         <CollectionView.ItemTemplate>
                             <DataTemplate x:DataType="vm:SelectableMemberItem">
@@ -101,7 +102,7 @@
         </Border>
 
         <Grid Grid.Row="2">
-            <ActivityIndicator IsRunning="{Binding IsLoading}" IsVisible="{Binding IsLoading}" HorizontalOptions="Center" VerticalOptions="Center" />
+            <controls:DelayedActivityIndicator IsBusy="{Binding IsLoading}" HorizontalOptions="Center" VerticalOptions="Center" />
 
             <!-- KeepItemsInView so prepended history on scroll-up doesn't jump the view (2026-09-11);
                  scrolling to the newest on open/send/receive is explicit from code-behind. -->
