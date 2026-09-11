@@ -50,6 +50,20 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
     private const int InitialMessageCount = 12;
     private const int OlderPageSize = 20;
 
+    /// <summary>See ChatViewModel.AnimationSettleMs — hold the UI assignment back until the open/back animation has settled, while the load runs in parallel on a background thread.</summary>
+    private const int AnimationSettleMs = 280;
+
+    /// <summary>Everything the group thread needs, computed entirely on a background thread so it can run in parallel with the open animation without touching the UI (2026-09-11).</summary>
+    private sealed record GroupInitialLoad(
+        GroupChat Group,
+        byte[] LocalPublicKey,
+        Role Role,
+        IReadOnlyList<GroupMember> Members,
+        IReadOnlyDictionary<string, string> DirectoryNames,
+        Dictionary<Guid, string> SessionNames,
+        List<Message> OlderLogical,
+        List<GroupMessageItem> Items);
+
     /// <summary>Raised after older history is prepended, carrying the previously-top item so the page can re-anchor (no jump) — mirrors ChatViewModel.ScrollAnchorRequested.</summary>
     public event Action<GroupMessageItem>? ScrollAnchorRequested;
 
@@ -178,42 +192,85 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
     {
         IsLoading = true; // the spinner itself only appears if this lasts — see DelayedActivityIndicator
         StatusErrorMessage = null;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
-            var group = await _groupChatRepository.GetByIdAsync(_groupChatId);
-            if (group is null)
+            // Phase 1 — load EVERYTHING (group, members, sessions, messages + decrypt) on a
+            // background thread, in parallel with the open animation, never touching the UI. Uses
+            // the last-known directory names (no network); the relay refresh happens later in the
+            // background. Only the newest InitialMessageCount are decrypted.
+            var loaded = await Task.Run<GroupInitialLoad?>(async () =>
+            {
+                var group = await _groupChatRepository.GetByIdAsync(_groupChatId);
+                if (group is null) return null;
+
+                var localPublicKey = await _messagingService.GetLocalIdentityPublicKeyAsync();
+                await _currentUserService.InitializeAsync();
+                var role = _currentUserService.Current.Role;
+                var ownName = _currentUserService.Current.DisplayName;
+                var members = await _groupMemberRepository.GetByGroupAsync(_groupChatId);
+
+                var directoryNames = DirectoryNameResolver.LastKnown;
+                var allSessions = await _chatSessionRepository.GetAllAsync();
+                var sessionNames = allSessions.ToDictionary(
+                    s => s.Id,
+                    s => DirectoryNameResolver.Resolve(directoryNames, s.PeerIdentityPublicKey, s.PeerDisplayName));
+
+                var rawMessages = await _messageRepository.GetByGroupAsync(_groupChatId);
+                var seen = new HashSet<Guid>();
+                var logical = new List<Message>();
+                foreach (var m in rawMessages.OrderBy(x => x.CreatedAtUtc))
+                {
+                    if (m.IsSystemPayload) continue;
+                    if (m.Direction == MessageDirection.Outbound && m.GroupMessageId is { } gid && !seen.Add(gid)) continue;
+                    logical.Add(m);
+                }
+
+                var initialStart = Math.Max(0, logical.Count - InitialMessageCount);
+                var older = logical.Take(initialStart).ToList();
+                var initialRows = logical.Skip(initialStart).ToList();
+
+                var items = new List<GroupMessageItem>(initialRows.Count);
+                foreach (var m in initialRows)
+                {
+                    var isOwn = m.Direction == MessageDirection.Outbound;
+                    var senderName = isOwn ? ownName : (sessionNames.TryGetValue(m.ChatSessionId, out var n) ? n : "Neznámý člen");
+                    var text = await TryDecryptAsync(m);
+                    var canDelete = RoleAccessPolicy.CanDeleteMessage(role, isOwn, m.SenderRole);
+                    items.Add(new GroupMessageItem(m.Id, isOwn, senderName, text, m.CreatedAtUtc, m.AttachmentLibraryFileId, m.AttachmentFileName, canDelete, m.GroupMessageId));
+                }
+
+                return new GroupInitialLoad(group, localPublicKey, role, members, directoryNames, sessionNames, older, items);
+            });
+
+            if (loaded is null)
             {
                 StatusErrorMessage = "Tuto skupinu se nepodařilo najít.";
                 return;
             }
 
-            Title = group.Name;
-            _founderPublicKey = group.FounderPublicKey;
-            _localPublicKey = await _messagingService.GetLocalIdentityPublicKeyAsync();
+            // Phase 2 — wait out the rest of the animation (usually already elapsed), THEN touch the UI.
+            var remaining = AnimationSettleMs - (int)sw.ElapsedMilliseconds;
+            if (remaining > 0) await Task.Delay(remaining);
 
-            await _currentUserService.InitializeAsync();
+            _founderPublicKey = loaded.Group.FounderPublicKey;
+            _localPublicKey = loaded.LocalPublicKey;
             var isFounder = _founderPublicKey.AsSpan().SequenceEqual(_localPublicKey);
-            CanManageMembers = isFounder || RoleAccessPolicy.IsAllowed(_currentUserService.Current.Role, RbacAction.InviteGroupMember);
-
-            _members = await _groupMemberRepository.GetByGroupAsync(_groupChatId);
-
-            // 2026-09-11 perf: render members + messages FIRST using the last-known directory names
-            // (process-wide cache, no network), then refresh from the relay in the background — see
-            // RefreshNamesInBackgroundAsync. Using LastKnown (not an empty dict) means the common case
-            // — the directory hasn't changed since it was last fetched this session — needs NO rebuild
-            // after the background refresh, eliminating the open-time re-render flicker. First open of
-            // the session still falls back to local names, then does one refresh.
-            _directoryNames = DirectoryNameResolver.LastKnown;
+            CanManageMembers = isFounder || RoleAccessPolicy.IsAllowed(loaded.Role, RbacAction.InviteGroupMember);
+            Title = loaded.Group.Name;
+            _members = loaded.Members;
+            _directoryNames = loaded.DirectoryNames;
+            _sessionNameById = loaded.SessionNames;
+            _olderLogicalRows.Clear();
+            _olderLogicalRows.AddRange(loaded.OlderLogical);
             RebuildMemberList();
-
-            await LoadMessagesAsync();
-            IsLoading = false; // on screen now — before the background network work
+            Messages = new ObservableCollection<GroupMessageItem>(loaded.Items);
+            IsLoading = false;
             ScrollToBottomRequested?.Invoke();
 
             // Refresh names from the directory, then auto-heal broken pairings — both in the
-            // background so neither blocks the thread appearing. Auto-heal on open (2026-09-07) is
-            // the user's explicit demand: opening the group screen is the only thing needed to fix
-            // every broken/missing pairwise link, no manual nudge.
+            // background so neither blocks the thread. Auto-heal on open (2026-09-07) is the user's
+            // explicit demand: opening the group screen is the only thing needed to fix broken links.
             _ = RefreshNamesInBackgroundAsync();
             _ = ResyncMissingMembersAsync();
         }

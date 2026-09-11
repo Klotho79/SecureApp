@@ -149,7 +149,10 @@ public sealed partial class DocumentViewerViewModel : ObservableObject, IQueryAt
         IsLoading = true;
         try
         {
-            var rendered = await _renderingService.RenderPageAsync(_documentId, pageNumber - 1, MaxRenderWidth, MaxRenderHeight);
+            // Rasterize off the UI thread (2026-09-11) so decoding/resizing a large image never
+            // stutters the animation or the UI — the continuation resumes on the UI thread for the
+            // (cheap) ImageSource assignment.
+            var rendered = await Task.Run(() => _renderingService.RenderPageAsync(_documentId, pageNumber - 1, MaxRenderWidth, MaxRenderHeight));
             CurrentPageImage = ImageSource.FromStream(() => new MemoryStream(rendered.PixelData));
             CurrentPageNumber = pageNumber;
             CanGoToPreviousPage = CurrentPageNumber > 1;

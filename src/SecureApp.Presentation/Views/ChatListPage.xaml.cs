@@ -36,7 +36,7 @@ public partial class ChatListPage : ContentPage
         // page persists as a tab root, so its existing list is still on screen and slides in smoothly
         // while closing a chat; reloading it during that slide was what janked the close. The list's
         // current content stays visible, then refreshes once the animation is done.
-        Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(120), () => _viewModel.LoadCommand.Execute(null));
+        Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(300), () => _viewModel.LoadCommand.Execute(null));
     }
 
     protected override void OnDisappearing()

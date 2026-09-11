@@ -177,58 +177,58 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
     private const int InitialMessageCount = 12;
     private const int OlderPageSize = 20;
 
+    /// <summary>How long the open/close animation needs to settle before the UI is touched (2026-09-11). The load runs in parallel on a background thread during this window, so this is not added latency — it just holds the (cheap) UI assignment back until the slide is done, so populating the list never competes with the animation. The user's own diagnosis: "oddel grafiku a nahravani, jedno necekalo na druhe".</summary>
+    private const int AnimationSettleMs = 280;
+
     [RelayCommand]
     private async Task LoadAsync()
     {
         IsLoading = true; // the spinner itself only appears if this lasts — see DelayedActivityIndicator
         StatusErrorMessage = null;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
-            // 2026-09-11 perf: render only the NEWEST few messages from local storage FIRST, before
-            // any network call and without decrypting the whole thread. Now: decrypt just the last
-            // InitialMessageCount, show them, and push both the older messages and all network work
-            // (connect, name refresh, key offer) to the background.
-            await _currentUserService.InitializeAsync(); // in-memory-cached after first call; needed for delete gating
-            var session = await _sessionRepository.GetByIdAsync(_chatSessionId);
-
-            // Show the name we already have locally immediately; the directory may refine it later.
-            Title = session?.PeerDisplayName ?? "Chat";
-
-            _currentRole = _currentUserService.Current.Role;
-
-            // Cheap: filter + order by the row metadata only (no decryption yet).
-            var allRows = await _messageRepository.GetBySessionAsync(_chatSessionId);
-            var visible = allRows
-                .Where(m => m.GroupChatId is null && !m.IsSystemPayload) // 1:1 only; system payloads never shown — see the receive path's own remarks
-                .OrderBy(m => m.CreatedAtUtc)
-                .ToList();
-
-            var initialStart = Math.Max(0, visible.Count - InitialMessageCount);
-            var initialRows = visible.Skip(initialStart).ToList();
-
-            // Everything before the initial page is held undecrypted for on-demand scroll-up — NOT
-            // loaded now. This both removes the open-time work and fixes the jump: nothing is inserted
-            // above the viewport until the user actually scrolls into the past.
-            _olderRows.Clear();
-            _olderRows.AddRange(visible.Take(initialStart));
-
-            // Decrypt off the UI thread so the per-message crypto never stutters the open/scroll
-            // animation. The continuation resumes on the UI thread, where the bound collection must
-            // be assigned.
-            var initialItems = await Task.Run(async () =>
+            // Phase 1 — ALL the loading (DB + decrypt) on a background thread, so it runs in parallel
+            // with the open animation and never touches the UI thread. Only the newest
+            // InitialMessageCount are decrypted; older ones are held for on-demand scroll-up.
+            var loaded = await Task.Run(async () =>
             {
-                var list = new List<ChatMessageItem>(initialRows.Count);
+                await _currentUserService.InitializeAsync();
+                var session = await _sessionRepository.GetByIdAsync(_chatSessionId);
+                var role = _currentUserService.Current.Role;
+
+                var allRows = await _messageRepository.GetBySessionAsync(_chatSessionId);
+                var visible = allRows
+                    .Where(m => m.GroupChatId is null && !m.IsSystemPayload)
+                    .OrderBy(m => m.CreatedAtUtc)
+                    .ToList();
+
+                var initialStart = Math.Max(0, visible.Count - InitialMessageCount);
+                var older = visible.Take(initialStart).ToList();
+                var initialRows = visible.Skip(initialStart).ToList();
+
+                var items = new List<ChatMessageItem>(initialRows.Count);
                 foreach (var message in initialRows)
-                    list.Add(await BuildItemAsync(message, _currentRole));
-                return list;
+                    items.Add(await BuildItemAsync(message, role));
+
+                return (session, older, items);
             });
 
-            Messages = new ObservableCollection<ChatMessageItem>(initialItems);
+            // Phase 2 — wait out the rest of the animation (if any), THEN touch the UI. Because
+            // phase 1 overlapped the slide, this usually adds little or nothing.
+            var remaining = AnimationSettleMs - (int)sw.ElapsedMilliseconds;
+            if (remaining > 0) await Task.Delay(remaining);
+
+            _currentRole = _currentUserService.Current.Role;
+            Title = loaded.session?.PeerDisplayName ?? "Chat";
+            _olderRows.Clear();
+            _olderRows.AddRange(loaded.older);
+            Messages = new ObservableCollection<ChatMessageItem>(loaded.items);
             IsLoading = false;
             ScrollToBottomRequested?.Invoke();
 
             // Network work only, off the critical path — no message loading here anymore.
-            _ = RefreshInBackgroundAsync(session);
+            _ = RefreshInBackgroundAsync(loaded.session);
         }
         catch (Exception ex)
         {
