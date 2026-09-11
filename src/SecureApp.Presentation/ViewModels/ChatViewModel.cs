@@ -182,6 +182,11 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
     {
         IsLoading = true;
         StatusErrorMessage = null;
+        // 2026-09-11 instrumentation: measure where the open time actually goes, reported to the
+        // shared diagnostics log, instead of guessing. Remove once the real bottleneck is fixed.
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        long tInit = 0, tSession = 0, tQuery = 0, tDecrypt = 0;
+        var msgCount = 0;
         try
         {
             // 2026-09-11 perf: render only the NEWEST few messages from local storage FIRST, before
@@ -191,7 +196,9 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
             // last InitialMessageCount, show them, and push both the older messages and all network
             // work (connect, name refresh, key offer) to the background.
             await _currentUserService.InitializeAsync(); // in-memory-cached after first call; needed for delete gating
+            tInit = sw.ElapsedMilliseconds;
             var session = await _sessionRepository.GetByIdAsync(_chatSessionId);
+            tSession = sw.ElapsedMilliseconds;
 
             // Show the name we already have locally immediately; the directory may refine it later.
             Title = session?.PeerDisplayName ?? "Chat";
@@ -200,6 +207,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
 
             // Cheap: filter + order by the row metadata only (no decryption yet).
             var allRows = await _messageRepository.GetBySessionAsync(_chatSessionId);
+            tQuery = sw.ElapsedMilliseconds;
             var visible = allRows
                 .Where(m => m.GroupChatId is null && !m.IsSystemPayload) // 1:1 only; system payloads never shown — see the receive path's own remarks
                 .OrderBy(m => m.CreatedAtUtc)
@@ -207,6 +215,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
 
             var initialStart = Math.Max(0, visible.Count - InitialMessageCount);
             var initialRows = visible.Skip(initialStart).ToList();
+            msgCount = visible.Count;
 
             // Everything before the initial page is held undecrypted for on-demand scroll-up — NOT
             // loaded now. This both removes the open-time work and fixes the jump: nothing is inserted
@@ -224,9 +233,13 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
                     list.Add(await BuildItemAsync(message, _currentRole));
                 return list;
             });
+            tDecrypt = sw.ElapsedMilliseconds;
 
             Messages = new ObservableCollection<ChatMessageItem>(initialItems);
             IsLoading = false; // newest messages are on screen now — stop the spinner
+            _ = _diagnosticsReporter.ReportAsync(DiagnosticLogLevel.Info,
+                $"Chat load ms: init={tInit} session={tSession} query={tQuery} decrypt={tDecrypt} total={sw.ElapsedMilliseconds} (rows={msgCount}, shown={initialItems.Count})",
+                nameof(ChatViewModel));
             ScrollToBottomRequested?.Invoke();
 
             // Network work only, off the critical path — no message loading here anymore.
