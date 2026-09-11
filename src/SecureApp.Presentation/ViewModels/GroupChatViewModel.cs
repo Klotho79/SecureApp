@@ -833,6 +833,11 @@ public sealed record GroupMessageItem(Guid Id, bool IsOutbound, string SenderDis
     public bool HasAttachment => AttachmentLibraryFileId is not null;
     public bool HasText => !string.IsNullOrEmpty(Text);
     public bool IsInbound => !IsOutbound;
+
+    /// <summary>Time for a message sent within the last day, otherwise the date — see ChatMessageItem.TimeLabel's own remarks.</summary>
+    public string TimeLabel => (DateTimeOffset.Now - SentAtUtc).TotalHours >= 24
+        ? SentAtUtc.LocalDateTime.ToString("d")
+        : SentAtUtc.LocalDateTime.ToString("t");
 }
 
 /// <summary>

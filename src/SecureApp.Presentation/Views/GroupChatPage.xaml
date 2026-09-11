@@ -130,7 +130,7 @@
                                          next to it — "čas, vedle kdo" — with the message text below. -->
                                     <HorizontalStackLayout Spacing="6">
                                         <Label
-                                            Text="{Binding SentAtUtc.LocalDateTime, StringFormat='{0:t}'}"
+                                            Text="{Binding TimeLabel}"
                                             FontSize="9"
                                             TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}">
                                             <Label.Triggers>

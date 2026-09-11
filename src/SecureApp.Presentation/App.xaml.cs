@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
+using SecureApp.Data.Persistence;
 using SecureApp.Domain.Entities;
 using SecureApp.Domain.Enums;
 using SecureApp.Domain.Interfaces.Repositories;
@@ -66,6 +67,26 @@ public partial class App : Application
 		// checks IsConnected on every tick, and reconnects the moment it can — no user action
 		// anywhere in it.
 		_ = RunConnectionSupervisorLoopAsync();
+
+		// 2026-09-11 perf: open (and migrate) the SQLCipher database once, up front, in the
+		// background. That first connection is the one-time cost on the path to opening the first
+		// chat — doing it here means a chat opened moments later reads an already-open connection
+		// instead of waiting ~a second behind a spinner for the DB to come up. Best-effort.
+		_ = WarmUpDatabaseAsync();
+	}
+
+	private static async Task WarmUpDatabaseAsync()
+	{
+		try
+		{
+			var factory = IPlatformApplication.Current?.Services.GetService<ISecureDatabaseConnectionFactory>();
+			if (factory is not null)
+				await factory.EnsureInitializedAsync();
+		}
+		catch
+		{
+			// Best-effort — the first real DB access will open it (and surface any genuine error) anyway.
+		}
 	}
 
 	/// <summary>Best-effort resolve-and-report, shared by both global exception handlers below — never throws, since a handler for "something already went catastrophically wrong" is the last place that can afford to introduce a NEW exception.</summary>

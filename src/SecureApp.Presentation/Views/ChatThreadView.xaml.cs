@@ -69,10 +69,16 @@ public partial class ChatThreadView : ContentView
         });
     }
 
-    /// <summary>Scroll-up history paging (2026-09-11): when the top of the list comes into view and there's older history, ask the view model for the next older page — see ChatViewModel.LoadOlderAsync.</summary>
+    /// <summary>
+    /// Scroll-up history paging (2026-09-11): load the next older page only on a genuine UPWARD scroll
+    /// that reaches the top. Requiring VerticalDelta &lt; 0 is what stops it from firing during the
+    /// initial layout / the programmatic scroll-to-newest on open — which reported the top momentarily
+    /// and used to auto-prepend history and yank the view (the jump the user hit). See
+    /// ChatViewModel.LoadOlderAsync.
+    /// </summary>
     private void OnMessagesScrolled(object? sender, ItemsViewScrolledEventArgs e)
     {
-        if (e.FirstVisibleItemIndex <= 2 && ViewModel is { HasOlderMessages: true } vm && vm.LoadOlderCommand.CanExecute(null))
+        if (e.VerticalDelta < 0 && e.FirstVisibleItemIndex <= 2 && ViewModel is { HasOlderMessages: true } vm && vm.LoadOlderCommand.CanExecute(null))
             vm.LoadOlderCommand.Execute(null);
     }
 

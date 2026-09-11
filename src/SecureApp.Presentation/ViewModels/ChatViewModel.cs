@@ -626,4 +626,9 @@ public sealed record ChatMessageItem(Guid Id, bool IsOutbound, string Text, Date
 {
     public bool HasAttachment => AttachmentLibraryFileId is not null;
     public bool HasText => !string.IsNullOrEmpty(Text);
+
+    /// <summary>Time for a message sent within the last day, otherwise the date (2026-09-11, the user's ask: "pokud je zpráva starší než den, mělo by tam být pouze datum ne čas"). Uses the device's local time and culture short-date/time formats.</summary>
+    public string TimeLabel => (DateTimeOffset.Now - SentAtUtc).TotalHours >= 24
+        ? SentAtUtc.LocalDateTime.ToString("d")
+        : SentAtUtc.LocalDateTime.ToString("t");
 }

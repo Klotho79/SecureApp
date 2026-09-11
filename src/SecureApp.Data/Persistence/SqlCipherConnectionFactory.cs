@@ -75,6 +75,8 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
         }
     }
 
+    public Task EnsureInitializedAsync(CancellationToken ct = default) => GetConnectionAsync(ct);
+
     private async Task<byte[]> GetOrCreateDatabaseKeyAsync(CancellationToken ct)
     {
         var existingKey = await _vault.RetrieveSecretAsync(DatabaseKeyVaultName, ct);

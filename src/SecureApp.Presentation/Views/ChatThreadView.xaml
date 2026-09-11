@@ -68,7 +68,7 @@
                                         </Label>
                                         <Label
                                             Grid.Column="1"
-                                            Text="{Binding SentAtUtc.LocalDateTime, StringFormat='{0:t}'}"
+                                            Text="{Binding TimeLabel}"
                                             FontSize="9"
                                             HorizontalOptions="End"
                                             VerticalOptions="Center"
