@@ -28,6 +28,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly ISharedLibraryService _sharedLibraryService;
     private readonly IRelayAdminService _relayAdminService;
     private readonly IContactDirectoryService _contactDirectoryService;
+    private readonly IChatSessionRepository _chatSessionRepository;
     private readonly IDiagnosticsReporter _diagnosticsReporter;
 
     private EventHandler<TransportConnectionState>? _connectionStateHandler;
@@ -161,6 +162,13 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool HasSharedLibraryError { get; set; }
 
+    /// <summary>Status text for <see cref="ResendSharedLibraryKeyAsync"/> (2026-09-11) — the user's own explicit ask after the automatic per-chat-open offer still wasn't reliably reaching every already-paired peer: a manual "resend to everyone" action with visible confirmation of how many sessions got it.</summary>
+    [ObservableProperty]
+    public partial string? SharedLibraryBroadcastStatusText { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasSharedLibraryBroadcastStatus { get; set; }
+
     // --- Relay admin: approve/reject device activation requests in-app (Admin role only) ---
     //
     // AdminSecretInputText (2026-09-07) is deliberately NEVER persisted anywhere — the user's own
@@ -235,7 +243,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         ISharedLibraryService sharedLibraryService,
         IRelayAdminService relayAdminService,
         IContactDirectoryService contactDirectoryService,
-        IDiagnosticsReporter diagnosticsReporter)
+        IDiagnosticsReporter diagnosticsReporter,
+        IChatSessionRepository chatSessionRepository)
     {
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         _messagingService = messagingService ?? throw new ArgumentNullException(nameof(messagingService));
@@ -245,6 +254,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         _relayAdminService = relayAdminService ?? throw new ArgumentNullException(nameof(relayAdminService));
         _contactDirectoryService = contactDirectoryService ?? throw new ArgumentNullException(nameof(contactDirectoryService));
         _diagnosticsReporter = diagnosticsReporter ?? throw new ArgumentNullException(nameof(diagnosticsReporter));
+        _chatSessionRepository = chatSessionRepository ?? throw new ArgumentNullException(nameof(chatSessionRepository));
 
         DiagnosticLogEntries = [];
         HasNoDiagnosticLogEntries = true;
@@ -293,6 +303,8 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnSharedLibraryKeyBlobChanged(string? value) => HasSharedLibraryKeyBlob = !string.IsNullOrEmpty(value);
 
     partial void OnHasSharedLibraryKeyChanged(bool value) => HasNoSharedLibraryKey = !value;
+
+    partial void OnSharedLibraryBroadcastStatusTextChanged(string? value) => HasSharedLibraryBroadcastStatus = !string.IsNullOrEmpty(value);
 
     partial void OnAdminErrorMessageChanged(string? value) => HasAdminError = !string.IsNullOrEmpty(value);
 
@@ -529,6 +541,12 @@ public sealed partial class SettingsViewModel : ObservableObject
         {
             SharedLibraryKeyBlob = await _sharedLibraryService.GenerateSharedKeyAsync();
             HasSharedLibraryKey = true;
+
+            // Push the new key straight out to everyone already paired (2026-09-11) — see
+            // SharedLibraryKeySync.BroadcastToAllActiveSessionsAsync's own remarks. Best-effort: a
+            // brand-new key with nobody paired yet is the expected common case on first setup, not
+            // an error.
+            await BroadcastSharedLibraryKeyAsync();
         }
         catch (Exception ex)
         {
@@ -566,10 +584,51 @@ public sealed partial class SettingsViewModel : ObservableObject
             await _sharedLibraryService.ImportSharedKeyAsync(SharedLibraryKeyImportText);
             HasSharedLibraryKey = true;
             SharedLibraryKeyImportText = string.Empty;
+
+            // Same reasoning as GenerateSharedLibraryKeyAsync's own call — a freshly-imported key is
+            // exactly as worth re-broadcasting as a freshly-generated one (e.g. this device missed
+            // the original round and someone re-shared the blob manually one more time).
+            await BroadcastSharedLibraryKeyAsync();
         }
         catch (Exception ex)
         {
             SharedLibraryErrorMessage = $"Nepodařilo se importovat tento klíč: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Explicit "resend to everyone I'm already paired with" (2026-09-11) — the user's own direct
+    /// ask after the automatic offer still wasn't reliably reaching every peer: a manual action that
+    /// visibly confirms how many sessions got it, callable at any time, not just right after
+    /// generating/importing. Shares its implementation with the auto-broadcast above via
+    /// <see cref="BroadcastSharedLibraryKeyAsync"/>.
+    /// </summary>
+    [RelayCommand]
+    private async Task ResendSharedLibraryKeyAsync()
+    {
+        SharedLibraryErrorMessage = null;
+        if (!HasSharedLibraryKey)
+        {
+            SharedLibraryErrorMessage = "Nejprve si vygenerujte nebo naimportujte klíč sdílené knihovny.";
+            return;
+        }
+
+        await BroadcastSharedLibraryKeyAsync();
+    }
+
+    private async Task BroadcastSharedLibraryKeyAsync()
+    {
+        try
+        {
+            var offeredCount = await SharedLibraryKeySync.BroadcastToAllActiveSessionsAsync(
+                _sharedLibraryService, _messagingService, _messageTransport, _chatSessionRepository, _diagnosticsReporter);
+            SharedLibraryBroadcastStatusText = offeredCount == 0
+                ? "Zatím nejste spárováni s nikým, komu by bylo možné klíč poslat."
+                : $"Klíč nabídnut {offeredCount} spárovaným kontaktům/skupinovým relacím.";
+        }
+        catch (Exception ex)
+        {
+            SharedLibraryBroadcastStatusText = $"Rozeslání klíče se nezdařilo: {ex.Message}";
         }
     }
 

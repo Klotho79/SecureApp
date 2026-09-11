@@ -394,7 +394,7 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
                 // shared-library-key offer (2026-09-10, own cooldown) for the same reason
                 // ChatViewModel.LoadAsync's own call does: a session paired before this mechanism
                 // existed never gets a fresh pairing event to hang the offer off of.
-                _ = SharedLibraryKeySync.OfferKeyAsync(_libraryService, _messagingService, _messageTransport, existing.Id);
+                _ = SharedLibraryKeySync.OfferKeyAsync(_libraryService, _messagingService, _messageTransport, existing.Id, _diagnosticsReporter);
                 continue;
             }
 
@@ -573,7 +573,7 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
                     // Best-effort shared-library-key offer (2026-09-10) — see SharedLibraryKeySync's
                     // own remarks; every group member's pairwise session gets the same offer a 1:1
                     // pairing already would.
-                    await SharedLibraryKeySync.OfferKeyAsync(_libraryService, _messagingService, _messageTransport, memberSession.Id);
+                    await SharedLibraryKeySync.OfferKeyAsync(_libraryService, _messagingService, _messageTransport, memberSession.Id, _diagnosticsReporter);
                 }
                 catch
                 {

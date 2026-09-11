@@ -208,7 +208,7 @@ public sealed partial class NewGroupViewModel : ObservableObject
 
                     // Best-effort shared-library-key offer (2026-09-10) — see SharedLibraryKeySync's
                     // own remarks; the founder's own direct pairing with each initial member too.
-                    await SharedLibraryKeySync.OfferKeyAsync(_sharedLibraryService, _messagingService, _messageTransport, memberSession.Id);
+                    await SharedLibraryKeySync.OfferKeyAsync(_sharedLibraryService, _messagingService, _messageTransport, memberSession.Id, _diagnosticsReporter);
                 }
                 catch
                 {

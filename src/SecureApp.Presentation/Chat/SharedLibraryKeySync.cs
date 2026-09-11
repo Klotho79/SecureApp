@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.Text;
 using SecureApp.Domain.Entities;
+using SecureApp.Domain.Enums;
+using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
 
 namespace SecureApp.Presentation.Chat;
@@ -15,16 +17,27 @@ namespace SecureApp.Presentation.Chat;
 /// Settings — a real, reported "nepodařilo se otevřít soubor, není žádný sdílený library key"
 /// failure with no actual bug in the crypto, just a missing distribution path.
 ///
+/// 2026-09-11 follow-up (still reported broken after the first pass): the per-pairing/per-chat-open
+/// triggers below only fire the offer from whichever device the user happens to be poking at, which
+/// turned out too passive — a device that generates/imports a key has no reason for the USER to open
+/// every existing chat afterward, and the receiving device has no visibility into whether anything
+/// was ever even attempted. Two fixes: <see cref="BroadcastToAllActiveSessionsAsync"/> pushes the key
+/// out to every already-paired session the moment it's generated/imported (see
+/// <c>SettingsViewModel</c>'s own call sites) instead of waiting for an unrelated chat-open event, and
+/// every path here now takes an optional <see cref="IDiagnosticsReporter"/> so a failure is actually
+/// visible in the shared diagnostics log instead of silently vanishing into a bare catch.
+///
 /// Rides the same ratchet a 1:1 chat message would, tagged <see cref="Message.IsSystemPayload"/>
 /// so it never shows up as a visible bubble (see <c>ChatViewModel</c>/<c>GroupChatViewModel</c>'s own
 /// filtering) — the trust boundary is already exactly right: whoever completed a pairwise handshake
 /// with this device is, by definition, someone this device's owner chose to pair with, which is
 /// precisely the same community-membership trust the shared library itself already assumes.
 ///
-/// Best-effort and silent by design, same policy as <see cref="SessionRecoveryHelper"/> and
-/// <c>ChatViewModel.SendAsync</c>'s own live-send failure handling — offering the key is a bonus on
-/// top of an otherwise-complete pairing, never something that should surface an error or block
-/// opening the chat if it fails (peer offline, this device has no key of its own yet, etc.).
+/// Best-effort and silent-to-the-USER by design, same policy as <see cref="SessionRecoveryHelper"/>
+/// and <c>ChatViewModel.SendAsync</c>'s own live-send failure handling — offering the key is a bonus
+/// on top of an otherwise-complete pairing, never something that should surface an error or block
+/// opening the chat if it fails (peer offline, this device has no key of its own yet, etc.). "Silent
+/// to the user" no longer means "silent to the diagnostics log", though — see the note above.
 /// </summary>
 public static class SharedLibraryKeySync
 {
@@ -43,13 +56,13 @@ public static class SharedLibraryKeySync
     /// that predates this whole mechanism never gets a fresh pairing event to hang the offer off
     /// of). Without a cooldown, reopening the same chat repeatedly would re-send the same system
     /// payload every time — harmless to correctness (the peer just re-imports the identical key) but
-    /// wasteful. Mirrors <see cref="SessionRecoveryHelper"/>'s own process-wide cooldown dictionary
-    /// shape, just longer-lived: this isn't racing concurrent triggers, only rate-limiting a single
-    /// user's normal open-chat browsing.
+    /// wasteful. <paramref name="bypassCooldown"/> on <see cref="OfferKeyAsync"/> skips this
+    /// deliberately for <see cref="BroadcastToAllActiveSessionsAsync"/> — a manual "resend to
+    /// everyone" action the user explicitly asked for should never be silently swallowed by a timer.
     /// </summary>
     private static readonly TimeSpan _cooldown = TimeSpan.FromHours(6);
 
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, DateTimeOffset> _lastOfferedAtUtc = new();
+    private static readonly ConcurrentDictionary<Guid, DateTimeOffset> _lastOfferedAtUtc = new();
 
     /// <summary>
     /// Called from every pairing-completion site (initiator and responder alike, group fan-out
@@ -65,14 +78,19 @@ public static class SharedLibraryKeySync
         IMessagingService messagingService,
         IMessageTransport messageTransport,
         Guid sessionId,
+        IDiagnosticsReporter? diagnosticsReporter = null,
+        bool bypassCooldown = false,
         CancellationToken ct = default)
     {
         try
         {
             var now = DateTimeOffset.UtcNow;
-            var lastOffered = _lastOfferedAtUtc.GetOrAdd(sessionId, DateTimeOffset.MinValue);
-            if (now - lastOffered < _cooldown)
-                return; // Already offered this session recently — see the cooldown's own remarks.
+            if (!bypassCooldown)
+            {
+                var lastOffered = _lastOfferedAtUtc.GetOrAdd(sessionId, DateTimeOffset.MinValue);
+                if (now - lastOffered < _cooldown)
+                    return; // Already offered this session recently — see the cooldown's own remarks.
+            }
 
             if (!await sharedLibraryService.HasSharedKeyAsync(ct))
                 return;
@@ -86,18 +104,55 @@ public static class SharedLibraryKeySync
 
             // Best-effort live delivery only, same "stays Pending, never surfaced" policy every
             // other live-send path in this app already uses — a peer who's offline right now simply
-            // doesn't get this particular offer; nothing here retries it later, but the NEXT time
-            // either side re-pairs (a resync, a fresh group snapshot, reopening the app) calls this
-            // helper again, so an eventually-reconnected peer isn't permanently missed either.
+            // doesn't get this particular offer. Logged either way (2026-09-11) so the diagnostics
+            // log can actually distinguish "never attempted" from "sent locally but peer was
+            // offline" from "delivered live" — the three outcomes that were previously
+            // indistinguishable from outside a debugger.
             if (messageTransport.IsConnected)
+            {
                 await messageTransport.SendEnvelopeAsync(envelope, ct);
+                _ = (diagnosticsReporter?.ReportAsync(DiagnosticLogLevel.Info, $"Klíč sdílené knihovny nabídnut přes session {sessionId} (doručeno živě).", nameof(SharedLibraryKeySync), ct: ct));
+            }
+            else
+            {
+                _ = (diagnosticsReporter?.ReportAsync(DiagnosticLogLevel.Warning, $"Klíč sdílené knihovny uložen pro session {sessionId}, ale relay není připojen — doručí se, až se peer/toto zařízení příště spojí.", nameof(SharedLibraryKeySync), ct: ct));
+            }
         }
-        catch
+        catch (Exception ex)
         {
             // Never let a key-offer failure block or surface an error on the pairing flow that
             // triggered it — same reasoning as every other best-effort helper in this file's
             // neighborhood (SessionRecoveryHelper, App.OnGroupInviteReceived's per-member loop).
+            // Logged (2026-09-11), not swallowed silently — this exact kind of "why doesn't it just
+            // work" report is what the shared diagnostics log exists for.
+            _ = (diagnosticsReporter?.ReportAsync(DiagnosticLogLevel.Error, $"Nabídka klíče sdílené knihovny pro session {sessionId} selhala.", nameof(SharedLibraryKeySync), ex, ct));
         }
+    }
+
+    /// <summary>
+    /// Explicit "resend to everyone I'm already paired with" (2026-09-11) — called from
+    /// <c>SettingsViewModel</c> right after a key is generated/imported, and from its own "Rozeslat
+    /// klíč" button for a manual re-push at any later time (the user's own ask: distribution
+    /// shouldn't depend on happening to reopen the right chat). Bypasses the per-session cooldown —
+    /// a deliberate, explicit user/system action should never be silently dropped by a rate limiter
+    /// meant for incidental chat-open traffic. Returns how many sessions were offered to, for the
+    /// caller to surface as a status message.
+    /// </summary>
+    public static async Task<int> BroadcastToAllActiveSessionsAsync(
+        ISharedLibraryService sharedLibraryService,
+        IMessagingService messagingService,
+        IMessageTransport messageTransport,
+        IChatSessionRepository chatSessionRepository,
+        IDiagnosticsReporter? diagnosticsReporter = null,
+        CancellationToken ct = default)
+    {
+        var sessions = await chatSessionRepository.GetAllAsync(ct);
+        var activeSessions = sessions.Where(s => s.State == ChatSessionState.Active).ToList();
+
+        foreach (var session in activeSessions)
+            await OfferKeyAsync(sharedLibraryService, messagingService, messageTransport, session.Id, diagnosticsReporter, bypassCooldown: true, ct: ct);
+
+        return activeSessions.Count;
     }
 
     /// <summary>

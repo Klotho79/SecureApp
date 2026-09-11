@@ -264,6 +264,7 @@ public partial class App : Application
 			// community shares exactly one key) never surfaces as an error to the user.
 			if (envelope.IsSystemPayload)
 			{
+				var reporterForImport = scope.ServiceProvider.GetRequiredService<IDiagnosticsReporter>();
 				try
 				{
 					var plaintext = await messagingService.DecryptMessageAsync(message.Id);
@@ -271,11 +272,18 @@ public partial class App : Application
 					{
 						var sharedLibraryService = scope.ServiceProvider.GetRequiredService<ISharedLibraryService>();
 						await sharedLibraryService.ImportSharedKeyAsync(keyBlob);
+						// Logged (2026-09-11) — this is the one line that actually proves the whole
+						// mechanism worked end to end; its absence in the shared log is exactly what
+						// distinguishes "never arrived" from "arrived but failed to import" from
+						// "arrived and worked" when this gets reported broken again.
+						_ = reporterForImport.ReportAsync(DiagnosticLogLevel.Info, "Klíč sdílené knihovny přijat a naimportován.", nameof(OnEnvelopeReceived));
 					}
 				}
-				catch
+				catch (Exception importEx)
 				{
-					// Best-effort — nothing further to do at this level.
+					// Best-effort — nothing further to do at this level, but logged rather than
+					// silently swallowed (same reasoning as SharedLibraryKeySync's own catch blocks).
+					_ = reporterForImport.ReportAsync(DiagnosticLogLevel.Error, "Přijatý klíč sdílené knihovny se nepodařilo naimportovat.", nameof(OnEnvelopeReceived), importEx);
 				}
 			}
 		}
@@ -350,7 +358,8 @@ public partial class App : Application
 			// but a few more milliseconds on this background event handler.
 			var sharedLibraryService = scope.ServiceProvider.GetRequiredService<ISharedLibraryService>();
 			var messageTransportForOffer = scope.ServiceProvider.GetRequiredService<IMessageTransport>();
-			await SharedLibraryKeySync.OfferKeyAsync(sharedLibraryService, messagingService, messageTransportForOffer, acceptedSession.Id);
+			var reporterForOffer = scope.ServiceProvider.GetRequiredService<IDiagnosticsReporter>();
+			await SharedLibraryKeySync.OfferKeyAsync(sharedLibraryService, messagingService, messageTransportForOffer, acceptedSession.Id, reporterForOffer);
 		}
 		catch (Exception ex)
 		{
@@ -437,7 +446,8 @@ public partial class App : Application
 					// own remarks; a brand new group member is exactly the case the user's own
 					// objection was about, so this new pairwise session gets the same offer too.
 					var sharedLibraryServiceForMember = scope.ServiceProvider.GetRequiredService<ISharedLibraryService>();
-					await SharedLibraryKeySync.OfferKeyAsync(sharedLibraryServiceForMember, messagingService, messageTransport, newMemberSession.Id);
+					var reporterForMember = scope.ServiceProvider.GetRequiredService<IDiagnosticsReporter>();
+					await SharedLibraryKeySync.OfferKeyAsync(sharedLibraryServiceForMember, messagingService, messageTransport, newMemberSession.Id, reporterForMember);
 				}
 				catch
 				{

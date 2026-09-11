@@ -258,7 +258,7 @@ public sealed partial class NewChatViewModel : ObservableObject
                 // generated/imported one after pairing originally happened) — see
                 // SharedLibraryKeySync's own remarks. Fire-and-forget: best-effort by design, never
                 // blocks jumping into the chat.
-                _ = SharedLibraryKeySync.OfferKeyAsync(_sharedLibraryService, _messagingService, _messageTransport, existing.Id);
+                _ = SharedLibraryKeySync.OfferKeyAsync(_sharedLibraryService, _messagingService, _messageTransport, existing.Id, _diagnosticsReporter);
                 await OpenCreatedChatCommand.ExecuteAsync(null);
                 return;
             }
@@ -297,7 +297,7 @@ public sealed partial class NewChatViewModel : ObservableObject
             // remarks. Fired unconditionally, not just on the deliveredAutomatically branch: even a
             // manually QR/copy-paste-completed pairing (the peer runs AcceptInviteAsync, which
             // offers the key back from ITS side too) ends up with the key eventually either way.
-            _ = SharedLibraryKeySync.OfferKeyAsync(_sharedLibraryService, _messagingService, _messageTransport, session.Id);
+            _ = SharedLibraryKeySync.OfferKeyAsync(_sharedLibraryService, _messagingService, _messageTransport, session.Id, _diagnosticsReporter);
 
             if (deliveredAutomatically)
             {
@@ -361,7 +361,7 @@ public sealed partial class NewChatViewModel : ObservableObject
 
             // Best-effort shared-library-key offer (2026-09-10) — see SharedLibraryKeySync's own
             // remarks; same call as CreateSessionWithPeerAsync's own, from the responder's side.
-            _ = SharedLibraryKeySync.OfferKeyAsync(_sharedLibraryService, _messagingService, _messageTransport, AcceptedSession.Id);
+            _ = SharedLibraryKeySync.OfferKeyAsync(_sharedLibraryService, _messagingService, _messageTransport, AcceptedSession.Id, _diagnosticsReporter);
 
             // Nothing further to show either way — jump straight in, same reasoning as
             // CreateSessionAsync's own already-paired branch (2026-09-06).
