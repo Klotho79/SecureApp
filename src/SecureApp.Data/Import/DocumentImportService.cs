@@ -27,7 +27,7 @@ public sealed class DocumentImportService : IDocumentImportService
         _auditLogger = auditLogger ?? throw new ArgumentNullException(nameof(auditLogger));
     }
 
-    public async Task<Document> ImportAsync(Stream fileStream, string fileName, Guid? folderId = null, CancellationToken ct = default)
+    public async Task<Document> ImportAsync(Stream fileStream, string fileName, Guid? folderId = null, Guid? sourceLibraryFileId = null, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(fileStream);
         ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
@@ -47,7 +47,8 @@ public sealed class DocumentImportService : IDocumentImportService
             originalSizeBytes: plaintext.LongLength,
             contentHash: contentHash,
             encryptedContent: encryptedContent,
-            folderId: folderId);
+            folderId: folderId,
+            sourceLibraryFileId: sourceLibraryFileId);
 
         await _documentRepository.AddAsync(document, ct);
         await _auditLogger.LogAsync(AuditAction.DocumentImported, document.Id, fileName, ct);

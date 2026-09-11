@@ -21,6 +21,16 @@ public sealed class Document : Entity
     public bool IsFavorite { get; private set; }
     public IReadOnlyList<string> Tags { get; private set; }
 
+    /// <summary>
+    /// The shared-library file id this document was imported from, if any (2026-09-11). Set when a
+    /// chat/library attachment is downloaded and imported, so the next open reuses this local copy
+    /// instead of re-downloading the file from the relay over the network every time (the real cost
+    /// of opening an attachment — decryption is microseconds; the download of a multi-megabyte photo
+    /// over a VPN tunnel is not) and creating a duplicate document each time. Null for a document
+    /// imported from a local file.
+    /// </summary>
+    public Guid? SourceLibraryFileId { get; private set; }
+
     private Document()
     {
         // Reserved for materialization by persistence/serialization infrastructure.
@@ -39,7 +49,8 @@ public sealed class Document : Entity
         FileHash contentHash,
         EncryptedPayload encryptedContent,
         Guid? folderId = null,
-        IReadOnlyList<string>? tags = null)
+        IReadOnlyList<string>? tags = null,
+        Guid? sourceLibraryFileId = null)
     {
         if (string.IsNullOrWhiteSpace(title))
             throw new ArgumentException("Title cannot be empty.", nameof(title));
@@ -56,6 +67,7 @@ public sealed class Document : Entity
         EncryptedContent = encryptedContent ?? throw new ArgumentNullException(nameof(encryptedContent));
         FolderId = folderId;
         Tags = tags ?? Array.Empty<string>();
+        SourceLibraryFileId = sourceLibraryFileId;
     }
 
     public void Rename(string newTitle)

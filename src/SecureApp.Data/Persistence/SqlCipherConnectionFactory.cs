@@ -20,7 +20,7 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
 {
     private const string DatabaseKeyVaultName = "sqlcipher:database-key";
     private const int DatabaseKeySizeBytes = 32; // 256-bit, used as a raw SQLCipher key (not a passphrase put through PBKDF2)
-    private const int CurrentSchemaVersion = 11;
+    private const int CurrentSchemaVersion = 12;
 
     private readonly DataStorageOptions _options;
     private readonly ISecureVaultKeyStore _vault;
@@ -139,6 +139,9 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
 
         if (schemaVersion < 11)
             await ApplyV11SchemaAsync(connection);
+
+        if (schemaVersion < 12)
+            await ApplyV12SchemaAsync(connection);
 
         await connection.ExecuteAsync($"PRAGMA user_version = {CurrentSchemaVersion}");
     }
@@ -470,6 +473,17 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
     {
         await connection.ExecuteAsync("ALTER TABLE messages ADD COLUMN origin_message_id TEXT NULL");
         await connection.ExecuteAsync("ALTER TABLE messages ADD COLUMN sender_role INTEGER NULL");
+    }
+
+    /// <summary>
+    /// Backs <see cref="Entities.Document.SourceLibraryFileId"/> (2026-09-11) — lets an attachment
+    /// opened from a chat/shared-library reuse its already-imported local copy instead of
+    /// re-downloading the file from the relay every time (the real cost of opening an attachment).
+    /// Additive, nullable: existing documents were imported from local files and carry no source.
+    /// </summary>
+    private static async Task ApplyV12SchemaAsync(SQLiteAsyncConnection connection)
+    {
+        await connection.ExecuteAsync("ALTER TABLE documents ADD COLUMN source_library_file_id TEXT NULL");
     }
 
     /// <summary>

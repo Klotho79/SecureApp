@@ -19,6 +19,7 @@ internal sealed class DocumentRow
     [Column("nonce")] public byte[] Nonce { get; set; } = [];
     [Column("auth_tag")] public byte[] AuthTag { get; set; } = [];
     [Column("folder_id")] public string? FolderId { get; set; }
+    [Column("source_library_file_id")] public string? SourceLibraryFileId { get; set; }
     [Column("is_favorite")] public int IsFavorite { get; set; }
     [Column("tags")] public string Tags { get; set; } = "[]";
     [Column("created_at_utc")] public string CreatedAtUtc { get; set; } = string.Empty;

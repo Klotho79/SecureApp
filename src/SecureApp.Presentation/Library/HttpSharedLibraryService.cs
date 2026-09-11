@@ -139,6 +139,19 @@ public sealed class HttpSharedLibraryService : ISharedLibraryService
 
     public async Task<Document> DownloadAndImportAsync(Guid libraryFileId, Guid? localFolderId = null, CancellationToken ct = default)
     {
+        // 2026-09-11: reuse an already-imported local copy instead of re-downloading over the network
+        // every time. Opening a chat attachment used to re-fetch the whole (often multi-MB) file from
+        // the relay on every tap — the real latency the user hit — and pile up a duplicate Document
+        // each time. The bytes are already decrypted and stored locally after the first open, so this
+        // returns instantly for a repeat open and never touches the relay.
+        using (var lookupScope = _scopeFactory.CreateScope())
+        {
+            var documentRepository = lookupScope.ServiceProvider.GetRequiredService<IDocumentRepository>();
+            var cached = await documentRepository.GetBySourceLibraryFileIdAsync(libraryFileId, ct);
+            if (cached is not null)
+                return cached;
+        }
+
         var endpoint = await GetHttpEndpointAsync(ct);
         var uri = new Uri(endpoint, $"library/files/{libraryFileId}");
 
@@ -170,7 +183,9 @@ public sealed class HttpSharedLibraryService : ISharedLibraryService
         using var scope = _scopeFactory.CreateScope();
         var importService = scope.ServiceProvider.GetRequiredService<IDocumentImportService>();
         using var plaintextStream = new MemoryStream(plaintext);
-        return await importService.ImportAsync(plaintextStream, fileName, localFolderId, ct);
+        // Tag the imported copy with its library-file id so the next open reuses it (see the cache
+        // lookup at the top of this method).
+        return await importService.ImportAsync(plaintextStream, fileName, localFolderId, libraryFileId, ct);
     }
 
     public async Task DeleteAsync(Guid libraryFileId, CancellationToken ct = default)
