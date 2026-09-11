@@ -47,7 +47,7 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
     private readonly List<Message> _olderLogicalRows = [];
     private Dictionary<Guid, string> _sessionNameById = [];
     private bool _isLoadingOlder;
-    private const int InitialMessageCount = 20;
+    private const int InitialMessageCount = 12;
     private const int OlderPageSize = 20;
 
     /// <summary>Raised after older history is prepended, carrying the previously-top item so the page can re-anchor (no jump) — mirrors ChatViewModel.ScrollAnchorRequested.</summary>

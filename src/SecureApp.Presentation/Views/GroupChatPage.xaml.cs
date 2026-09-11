@@ -60,7 +60,7 @@ public partial class GroupChatPage : ContentPage
         // sliding in left-to-right janked the slide mid-way. The spinner is NOT forced on here — the
         // view model only shows it if the load actually runs long (see LoadAsync's delayed spinner),
         // so a fast open just slides in and shows content with no spinner flash.
-        Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(300), () => _viewModel.LoadCommand.Execute(null));
+        Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(120), () => _viewModel.LoadCommand.Execute(null));
     }
 
     protected override void OnDisappearing()

@@ -174,7 +174,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
     public event Action<ChatMessageItem>? ScrollAnchorRequested;
 
     /// <summary>How many of the newest messages to show immediately on open, and how many older ones to reveal per scroll-up page (2026-09-11, the user's own ask: "nemusí se načíst celý chat ale třeba jen posledních 5-10 zpráv... možnost rolovat ve zprávách do minulosti").</summary>
-    private const int InitialMessageCount = 20;
+    private const int InitialMessageCount = 12;
     private const int OlderPageSize = 20;
 
     [RelayCommand]
