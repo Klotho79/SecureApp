@@ -180,27 +180,25 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
             CanManageMembers = isFounder || RoleAccessPolicy.IsAllowed(_currentUserService.Current.Role, RbacAction.InviteGroupMember);
 
             _members = await _groupMemberRepository.GetByGroupAsync(_groupChatId);
-            // 2026-09-09: always resolve against the relay's CURRENT directory rather than trusting
-            // whatever name got captured once at invite time — see DirectoryNameResolver's own
-            // remarks. Stored on the instance so ResolveSenderDisplayNameAsync (message list) uses
-            // the same fresh snapshot without a second directory fetch.
-            _directoryNames = await DirectoryNameResolver.BuildAsync(_contactDirectoryService);
-            Members = new ObservableCollection<GroupMemberItem>(_members.Select(m => new GroupMemberItem(
-                m.Id,
-                DirectoryNameResolver.Resolve(_directoryNames, m.PublicKey, m.DisplayName),
-                m.PublicKey,
-                IsMe: m.PublicKey.AsSpan().SequenceEqual(_localPublicKey),
-                IsFounder: m.PublicKey.AsSpan().SequenceEqual(_founderPublicKey),
-                ViewerCanManage: CanManageMembers,
-                RemoveCommand,
-                ResetPairingCommand)));
+
+            // 2026-09-11 perf: render members + messages FIRST using the locally-stored names (no
+            // network), then refresh from the relay directory in the background — see
+            // RefreshNamesInBackgroundAsync. Opening a group used to await a directory fetch before
+            // showing anything; DirectoryNameResolver.Resolve already falls back to the local name
+            // when the directory dictionary is empty, so starting empty is correct, just not yet
+            // refreshed. Reused by the background refresh to rebuild these chips with current names.
+            _directoryNames = new Dictionary<string, string>();
+            RebuildMemberList();
 
             await LoadMessagesAsync();
+            IsLoading = false; // on screen now — before the background network work
+            ScrollToBottomRequested?.Invoke();
 
-            // Auto-heal on open (2026-09-07) — the user's explicit demand after several rounds of
-            // this needing a manual nudge: opening the group screen is now the ONLY thing needed to
-            // fix every broken/missing pairwise link with the other members, with no button anywhere
-            // in this path. Fire-and-forget so it never blocks the screen from showing.
+            // Refresh names from the directory, then auto-heal broken pairings — both in the
+            // background so neither blocks the thread appearing. Auto-heal on open (2026-09-07) is
+            // the user's explicit demand: opening the group screen is the only thing needed to fix
+            // every broken/missing pairwise link, no manual nudge.
+            _ = RefreshNamesInBackgroundAsync();
             _ = ResyncMissingMembersAsync();
         }
         catch (Exception ex)
@@ -210,6 +208,46 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
         finally
         {
             IsLoading = false;
+        }
+    }
+
+    /// <summary>Raised once the thread is (re)populated so the page can scroll to the newest message — see GroupChatPage's own subscription. Mirrors ChatViewModel.ScrollToBottomRequested.</summary>
+    public event Action? ScrollToBottomRequested;
+
+    /// <summary>Projects <see cref="_members"/> into the bound <see cref="Members"/> chips using the current <see cref="_directoryNames"/> snapshot — factored out so the background refresh can rebuild them with fresh names without duplicating the projection.</summary>
+    private void RebuildMemberList()
+    {
+        Members = new ObservableCollection<GroupMemberItem>(_members.Select(m => new GroupMemberItem(
+            m.Id,
+            DirectoryNameResolver.Resolve(_directoryNames, m.PublicKey, m.DisplayName),
+            m.PublicKey,
+            IsMe: m.PublicKey.AsSpan().SequenceEqual(_localPublicKey),
+            IsFounder: m.PublicKey.AsSpan().SequenceEqual(_founderPublicKey),
+            ViewerCanManage: CanManageMembers,
+            RemoveCommand,
+            ResetPairingCommand)));
+    }
+
+    /// <summary>
+    /// Fetches the relay's current member directory AFTER the thread is already visible (2026-09-11
+    /// perf), then rebuilds the member chips and reloads the messages so sender names reflect any
+    /// rename. Best-effort: a failed/slow directory fetch just leaves the locally-cached names in
+    /// place — DirectoryNameResolver.BuildAsync already returns empty on failure.
+    /// </summary>
+    private async Task RefreshNamesInBackgroundAsync()
+    {
+        try
+        {
+            var names = await DirectoryNameResolver.BuildAsync(_contactDirectoryService);
+            if (names.Count == 0) return; // nothing fresher than what we already showed
+
+            _directoryNames = names;
+            RebuildMemberList();
+            await LoadMessagesAsync();
+        }
+        catch
+        {
+            // Best-effort — the names already on screen (local fallback) stay as they are.
         }
     }
 
@@ -332,6 +370,7 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
 
             // Own message — always deletable by this user; correlated across the fan-out by groupMessageId.
             Messages.Add(new GroupMessageItem(Guid.NewGuid(), true, _currentUserService.Current.DisplayName, text, DateTimeOffset.UtcNow, attachmentId, attachmentName, CanDelete: true, CorrelationId: groupMessageId));
+            ScrollToBottomRequested?.Invoke();
 
             if (undelivered.Count > 0)
                 StatusErrorMessage = $"Nedoručeno {undelivered.Count} z {otherMembers.Count}: " + string.Join("; ", undelivered.Select(u => $"{u.Name} ({u.Reason})"));
@@ -758,6 +797,7 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
             var text = await TryDecryptAsync(message);
             var canDelete = RoleAccessPolicy.CanDeleteMessage(_currentUserService.Current.Role, false, message.SenderRole);
             Messages.Add(new GroupMessageItem(message.Id, false, senderName, text, message.CreatedAtUtc, message.AttachmentLibraryFileId, message.AttachmentFileName, canDelete, message.GroupMessageId));
+            ScrollToBottomRequested?.Invoke();
         }
         catch (Exception ex)
         {

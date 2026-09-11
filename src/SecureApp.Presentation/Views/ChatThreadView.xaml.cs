@@ -19,6 +19,8 @@ public partial class ChatThreadView : ContentView
 {
     private readonly ISharedLibraryService _libraryService;
 
+    private ChatViewModel? _subscribedViewModel;
+
     public ChatThreadView(ISharedLibraryService libraryService)
     {
         InitializeComponent();
@@ -26,6 +28,39 @@ public partial class ChatThreadView : ContentView
     }
 
     private ChatViewModel? ViewModel => BindingContext as ChatViewModel;
+
+    /// <summary>
+    /// The host (ChatPage, or ChatListPage's detail pane) sets our BindingContext to the ChatViewModel
+    /// after construction — and may reuse this view for a different chat — so the scroll-to-latest
+    /// subscription (2026-09-11) is (re)wired here rather than in the constructor. Unsubscribes from a
+    /// previous VM first so switching chats never leaves a dangling handler firing on the wrong view.
+    /// </summary>
+    protected override void OnBindingContextChanged()
+    {
+        base.OnBindingContextChanged();
+
+        if (_subscribedViewModel is not null)
+            _subscribedViewModel.ScrollToBottomRequested -= ScrollToLatest;
+
+        _subscribedViewModel = ViewModel;
+
+        if (_subscribedViewModel is not null)
+            _subscribedViewModel.ScrollToBottomRequested += ScrollToLatest;
+    }
+
+    private void ScrollToLatest()
+    {
+        // Always jump to the newest message (the user's ask). Marshaled to the UI thread since the
+        // event can be raised from a background continuation, and guarded — an empty thread has
+        // nothing to scroll to. Not animated: on open it should just be there, not visibly scroll.
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            var messages = ViewModel?.Messages;
+            if (messages is null || messages.Count == 0) return;
+            try { MessagesView.ScrollTo(messages[^1], position: ScrollToPosition.End, animate: false); }
+            catch { /* a layout not ready yet is harmless — KeepLastItemInView still covers new items */ }
+        });
+    }
 
     /// <summary>
     /// Attach flow: either pick an already-uploaded file from the shared library, or pick a local

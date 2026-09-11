@@ -20,7 +20,7 @@
         <Grid Grid.Row="1">
             <ActivityIndicator IsRunning="{Binding IsLoading}" IsVisible="{Binding IsLoading}" HorizontalOptions="Center" VerticalOptions="Center" />
 
-            <CollectionView ItemsSource="{Binding Messages}" ItemsUpdatingScrollMode="KeepLastItemInView" Margin="12,12,12,4">
+            <CollectionView x:Name="MessagesView" ItemsSource="{Binding Messages}" ItemsUpdatingScrollMode="KeepLastItemInView" Margin="12,12,12,4">
                 <CollectionView.ItemTemplate>
                     <DataTemplate x:DataType="vm:ChatMessageItem">
                         <Grid Padding="3,0">

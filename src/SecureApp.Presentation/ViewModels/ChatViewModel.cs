@@ -158,23 +158,31 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         }
     }
 
+    /// <summary>Raised once the thread has been (re)populated so the hosting view can scroll to the newest message — see ChatThreadView's own subscription. Kept as a plain event (not a bound property) since "scroll now" is a one-shot action, not state.</summary>
+    public event Action? ScrollToBottomRequested;
+
     [RelayCommand]
     private async Task LoadAsync()
     {
         IsLoading = true;
         StatusErrorMessage = null;
-        await EnsureConnectedAsync();
         try
         {
-            await _currentUserService.InitializeAsync(); // ensure Current.Role is available for per-message delete gating
+            // 2026-09-11 perf: render the locally-stored thread FIRST, before any network call.
+            // Opening a chat used to await EnsureConnectedAsync() (a relay connect) AND
+            // DirectoryNameResolver.BuildAsync() (a relay directory fetch) before showing a single
+            // message — so on a slow link (WireGuard/mobile) the thread sat blank behind a spinner
+            // for seconds even though every message was already in the local encrypted DB. Now the
+            // network work (connect, fresh peer-name resolution, key offer) all happens in the
+            // background AFTER the messages are on screen — see RefreshInBackgroundAsync below.
+            await _currentUserService.InitializeAsync(); // in-memory-cached after first call; needed for delete gating
             var session = await _sessionRepository.GetByIdAsync(_chatSessionId);
-            // 2026-09-09: prefer the peer's CURRENT name from the relay directory over whatever got
-            // captured once at pairing time — see DirectoryNameResolver's own remarks.
-            Title = session is null
-                ? "Chat"
-                : DirectoryNameResolver.Resolve(await DirectoryNameResolver.BuildAsync(_contactDirectoryService), session.PeerIdentityPublicKey, session.PeerDisplayName);
+
+            // Show the name we already have locally immediately; the directory may refine it later.
+            Title = session?.PeerDisplayName ?? "Chat";
 
             var messages = await _messageRepository.GetBySessionAsync(_chatSessionId);
+            var currentRole = _currentUserService.Current.Role;
             var items = new List<ChatMessageItem>();
             foreach (var message in messages)
             {
@@ -191,19 +199,15 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
 
                 var text = await TryDecryptAsync(message);
                 var isOwn = message.Direction == MessageDirection.Outbound;
-                var canDelete = RoleAccessPolicy.CanDeleteMessage(_currentUserService.Current.Role, isOwn, message.SenderRole);
+                var canDelete = RoleAccessPolicy.CanDeleteMessage(currentRole, isOwn, message.SenderRole);
                 items.Add(new ChatMessageItem(message.Id, isOwn, text, message.CreatedAtUtc, message.Status, message.AttachmentLibraryFileId, message.AttachmentFileName, canDelete, message.OriginMessageId));
             }
 
             Messages = new ObservableCollection<ChatMessageItem>(items.OrderBy(m => m.SentAtUtc));
+            IsLoading = false; // messages are on screen now — stop the spinner before the background work
+            ScrollToBottomRequested?.Invoke();
 
-            // Best-effort shared-library-key offer (2026-09-10) — see SharedLibraryKeySync's own
-            // remarks. Fired here too, not just at pairing time: a session paired BEFORE this
-            // mechanism existed never gets a fresh pairing event to hang the offer off of, so simply
-            // opening an already-established chat is what actually closes that gap (own cooldown
-            // keeps repeated opens from re-sending it every time).
-            if (session is not null)
-                _ = SharedLibraryKeySync.OfferKeyAsync(_libraryService, _messagingService, _messageTransport, session.Id, _diagnosticsReporter);
+            _ = RefreshInBackgroundAsync(session);
         }
         catch (Exception ex)
         {
@@ -212,6 +216,38 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         finally
         {
             IsLoading = false;
+        }
+    }
+
+    /// <summary>
+    /// Everything that needs the network, run AFTER the thread is already visible (2026-09-11 perf):
+    /// reconnect the relay, refine the peer's title from the current directory, and best-effort offer
+    /// the shared library key. None of this blocks the messages appearing; each is independently
+    /// best-effort so a slow or failed relay never leaves the chat unusable.
+    /// </summary>
+    private async Task RefreshInBackgroundAsync(ChatSession? session)
+    {
+        await EnsureConnectedAsync();
+
+        if (session is not null)
+        {
+            try
+            {
+                // 2026-09-09: prefer the peer's CURRENT name from the relay directory over whatever
+                // got captured once at pairing time — see DirectoryNameResolver's own remarks.
+                var names = await DirectoryNameResolver.BuildAsync(_contactDirectoryService);
+                Title = DirectoryNameResolver.Resolve(names, session.PeerIdentityPublicKey, session.PeerDisplayName);
+            }
+            catch
+            {
+                // Keep the locally-stored name already shown — a directory fetch failing must not
+                // blank the title or surface an error on an otherwise-usable chat.
+            }
+
+            // Best-effort shared-library-key offer (2026-09-10) — see SharedLibraryKeySync's own
+            // remarks. Fired on open (not just at pairing time) so a session paired before this
+            // mechanism existed still gets the key; its own cooldown keeps repeated opens cheap.
+            _ = SharedLibraryKeySync.OfferKeyAsync(_libraryService, _messagingService, _messageTransport, session.Id, _diagnosticsReporter);
         }
     }
 
@@ -246,6 +282,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
 
             // A just-sent message is always the actor's own, so it's always deletable by them (every role may delete its own).
             Messages.Add(new ChatMessageItem(message.Id, true, text, message.CreatedAtUtc, message.Status, message.AttachmentLibraryFileId, message.AttachmentFileName, CanDelete: true, CorrelationId: message.OriginMessageId));
+            ScrollToBottomRequested?.Invoke();
 
             // Best-effort live send: the message is already durably persisted as Pending above
             // regardless of what happens here — no relay connected yet is the expected common
@@ -382,6 +419,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
             var text = await TryDecryptAsync(message);
             var canDelete = RoleAccessPolicy.CanDeleteMessage(_currentUserService.Current.Role, false, message.SenderRole);
             Messages.Add(new ChatMessageItem(message.Id, false, text, message.CreatedAtUtc, message.Status, message.AttachmentLibraryFileId, message.AttachmentFileName, canDelete, message.OriginMessageId));
+            ScrollToBottomRequested?.Invoke();
         }
         catch (Exception ex)
         {

@@ -15,6 +15,20 @@ public partial class GroupChatPage : ContentPage
         InitializeComponent();
         BindingContext = _viewModel = viewModel;
         _libraryService = libraryService ?? throw new ArgumentNullException(nameof(libraryService));
+        _viewModel.ScrollToBottomRequested += ScrollToLatest;
+    }
+
+    private void ScrollToLatest()
+    {
+        // Always jump to the newest message (the user's ask), marshaled to the UI thread and guarded
+        // — same reasoning as ChatThreadView.ScrollToLatest.
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            var messages = _viewModel.Messages;
+            if (messages is null || messages.Count == 0) return;
+            try { MessagesView.ScrollTo(messages[^1], position: ScrollToPosition.End, animate: false); }
+            catch { /* layout not ready yet — KeepLastItemInView still covers new items */ }
+        });
     }
 
     protected override void OnAppearing()
