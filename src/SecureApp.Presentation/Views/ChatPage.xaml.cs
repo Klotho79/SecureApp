@@ -22,9 +22,9 @@ public partial class ChatPage : ContentPage
         _viewModel.StartListening();
 
         // Defer the load until the push animation finishes so populating the thread doesn't jank the
-        // slide-in (2026-09-11) — see GroupChatPage.OnAppearing's own remarks. Only affects the phone
-        // push host; the wide-layout detail pane (ChatListPage) drives the load its own way.
-        _viewModel.IsLoading = true;
+        // slide-in (2026-09-11) — see GroupChatPage.OnAppearing's own remarks. The spinner is only
+        // shown if the load runs long (see LoadAsync's delayed spinner), so a fast open is
+        // spinner-free. Only affects the phone push host; the wide-layout detail pane drives its own load.
         Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(300), () => _viewModel.LoadCommand.Execute(null));
     }
 

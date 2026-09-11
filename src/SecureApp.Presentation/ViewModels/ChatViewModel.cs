@@ -180,8 +180,12 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
     [RelayCommand]
     private async Task LoadAsync()
     {
-        IsLoading = true;
         StatusErrorMessage = null;
+        // Delayed spinner (2026-09-11, the user's ask): don't flash the spinner for a fast open — show
+        // it only if the load hasn't finished within half a second. A normal local open (~tens of ms)
+        // never shows it; a genuinely slow one does.
+        using var spinnerCts = new CancellationTokenSource();
+        _ = ShowSpinnerAfterDelayAsync(spinnerCts.Token);
         try
         {
             // 2026-09-11 perf: render only the NEWEST few messages from local storage FIRST, before
@@ -223,8 +227,9 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
                 return list;
             });
 
+            spinnerCts.Cancel();               // content ready — cancel any pending spinner
             Messages = new ObservableCollection<ChatMessageItem>(initialItems);
-            IsLoading = false; // newest messages are on screen now — stop the spinner
+            IsLoading = false;                 // (in case the spinner already showed)
             ScrollToBottomRequested?.Invoke();
 
             // Network work only, off the critical path — no message loading here anymore.
@@ -236,8 +241,17 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         }
         finally
         {
+            spinnerCts.Cancel();
             IsLoading = false;
         }
+    }
+
+    /// <summary>Shows the loading spinner only if the operation is still running after a short delay — avoids a spinner flash on the common fast (local) open. Cancelled by the load completing first.</summary>
+    private async Task ShowSpinnerAfterDelayAsync(CancellationToken ct)
+    {
+        try { await Task.Delay(500, ct); }
+        catch (TaskCanceledException) { return; } // finished before the delay — never show the spinner
+        if (!ct.IsCancellationRequested) IsLoading = true;
     }
 
     /// <summary>Builds one thread item from an already-loaded message row (decrypt + delete-gating) — shared by the initial load, the background older-message load, and the live receive path.</summary>

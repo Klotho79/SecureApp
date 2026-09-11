@@ -57,10 +57,9 @@ public partial class GroupChatPage : ContentPage
 
         // Defer the data load until the push animation has finished (2026-09-11). Populating the
         // CollectionView is the heaviest UI-thread work on open; doing it while the page is still
-        // sliding in left-to-right janked the slide mid-way (freeze + spinner + snap — the
-        // unprofessional stutter the user reported). Showing the spinner up front lets the page slide
-        // in smoothly on an unburdened UI thread, then the content renders once it has arrived.
-        _viewModel.IsLoading = true;
+        // sliding in left-to-right janked the slide mid-way. The spinner is NOT forced on here — the
+        // view model only shows it if the load actually runs long (see LoadAsync's delayed spinner),
+        // so a fast open just slides in and shows content with no spinner flash.
         Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(300), () => _viewModel.LoadCommand.Execute(null));
     }
 

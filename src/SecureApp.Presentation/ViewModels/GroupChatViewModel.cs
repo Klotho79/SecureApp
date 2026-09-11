@@ -176,8 +176,11 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
     [RelayCommand]
     private async Task LoadAsync()
     {
-        IsLoading = true;
         StatusErrorMessage = null;
+        // Delayed spinner (2026-09-11) — see ChatViewModel.ShowSpinnerAfterDelayAsync. A fast open
+        // shows no spinner; only a genuinely slow load reveals it after half a second.
+        using var spinnerCts = new CancellationTokenSource();
+        _ = ShowSpinnerAfterDelayAsync(spinnerCts.Token);
         try
         {
             var group = await _groupChatRepository.GetByIdAsync(_groupChatId);
@@ -207,7 +210,8 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
             RebuildMemberList();
 
             await LoadMessagesAsync();
-            IsLoading = false; // on screen now — before the background network work
+            spinnerCts.Cancel();  // content ready — cancel any pending spinner
+            IsLoading = false;    // on screen now — before the background network work
             ScrollToBottomRequested?.Invoke();
 
             // Refresh names from the directory, then auto-heal broken pairings — both in the
@@ -223,8 +227,17 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
         }
         finally
         {
+            spinnerCts.Cancel();
             IsLoading = false;
         }
+    }
+
+    /// <summary>Shows the loading spinner only if the load is still running after a short delay — see ChatViewModel.ShowSpinnerAfterDelayAsync.</summary>
+    private async Task ShowSpinnerAfterDelayAsync(CancellationToken ct)
+    {
+        try { await Task.Delay(500, ct); }
+        catch (TaskCanceledException) { return; }
+        if (!ct.IsCancellationRequested) IsLoading = true;
     }
 
     /// <summary>Raised once the thread is (re)populated so the page can scroll to the newest message — see GroupChatPage's own subscription. Mirrors ChatViewModel.ScrollToBottomRequested.</summary>
