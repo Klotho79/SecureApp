@@ -597,25 +597,13 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Explicit "resend to everyone I'm already paired with" (2026-09-11) — the user's own direct
-    /// ask after the automatic offer still wasn't reliably reaching every peer: a manual action that
-    /// visibly confirms how many sessions got it, callable at any time, not just right after
-    /// generating/importing. Shares its implementation with the auto-broadcast above via
-    /// <see cref="BroadcastSharedLibraryKeyAsync"/>.
+    /// Immediately pushes a just-generated/imported key to everyone this device is already paired
+    /// with (2026-09-11) — the automatic distribution's one event-driven trigger, on top of the
+    /// connection supervisor's periodic push/pull sweep (see <c>SharedLibraryKeySync.AutoSyncAsync</c>).
+    /// Deliberately NOT a user-facing button: the user was explicit that passing keys around must
+    /// never be the user's job ("to ma udelat aplikace sama") — this just makes the app react the
+    /// instant a key exists instead of waiting up to one sweep interval.
     /// </summary>
-    [RelayCommand]
-    private async Task ResendSharedLibraryKeyAsync()
-    {
-        SharedLibraryErrorMessage = null;
-        if (!HasSharedLibraryKey)
-        {
-            SharedLibraryErrorMessage = "Nejprve si vygenerujte nebo naimportujte klíč sdílené knihovny.";
-            return;
-        }
-
-        await BroadcastSharedLibraryKeyAsync();
-    }
-
     private async Task BroadcastSharedLibraryKeyAsync()
     {
         try

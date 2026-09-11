@@ -207,6 +207,22 @@ public partial class App : Application
 		var transportSettings = scope.ServiceProvider.GetRequiredService<ITransportSettingsRepository>();
 		var currentUserService = scope.ServiceProvider.GetRequiredService<ICurrentUserService>();
 
+		// Fully automatic shared-library-key distribution (2026-09-11) — the app does this itself,
+		// no user action, no manual "resend key" step (the user's explicit demand). Every sweep,
+		// this device either pushes the key to its paired sessions (if it has it) or asks them for it
+		// (if it doesn't); see SharedLibraryKeySync.AutoSyncAsync's own remarks. Best-effort and
+		// independent of the stale-session resync below.
+		try
+		{
+			var sharedLibraryService = scope.ServiceProvider.GetRequiredService<ISharedLibraryService>();
+			var diagnosticsReporter = scope.ServiceProvider.GetRequiredService<IDiagnosticsReporter>();
+			await SharedLibraryKeySync.AutoSyncAsync(sharedLibraryService, messagingService, transport, sessionRepository, diagnosticsReporter);
+		}
+		catch
+		{
+			// Best-effort — retried next sweep, ~3 min.
+		}
+
 		IReadOnlyList<ChatSession> sessions;
 		try { sessions = await sessionRepository.GetAllAsync(); }
 		catch { return; }
@@ -278,7 +294,26 @@ public partial class App : Application
 						// "arrived and worked" when this gets reported broken again.
 						_ = reporterForImport.ReportAsync(DiagnosticLogLevel.Info, "Klíč sdílené knihovny přijat a naimportován.", nameof(OnEnvelopeReceived));
 					}
-				}
+					else if (SharedLibraryKeySync.IsKeyRequest(plaintext))
+					{
+						// A paired peer that doesn't have the key is asking for it (the PULL half of
+						// the automatic distribution — see SharedLibraryKeySync's own remarks). If we
+						// have it, answer immediately over that same session, bypassing the push
+						// cooldown since this is a direct, explicit request, not incidental traffic.
+						var sharedLibraryService = scope.ServiceProvider.GetRequiredService<ISharedLibraryService>();
+						var messageTransportForOffer = scope.ServiceProvider.GetRequiredService<IMessageTransport>();
+						await SharedLibraryKeySync.OfferKeyAsync(sharedLibraryService, messagingService, messageTransportForOffer, message.ChatSessionId, reporterForImport, bypassCooldown: true);
+						}
+						else if (MessageDeletionSync.TryParseDeleteCommand(plaintext, out var correlationId))
+						{
+							// A peer deleted a message for everyone (2026-09-11) — remove our own copy
+							// even if no chat page is open. Idempotent (the open ViewModel, if any, also
+							// does this and updates its visible list). The deleter already made the RBAC
+							// decision; we honor it, same as any other message from a paired peer.
+							var messageRepository = scope.ServiceProvider.GetRequiredService<IMessageRepository>();
+							await messageRepository.DeleteByCorrelationAsync(correlationId);
+						}
+					}
 				catch (Exception importEx)
 				{
 					// Best-effort — nothing further to do at this level, but logged rather than

@@ -71,6 +71,29 @@ public sealed class Message : Entity
     /// </summary>
     public bool IsSystemPayload { get; private set; }
 
+    /// <summary>
+    /// A relay-global id shared by every device's copy of the SAME logical message (2026-09-11) —
+    /// the sender mints it once, the recipient copies it off the envelope, unlike <see cref="Id"/>
+    /// which is a fresh per-device GUID. Lets a "delete this message" command reference one message
+    /// across devices (see <c>MessageDeletionSync</c>) even though the local <see cref="Id"/> differs
+    /// on each end. Null on messages sent before this existed — those can only be deleted locally,
+    /// never propagated. For a group message, correlation across the fan-out uses <see cref="GroupMessageId"/>
+    /// instead (already shared across legs), so this is primarily the 1:1 correlation id.
+    /// </summary>
+    public Guid? OriginMessageId { get; private set; }
+
+    /// <summary>
+    /// The RBAC <see cref="Enums.Role"/> the sender held when they sent this message (2026-09-11),
+    /// carried on the envelope and stored on the recipient's copy — the one piece of information a
+    /// deletion RBAC check needs that isn't otherwise knowable about someone else's message: whether
+    /// a Modifier may delete it (a Modifier may delete a Viewer's messages, but not another
+    /// Modifier's or an Admin's — see <c>RoleAccessPolicy.CanDeleteMessage</c>). Null on messages
+    /// sent before this existed; the policy degrades safely (a Modifier can't delete an unknown-role
+    /// message that isn't their own). Consistent with this app's existing cooperative role model —
+    /// roles are self-declared in Settings, not server-enforced.
+    /// </summary>
+    public Role? SenderRole { get; private set; }
+
     private Message()
     {
         // Reserved for materialization by persistence/serialization infrastructure.
@@ -88,7 +111,9 @@ public sealed class Message : Entity
         string? attachmentFileName = null,
         Guid? groupChatId = null,
         Guid? groupMessageId = null,
-        bool isSystemPayload = false)
+        bool isSystemPayload = false,
+        Guid? originMessageId = null,
+        Role? senderRole = null)
     {
         if (chatSessionId == Guid.Empty)
             throw new ArgumentException("Chat session id cannot be empty.", nameof(chatSessionId));
@@ -103,6 +128,8 @@ public sealed class Message : Entity
         GroupChatId = groupChatId;
         GroupMessageId = groupMessageId;
         IsSystemPayload = isSystemPayload;
+        OriginMessageId = originMessageId;
+        SenderRole = senderRole;
         Status = MessageStatus.Pending;
     }
 

@@ -8,70 +8,105 @@ using SecureApp.Domain.Interfaces.Services;
 namespace SecureApp.Presentation.Chat;
 
 /// <summary>
-/// Auto-distributes the community's shared library key over an already-established, already-
-/// authenticated E2EE pairwise session (2026-09-10) — direct answer to the user's own architectural
-/// objection: "pokud je v chatu kde maji pristup uzivatele proc nemaji klic? jakou to ma logiku?"
-/// (if they're already trusted enough to be paired in a chat, why don't they have the key — what's
-/// the logic in that?). Before this, a freshly-onboarded device had no shared library key until
-/// someone manually copy/pasted <c>ISharedLibraryService.ExportSharedKeyAsync</c>'s blob through
-/// Settings — a real, reported "nepodařilo se otevřít soubor, není žádný sdílený library key"
-/// failure with no actual bug in the crypto, just a missing distribution path.
+/// Fully automatic distribution of the community's shared library key over already-established,
+/// already-authenticated E2EE pairwise sessions — the app does this entirely on its own, with zero
+/// user action anywhere. Direct answer to the user's own two rounds of feedback: first the design
+/// objection ("pokud je v chatu kde maji pristup uzivatele proc nemaji klic? jakou to ma logiku?" —
+/// if they're already paired in a chat, why don't they have the key?), then, bluntly, that a manual
+/// "resend the key" step is not acceptable at all ("nechci aby uzivatele si museli rozesilat library
+/// ani jine kody... to ma udelat aplikace sama" — no app works by making users pass keys around;
+/// the app must do it itself).
 ///
-/// 2026-09-11 follow-up (still reported broken after the first pass): the per-pairing/per-chat-open
-/// triggers below only fire the offer from whichever device the user happens to be poking at, which
-/// turned out too passive — a device that generates/imports a key has no reason for the USER to open
-/// every existing chat afterward, and the receiving device has no visibility into whether anything
-/// was ever even attempted. Two fixes: <see cref="BroadcastToAllActiveSessionsAsync"/> pushes the key
-/// out to every already-paired session the moment it's generated/imported (see
-/// <c>SettingsViewModel</c>'s own call sites) instead of waiting for an unrelated chat-open event, and
-/// every path here now takes an optional <see cref="IDiagnosticsReporter"/> so a failure is actually
-/// visible in the shared diagnostics log instead of silently vanishing into a bare catch.
+/// Two directions, both driven automatically by the connection supervisor's periodic sweep (see
+/// <c>App.RunStaleSessionSweepAsync</c>), so the key propagates the moment any two paired devices are
+/// online together — whichever one happens to hold it:
+///   • PUSH (<see cref="OfferKeyAsync"/> / <see cref="BroadcastToAllActiveSessionsAsync"/>): a device
+///     that HAS the key offers it to its paired sessions.
+///   • PULL (<see cref="RequestKeyFromAllActiveSessionsAsync"/>): a device that does NOT have the key
+///     asks its paired peers for it; any peer that has it answers immediately (see
+///     <c>App.OnEnvelopeReceived</c>'s request handling → <see cref="OfferKeyAsync"/> with
+///     <c>bypassCooldown: true</c>). The pull is what makes this robust rather than dependent on the
+///     holder pushing at exactly the right moment — a keyless device drives its own key acquisition,
+///     retrying every sweep until it succeeds, then stops on its own the instant it has the key.
+/// <see cref="AutoSyncAsync"/> is the single entry point the sweep calls; it picks push or pull based
+/// on whether this device currently has the key.
 ///
-/// Rides the same ratchet a 1:1 chat message would, tagged <see cref="Message.IsSystemPayload"/>
-/// so it never shows up as a visible bubble (see <c>ChatViewModel</c>/<c>GroupChatViewModel</c>'s own
-/// filtering) — the trust boundary is already exactly right: whoever completed a pairwise handshake
-/// with this device is, by definition, someone this device's owner chose to pair with, which is
-/// precisely the same community-membership trust the shared library itself already assumes.
+/// Everything rides the same ratchet a 1:1 chat message would, tagged
+/// <see cref="Message.IsSystemPayload"/> so it never shows as a visible bubble (see
+/// <c>ChatViewModel</c>/<c>GroupChatViewModel</c>'s own filtering). The trust boundary is already
+/// exactly right: whoever completed a pairwise handshake with this device is, by definition, someone
+/// this device's owner chose to pair with — the same community-membership trust the shared library
+/// itself already assumes.
 ///
-/// Best-effort and silent-to-the-USER by design, same policy as <see cref="SessionRecoveryHelper"/>
-/// and <c>ChatViewModel.SendAsync</c>'s own live-send failure handling — offering the key is a bonus
-/// on top of an otherwise-complete pairing, never something that should surface an error or block
-/// opening the chat if it fails (peer offline, this device has no key of its own yet, etc.). "Silent
-/// to the user" no longer means "silent to the diagnostics log", though — see the note above.
+/// Best-effort and silent to the USER by design (same policy as <see cref="SessionRecoveryHelper"/>),
+/// but every outcome is written to the shared diagnostics log so a "still doesn't work" report can be
+/// diagnosed from the log rather than guessed at.
 /// </summary>
 public static class SharedLibraryKeySync
 {
-    /// <summary>
-    /// Tags the plaintext so the receiving side's <see cref="TryParseKeyOffer"/> can recognize this
-    /// specific system payload — <see cref="Message.IsSystemPayload"/> only says "not a
-    /// visible chat message", not which kind of internal payload this is, and more system payload
-    /// kinds may show up here later.
-    /// </summary>
-    private const string PayloadPrefix = "shared-library-key:v1:";
+    /// <summary>Tags a key-carrying system payload so the receiving side's <see cref="TryParseKeyOffer"/> recognizes it.</summary>
+    private const string KeyPayloadPrefix = "shared-library-key:v1:";
+
+    /// <summary>Tags a key-REQUEST system payload — sent by a keyless device, recognized by <see cref="IsKeyRequest"/>. Deliberately disjoint from <see cref="KeyPayloadPrefix"/> (the char right after "shared-library-key" is '-' here vs ':' there), so neither prefix ever matches the other's payload.</summary>
+    private const string RequestPayloadPrefix = "shared-library-key-request:v1:";
 
     /// <summary>
-    /// Per-session cooldown (2026-09-10) — <see cref="OfferKeyAsync"/> is also called from
-    /// <c>ChatViewModel.LoadAsync</c> now (every time an EXISTING chat thread is simply opened, not
-    /// just at pairing time — see that call site's own remarks for why: an already-paired session
-    /// that predates this whole mechanism never gets a fresh pairing event to hang the offer off
-    /// of). Without a cooldown, reopening the same chat repeatedly would re-send the same system
-    /// payload every time — harmless to correctness (the peer just re-imports the identical key) but
-    /// wasteful. <paramref name="bypassCooldown"/> on <see cref="OfferKeyAsync"/> skips this
-    /// deliberately for <see cref="BroadcastToAllActiveSessionsAsync"/> — a manual "resend to
-    /// everyone" action the user explicitly asked for should never be silently swallowed by a timer.
+    /// Push cooldown — <see cref="OfferKeyAsync"/> is called from the periodic sweep and from
+    /// chat-open, so without this the same key would be re-pushed to a session repeatedly. Harmless
+    /// to correctness (the peer just re-imports the identical key) but wasteful. The PULL path (a
+    /// keyless peer requesting) is what guarantees eventual delivery even when a push is on cooldown,
+    /// so this can stay long. Bypassed for a direct request-response and for a freshly generated/
+    /// imported key (see the <c>bypassCooldown</c> callers).
     /// </summary>
-    private static readonly TimeSpan _cooldown = TimeSpan.FromHours(6);
+    private static readonly TimeSpan _offerCooldown = TimeSpan.FromHours(6);
+
+    /// <summary>Pull cooldown — a keyless device asks each paired session for the key at most this often. Short, so acquisition is quick (roughly every few sweeps) while still bounding how many request rows accumulate if a key-holder is never reachable.</summary>
+    private static readonly TimeSpan _requestCooldown = TimeSpan.FromMinutes(15);
 
     private static readonly ConcurrentDictionary<Guid, DateTimeOffset> _lastOfferedAtUtc = new();
+    private static readonly ConcurrentDictionary<Guid, DateTimeOffset> _lastRequestedAtUtc = new();
 
     /// <summary>
-    /// Called from every pairing-completion site (initiator and responder alike, group fan-out
-    /// included) the moment a session becomes usable — see call sites in <c>NewChatViewModel</c>,
-    /// <c>App.OnPairingInviteReceived</c>/<c>OnGroupInviteReceived</c>, and
-    /// <c>GroupChatViewModel.BroadcastMembershipAsync</c> — plus <c>ChatViewModel.LoadAsync</c> for
-    /// the already-paired-before-this-existed case. A no-op (not an error) whenever this device has
-    /// no key of its own yet — nothing to offer; the peer who eventually generates or imports one
-    /// will offer it back over the same still-open session later.
+    /// The single automatic entry point the connection supervisor's sweep calls (see
+    /// <c>App.RunStaleSessionSweepAsync</c>). Picks the right direction with no user involvement: if
+    /// this device holds the key it pushes to every active session (respecting <see cref="_offerCooldown"/>);
+    /// if it does not, it asks every active session for the key (respecting <see cref="_requestCooldown"/>).
+    /// </summary>
+    public static async Task AutoSyncAsync(
+        ISharedLibraryService sharedLibraryService,
+        IMessagingService messagingService,
+        IMessageTransport messageTransport,
+        IChatSessionRepository chatSessionRepository,
+        IDiagnosticsReporter? diagnosticsReporter = null,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            if (!messageTransport.IsConnected)
+                return; // Nothing can be delivered right now — the next sweep after reconnect retries.
+
+            if (await sharedLibraryService.HasSharedKeyAsync(ct))
+            {
+                foreach (var session in await GetActiveSessionsAsync(chatSessionRepository, ct))
+                    await OfferKeyAsync(sharedLibraryService, messagingService, messageTransport, session.Id, diagnosticsReporter, bypassCooldown: false, ct: ct);
+            }
+            else
+            {
+                await RequestKeyFromAllActiveSessionsAsync(sharedLibraryService, messagingService, messageTransport, chatSessionRepository, diagnosticsReporter, ct);
+            }
+        }
+        catch
+        {
+            // Best-effort — the sweep runs again shortly and retries.
+        }
+    }
+
+    /// <summary>
+    /// PUSH one session. Called automatically from every pairing-completion site
+    /// (<c>NewChatViewModel</c>, <c>App.OnPairingInviteReceived</c>/<c>OnGroupInviteReceived</c>,
+    /// <c>GroupChatViewModel</c>/<c>NewGroupViewModel</c>), from <c>ChatViewModel.LoadAsync</c>, from
+    /// the periodic <see cref="AutoSyncAsync"/>, and — with <paramref name="bypassCooldown"/> true —
+    /// as the direct answer to an incoming key request. A no-op whenever this device has no key yet.
     /// </summary>
     public static async Task OfferKeyAsync(
         ISharedLibraryService sharedLibraryService,
@@ -88,8 +123,8 @@ public static class SharedLibraryKeySync
             if (!bypassCooldown)
             {
                 var lastOffered = _lastOfferedAtUtc.GetOrAdd(sessionId, DateTimeOffset.MinValue);
-                if (now - lastOffered < _cooldown)
-                    return; // Already offered this session recently — see the cooldown's own remarks.
+                if (now - lastOffered < _offerCooldown)
+                    return; // Pushed to this session recently — the pull path still covers eventual delivery.
             }
 
             if (!await sharedLibraryService.HasSharedKeyAsync(ct))
@@ -98,16 +133,10 @@ public static class SharedLibraryKeySync
             _lastOfferedAtUtc[sessionId] = now;
 
             var keyBlob = await sharedLibraryService.ExportSharedKeyAsync(ct);
-            var plaintext = Encoding.UTF8.GetBytes(PayloadPrefix + keyBlob);
+            var plaintext = Encoding.UTF8.GetBytes(KeyPayloadPrefix + keyBlob);
 
             var (_, envelope) = await messagingService.SendMessageAsync(sessionId, plaintext, isSystemPayload: true, ct: ct);
 
-            // Best-effort live delivery only, same "stays Pending, never surfaced" policy every
-            // other live-send path in this app already uses — a peer who's offline right now simply
-            // doesn't get this particular offer. Logged either way (2026-09-11) so the diagnostics
-            // log can actually distinguish "never attempted" from "sent locally but peer was
-            // offline" from "delivered live" — the three outcomes that were previously
-            // indistinguishable from outside a debugger.
             if (messageTransport.IsConnected)
             {
                 await messageTransport.SendEnvelopeAsync(envelope, ct);
@@ -115,28 +144,20 @@ public static class SharedLibraryKeySync
             }
             else
             {
-                _ = (diagnosticsReporter?.ReportAsync(DiagnosticLogLevel.Warning, $"Klíč sdílené knihovny uložen pro session {sessionId}, ale relay není připojen — doručí se, až se peer/toto zařízení příště spojí.", nameof(SharedLibraryKeySync), ct: ct));
+                _ = (diagnosticsReporter?.ReportAsync(DiagnosticLogLevel.Warning, $"Klíč sdílené knihovny uložen pro session {sessionId}, ale relay není připojen — doručí se při příštím spojení.", nameof(SharedLibraryKeySync), ct: ct));
             }
         }
         catch (Exception ex)
         {
-            // Never let a key-offer failure block or surface an error on the pairing flow that
-            // triggered it — same reasoning as every other best-effort helper in this file's
-            // neighborhood (SessionRecoveryHelper, App.OnGroupInviteReceived's per-member loop).
-            // Logged (2026-09-11), not swallowed silently — this exact kind of "why doesn't it just
-            // work" report is what the shared diagnostics log exists for.
             _ = (diagnosticsReporter?.ReportAsync(DiagnosticLogLevel.Error, $"Nabídka klíče sdílené knihovny pro session {sessionId} selhala.", nameof(SharedLibraryKeySync), ex, ct));
         }
     }
 
     /// <summary>
-    /// Explicit "resend to everyone I'm already paired with" (2026-09-11) — called from
-    /// <c>SettingsViewModel</c> right after a key is generated/imported, and from its own "Rozeslat
-    /// klíč" button for a manual re-push at any later time (the user's own ask: distribution
-    /// shouldn't depend on happening to reopen the right chat). Bypasses the per-session cooldown —
-    /// a deliberate, explicit user/system action should never be silently dropped by a rate limiter
-    /// meant for incidental chat-open traffic. Returns how many sessions were offered to, for the
-    /// caller to surface as a status message.
+    /// PUSH to every active session at once, bypassing the per-session cooldown — used automatically
+    /// the instant a key is generated or imported (see <c>SettingsViewModel</c>), so a brand-new key
+    /// reaches everyone this device is already paired with immediately rather than waiting for the
+    /// next sweep. Returns how many sessions were offered to.
     /// </summary>
     public static async Task<int> BroadcastToAllActiveSessionsAsync(
         ISharedLibraryService sharedLibraryService,
@@ -146,41 +167,83 @@ public static class SharedLibraryKeySync
         IDiagnosticsReporter? diagnosticsReporter = null,
         CancellationToken ct = default)
     {
-        var sessions = await chatSessionRepository.GetAllAsync(ct);
-        var activeSessions = sessions.Where(s => s.State == ChatSessionState.Active).ToList();
-
+        var activeSessions = await GetActiveSessionsAsync(chatSessionRepository, ct);
         foreach (var session in activeSessions)
             await OfferKeyAsync(sharedLibraryService, messagingService, messageTransport, session.Id, diagnosticsReporter, bypassCooldown: true, ct: ct);
-
         return activeSessions.Count;
     }
 
     /// <summary>
-    /// Receiving side: called from <c>App.OnEnvelopeReceived</c> after a successful decrypt, only
-    /// when <c>envelope.IsSystemPayload</c> is set. Returns false for plaintext that doesn't carry
-    /// this specific system payload's tag (forward-compatible with other system payload kinds this
-    /// mechanism might carry later) — never throws on unrecognized content.
+    /// PULL: a device without the key asks every active session for it. A no-op the moment this
+    /// device actually has the key (nothing to pull), so it stops on its own — no explicit "stop
+    /// requesting" bookkeeping needed. Any peer that has the key answers via
+    /// <c>App.OnEnvelopeReceived</c>'s request handling.
     /// </summary>
+    public static async Task RequestKeyFromAllActiveSessionsAsync(
+        ISharedLibraryService sharedLibraryService,
+        IMessagingService messagingService,
+        IMessageTransport messageTransport,
+        IChatSessionRepository chatSessionRepository,
+        IDiagnosticsReporter? diagnosticsReporter = null,
+        CancellationToken ct = default)
+    {
+        if (await sharedLibraryService.HasSharedKeyAsync(ct))
+            return; // Already have it — nothing to ask for.
+
+        foreach (var session in await GetActiveSessionsAsync(chatSessionRepository, ct))
+        {
+            var now = DateTimeOffset.UtcNow;
+            var lastRequested = _lastRequestedAtUtc.GetOrAdd(session.Id, DateTimeOffset.MinValue);
+            if (now - lastRequested < _requestCooldown)
+                continue;
+            _lastRequestedAtUtc[session.Id] = now;
+
+            try
+            {
+                var plaintext = Encoding.UTF8.GetBytes(RequestPayloadPrefix);
+                var (_, envelope) = await messagingService.SendMessageAsync(session.Id, plaintext, isSystemPayload: true, ct: ct);
+                if (messageTransport.IsConnected)
+                {
+                    await messageTransport.SendEnvelopeAsync(envelope, ct);
+                    _ = (diagnosticsReporter?.ReportAsync(DiagnosticLogLevel.Info, $"Vyžádán klíč sdílené knihovny přes session {session.Id} (toto zařízení klíč zatím nemá).", nameof(SharedLibraryKeySync), ct: ct));
+                }
+            }
+            catch (Exception ex)
+            {
+                _ = (diagnosticsReporter?.ReportAsync(DiagnosticLogLevel.Warning, $"Žádost o klíč sdílené knihovny přes session {session.Id} selhala.", nameof(SharedLibraryKeySync), ex, ct));
+            }
+        }
+    }
+
+    /// <summary>Receiving side: is this decrypted system payload a key offer (and if so, extract the blob)?</summary>
     public static bool TryParseKeyOffer(byte[] plaintext, out string keyBlob)
     {
-        string text;
-        try
+        var text = SafeDecode(plaintext);
+        if (text is not null && text.StartsWith(KeyPayloadPrefix, StringComparison.Ordinal))
         {
-            text = Encoding.UTF8.GetString(plaintext);
-        }
-        catch
-        {
-            keyBlob = string.Empty;
-            return false;
-        }
-
-        if (text.StartsWith(PayloadPrefix, StringComparison.Ordinal))
-        {
-            keyBlob = text[PayloadPrefix.Length..];
+            keyBlob = text[KeyPayloadPrefix.Length..];
             return true;
         }
-
         keyBlob = string.Empty;
         return false;
+    }
+
+    /// <summary>Receiving side: is this decrypted system payload a request for the key? If so, and this device has the key, the caller answers with <see cref="OfferKeyAsync"/> (bypassing the cooldown).</summary>
+    public static bool IsKeyRequest(byte[] plaintext)
+    {
+        var text = SafeDecode(plaintext);
+        return text is not null && text.StartsWith(RequestPayloadPrefix, StringComparison.Ordinal);
+    }
+
+    private static async Task<IReadOnlyList<ChatSession>> GetActiveSessionsAsync(IChatSessionRepository chatSessionRepository, CancellationToken ct)
+    {
+        var sessions = await chatSessionRepository.GetAllAsync(ct);
+        return sessions.Where(s => s.State == ChatSessionState.Active).ToList();
+    }
+
+    private static string? SafeDecode(byte[] plaintext)
+    {
+        try { return Encoding.UTF8.GetString(plaintext); }
+        catch { return null; }
     }
 }

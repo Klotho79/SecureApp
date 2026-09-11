@@ -150,14 +150,21 @@ public sealed class MessagingService : IMessagingService
         // ephemeral message key is never persisted (that's the ratchet's forward secrecy) — the
         // wire payload only ever exists transiently, here and in the returned envelope.
         var (header, wirePayload) = await _ratchet.RatchetEncryptAsync(sessionId, plaintext, ct);
-        var envelope = new MessageEnvelope(sessionId, _currentUser.Current.Id, header, wirePayload, attachmentDocumentId, attachmentLibraryFileId, attachmentFileName, groupChatId, groupMessageId, isSystemPayload);
+
+        // 2026-09-11: mint a cross-device correlation id for this logical message and stamp the
+        // sender's current role, both carried on the wire so the recipient's copy shares them — see
+        // Message.OriginMessageId/SenderRole's own remarks. Both feed message deletion + its RBAC.
+        var originMessageId = Guid.NewGuid();
+        var senderRole = _currentUser.Current.Role;
+
+        var envelope = new MessageEnvelope(sessionId, _currentUser.Current.Id, header, wirePayload, attachmentDocumentId, attachmentLibraryFileId, attachmentFileName, groupChatId, groupMessageId, isSystemPayload, originMessageId, senderRole);
 
         // Local storage copy: re-encrypted under a normal, vault-mediated key so it can be
         // redecrypted on demand at any time — see Message's remarks.
         var storageKeyId = await GetOrCreateActiveMessageStorageKeyIdAsync(ct);
         var storedPayload = await _crypto.EncryptAsync(plaintext, storageKeyId, ct);
 
-        var message = new Message(sessionId, MessageDirection.Outbound, header, storedPayload, attachmentDocumentId, attachmentLibraryFileId, attachmentFileName, groupChatId, groupMessageId, isSystemPayload);
+        var message = new Message(sessionId, MessageDirection.Outbound, header, storedPayload, attachmentDocumentId, attachmentLibraryFileId, attachmentFileName, groupChatId, groupMessageId, isSystemPayload, originMessageId, senderRole);
         await _messageRepository.AddAsync(message, ct);
 
         session.NoteRatcheted();
@@ -200,7 +207,7 @@ public sealed class MessagingService : IMessagingService
         var storageKeyId = await GetOrCreateActiveMessageStorageKeyIdAsync(ct);
         var storedPayload = await _crypto.EncryptAsync(plaintext, storageKeyId, ct);
 
-        var message = new Message(envelope.SessionId, MessageDirection.Inbound, envelope.Header, storedPayload, envelope.AttachmentDocumentId, envelope.AttachmentLibraryFileId, envelope.AttachmentFileName, envelope.GroupChatId, envelope.GroupMessageId, envelope.IsSystemPayload);
+        var message = new Message(envelope.SessionId, MessageDirection.Inbound, envelope.Header, storedPayload, envelope.AttachmentDocumentId, envelope.AttachmentLibraryFileId, envelope.AttachmentFileName, envelope.GroupChatId, envelope.GroupMessageId, envelope.IsSystemPayload, envelope.OriginMessageId, envelope.SenderRole);
         message.MarkDelivered();
         await _messageRepository.AddAsync(message, ct);
 

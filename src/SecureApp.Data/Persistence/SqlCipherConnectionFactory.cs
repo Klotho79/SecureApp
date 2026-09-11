@@ -20,7 +20,7 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
 {
     private const string DatabaseKeyVaultName = "sqlcipher:database-key";
     private const int DatabaseKeySizeBytes = 32; // 256-bit, used as a raw SQLCipher key (not a passphrase put through PBKDF2)
-    private const int CurrentSchemaVersion = 10;
+    private const int CurrentSchemaVersion = 11;
 
     private readonly DataStorageOptions _options;
     private readonly ISecureVaultKeyStore _vault;
@@ -136,6 +136,9 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
 
         if (schemaVersion < 10)
             await ApplyV10SchemaAsync(connection);
+
+        if (schemaVersion < 11)
+            await ApplyV11SchemaAsync(connection);
 
         await connection.ExecuteAsync($"PRAGMA user_version = {CurrentSchemaVersion}");
     }
@@ -454,6 +457,19 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
     private static async Task ApplyV10SchemaAsync(SQLiteAsyncConnection connection)
     {
         await connection.ExecuteAsync("ALTER TABLE messages ADD COLUMN is_system_payload INTEGER NOT NULL DEFAULT 0");
+    }
+
+    /// <summary>
+    /// Backs message deletion with RBAC (2026-09-11) — see <c>Message.OriginMessageId</c>/<c>SenderRole</c>
+    /// and <c>RoleAccessPolicy.CanDeleteMessage</c>. Both additive and nullable: existing rows predate
+    /// this, so they carry no cross-device correlation id (deletable locally only, never propagated)
+    /// and no recorded sender role (a Modifier can't delete such a message unless it's their own —
+    /// the policy's safe degradation).
+    /// </summary>
+    private static async Task ApplyV11SchemaAsync(SQLiteAsyncConnection connection)
+    {
+        await connection.ExecuteAsync("ALTER TABLE messages ADD COLUMN origin_message_id TEXT NULL");
+        await connection.ExecuteAsync("ALTER TABLE messages ADD COLUMN sender_role INTEGER NULL");
     }
 
     /// <summary>

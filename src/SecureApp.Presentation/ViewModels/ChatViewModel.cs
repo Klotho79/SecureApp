@@ -7,6 +7,7 @@ using SecureApp.Domain.Enums;
 using SecureApp.Domain.Exceptions;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
+using SecureApp.Domain.Policies;
 using SecureApp.Domain.ValueObjects;
 using SecureApp.Presentation.Chat;
 using SecureApp.Presentation.Views;
@@ -165,6 +166,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         await EnsureConnectedAsync();
         try
         {
+            await _currentUserService.InitializeAsync(); // ensure Current.Role is available for per-message delete gating
             var session = await _sessionRepository.GetByIdAsync(_chatSessionId);
             // 2026-09-09: prefer the peer's CURRENT name from the relay directory over whatever got
             // captured once at pairing time — see DirectoryNameResolver's own remarks.
@@ -188,7 +190,9 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
                 if (message.IsSystemPayload) continue;
 
                 var text = await TryDecryptAsync(message);
-                items.Add(new ChatMessageItem(message.Id, message.Direction == MessageDirection.Outbound, text, message.CreatedAtUtc, message.Status, message.AttachmentLibraryFileId, message.AttachmentFileName));
+                var isOwn = message.Direction == MessageDirection.Outbound;
+                var canDelete = RoleAccessPolicy.CanDeleteMessage(_currentUserService.Current.Role, isOwn, message.SenderRole);
+                items.Add(new ChatMessageItem(message.Id, isOwn, text, message.CreatedAtUtc, message.Status, message.AttachmentLibraryFileId, message.AttachmentFileName, canDelete, message.OriginMessageId));
             }
 
             Messages = new ObservableCollection<ChatMessageItem>(items.OrderBy(m => m.SentAtUtc));
@@ -240,7 +244,8 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
                 (message, envelope) = await ResyncAndRetrySendAsync(plaintext, attachmentId, attachmentName);
             }
 
-            Messages.Add(new ChatMessageItem(message.Id, true, text, message.CreatedAtUtc, message.Status, message.AttachmentLibraryFileId, message.AttachmentFileName));
+            // A just-sent message is always the actor's own, so it's always deletable by them (every role may delete its own).
+            Messages.Add(new ChatMessageItem(message.Id, true, text, message.CreatedAtUtc, message.Status, message.AttachmentLibraryFileId, message.AttachmentFileName, CanDelete: true, CorrelationId: message.OriginMessageId));
 
             // Best-effort live send: the message is already durably persisted as Pending above
             // regardless of what happens here — no relay connected yet is the expected common
@@ -361,20 +366,47 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         // group's own thread only.
         if (envelope.GroupChatId is not null) return;
 
-        // System-carried machinery (2026-09-10) — see the LoadAsync filter's own remarks just
-        // above. App.OnEnvelopeReceived's app-wide handler already decrypted-and-imported this one
-        // (or will, via the same idempotent ReceiveMessageAsync call below); nothing further to show.
-        if (envelope.IsSystemPayload) return;
+        // System-carried machinery (2026-09-10) — see the LoadAsync filter's own remarks just above.
+        // App.OnEnvelopeReceived's app-wide handler decrypts-and-processes these too; here we ALSO
+        // handle a delete command (2026-09-11) so the visible thread updates live when a page is open,
+        // then stop — a key offer/request has nothing to show and is left to the app-wide handler.
+        if (envelope.IsSystemPayload)
+        {
+            await HandleSystemPayloadAsync(envelope);
+            return;
+        }
 
         try
         {
             var message = await _messagingService.ReceiveMessageAsync(envelope);
             var text = await TryDecryptAsync(message);
-            Messages.Add(new ChatMessageItem(message.Id, false, text, message.CreatedAtUtc, message.Status, message.AttachmentLibraryFileId, message.AttachmentFileName));
+            var canDelete = RoleAccessPolicy.CanDeleteMessage(_currentUserService.Current.Role, false, message.SenderRole);
+            Messages.Add(new ChatMessageItem(message.Id, false, text, message.CreatedAtUtc, message.Status, message.AttachmentLibraryFileId, message.AttachmentFileName, canDelete, message.OriginMessageId));
         }
         catch (Exception ex)
         {
             await TryAutoHealAsync(ex);
+        }
+    }
+
+    /// <summary>Handles a system payload live while this thread is open — currently just a delete command (removes the target from the visible list; the DB delete is idempotent and also done by the app-wide handler). Best-effort; a key offer/request falls through as a no-op here.</summary>
+    private async Task HandleSystemPayloadAsync(MessageEnvelope envelope)
+    {
+        try
+        {
+            var message = await _messagingService.ReceiveMessageAsync(envelope); // idempotent — safe alongside the app-wide handler
+            var plaintext = await _messagingService.DecryptMessageAsync(message.Id);
+            if (MessageDeletionSync.TryParseDeleteCommand(plaintext, out var correlationId))
+            {
+                await _messageRepository.DeleteByCorrelationAsync(correlationId);
+                var doomed = Messages.Where(m => m.CorrelationId == correlationId).ToList();
+                foreach (var item in doomed)
+                    Messages.Remove(item);
+            }
+        }
+        catch
+        {
+            // Best-effort — a malformed/foreign system payload never disrupts the open thread.
         }
     }
 
@@ -412,9 +444,69 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
             StatusErrorMessage = $"Nepodařilo se otevřít '{item.AttachmentFileName}': {ex.Message}";
         }
     }
+
+    /// <summary>
+    /// Deletes a message for everyone (2026-09-11) — RBAC-gated (see <c>RoleAccessPolicy.CanDeleteMessage</c>:
+    /// Admin any, Modifier own + Viewers', Viewer own only). Re-checks the policy here even though the
+    /// UI only shows the option when allowed, since the item's <c>CanDelete</c> is a snapshot. Removes
+    /// this device's local copy and, if the message has a cross-device correlation id, propagates a
+    /// delete command to the peer over the same ratchet; a message too old to carry one is removed
+    /// locally only.
+    /// </summary>
+    [RelayCommand]
+    private async Task DeleteMessageAsync(ChatMessageItem? item)
+    {
+        if (item is null) return;
+
+        var message = await _messageRepository.GetByIdAsync(item.Id);
+        if (message is null)
+        {
+            // Already gone locally (e.g. a peer's delete raced this) — just drop it from the list.
+            var stale = Messages.FirstOrDefault(m => m.Id == item.Id);
+            if (stale is not null) Messages.Remove(stale);
+            return;
+        }
+
+        var isOwn = message.Direction == MessageDirection.Outbound;
+        if (!RoleAccessPolicy.CanDeleteMessage(_currentUserService.Current.Role, isOwn, message.SenderRole))
+        {
+            StatusErrorMessage = "Na smazání této zprávy nemáte oprávnění.";
+            return;
+        }
+
+        var confirmed = await Shell.Current.DisplayAlert("Smazat zprávu", "Opravdu smazat tuto zprávu? Smaže se u všech účastníků.", "Smazat", "Zrušit");
+        if (!confirmed) return;
+
+        try
+        {
+            var correlationId = message.OriginMessageId;
+            if (correlationId is { } corr)
+                await _messageRepository.DeleteByCorrelationAsync(corr);
+            else
+                await _messageRepository.DeleteAsync(message.Id);
+
+            var existing = Messages.FirstOrDefault(m => m.Id == item.Id);
+            if (existing is not null) Messages.Remove(existing);
+
+            // Propagate the delete to the peer — only possible for a message carrying a cross-device
+            // correlation id (a very old message can't be deleted for the other side, only locally).
+            if (correlationId is { } corr2)
+            {
+                var payload = MessageDeletionSync.BuildDeleteCommand(corr2);
+                var (_, envelope) = await _messagingService.SendMessageAsync(_chatSessionId, payload, isSystemPayload: true);
+                await EnsureConnectedAsync();
+                if (_messageTransport.IsConnected)
+                    await _messageTransport.SendEnvelopeAsync(envelope);
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusErrorMessage = $"Zprávu se nepodařilo smazat: {ex.Message}";
+        }
+    }
 }
 
-public sealed record ChatMessageItem(Guid Id, bool IsOutbound, string Text, DateTimeOffset SentAtUtc, MessageStatus Status, Guid? AttachmentLibraryFileId = null, string? AttachmentFileName = null)
+public sealed record ChatMessageItem(Guid Id, bool IsOutbound, string Text, DateTimeOffset SentAtUtc, MessageStatus Status, Guid? AttachmentLibraryFileId = null, string? AttachmentFileName = null, bool CanDelete = false, Guid? CorrelationId = null)
 {
     public bool HasAttachment => AttachmentLibraryFileId is not null;
     public bool HasText => !string.IsNullOrEmpty(Text);

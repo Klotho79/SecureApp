@@ -31,4 +31,22 @@ public static class RoleAccessPolicy
         (Role.Modifier, _) => true,
         _ => false
     };
+
+    /// <summary>
+    /// Chat message deletion (2026-09-11, the user's own spec): "jen admin muze mazat jakoukoli.
+    /// Modifer muze mazat sve a vieweru a viewer muze mazat jen sve zpravy" — Admin may delete any
+    /// message; a Modifier may delete their own and any Viewer's; a Viewer may delete only their own.
+    /// A separate method rather than an <see cref="RbacAction"/> because this isn't a plain role→action
+    /// yes/no — it also depends on whether the message is the actor's own and on who sent it.
+    /// </summary>
+    /// <param name="actorRole">The role of the user attempting the deletion (this device's current role).</param>
+    /// <param name="isOwnMessage">Whether the message being deleted was sent by the actor.</param>
+    /// <param name="senderRole">The role the message's sender held when they sent it — may be null for messages sent before this was tracked, in which case a non-own deletion is denied for everyone except Admin (safe degradation).</param>
+    public static bool CanDeleteMessage(Role actorRole, bool isOwnMessage, Role? senderRole)
+    {
+        if (actorRole == Role.Admin) return true;
+        if (isOwnMessage) return true;
+        // Non-own message: only a Modifier may delete it, and only if a Viewer sent it.
+        return actorRole == Role.Modifier && senderRole == Role.Viewer;
+    }
 }

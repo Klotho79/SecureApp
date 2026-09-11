@@ -2,7 +2,12 @@ using SecureApp.Domain.Entities;
 
 namespace SecureApp.Domain.Interfaces.Repositories;
 
-/// <summary>Append-only by design once a message is sent/received: intentionally exposes no Delete, matching <c>IAuditLogRepository</c>'s precedent.</summary>
+/// <summary>
+/// Was append-only by design; message deletion (2026-09-11, the user's own request — see
+/// <c>RoleAccessPolicy.CanDeleteMessage</c> for the RBAC rules) adds the two Delete methods below.
+/// The audit trail of who-deleted-what is not itself removed — <c>IAuditLogRepository</c> keeps its
+/// append-only precedent; only the redecryptable message body is removed.
+/// </summary>
 public interface IMessageRepository
 {
     Task<Message?> GetByIdAsync(Guid id, CancellationToken ct = default);
@@ -13,4 +18,15 @@ public interface IMessageRepository
 
     Task AddAsync(Message message, CancellationToken ct = default);
     Task UpdateAsync(Message message, CancellationToken ct = default);
+
+    /// <summary>Deletes a single local message row by its per-device <see cref="Message.Id"/> — used for a local-only delete of a message that has no cross-device correlation id (one sent before that was tracked). Idempotent: deleting a row that's already gone is a no-op.</summary>
+    Task DeleteAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>
+    /// Deletes every local row that is a copy of the SAME logical message as identified by a
+    /// cross-device correlation id — matches rows whose <see cref="Message.OriginMessageId"/> OR
+    /// <see cref="Message.GroupMessageId"/> equals <paramref name="correlationId"/>. One call removes
+    /// both a 1:1 message and (on the sender's side) all N fan-out legs of a group message. Idempotent.
+    /// </summary>
+    Task DeleteByCorrelationAsync(Guid correlationId, CancellationToken ct = default);
 }

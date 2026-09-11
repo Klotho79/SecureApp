@@ -225,18 +225,24 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
 
         foreach (var message in rawMessages.OrderBy(m => m.CreatedAtUtc))
         {
+            // System-carried machinery (2026-09-11, e.g. a group-tagged delete command) — never a
+            // real chat message; filter it out of the visible thread, same as ChatViewModel does.
+            if (message.IsSystemPayload) continue;
+
             if (message.Direction == MessageDirection.Outbound)
             {
                 if (message.GroupMessageId is { } groupMessageId && !seenOutboundGroupMessageIds.Add(groupMessageId))
                     continue; // already rendered this logical message from an earlier fan-out leg
             }
 
-            var senderName = message.Direction == MessageDirection.Outbound
+            var isOwn = message.Direction == MessageDirection.Outbound;
+            var senderName = isOwn
                 ? _currentUserService.Current.DisplayName
                 : await ResolveSenderDisplayNameAsync(message.ChatSessionId);
 
             var text = await TryDecryptAsync(message);
-            items.Add(new GroupMessageItem(message.Id, message.Direction == MessageDirection.Outbound, senderName, text, message.CreatedAtUtc, message.AttachmentLibraryFileId, message.AttachmentFileName));
+            var canDelete = RoleAccessPolicy.CanDeleteMessage(_currentUserService.Current.Role, isOwn, message.SenderRole);
+            items.Add(new GroupMessageItem(message.Id, isOwn, senderName, text, message.CreatedAtUtc, message.AttachmentLibraryFileId, message.AttachmentFileName, canDelete, message.GroupMessageId));
         }
 
         Messages = new ObservableCollection<GroupMessageItem>(items.OrderBy(m => m.SentAtUtc));
@@ -324,7 +330,8 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
                 }
             }
 
-            Messages.Add(new GroupMessageItem(Guid.NewGuid(), true, _currentUserService.Current.DisplayName, text, DateTimeOffset.UtcNow, attachmentId, attachmentName));
+            // Own message — always deletable by this user; correlated across the fan-out by groupMessageId.
+            Messages.Add(new GroupMessageItem(Guid.NewGuid(), true, _currentUserService.Current.DisplayName, text, DateTimeOffset.UtcNow, attachmentId, attachmentName, CanDelete: true, CorrelationId: groupMessageId));
 
             if (undelivered.Count > 0)
                 StatusErrorMessage = $"Nedoručeno {undelivered.Count} z {otherMembers.Count}: " + string.Join("; ", undelivered.Select(u => $"{u.Name} ({u.Reason})"));
@@ -332,6 +339,73 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
         catch (Exception ex)
         {
             StatusErrorMessage = $"Nepodařilo se odeslat: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Deletes a group message for everyone (2026-09-11) — RBAC-gated per
+    /// <c>RoleAccessPolicy.CanDeleteMessage</c> (Admin any, Modifier own + Viewers', Viewer own only).
+    /// Removes this device's local copies (all fan-out legs, matched by the shared group-message id)
+    /// and fans a delete command out to every other member's pairwise session, tagged with this group
+    /// id so each member's open thread updates live (and the app-wide handler removes it when closed).
+    /// </summary>
+    [RelayCommand]
+    private async Task DeleteMessageAsync(GroupMessageItem? item)
+    {
+        if (item is null || item.CorrelationId is not { } correlationId) return;
+
+        // Re-check RBAC (the item's CanDelete is a snapshot). Own messages are always deletable;
+        // for someone else's, look up the stored sender role (inbound items carry a real message id).
+        var actorRole = _currentUserService.Current.Role;
+        bool allowed;
+        if (item.IsOutbound)
+        {
+            allowed = true;
+        }
+        else
+        {
+            var stored = await _messageRepository.GetByIdAsync(item.Id);
+            allowed = RoleAccessPolicy.CanDeleteMessage(actorRole, false, stored?.SenderRole);
+        }
+
+        if (!allowed)
+        {
+            StatusErrorMessage = "Na smazání této zprávy nemáte oprávnění.";
+            return;
+        }
+
+        var confirmed = await Shell.Current.DisplayAlert("Smazat zprávu", "Opravdu smazat tuto zprávu? Smaže se u všech členů skupiny.", "Smazat", "Zrušit");
+        if (!confirmed) return;
+
+        try
+        {
+            await _messageRepository.DeleteByCorrelationAsync(correlationId);
+            var doomed = Messages.Where(m => m.CorrelationId == correlationId).ToList();
+            foreach (var doomedItem in doomed)
+                Messages.Remove(doomedItem);
+
+            var payload = MessageDeletionSync.BuildDeleteCommand(correlationId);
+            var otherMembers = _members.Where(m => !m.PublicKey.AsSpan().SequenceEqual(_localPublicKey)).ToList();
+            foreach (var member in otherMembers)
+            {
+                try
+                {
+                    var session = await _messagingService.FindExistingSessionAsync(member.PublicKey);
+                    if (session is null) continue; // not paired right now — the app-wide handler on their side still applies it if/when they later receive... nothing to send here
+
+                    var (_, envelope) = await _messagingService.SendMessageAsync(session.Id, payload, isSystemPayload: true, groupChatId: _groupChatId);
+                    if (_messageTransport.IsConnected)
+                        await _messageTransport.SendEnvelopeAsync(envelope);
+                }
+                catch
+                {
+                    // Best-effort per member, same policy as SendAsync's own fan-out.
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusErrorMessage = $"Zprávu se nepodařilo smazat: {ex.Message}";
         }
     }
 
@@ -668,22 +742,53 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
     {
         if (envelope.GroupChatId != _groupChatId) return;
 
+        // A delete command (2026-09-11) fans out tagged with this group id so it routes here; it's a
+        // system payload, so it never shows as a bubble — handle it and stop. Ordinary messages fall
+        // through to the visible-add path below.
+        if (envelope.IsSystemPayload)
+        {
+            await HandleSystemPayloadAsync(envelope);
+            return;
+        }
+
         try
         {
             var message = await _messagingService.ReceiveMessageAsync(envelope);
             var senderName = await ResolveSenderDisplayNameAsync(message.ChatSessionId);
             var text = await TryDecryptAsync(message);
-            Messages.Add(new GroupMessageItem(message.Id, false, senderName, text, message.CreatedAtUtc, message.AttachmentLibraryFileId, message.AttachmentFileName));
+            var canDelete = RoleAccessPolicy.CanDeleteMessage(_currentUserService.Current.Role, false, message.SenderRole);
+            Messages.Add(new GroupMessageItem(message.Id, false, senderName, text, message.CreatedAtUtc, message.AttachmentLibraryFileId, message.AttachmentFileName, canDelete, message.GroupMessageId));
         }
         catch (Exception ex)
         {
             await TryAutoHealAsync(envelope.SessionId, ex);
         }
     }
+
+    /// <summary>Handles a group-tagged system payload live while this thread is open — currently just a delete command (removes the target from the visible list; the DB delete is idempotent and also done by the app-wide handler).</summary>
+    private async Task HandleSystemPayloadAsync(MessageEnvelope envelope)
+    {
+        try
+        {
+            var message = await _messagingService.ReceiveMessageAsync(envelope); // idempotent
+            var plaintext = await _messagingService.DecryptMessageAsync(message.Id);
+            if (MessageDeletionSync.TryParseDeleteCommand(plaintext, out var correlationId))
+            {
+                await _messageRepository.DeleteByCorrelationAsync(correlationId);
+                var doomed = Messages.Where(m => m.CorrelationId == correlationId).ToList();
+                foreach (var item in doomed)
+                    Messages.Remove(item);
+            }
+        }
+        catch
+        {
+            // Best-effort — a malformed/foreign system payload never disrupts the open thread.
+        }
+    }
 }
 
 /// <summary>One message in a group's thread — unlike <see cref="ChatMessageItem"/>, always carries the sender's display name, since "who sent this" isn't implicit the way it is in a 1:1 thread. <see cref="IsInbound"/> is a plain negation kept as its own field (not a XAML converter) — this codebase's established pattern (see <c>SettingsViewModel.HasPendingActivations</c>'s own remarks) so no binding ever needs to negate another.</summary>
-public sealed record GroupMessageItem(Guid Id, bool IsOutbound, string SenderDisplayName, string Text, DateTimeOffset SentAtUtc, Guid? AttachmentLibraryFileId = null, string? AttachmentFileName = null)
+public sealed record GroupMessageItem(Guid Id, bool IsOutbound, string SenderDisplayName, string Text, DateTimeOffset SentAtUtc, Guid? AttachmentLibraryFileId = null, string? AttachmentFileName = null, bool CanDelete = false, Guid? CorrelationId = null)
 {
     public bool HasAttachment => AttachmentLibraryFileId is not null;
     public bool HasText => !string.IsNullOrEmpty(Text);

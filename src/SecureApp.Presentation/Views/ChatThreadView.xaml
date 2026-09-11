@@ -41,20 +41,37 @@
                                     </DataTrigger>
                                 </Border.Triggers>
                                 <VerticalStackLayout Spacing="0">
-                                    <!-- Header row: the time, on its own line above the message text — a 1:1 thread
-                                         has no per-message "kdo" label (the bubble side already says who), so this
-                                         is just the time header half of the group-chat layout, kept consistent. -->
-                                    <Label
-                                        Text="{Binding SentAtUtc.LocalDateTime, StringFormat='{0:t}'}"
-                                        FontSize="9"
-                                        HorizontalOptions="End"
-                                        TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}">
-                                        <Label.Triggers>
-                                            <DataTrigger TargetType="Label" Binding="{Binding IsOutbound}" Value="True">
-                                                <Setter Property="TextColor" Value="{AppThemeBinding Light=#CFE7F0, Dark={StaticResource PrimaryDarkText}}" />
-                                            </DataTrigger>
-                                        </Label.Triggers>
-                                    </Label>
+                                    <!-- Header row: a delete button (only when this user may delete this message — see
+                                         RoleAccessPolicy.CanDeleteMessage) at the start, the time at the end. A 1:1 thread
+                                         has no per-message "kdo" label (the bubble side already says who). -->
+                                    <Grid ColumnDefinitions="Auto,*">
+                                        <Button
+                                            Grid.Column="0"
+                                            Text="🗑"
+                                            FontSize="10"
+                                            Padding="0"
+                                            WidthRequest="24"
+                                            HeightRequest="20"
+                                            BackgroundColor="Transparent"
+                                            TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}"
+                                            HorizontalOptions="Start"
+                                            IsVisible="{Binding CanDelete}"
+                                            Command="{Binding Source={x:Reference ChatThreadRoot}, Path=BindingContext.DeleteMessageCommand}"
+                                            CommandParameter="{Binding .}" />
+                                        <Label
+                                            Grid.Column="1"
+                                            Text="{Binding SentAtUtc.LocalDateTime, StringFormat='{0:t}'}"
+                                            FontSize="9"
+                                            HorizontalOptions="End"
+                                            VerticalOptions="Center"
+                                            TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}">
+                                            <Label.Triggers>
+                                                <DataTrigger TargetType="Label" Binding="{Binding IsOutbound}" Value="True">
+                                                    <Setter Property="TextColor" Value="{AppThemeBinding Light=#CFE7F0, Dark={StaticResource PrimaryDarkText}}" />
+                                                </DataTrigger>
+                                            </Label.Triggers>
+                                        </Label>
+                                    </Grid>
 
                                     <Label Text="{Binding Text}" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" FontSize="13" LineBreakMode="WordWrap" IsVisible="{Binding HasText}">
                                         <Label.Triggers>

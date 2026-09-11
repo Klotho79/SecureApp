@@ -182,10 +182,9 @@
                     <Entry Text="{Binding SharedLibraryKeyImportText}" Placeholder="Vložte klíč, který vygeneroval někdo jiný" />
                     <Button Text="Importovat" Style="{StaticResource SecondaryButton}" Command="{Binding ImportSharedLibraryKeyCommand}" />
 
-                    <!-- Manual resend (2026-09-11) — the automatic per-chat-open offer doesn't cover
-                         every already-paired peer right away; this pushes the key to everyone this
-                         device is currently paired with on demand. -->
-                    <Button Text="Rozeslat klíč všem spárovaným" Style="{StaticResource SecondaryButton}" Command="{Binding ResendSharedLibraryKeyCommand}" IsVisible="{Binding HasSharedLibraryKey}" />
+                    <!-- Key distribution is fully automatic (2026-09-11) — the app pushes the key to
+                         paired peers and keyless peers pull it, with no user action. This label is
+                         passive confirmation the app did it, not a control to operate. -->
                     <Label Text="{Binding SharedLibraryBroadcastStatusText}" FontSize="12" TextColor="Gray" IsVisible="{Binding HasSharedLibraryBroadcastStatus}" LineBreakMode="WordWrap" />
                 </VerticalStackLayout>
             </Border>

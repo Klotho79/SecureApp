@@ -1,3 +1,5 @@
+using SecureApp.Domain.Enums;
+
 namespace SecureApp.Domain.ValueObjects;
 
 /// <summary>
@@ -26,4 +28,6 @@ public sealed record MessageEnvelope(
     string? AttachmentFileName = null,
     Guid? GroupChatId = null,
     Guid? GroupMessageId = null,
-    bool IsSystemPayload = false);
+    bool IsSystemPayload = false,
+    Guid? OriginMessageId = null,
+    Role? SenderRole = null);
