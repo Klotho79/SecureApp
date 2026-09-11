@@ -49,6 +49,16 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
     private bool _isLoadingOlder;
     private Role _currentRole;
 
+    // In-memory thread cache (2026-09-11, the user's ask) — a warm copy of each session's decrypted
+    // thread, process-wide, so re-opening a chat can show its messages INSTANTLY (populated before the
+    // page even slides in — see ApplyQueryAttributes) instead of blank-then-fill. Coherence is by the
+    // cheap change-signature (count + newest timestamp): on open the thread is refreshed only if the
+    // DB has actually changed since the copy was taken, so an unchanged chat never rebuilds (no
+    // flicker, no work), while a changed one reloads once. Keyed by session id; survives the transient
+    // view model because it's static.
+    private sealed record CachedThread(string Title, List<ChatMessageItem> Items, List<Message> Older, string Signature);
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, CachedThread> _threadCache = new();
+
     [ObservableProperty]
     public partial string Title { get; set; }
 
@@ -140,6 +150,18 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
     {
         if (query.TryGetValue("chatSessionId", out var value) && Guid.TryParse(value?.ToString(), out var id))
             _chatSessionId = id;
+
+        // Populate from the warm cache SYNCHRONOUSLY, before the page appears/slides in, so a
+        // revisited chat shows its messages already in place as it slides (2026-09-11 — the user's
+        // "už s obrazeným obsahem"). LoadAsync then verifies against the DB and only rebuilds if
+        // something changed. A first-ever open (cache miss) falls through to the normal load.
+        if (_threadCache.TryGetValue(_chatSessionId, out var cached))
+        {
+            Title = cached.Title;
+            _olderRows.Clear();
+            _olderRows.AddRange(cached.Older);
+            Messages = new ObservableCollection<ChatMessageItem>(cached.Items);
+        }
     }
 
     /// <summary>
@@ -183,16 +205,23 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
     [RelayCommand]
     private async Task LoadAsync()
     {
-        IsLoading = true; // the spinner itself only appears if this lasts — see DelayedActivityIndicator
+        // Spinner only matters on a cold open (nothing shown yet); a cached open already has content.
+        IsLoading = Messages.Count == 0;
         StatusErrorMessage = null;
+        var alreadyShown = Messages.Count > 0; // populated synchronously from cache in ApplyQueryAttributes
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
-            // Phase 1 — ALL the loading (DB + decrypt) on a background thread, so it runs in parallel
-            // with the open animation and never touches the UI thread. Only the newest
-            // InitialMessageCount are decrypted; older ones are held for on-demand scroll-up.
-            var loaded = await Task.Run(async () =>
+            // Phase 1 (background): first the cheap change-signature. If we already showed a cached
+            // copy and nothing changed, there's nothing to rebuild — skip straight to the network
+            // refresh. Otherwise (cold, or the thread changed) do the full load + decrypt here, off
+            // the UI thread, in parallel with the open animation.
+            var loaded = await Task.Run<(bool Changed, ChatSession? Session, List<Message> Older, List<ChatMessageItem> Items, string Signature)>(async () =>
             {
+                var signature = await _messageRepository.GetSessionSignatureAsync(_chatSessionId);
+                if (alreadyShown && _threadCache.TryGetValue(_chatSessionId, out var c) && c.Signature == signature)
+                    return (false, null, [], [], signature);
+
                 await _currentUserService.InitializeAsync();
                 var session = await _sessionRepository.GetByIdAsync(_chatSessionId);
                 var role = _currentUserService.Current.Role;
@@ -211,24 +240,39 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
                 foreach (var message in initialRows)
                     items.Add(await BuildItemAsync(message, role));
 
-                return (session, older, items);
+                return (true, session, older, items, signature);
             });
 
-            // Phase 2 — wait out the rest of the animation (if any), THEN touch the UI. Because
-            // phase 1 overlapped the slide, this usually adds little or nothing.
-            var remaining = AnimationSettleMs - (int)sw.ElapsedMilliseconds;
-            if (remaining > 0) await Task.Delay(remaining);
-
+            await _currentUserService.InitializeAsync();
             _currentRole = _currentUserService.Current.Role;
-            Title = loaded.session?.PeerDisplayName ?? "Chat";
+
+            if (!loaded.Changed)
+            {
+                // The already-shown cached copy is current — nothing to re-render, just settle at the newest.
+                IsLoading = false;
+                ScrollToBottomRequested?.Invoke();
+                var cachedSession = await _sessionRepository.GetByIdAsync(_chatSessionId);
+                _ = RefreshInBackgroundAsync(cachedSession);
+                return;
+            }
+
+            // Only hold the UI assignment back for the animation on a COLD open (blank screen); when a
+            // cached copy is already on screen, apply the refreshed content right away.
+            if (!alreadyShown)
+            {
+                var remaining = AnimationSettleMs - (int)sw.ElapsedMilliseconds;
+                if (remaining > 0) await Task.Delay(remaining);
+            }
+
+            Title = loaded.Session?.PeerDisplayName ?? "Chat";
             _olderRows.Clear();
-            _olderRows.AddRange(loaded.older);
-            Messages = new ObservableCollection<ChatMessageItem>(loaded.items);
+            _olderRows.AddRange(loaded.Older);
+            Messages = new ObservableCollection<ChatMessageItem>(loaded.Items);
+            _threadCache[_chatSessionId] = new CachedThread(Title, loaded.Items, [.. loaded.Older], loaded.Signature);
             IsLoading = false;
             ScrollToBottomRequested?.Invoke();
 
-            // Network work only, off the critical path — no message loading here anymore.
-            _ = RefreshInBackgroundAsync(loaded.session);
+            _ = RefreshInBackgroundAsync(loaded.Session);
         }
         catch (Exception ex)
         {
@@ -238,6 +282,17 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         {
             IsLoading = false;
         }
+    }
+
+    /// <summary>Refreshes the warm cache with the currently-displayed thread and the current signature (2026-09-11) — called after a live send/receive/delete so the next open shows the up-to-date thread instantly rather than a stale snapshot. Best-effort.</summary>
+    private async Task UpdateCacheAsync()
+    {
+        try
+        {
+            var signature = await _messageRepository.GetSessionSignatureAsync(_chatSessionId);
+            _threadCache[_chatSessionId] = new CachedThread(Title, Messages.ToList(), [.. _olderRows], signature);
+        }
+        catch { /* best-effort — a stale cache self-corrects on the next open via the signature check */ }
     }
 
     /// <summary>Builds one thread item from an already-loaded message row (decrypt + delete-gating) — shared by the initial load, the background older-message load, and the live receive path.</summary>
@@ -359,6 +414,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
             // A just-sent message is always the actor's own, so it's always deletable by them (every role may delete its own).
             Messages.Add(new ChatMessageItem(message.Id, true, text, message.CreatedAtUtc, message.Status, message.AttachmentLibraryFileId, message.AttachmentFileName, CanDelete: true, CorrelationId: message.OriginMessageId));
             ScrollToBottomRequested?.Invoke();
+            _ = UpdateCacheAsync();
 
             // Best-effort live send: the message is already durably persisted as Pending above
             // regardless of what happens here — no relay connected yet is the expected common
@@ -496,6 +552,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
             var canDelete = RoleAccessPolicy.CanDeleteMessage(_currentUserService.Current.Role, false, message.SenderRole);
             Messages.Add(new ChatMessageItem(message.Id, false, text, message.CreatedAtUtc, message.Status, message.AttachmentLibraryFileId, message.AttachmentFileName, canDelete, message.OriginMessageId));
             ScrollToBottomRequested?.Invoke();
+            _ = UpdateCacheAsync();
         }
         catch (Exception ex)
         {
@@ -516,6 +573,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
                 var doomed = Messages.Where(m => m.CorrelationId == correlationId).ToList();
                 foreach (var item in doomed)
                     Messages.Remove(item);
+                if (doomed.Count > 0) _ = UpdateCacheAsync();
             }
         }
         catch
@@ -601,6 +659,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
 
             var existing = Messages.FirstOrDefault(m => m.Id == item.Id);
             if (existing is not null) Messages.Remove(existing);
+            _ = UpdateCacheAsync();
 
             // Propagate the delete to the peer — only possible for a message carrying a cross-device
             // correlation id (a very old message can't be deleted for the other side, only locally).

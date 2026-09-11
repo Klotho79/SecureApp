@@ -62,7 +62,8 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
         IReadOnlyDictionary<string, string> DirectoryNames,
         Dictionary<Guid, string> SessionNames,
         List<Message> OlderLogical,
-        List<GroupMessageItem> Items);
+        List<GroupMessageItem> Items,
+        string Signature);
 
     /// <summary>Raised after older history is prepended, carrying the previously-top item so the page can re-anchor (no jump) — mirrors ChatViewModel.ScrollAnchorRequested.</summary>
     public event Action<GroupMessageItem>? ScrollAnchorRequested;
@@ -181,10 +182,26 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
         PendingAttachmentFileName = null;
     }
 
+    // Warm message-thread cache (2026-09-11) — see ChatViewModel's own remarks. Caches the group's
+    // decrypted message list so a revisit shows it instantly (populated before the slide); the member
+    // list + per-session state still load in LoadAsync but the expensive per-message decrypt is skipped
+    // when the cheap signature says nothing changed.
+    private sealed record CachedGroupThread(string Title, List<GroupMessageItem> Items, List<Message> Older, string Signature);
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, CachedGroupThread> _groupThreadCache = new();
+
     public void ApplyQueryAttributes(IDictionary<string, object> query)
     {
         if (query.TryGetValue("groupChatId", out var value) && Guid.TryParse(value?.ToString(), out var id))
             _groupChatId = id;
+
+        // Show the cached thread synchronously, before the page slides in (content already in place).
+        if (_groupThreadCache.TryGetValue(_groupChatId, out var cached))
+        {
+            Title = cached.Title;
+            _olderLogicalRows.Clear();
+            _olderLogicalRows.AddRange(cached.Older);
+            Messages = new ObservableCollection<GroupMessageItem>(cached.Items);
+        }
     }
 
     [RelayCommand]
@@ -216,6 +233,13 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
                     s => s.Id,
                     s => DirectoryNameResolver.Resolve(directoryNames, s.PeerIdentityPublicKey, s.PeerDisplayName));
 
+                // If the already-shown cached copy is still current, skip the expensive per-message
+                // decrypt entirely — reuse the cached items. Member/session state above is cheap and
+                // always loaded (needed for the member list, sending, delete gating).
+                var signature = await _messageRepository.GetGroupSignatureAsync(_groupChatId);
+                if (_groupThreadCache.TryGetValue(_groupChatId, out var c) && c.Signature == signature)
+                    return new GroupInitialLoad(group, localPublicKey, role, members, directoryNames, sessionNames, c.Older, c.Items, signature);
+
                 var rawMessages = await _messageRepository.GetByGroupAsync(_groupChatId);
                 var seen = new HashSet<Guid>();
                 var logical = new List<Message>();
@@ -240,7 +264,7 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
                     items.Add(new GroupMessageItem(m.Id, isOwn, senderName, text, m.CreatedAtUtc, m.AttachmentLibraryFileId, m.AttachmentFileName, canDelete, m.GroupMessageId));
                 }
 
-                return new GroupInitialLoad(group, localPublicKey, role, members, directoryNames, sessionNames, older, items);
+                return new GroupInitialLoad(group, localPublicKey, role, members, directoryNames, sessionNames, older, items, signature);
             });
 
             if (loaded is null)
@@ -265,6 +289,7 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
             _olderLogicalRows.AddRange(loaded.OlderLogical);
             RebuildMemberList();
             Messages = new ObservableCollection<GroupMessageItem>(loaded.Items);
+            _groupThreadCache[_groupChatId] = new CachedGroupThread(Title, loaded.Items, [.. loaded.OlderLogical], loaded.Signature);
             IsLoading = false;
             ScrollToBottomRequested?.Invoke();
 
@@ -286,6 +311,17 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
 
     /// <summary>Raised once the thread is (re)populated so the page can scroll to the newest message — see GroupChatPage's own subscription. Mirrors ChatViewModel.ScrollToBottomRequested.</summary>
     public event Action? ScrollToBottomRequested;
+
+    /// <summary>Refreshes the warm cache with the currently-displayed group thread (2026-09-11) — called after a live send/receive/delete so the next open shows the up-to-date thread instantly. Best-effort.</summary>
+    private async Task UpdateCacheAsync()
+    {
+        try
+        {
+            var signature = await _messageRepository.GetGroupSignatureAsync(_groupChatId);
+            _groupThreadCache[_groupChatId] = new CachedGroupThread(Title, Messages.ToList(), [.. _olderLogicalRows], signature);
+        }
+        catch { /* best-effort — self-corrects on the next open via the signature check */ }
+    }
 
     /// <summary>Projects <see cref="_members"/> into the bound <see cref="Members"/> chips using the current <see cref="_directoryNames"/> snapshot — factored out so the background refresh can rebuild them with fresh names without duplicating the projection.</summary>
     private void RebuildMemberList()
@@ -368,6 +404,7 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
 
         Messages = new ObservableCollection<GroupMessageItem>(initialItems);
         ScrollToBottomRequested?.Invoke();
+        _ = UpdateCacheAsync();
     }
 
     /// <summary>Builds one group thread item from an already-loaded row (decrypt without a re-fetch + name from the preloaded map + delete-gating) — shared by initial load, older-page load, and live receive.</summary>
@@ -498,6 +535,7 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
             // Own message — always deletable by this user; correlated across the fan-out by groupMessageId.
             Messages.Add(new GroupMessageItem(Guid.NewGuid(), true, _currentUserService.Current.DisplayName, text, DateTimeOffset.UtcNow, attachmentId, attachmentName, CanDelete: true, CorrelationId: groupMessageId));
             ScrollToBottomRequested?.Invoke();
+            _ = UpdateCacheAsync();
 
             if (undelivered.Count > 0)
                 StatusErrorMessage = $"Nedoručeno {undelivered.Count} z {otherMembers.Count}: " + string.Join("; ", undelivered.Select(u => $"{u.Name} ({u.Reason})"));
@@ -549,6 +587,7 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
             var doomed = Messages.Where(m => m.CorrelationId == correlationId).ToList();
             foreach (var doomedItem in doomed)
                 Messages.Remove(doomedItem);
+            _ = UpdateCacheAsync();
 
             var payload = MessageDeletionSync.BuildDeleteCommand(correlationId);
             var otherMembers = _members.Where(m => !m.PublicKey.AsSpan().SequenceEqual(_localPublicKey)).ToList();
@@ -938,6 +977,7 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
             var canDelete = RoleAccessPolicy.CanDeleteMessage(_currentUserService.Current.Role, false, message.SenderRole);
             Messages.Add(new GroupMessageItem(message.Id, false, senderName, text, message.CreatedAtUtc, message.AttachmentLibraryFileId, message.AttachmentFileName, canDelete, message.GroupMessageId));
             ScrollToBottomRequested?.Invoke();
+            _ = UpdateCacheAsync();
         }
         catch (Exception ex)
         {
@@ -958,6 +998,7 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
                 var doomed = Messages.Where(m => m.CorrelationId == correlationId).ToList();
                 foreach (var item in doomed)
                     Messages.Remove(item);
+                if (doomed.Count > 0) _ = UpdateCacheAsync();
             }
         }
         catch

@@ -16,6 +16,12 @@ public interface IMessageRepository
     /// <summary>Every message row tagged with this group (2026-09-07) — spans every member's own pairwise <c>ChatSession</c>, not just one, since a group message's fan-out legs each live under a different session id. The caller (a group's own thread view) is responsible for collapsing the sender's own N outbound copies of one logical message back down via <see cref="Message.GroupMessageId"/> — see <c>GroupChat</c>'s own remarks.</summary>
     Task<IReadOnlyList<Message>> GetByGroupAsync(Guid groupChatId, CancellationToken ct = default);
 
+    /// <summary>A cheap change-signature for a 1:1 session's visible messages (count + newest timestamp) — lets the UI keep a warm in-memory copy of a thread and only rebuild it when this actually changes, without reading/decrypting every row (2026-09-11).</summary>
+    Task<string> GetSessionSignatureAsync(Guid chatSessionId, CancellationToken ct = default);
+
+    /// <summary>The group counterpart of <see cref="GetSessionSignatureAsync"/>.</summary>
+    Task<string> GetGroupSignatureAsync(Guid groupChatId, CancellationToken ct = default);
+
     Task AddAsync(Message message, CancellationToken ct = default);
     Task UpdateAsync(Message message, CancellationToken ct = default);
 

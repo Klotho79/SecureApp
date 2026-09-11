@@ -1,7 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
-using SecureApp.Domain.Enums;
-using SecureApp.Domain.Interfaces.Services;
-
 namespace SecureApp.Presentation.Controls;
 
 /// <summary>
@@ -34,8 +30,6 @@ public class DelayedActivityIndicator : ActivityIndicator
     }
 
     private CancellationTokenSource? _cts;
-    private DateTime _busyStartedUtc;
-    private bool _shown;
 
     public DelayedActivityIndicator()
     {
@@ -52,17 +46,11 @@ public class DelayedActivityIndicator : ActivityIndicator
 
         if (!busy)
         {
-            // 2026-09-11 instrumentation: report how long the busy state actually lasted and whether
-            // the spinner ended up showing — so we can tell a genuinely-slow load from a control bug.
-            var elapsedMs = (int)(DateTime.UtcNow - _busyStartedUtc).TotalMilliseconds;
-            Report($"busy ended after {elapsedMs} ms, spinnerShown={_shown}");
             IsVisible = false;
             IsRunning = false;
-            _shown = false;
             return;
         }
 
-        _busyStartedUtc = DateTime.UtcNow;
         var cts = _cts = new CancellationTokenSource();
         _ = ShowAfterDelayAsync(cts.Token);
     }
@@ -84,17 +72,6 @@ public class DelayedActivityIndicator : ActivityIndicator
             if (ct.IsCancellationRequested) return; // a newer state change won the race
             IsVisible = true;
             IsRunning = true;
-            _shown = true;
         });
-    }
-
-    private static void Report(string message)
-    {
-        try
-        {
-            var reporter = IPlatformApplication.Current?.Services.GetService<IDiagnosticsReporter>();
-            _ = reporter?.ReportAsync(DiagnosticLogLevel.Info, "Spinner: " + message, nameof(DelayedActivityIndicator));
-        }
-        catch { /* diagnostics is best-effort */ }
     }
 }

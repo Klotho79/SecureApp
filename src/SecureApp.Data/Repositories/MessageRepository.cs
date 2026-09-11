@@ -43,6 +43,26 @@ public sealed class MessageRepository : IMessageRepository
         return rows.Select(ToEntity).ToList();
     }
 
+    public async Task<string> GetSessionSignatureAsync(Guid chatSessionId, CancellationToken ct = default)
+    {
+        var connection = await _connectionFactory.GetConnectionAsync(ct);
+        var count = await connection.ExecuteScalarAsync<int>(
+            "SELECT COUNT(*) FROM messages WHERE chat_session_id = ? AND group_chat_id IS NULL AND is_system_payload = 0", chatSessionId.ToString());
+        var maxCreated = await connection.ExecuteScalarAsync<string>(
+            "SELECT MAX(created_at_utc) FROM messages WHERE chat_session_id = ? AND group_chat_id IS NULL AND is_system_payload = 0", chatSessionId.ToString());
+        return $"{count}:{maxCreated}";
+    }
+
+    public async Task<string> GetGroupSignatureAsync(Guid groupChatId, CancellationToken ct = default)
+    {
+        var connection = await _connectionFactory.GetConnectionAsync(ct);
+        var count = await connection.ExecuteScalarAsync<int>(
+            "SELECT COUNT(*) FROM messages WHERE group_chat_id = ? AND is_system_payload = 0", groupChatId.ToString());
+        var maxCreated = await connection.ExecuteScalarAsync<string>(
+            "SELECT MAX(created_at_utc) FROM messages WHERE group_chat_id = ? AND is_system_payload = 0", groupChatId.ToString());
+        return $"{count}:{maxCreated}";
+    }
+
     public async Task AddAsync(Message message, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(message);
