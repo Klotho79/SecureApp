@@ -19,9 +19,17 @@
                 VerticalOptions="Center"
                 TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" />
 
-            <ScrollView IsVisible="{Binding HasImage}">
-                <Image Source="{Binding CurrentPageImage}" Aspect="AspectFit" HorizontalOptions="Center" />
-            </ScrollView>
+            <!-- 2026-09-11: fit the whole image within the available area. It used to live in a
+                 vertical ScrollView, which measures its content with unbounded height, so AspectFit
+                 had no height to fit against and the image rendered larger than the window and got
+                 cut off (the user's report on PC). Placed directly in the cell with Fill on both
+                 axes, AspectFit now scales the whole image down to fit — nothing cropped. -->
+            <Image
+                Source="{Binding CurrentPageImage}"
+                Aspect="AspectFit"
+                IsVisible="{Binding HasImage}"
+                HorizontalOptions="Fill"
+                VerticalOptions="Fill" />
 
             <!-- Milestone 4, Task 4.4: moving watermark overlay (username + timestamp + IP).
                  InputTransparent so it never blocks taps on the image/buttons underneath. -->

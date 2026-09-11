@@ -40,6 +40,15 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
     private Guid _chatSessionId;
     private EventHandler<MessageEnvelope>? _envelopeReceivedHandler;
 
+    // On-demand history pagination (2026-09-11) — the visible thread starts at the newest page; older
+    // messages are loaded a page at a time only when the user scrolls up (see LoadOlderAsync), instead
+    // of the earlier background-prepend that both did needless work and yanked the view to the top.
+    // _olderRows holds the not-yet-shown older message rows (undecrypted, cheap references), oldest
+    // first; the tail of it is the next page to reveal.
+    private readonly List<Message> _olderRows = [];
+    private bool _isLoadingOlder;
+    private Role _currentRole;
+
     [ObservableProperty]
     public partial string Title { get; set; }
 
@@ -161,8 +170,12 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
     /// <summary>Raised once the thread has been (re)populated so the hosting view can scroll to the newest message — see ChatThreadView's own subscription. Kept as a plain event (not a bound property) since "scroll now" is a one-shot action, not state.</summary>
     public event Action? ScrollToBottomRequested;
 
-    /// <summary>How many of the newest messages to decrypt and show immediately on open (2026-09-11 perf, the user's own ask: "nemusí se načíst celý chat ale třeba jen posledních 5-10 zpráv"). The rest are decrypted and prepended in the background — see LoadOlderInBackgroundAsync.</summary>
-    private const int InitialMessageCount = 12;
+    /// <summary>Raised after older history has been prepended, carrying the item that was at the top BEFORE the prepend — the hosting view scrolls back to it so revealing history never jumps the view (see ChatThreadView). Without this, inserting rows above the viewport shifts it to the oldest message, the exact jump the user reported.</summary>
+    public event Action<ChatMessageItem>? ScrollAnchorRequested;
+
+    /// <summary>How many of the newest messages to show immediately on open, and how many older ones to reveal per scroll-up page (2026-09-11, the user's own ask: "nemusí se načíst celý chat ale třeba jen posledních 5-10 zpráv... možnost rolovat ve zprávách do minulosti").</summary>
+    private const int InitialMessageCount = 20;
+    private const int OlderPageSize = 20;
 
     [RelayCommand]
     private async Task LoadAsync()
@@ -183,7 +196,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
             // Show the name we already have locally immediately; the directory may refine it later.
             Title = session?.PeerDisplayName ?? "Chat";
 
-            var currentRole = _currentUserService.Current.Role;
+            _currentRole = _currentUserService.Current.Role;
 
             // Cheap: filter + order by the row metadata only (no decryption yet).
             var allRows = await _messageRepository.GetBySessionAsync(_chatSessionId);
@@ -194,7 +207,12 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
 
             var initialStart = Math.Max(0, visible.Count - InitialMessageCount);
             var initialRows = visible.Skip(initialStart).ToList();
-            var olderRows = visible.Take(initialStart).ToList();
+
+            // Everything before the initial page is held undecrypted for on-demand scroll-up — NOT
+            // loaded now. This both removes the open-time work and fixes the jump: nothing is inserted
+            // above the viewport until the user actually scrolls into the past.
+            _olderRows.Clear();
+            _olderRows.AddRange(visible.Take(initialStart));
 
             // Decrypt off the UI thread so the per-message crypto never stutters the open/scroll
             // animation (2026-09-11 — the user reported jank on an S23+). The continuation resumes on
@@ -203,7 +221,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
             {
                 var list = new List<ChatMessageItem>(initialRows.Count);
                 foreach (var message in initialRows)
-                    list.Add(await BuildItemAsync(message, currentRole));
+                    list.Add(await BuildItemAsync(message, _currentRole));
                 return list;
             });
 
@@ -211,8 +229,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
             IsLoading = false; // newest messages are on screen now — stop the spinner
             ScrollToBottomRequested?.Invoke();
 
-            // Older messages + all network work, off the critical path.
-            _ = LoadOlderInBackgroundAsync(olderRows, currentRole);
+            // Network work only, off the critical path — no message loading here anymore.
             _ = RefreshInBackgroundAsync(session);
         }
         catch (Exception ex)
@@ -234,40 +251,49 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         return new ChatMessageItem(message.Id, isOwn, text, message.CreatedAtUtc, message.Status, message.AttachmentLibraryFileId, message.AttachmentFileName, canDelete, message.OriginMessageId);
     }
 
-    /// <summary>
-    /// Decrypts the older (already-on-screen-scroll-up) messages after the newest batch is visible,
-    /// then prepends them (2026-09-11 perf). The CollectionView's KeepLastItemInView keeps the newest
-    /// message anchored while these insert above the viewport, so scrolling up reveals full history
-    /// without the open ever having waited for it. A no-op when the thread is short enough to fit the
-    /// initial batch.
-    /// </summary>
-    private async Task LoadOlderInBackgroundAsync(List<Message> olderRows, Role currentRole)
-    {
-        if (olderRows.Count == 0) return;
+    /// <summary>True while there is older history not yet revealed — the hosting view uses it to know whether scrolling up should try to load more.</summary>
+    public bool HasOlderMessages => _olderRows.Count > 0;
 
+    /// <summary>
+    /// Reveals the next older page of history (2026-09-11), invoked by the hosting view when the user
+    /// scrolls near the top — the user's own ask: show only the latest, scroll up to load the past.
+    /// Decrypts one page off the UI thread, prepends it, then asks the view to re-anchor on the message
+    /// that was previously on top so revealing history never jumps the scroll position.
+    /// </summary>
+    [RelayCommand]
+    private async Task LoadOlderAsync()
+    {
+        if (_isLoadingOlder || _olderRows.Count == 0) return;
+        _isLoadingOlder = true;
         try
         {
-            // Decrypt off the UI thread (see the initial batch's own remarks), then marshal only the
-            // cheap collection inserts back onto it.
-            var olderItems = await Task.Run(async () =>
+            var pageStart = Math.Max(0, _olderRows.Count - OlderPageSize);
+            var pageRows = _olderRows.Skip(pageStart).ToList(); // the newest slice of the remaining older rows
+            _olderRows.RemoveRange(pageStart, _olderRows.Count - pageStart);
+
+            var pageItems = await Task.Run(async () =>
             {
-                var list = new List<ChatMessageItem>(olderRows.Count);
-                foreach (var message in olderRows)
-                    list.Add(await BuildItemAsync(message, currentRole));
+                var list = new List<ChatMessageItem>(pageRows.Count);
+                foreach (var message in pageRows)
+                    list.Add(await BuildItemAsync(message, _currentRole));
                 return list;
             });
 
-            MainThread.BeginInvokeOnMainThread(() =>
-            {
-                // Insert oldest-first at the front so final order stays chronological.
-                for (var i = olderItems.Count - 1; i >= 0; i--)
-                    Messages.Insert(0, olderItems[i]);
-            });
+            var anchor = Messages.Count > 0 ? Messages[0] : null; // the message currently at the top, to re-anchor on
+            for (var i = pageItems.Count - 1; i >= 0; i--)
+                Messages.Insert(0, pageItems[i]);
+
+            if (anchor is not null)
+                ScrollAnchorRequested?.Invoke(anchor);
         }
         catch
         {
-            // Best-effort — the newest messages are already usable; a failure here just means
-            // scroll-up history isn't backfilled this open, not a broken chat.
+            // Best-effort — a failure just means this page of history isn't shown yet; the thread
+            // stays usable and the next scroll-up retries.
+        }
+        finally
+        {
+            _isLoadingOlder = false;
         }
     }
 

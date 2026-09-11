@@ -20,7 +20,11 @@
         <Grid Grid.Row="1">
             <ActivityIndicator IsRunning="{Binding IsLoading}" IsVisible="{Binding IsLoading}" HorizontalOptions="Center" VerticalOptions="Center" />
 
-            <CollectionView x:Name="MessagesView" ItemsSource="{Binding Messages}" ItemsUpdatingScrollMode="KeepLastItemInView" Margin="12,12,12,4">
+            <!-- KeepItemsInView (2026-09-11): when older history is prepended on scroll-up, the item
+                 already in view stays put instead of the list jumping to the oldest message (the bug
+                 the user hit). Scrolling to the newest message on open / send / receive is done
+                 explicitly from code-behind (ScrollToLatest), not by the scroll mode. -->
+            <CollectionView x:Name="MessagesView" ItemsSource="{Binding Messages}" ItemsUpdatingScrollMode="KeepItemsInView" Margin="12,12,12,4">
                 <CollectionView.ItemTemplate>
                     <DataTemplate x:DataType="vm:ChatMessageItem">
                         <Grid Padding="3,0">

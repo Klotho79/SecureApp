@@ -25,27 +25,34 @@ public partial class ChatThreadView : ContentView
     {
         InitializeComponent();
         _libraryService = libraryService ?? throw new ArgumentNullException(nameof(libraryService));
+        MessagesView.Scrolled += OnMessagesScrolled;
     }
 
     private ChatViewModel? ViewModel => BindingContext as ChatViewModel;
 
     /// <summary>
     /// The host (ChatPage, or ChatListPage's detail pane) sets our BindingContext to the ChatViewModel
-    /// after construction — and may reuse this view for a different chat — so the scroll-to-latest
-    /// subscription (2026-09-11) is (re)wired here rather than in the constructor. Unsubscribes from a
-    /// previous VM first so switching chats never leaves a dangling handler firing on the wrong view.
+    /// after construction — and may reuse this view for a different chat — so the scroll subscriptions
+    /// (2026-09-11) are (re)wired here rather than in the constructor. Unsubscribes from a previous VM
+    /// first so switching chats never leaves a dangling handler firing on the wrong view.
     /// </summary>
     protected override void OnBindingContextChanged()
     {
         base.OnBindingContextChanged();
 
         if (_subscribedViewModel is not null)
+        {
             _subscribedViewModel.ScrollToBottomRequested -= ScrollToLatest;
+            _subscribedViewModel.ScrollAnchorRequested -= ScrollToAnchor;
+        }
 
         _subscribedViewModel = ViewModel;
 
         if (_subscribedViewModel is not null)
+        {
             _subscribedViewModel.ScrollToBottomRequested += ScrollToLatest;
+            _subscribedViewModel.ScrollAnchorRequested += ScrollToAnchor;
+        }
     }
 
     private void ScrollToLatest()
@@ -59,6 +66,23 @@ public partial class ChatThreadView : ContentView
             if (messages is null || messages.Count == 0) return;
             try { MessagesView.ScrollTo(messages[^1], position: ScrollToPosition.End, animate: false); }
             catch { /* a layout not ready yet is harmless — KeepLastItemInView still covers new items */ }
+        });
+    }
+
+    /// <summary>Scroll-up history paging (2026-09-11): when the top of the list comes into view and there's older history, ask the view model for the next older page — see ChatViewModel.LoadOlderAsync.</summary>
+    private void OnMessagesScrolled(object? sender, ItemsViewScrolledEventArgs e)
+    {
+        if (e.FirstVisibleItemIndex <= 2 && ViewModel is { HasOlderMessages: true } vm && vm.LoadOlderCommand.CanExecute(null))
+            vm.LoadOlderCommand.Execute(null);
+    }
+
+    /// <summary>After a page of older history is prepended, re-anchor on the message that was at the top so the view doesn't jump to the oldest message (the bug the user reported).</summary>
+    private void ScrollToAnchor(ChatMessageItem anchor)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            try { MessagesView.ScrollTo(anchor, position: ScrollToPosition.Start, animate: false); }
+            catch { /* layout not ready — harmless */ }
         });
     }
 
