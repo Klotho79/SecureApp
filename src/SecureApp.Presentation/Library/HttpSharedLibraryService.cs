@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
@@ -182,6 +183,126 @@ public sealed class HttpSharedLibraryService : ISharedLibraryService
         using var response = await _httpClient.SendAsync(request, ct);
         response.EnsureSuccessStatusCode();
     }
+
+    // --- Relay-mediated shared-library-key escrow (2026-09-11) — see ISharedLibraryService's own
+    // remarks. Uses only the crypto primitives already in this codebase: ML-KEM EncapsulateAsync
+    // against a recipient's raw directory public key + AES-256-GCM under a shared secret HKDF'd to a
+    // fixed length. The relay never sees the plaintext key — only per-recipient ML-KEM ciphertext.
+
+    private const string WrapKeyInfo = "library-key-wrap-v1";
+
+    public async Task PublishWrappedKeyForMembersAsync(CancellationToken ct = default)
+    {
+        var keyBytes = await _vault.RetrieveSecretAsync(SharedLibraryKeyVaultKey, ct);
+        if (keyBytes is null)
+            return; // nothing to publish — this device doesn't have the key
+
+        using var scope = _scopeFactory.CreateScope();
+        var directory = scope.ServiceProvider.GetRequiredService<IContactDirectoryService>();
+        var members = await directory.ListMembersAsync(ct);
+        if (members.Count == 0)
+            return;
+
+        var endpoint = await GetHttpEndpointAsync(ct);
+        var uri = new Uri(endpoint, "library/wrapped-keys");
+
+        foreach (var member in members)
+        {
+            try
+            {
+                var (kemCipherText, sharedSecret) = await _crypto.EncapsulateAsync(member.PublicKey, ct);
+                var wrapKey = await _crypto.DeriveKeyAsync(sharedSecret, null, WrapKeyInfo, 32, ct);
+                var payload = await _crypto.EncryptWithKeyAsync(keyBytes, Guid.NewGuid(), wrapKey, ct);
+                var blob = EncodeWrappedBlob(kemCipherText, payload.Nonce, payload.AuthTag, payload.CipherText);
+
+                using var request = new HttpRequestMessage(HttpMethod.Post, uri)
+                {
+                    Content = JsonContent.Create(new { RecipientDeviceId = member.RelayDeviceId, WrappedBlob = blob }, options: HttpJsonOptions)
+                };
+                await AddDeviceAuthAsync(request, ct);
+                using var response = await _httpClient.SendAsync(request, ct);
+                response.EnsureSuccessStatusCode();
+            }
+            catch
+            {
+                // Best-effort per member — one failure must never stop wrapping for the rest.
+            }
+        }
+    }
+
+    public async Task<bool> TryImportWrappedKeyAsync(CancellationToken ct = default)
+    {
+        if (await _vault.RetrieveSecretAsync(SharedLibraryKeyVaultKey, ct) is not null)
+            return false; // already have it
+
+        var endpoint = await GetHttpEndpointAsync(ct);
+        var uri = new Uri(endpoint, "library/wrapped-key");
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+        await AddDeviceAuthAsync(request, ct);
+        using var response = await _httpClient.SendAsync(request, ct);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return false; // nothing escrowed for this device yet
+        response.EnsureSuccessStatusCode();
+
+        var dto = await response.Content.ReadFromJsonAsync<WrappedKeyDto>(HttpJsonOptions, ct);
+        if (dto is null || string.IsNullOrEmpty(dto.WrappedBlob))
+            return false;
+
+        var (kemCipherText, nonce, authTag, cipherText) = DecodeWrappedBlob(dto.WrappedBlob);
+
+        using var scope = _scopeFactory.CreateScope();
+        var messaging = scope.ServiceProvider.GetRequiredService<IMessagingService>();
+        var identityKeyId = await messaging.GetLocalIdentityKeyIdAsync(ct);
+
+        var sharedSecret = await _crypto.DecapsulateAsync(identityKeyId, kemCipherText, ct);
+        var wrapKey = await _crypto.DeriveKeyAsync(sharedSecret, null, WrapKeyInfo, 32, ct);
+        var payload = new EncryptedPayload(Guid.NewGuid(), EncryptionAlgorithm.Aes256Gcm, cipherText, nonce, authTag);
+        var keyBytes = await _crypto.DecryptWithKeyAsync(payload, wrapKey, ct);
+        if (keyBytes.Length != 32)
+            return false;
+
+        await _vault.StoreSecretAsync(SharedLibraryKeyVaultKey, keyBytes, ct);
+        return true;
+    }
+
+    private static string EncodeWrappedBlob(byte[] kem, byte[] nonce, byte[] authTag, byte[] cipherText)
+    {
+        using var stream = new MemoryStream();
+        using (var w = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true))
+        {
+            WriteChunk(w, kem);
+            WriteChunk(w, nonce);
+            WriteChunk(w, authTag);
+            WriteChunk(w, cipherText);
+        }
+        return Convert.ToBase64String(stream.ToArray());
+    }
+
+    private static (byte[] Kem, byte[] Nonce, byte[] AuthTag, byte[] CipherText) DecodeWrappedBlob(string blob)
+    {
+        using var stream = new MemoryStream(Convert.FromBase64String(blob));
+        using var r = new BinaryReader(stream, Encoding.UTF8, leaveOpen: true);
+        var kem = ReadChunk(r);
+        var nonce = ReadChunk(r);
+        var authTag = ReadChunk(r);
+        var cipherText = ReadChunk(r);
+        return (kem, nonce, authTag, cipherText);
+    }
+
+    private static void WriteChunk(BinaryWriter w, byte[] data)
+    {
+        w.Write((ushort)data.Length);
+        w.Write(data);
+    }
+
+    private static byte[] ReadChunk(BinaryReader r)
+    {
+        var length = r.ReadUInt16();
+        return r.ReadBytes(length);
+    }
+
+    private sealed record WrappedKeyDto(string WrappedBlob);
 
     private async Task<byte[]> GetSharedKeyAsync(CancellationToken ct)
         => await _vault.RetrieveSecretAsync(SharedLibraryKeyVaultKey, ct)

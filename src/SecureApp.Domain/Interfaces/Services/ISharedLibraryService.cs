@@ -39,4 +39,24 @@ public interface ISharedLibraryService
     Task<Document> DownloadAndImportAsync(Guid libraryFileId, Guid? localFolderId = null, CancellationToken ct = default);
 
     Task DeleteAsync(Guid libraryFileId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Relay-mediated key escrow, push side (2026-09-11): if this device HAS the shared key, wraps it
+    /// for every other community member (ML-KEM encapsulation to each member's published directory
+    /// public key + AES-GCM) and uploads the per-recipient ciphertext to the relay. Fully automatic,
+    /// no user action — called from the connection supervisor's periodic sweep and right after a key
+    /// is generated/imported. Robust where the earlier peer-to-peer-over-the-chat-ratchet delivery was
+    /// not: it needs neither a healthy pairwise session nor both devices online at once — the relay
+    /// holds the wrapped key until the recipient next comes online. A no-op if this device has no key.
+    /// The relay only ever stores ML-KEM ciphertext it cannot read.
+    /// </summary>
+    Task PublishWrappedKeyForMembersAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Relay-mediated key escrow, pull side (2026-09-11): if this device does NOT have the shared key,
+    /// fetches its own wrapped blob from the relay and unwraps it with this device's own private
+    /// identity key, storing the recovered key. Returns true if a key was imported. A no-op (returns
+    /// false) if this device already has the key or none has been escrowed for it yet.
+    /// </summary>
+    Task<bool> TryImportWrappedKeyAsync(CancellationToken ct = default);
 }

@@ -135,6 +135,23 @@ public sealed class RelayDatabase
             )
             """);
 
+        // Shared-library-key escrow (2026-09-11) — the robust, fully-automatic way a device gets the
+        // community's shared library key with zero user action, replacing the fragile peer-to-peer-
+        // over-the-chat-ratchet delivery that kept failing on broken sessions / both-devices-online
+        // timing. A device that HAS the key wraps it (ML-KEM encapsulation to each other member's
+        // published directory public key + AES-GCM) and stores the per-recipient ciphertext here; a
+        // device that LACKS it fetches its own wrapped blob whenever it comes online and unwraps with
+        // its own private identity key. The relay only ever holds ML-KEM ciphertext it cannot read —
+        // same trust boundary as library_files (ciphertext-only) — so escrowing here does NOT let the
+        // relay decrypt the library. One row per recipient device; any key-holder may (re)write it.
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS wrapped_library_keys (
+                recipient_device_id TEXT PRIMARY KEY NOT NULL,
+                wrapped_blob        TEXT NOT NULL,
+                updated_at_utc      TEXT NOT NULL
+            )
+            """);
+
         // Shared diagnostics log (2026-09-10) — the user's own ask, straight after finishing the
         // S23+ WireGuard tunnel: a place any device can report an error to, and any device (or an
         // operator with SSH into the relay) can read from, instead of debugging always needing
@@ -479,6 +496,28 @@ public sealed class RelayDatabase
         while (reader.Read())
             results.Add((Guid.Parse((string)reader["device_id"]), (string)reader["display_name"], (byte[])reader["public_key"]));
         return results;
+    }
+
+    /// <summary>Stores (or replaces) the shared library key wrapped for one recipient device — see the wrapped_library_keys table's own remarks. The blob is opaque ciphertext to the relay.</summary>
+    public void UpsertWrappedLibraryKey(Guid recipientDeviceId, string wrappedBlob)
+    {
+        using var connection = OpenConnection();
+        Execute(connection,
+            """
+            INSERT INTO wrapped_library_keys (recipient_device_id, wrapped_blob, updated_at_utc) VALUES (@id, @blob, @now)
+            ON CONFLICT(recipient_device_id) DO UPDATE SET wrapped_blob = @blob, updated_at_utc = @now
+            """,
+            ("@id", recipientDeviceId.ToString()), ("@blob", wrappedBlob), ("@now", Format(DateTimeOffset.UtcNow)));
+    }
+
+    /// <summary>Returns the wrapped shared library key stored for a device, or null if none has been escrowed for it yet.</summary>
+    public string? GetWrappedLibraryKey(Guid recipientDeviceId)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT wrapped_blob FROM wrapped_library_keys WHERE recipient_device_id = @id";
+        command.Parameters.AddWithValue("@id", recipientDeviceId.ToString());
+        return command.ExecuteScalar() as string;
     }
 
     /// <summary>

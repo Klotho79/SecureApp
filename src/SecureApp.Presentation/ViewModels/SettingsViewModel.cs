@@ -608,15 +608,18 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         try
         {
+            // Primary: escrow the key on the relay wrapped for every member (robust, reaches even
+            // offline members when they next connect — see PublishWrappedKeyForMembersAsync).
+            await _sharedLibraryService.PublishWrappedKeyForMembersAsync();
+
+            // Secondary: also offer it live over any already-paired session (instant for online peers).
             var offeredCount = await SharedLibraryKeySync.BroadcastToAllActiveSessionsAsync(
                 _sharedLibraryService, _messagingService, _messageTransport, _chatSessionRepository, _diagnosticsReporter);
-            SharedLibraryBroadcastStatusText = offeredCount == 0
-                ? "Zatím nejste spárováni s nikým, komu by bylo možné klíč poslat."
-                : $"Klíč nabídnut {offeredCount} spárovaným kontaktům/skupinovým relacím.";
+            SharedLibraryBroadcastStatusText = "Klíč byl automaticky rozeslán ostatním zařízením v komunitě.";
         }
         catch (Exception ex)
         {
-            SharedLibraryBroadcastStatusText = $"Rozeslání klíče se nezdařilo: {ex.Message}";
+            SharedLibraryBroadcastStatusText = $"Automatické rozeslání klíče se zatím nezdařilo (zkusí se znovu na pozadí): {ex.Message}";
         }
     }
 

@@ -297,6 +297,31 @@ app.MapGet("/directory/members", (HttpRequest request, RelayDatabase db) =>
     return Results.Ok(members.Select(m => new DirectoryMemberSummary(m.DeviceId, m.DisplayName, Convert.ToBase64String(m.PublicKey))).ToList());
 });
 
+// --- Shared-library-key escrow (2026-09-11) — see the wrapped_library_keys table's own remarks.
+// Device-authenticated, not admin-gated: the same "any already-approved device" trust as the
+// directory and library. The relay only stores/serves opaque ML-KEM ciphertext it cannot read.
+
+app.MapPost("/library/wrapped-keys", (HttpRequest request, PublishWrappedKeyRequest body, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out _))
+        return Results.Unauthorized();
+
+    if (body.RecipientDeviceId == Guid.Empty || string.IsNullOrWhiteSpace(body.WrappedBlob))
+        return Results.BadRequest("RecipientDeviceId and WrappedBlob are both required.");
+
+    db.UpsertWrappedLibraryKey(body.RecipientDeviceId, body.WrappedBlob);
+    return Results.Ok();
+});
+
+app.MapGet("/library/wrapped-key", (HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+
+    var blob = db.GetWrappedLibraryKey(deviceId);
+    return blob is null ? Results.NotFound() : Results.Ok(new WrappedKeyResponse(blob));
+});
+
 // --- Shared diagnostics log (2026-09-10) — see Contracts.cs's own remarks.
 
 app.MapPost("/diagnostics/logs", (HttpRequest request, ReportDiagnosticLogRequest body, RelayDatabase db) =>

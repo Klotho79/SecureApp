@@ -87,17 +87,30 @@ public static class SharedLibraryKeySync
 
             if (await sharedLibraryService.HasSharedKeyAsync(ct))
             {
+                // PRIMARY (2026-09-11): relay-mediated escrow — wrap the key for every member and
+                // leave it on the relay. Robust regardless of session health or who's online, unlike
+                // the ratchet offer below (kept as a secondary path for a freshly-paired session).
+                await sharedLibraryService.PublishWrappedKeyForMembersAsync(ct);
+
                 foreach (var session in await GetActiveSessionsAsync(chatSessionRepository, ct))
                     await OfferKeyAsync(sharedLibraryService, messagingService, messageTransport, session.Id, diagnosticsReporter, bypassCooldown: false, ct: ct);
             }
             else
             {
+                // PRIMARY: pull our escrowed wrapped key from the relay and unwrap it locally. If it
+                // succeeds we're done; otherwise fall back to asking paired peers over the ratchet.
+                if (await sharedLibraryService.TryImportWrappedKeyAsync(ct))
+                {
+                    _ = (diagnosticsReporter?.ReportAsync(DiagnosticLogLevel.Info, "Klíč sdílené knihovny získán z úložiště na relay a naimportován.", nameof(SharedLibraryKeySync), ct: ct));
+                    return;
+                }
+
                 await RequestKeyFromAllActiveSessionsAsync(sharedLibraryService, messagingService, messageTransport, chatSessionRepository, diagnosticsReporter, ct);
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Best-effort — the sweep runs again shortly and retries.
+            _ = (diagnosticsReporter?.ReportAsync(DiagnosticLogLevel.Warning, "Automatická synchronizace klíče sdílené knihovny narazila na chybu (zkusí se znovu při dalším průchodu).", nameof(SharedLibraryKeySync), ex, ct));
         }
     }
 

@@ -47,6 +47,9 @@ public sealed class MessagingService : IMessagingService
         return await _crypto.GetEncryptionPublicKeyAsync(keyId, ct);
     }
 
+    public Task<Guid> GetLocalIdentityKeyIdAsync(CancellationToken ct = default)
+        => GetOrCreateLocalIdentityKeyIdAsync(ct);
+
     public Task<ChatSession?> FindExistingSessionAsync(byte[] peerIdentityPublicKey, CancellationToken ct = default)
         => _sessionRepository.GetByPeerPublicKeyAsync(peerIdentityPublicKey, ct);
 

@@ -19,6 +19,9 @@ public interface IMessagingService
     /// </summary>
     Task<byte[]> GetLocalIdentityPublicKeyAsync(CancellationToken ct = default);
 
+    /// <summary>This device's long-lived chat-identity key id (<c>KeyPurpose.ChatIdentity</c>), minting one on first use — the vault-resolvable id needed to ML-KEM-<c>DecapsulateAsync</c> against this device's own private identity key (used by the shared-library-key escrow to unwrap a key wrapped to this device's public identity key). See <see cref="GetLocalIdentityPublicKeyAsync"/> for the public half.</summary>
+    Task<Guid> GetLocalIdentityKeyIdAsync(CancellationToken ct = default);
+
     /// <summary>
     /// Finds an existing non-Closed session with this exact peer identity, if any. Callers
     /// (New Chat's "paste/scan a contact card or invite" flow) should check this BEFORE calling

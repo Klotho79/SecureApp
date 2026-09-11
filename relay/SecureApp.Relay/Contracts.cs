@@ -37,6 +37,17 @@ public sealed record PublishDirectoryEntryRequest(string DisplayName, string Pub
 /// <summary>One other community member, resolvable straight into a chat session with no QR/paste step — <c>PublicKeyBase64</c> is the same chat-identity key a manually-shared contact card would have carried.</summary>
 public sealed record DirectoryMemberSummary(Guid DeviceId, string DisplayName, string PublicKeyBase64);
 
+// --- Shared-library-key escrow (2026-09-11) — see the wrapped_library_keys table's own remarks. A
+// device that HAS the key uploads it wrapped (ML-KEM to each recipient's public identity key) via
+// the POST; a device that LACKS it fetches its own wrapped blob via the GET and unwraps locally.
+// The relay only ever holds opaque ciphertext.
+
+/// <summary>Uploads the shared library key wrapped for one specific recipient device. The caller (any key-holding, device-authenticated member) supplies the recipient's device id and the opaque wrapped blob.</summary>
+public sealed record PublishWrappedKeyRequest(Guid RecipientDeviceId, string WrappedBlob);
+
+/// <summary>The wrapped shared library key stored for the CALLING device, returned by GET /library/wrapped-key (404 if none has been escrowed for it yet).</summary>
+public sealed record WrappedKeyResponse(string WrappedBlob);
+
 // --- Shared diagnostics log (2026-09-10) — see IDiagnosticsReporter's own remarks for why this
 // exists: a place any device can report a problem to, and any device (or an operator with SSH into
 // the relay) can read from, so debugging a cross-device issue doesn't need physical access to every
