@@ -52,8 +52,12 @@
                                                 <Setter Property="HorizontalOptions" Value="End" />
                                             </DataTrigger>
                                         </Border.Triggers>
-                                        <VerticalStackLayout Spacing="0">
-                                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                        <!-- Grid, not nested StackLayouts (2026-09-12): framestats on the S23+ showed the
+                                             open's measure/layout phase spiking to 230-287 ms per frame — MAUI's nested
+                                             VerticalStackLayout/HorizontalStackLayout do multiple measure passes per cell.
+                                             A single Grid measures in one pass. This bubble is header row + text row. -->
+                                        <Grid RowDefinitions="Auto,Auto" RowSpacing="0">
+                                            <Grid Grid.Row="0" ColumnDefinitions="Auto,*" ColumnSpacing="8">
                                                 <!-- Delete: a plain tappable Label, not a Button — an Android Button
                                                      forces a ~48dp minimum height that inflated the whole bubble. -->
                                                 <Label
@@ -84,14 +88,14 @@
                                                 </Label>
                                             </Grid>
 
-                                            <Label Text="{Binding Text}" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" FontSize="13" LineBreakMode="WordWrap">
+                                            <Label Grid.Row="1" Text="{Binding Text}" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" FontSize="13" LineBreakMode="WordWrap">
                                                 <Label.Triggers>
                                                     <DataTrigger TargetType="Label" Binding="{Binding IsOutbound}" Value="True">
                                                         <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource PrimaryDarkText}}" />
                                                     </DataTrigger>
                                                 </Label.Triggers>
                                             </Label>
-                                        </VerticalStackLayout>
+                                        </Grid>
                                     </Border>
                                 </Grid>
                             </DataTemplate>
@@ -116,8 +120,9 @@
                                                 <Setter Property="HorizontalOptions" Value="End" />
                                             </DataTrigger>
                                         </Border.Triggers>
-                                        <VerticalStackLayout Spacing="0">
-                                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                        <!-- Grid instead of nested StackLayouts — see the text template's own remark. -->
+                                        <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="0">
+                                            <Grid Grid.Row="0" ColumnDefinitions="Auto,*" ColumnSpacing="8">
                                                 <Label
                                                     Grid.Column="0"
                                                     Text="🗑"
@@ -146,7 +151,7 @@
                                                 </Label>
                                             </Grid>
 
-                                            <Label Text="{Binding Text}" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" FontSize="13" LineBreakMode="WordWrap" IsVisible="{Binding HasText}">
+                                            <Label Grid.Row="1" Text="{Binding Text}" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" FontSize="13" LineBreakMode="WordWrap" IsVisible="{Binding HasText}">
                                                 <Label.Triggers>
                                                     <DataTrigger TargetType="Label" Binding="{Binding IsOutbound}" Value="True">
                                                         <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource PrimaryDarkText}}" />
@@ -154,21 +159,19 @@
                                                 </Label.Triggers>
                                             </Label>
 
-                                            <Border Padding="8,6" StrokeShape="RoundRectangle 10" Stroke="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
+                                            <Border Grid.Row="2" Padding="8,6" StrokeShape="RoundRectangle 10" Stroke="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
                                                 <Border.GestureRecognizers>
                                                     <TapGestureRecognizer
                                                         Command="{Binding Source={x:Reference ChatThreadRoot}, Path=BindingContext.OpenAttachmentCommand}"
                                                         CommandParameter="{Binding .}" />
                                                 </Border.GestureRecognizers>
-                                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
-                                                    <Label Grid.Column="0" Text="📄" FontSize="18" VerticalOptions="Center" />
-                                                    <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
-                                                        <Label Text="{Binding AttachmentFileName}" FontSize="12.5" FontAttributes="Bold" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" LineBreakMode="TailTruncation" />
-                                                        <Label Text="Ze sdílené knihovny" FontSize="10.5" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
-                                                    </VerticalStackLayout>
+                                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9" RowDefinitions="Auto,Auto">
+                                                    <Label Grid.Column="0" Grid.RowSpan="2" Text="📄" FontSize="18" VerticalOptions="Center" />
+                                                    <Label Grid.Column="1" Grid.Row="0" Text="{Binding AttachmentFileName}" FontSize="12.5" FontAttributes="Bold" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" LineBreakMode="TailTruncation" />
+                                                    <Label Grid.Column="1" Grid.Row="1" Text="Ze sdílené knihovny" FontSize="10.5" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
                                                 </Grid>
                                             </Border>
-                                        </VerticalStackLayout>
+                                        </Grid>
                                     </Border>
                                 </Grid>
                             </DataTemplate>
