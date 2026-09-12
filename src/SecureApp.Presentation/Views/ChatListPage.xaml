@@ -30,7 +30,7 @@
                 </Grid>
             </VerticalStackLayout>
 
-            <RefreshView Grid.Row="1" IsRefreshing="{Binding IsLoading}" Command="{Binding LoadCommand}">
+            <RefreshView Grid.Row="1" IsRefreshing="{Binding IsRefreshing}" Command="{Binding RefreshCommand}">
                 <ScrollView>
                     <VerticalStackLayout Spacing="14">
 

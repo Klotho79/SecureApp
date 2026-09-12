@@ -21,11 +21,9 @@ public partial class ChatPage : ContentPage
         base.OnAppearing();
         _viewModel.StartListening();
 
-        // Defer the load until the push animation finishes so populating the thread doesn't jank the
-        // slide-in (2026-09-11) — see GroupChatPage.OnAppearing's own remarks. The spinner is only
-        // shown if the load runs long (see LoadAsync's delayed spinner), so a fast open is
-        // spinner-free. Only affects the phone push host; the wide-layout detail pane drives its own load.
-        Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(120), () => _viewModel.LoadCommand.Execute(null));
+        // Load immediately — the view model shows any cached copy synchronously and runs the load in
+        // parallel with the slide, applying after the animation settles. Unified with GroupChatPage.
+        _viewModel.LoadCommand.Execute(null);
     }
 
     protected override void OnDisappearing()

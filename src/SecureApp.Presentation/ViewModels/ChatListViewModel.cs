@@ -43,8 +43,16 @@ public sealed partial class ChatListViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
 
+    /// <summary>Drives ONLY the pull-to-refresh spinner (2026-09-11). Kept separate from the automatic
+    /// on-appear reload so returning to the list never flashes the refresh circle — that reload is
+    /// quiet (local names instantly, network refresh in the background).</summary>
+    [ObservableProperty]
+    public partial bool IsRefreshing { get; set; }
+
     [ObservableProperty]
     public partial bool IsEmpty { get; set; }
+
+    private IReadOnlyDictionary<string, string> _displayedNames = new Dictionary<string, string>();
 
     public ChatListViewModel(
         IChatSessionRepository sessionRepository,
@@ -69,34 +77,69 @@ public sealed partial class ChatListViewModel : ObservableObject
 
     partial void OnHasNoGroupsChanged(bool value) => HasGroups = !value;
 
+    /// <summary>
+    /// Quiet reload used on appear (2026-09-11) — builds the lists from the LAST-KNOWN directory
+    /// names with no network call and no spinner, so returning to the list is instant and never
+    /// flashes the pull-to-refresh circle. A fresh name fetch runs in the background and rebuilds
+    /// only if names actually changed. The user-initiated pull-to-refresh is <see cref="RefreshAsync"/>.
+    /// </summary>
     [RelayCommand]
     private async Task LoadAsync()
     {
-        IsLoading = true;
+        await BuildListsAsync(DirectoryNameResolver.LastKnown);
+        _ = RefreshNamesInBackgroundAsync();
+    }
+
+    /// <summary>Pull-to-refresh (user-initiated) — this one DOES show the refresh spinner while it fetches fresh names from the relay.</summary>
+    [RelayCommand]
+    private async Task RefreshAsync()
+    {
+        IsRefreshing = true;
         try
         {
-            var sessions = await _sessionRepository.GetAllAsync();
-            // 2026-09-09: prefer each peer's CURRENT name from the relay directory over whatever
-            // got captured once at pairing time — see DirectoryNameResolver's own remarks.
-            var directoryNames = await DirectoryNameResolver.BuildAsync(_contactDirectoryService);
-            Sessions = new ObservableCollection<ChatSessionItem>(
-                sessions.OrderByDescending(s => s.LastRatchetedAtUtc ?? s.CreatedAtUtc)
-                    .Select(s =>
-                    {
-                        var name = DirectoryNameResolver.Resolve(directoryNames, s.PeerIdentityPublicKey, s.PeerDisplayName);
-                        return new ChatSessionItem(s.Id, name, s.State, DescribeLastActivity(s), ComputeInitials(name));
-                    }));
-            IsEmpty = Sessions.Count == 0;
-
-            var groups = await _groupChatRepository.GetAllAsync();
-            Groups = new ObservableCollection<GroupChatListItem>(
-                groups.OrderByDescending(g => g.ModifiedAtUtc)
-                    .Select(g => new GroupChatListItem(g.Id, g.Name, ComputeInitials(g.Name))));
-            HasNoGroups = Groups.Count == 0;
+            var names = await DirectoryNameResolver.BuildAsync(_contactDirectoryService);
+            await BuildListsAsync(names.Count > 0 ? names : DirectoryNameResolver.LastKnown);
         }
         finally
         {
-            IsLoading = false;
+            IsRefreshing = false;
+        }
+    }
+
+    private async Task BuildListsAsync(IReadOnlyDictionary<string, string> directoryNames)
+    {
+        _displayedNames = directoryNames;
+
+        var sessions = await _sessionRepository.GetAllAsync();
+        Sessions = new ObservableCollection<ChatSessionItem>(
+            sessions.OrderByDescending(s => s.LastRatchetedAtUtc ?? s.CreatedAtUtc)
+                .Select(s =>
+                {
+                    var name = DirectoryNameResolver.Resolve(directoryNames, s.PeerIdentityPublicKey, s.PeerDisplayName);
+                    return new ChatSessionItem(s.Id, name, s.State, DescribeLastActivity(s), ComputeInitials(name));
+                }));
+        IsEmpty = Sessions.Count == 0;
+
+        var groups = await _groupChatRepository.GetAllAsync();
+        Groups = new ObservableCollection<GroupChatListItem>(
+            groups.OrderByDescending(g => g.ModifiedAtUtc)
+                .Select(g => new GroupChatListItem(g.Id, g.Name, ComputeInitials(g.Name))));
+        HasNoGroups = Groups.Count == 0;
+    }
+
+    /// <summary>Fetches current names from the relay AFTER the list is already shown, and rebuilds only if they differ — same no-flicker pattern as the chat threads.</summary>
+    private async Task RefreshNamesInBackgroundAsync()
+    {
+        try
+        {
+            var names = await DirectoryNameResolver.BuildAsync(_contactDirectoryService);
+            if (names.Count == 0) return;
+            if (DirectoryNameResolver.AreEquivalent(names, _displayedNames)) return;
+            await BuildListsAsync(names);
+        }
+        catch
+        {
+            // Best-effort — the list already shows local names.
         }
     }
 
