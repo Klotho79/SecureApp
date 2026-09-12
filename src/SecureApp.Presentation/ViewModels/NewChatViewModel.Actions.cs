@@ -45,13 +45,13 @@ public sealed partial class NewChatViewModel
     private async Task OpenCreatedChatAsync()
     {
         if (CreatedSession is null) return;
-        await Shell.Current.GoToAsync($"{nameof(ChatPage)}?chatSessionId={CreatedSession.Id}");
+        await Shell.Current.GoToAsync($"{nameof(ChatPage)}?chatSessionId={CreatedSession.Id}", animate: false); // see ChatListViewModel.OpenSessionAsync
     }
 
     [RelayCommand]
     private async Task OpenAcceptedChatAsync()
     {
         if (AcceptedSession is null) return;
-        await Shell.Current.GoToAsync($"{nameof(ChatPage)}?chatSessionId={AcceptedSession.Id}");
+        await Shell.Current.GoToAsync($"{nameof(ChatPage)}?chatSessionId={AcceptedSession.Id}", animate: false); // see ChatListViewModel.OpenSessionAsync
     }
 }

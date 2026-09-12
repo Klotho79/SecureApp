@@ -50,8 +50,8 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
     private const int InitialMessageCount = 8;
     private const int OlderPageSize = 20;
 
-    /// <summary>See ChatViewModel.AnimationSettleMs — hold the UI assignment back until the open/back animation has settled, while the load runs in parallel on a background thread.</summary>
-    private const int AnimationSettleMs = 280;
+    /// <summary>See ChatViewModel.AnimationSettleMs — now 0 (the group push no longer animates, so there is no slide to hold content back from; populate immediately).</summary>
+    private const int AnimationSettleMs = 0;
 
     /// <summary>Everything the group thread needs, computed entirely on a background thread so it can run in parallel with the open animation without touching the UI (2026-09-11).</summary>
     private sealed record GroupInitialLoad(

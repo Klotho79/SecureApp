@@ -214,8 +214,8 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
     private const int InitialMessageCount = 8;
     private const int OlderPageSize = 20;
 
-    /// <summary>How long the open/close animation needs to settle before the UI is touched (2026-09-11). The load runs in parallel on a background thread during this window, so this is not added latency — it just holds the (cheap) UI assignment back until the slide is done, so populating the list never competes with the animation. The user's own diagnosis: "oddel grafiku a nahravani, jedno necekalo na druhe".</summary>
-    private const int AnimationSettleMs = 280;
+    /// <summary>Settle delay before touching the UI. Now 0 (2026-09-12): the chat push no longer animates (see ChatListViewModel.OpenSessionAsync — the janky slide was dropped for an instant cut), so there is no slide to hold content back from — populate immediately for the snappiest possible open. Kept as a named constant so the delay can be reinstated if an animation is ever brought back.</summary>
+    private const int AnimationSettleMs = 0;
 
     [RelayCommand]
     private async Task LoadAsync()

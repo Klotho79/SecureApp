@@ -10,7 +10,11 @@ public sealed partial class ChatListViewModel
     private async Task OpenSessionAsync(ChatSessionItem? session)
     {
         if (session is null) return;
-        await Shell.Current.GoToAsync($"{nameof(ChatPage)}?chatSessionId={session.Id}");
+        // animate:false (2026-09-12): the Shell push slide competed with the fresh page's ~66 ms XAML
+        // inflation on the one UI thread and stuttered ("trhalo"). Measurement showed the jank is that
+        // synchronous build, not data/cell work, and it happens on every (transient) open — so we drop
+        // the slide for an instant, clean cut instead. The chat VM populates immediately (no settle wait).
+        await Shell.Current.GoToAsync($"{nameof(ChatPage)}?chatSessionId={session.Id}", animate: false);
     }
 
     [RelayCommand]
@@ -23,7 +27,7 @@ public sealed partial class ChatListViewModel
     private async Task OpenGroupAsync(GroupChatListItem? group)
     {
         if (group is null) return;
-        await Shell.Current.GoToAsync($"{nameof(GroupChatPage)}?groupChatId={group.Id}");
+        await Shell.Current.GoToAsync($"{nameof(GroupChatPage)}?groupChatId={group.Id}", animate: false);
     }
 
     [RelayCommand]
