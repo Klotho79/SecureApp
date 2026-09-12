@@ -164,11 +164,18 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         // normal cold load.
         if (_threadCache.TryGetValue(_chatSessionId, out var cached))
         {
-            Title = cached.Title;
-            _olderRows.Clear();
-            _olderRows.AddRange(cached.Older);
-            Messages = new ObservableCollection<ChatMessageItem>(cached.Items);
-            _displayedSignature = cached.Signature;
+            SecureApp.Presentation.Infrastructure.PerfLog.MeasureUiStall($"ApplyQuery sync-populate ({cached.Items.Count} cells)", () =>
+            {
+                Title = cached.Title;
+                _olderRows.Clear();
+                _olderRows.AddRange(cached.Older);
+                Messages = new ObservableCollection<ChatMessageItem>(cached.Items);
+                _displayedSignature = cached.Signature;
+            });
+        }
+        else
+        {
+            SecureApp.Presentation.Infrastructure.PerfLog.Mark("ApplyQuery cache MISS (cold open)");
         }
     }
 
@@ -216,6 +223,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         IsLoading = true; // spinner only appears if this outlasts the delay (see DelayedActivityIndicator)
         StatusErrorMessage = null;
         var sw = System.Diagnostics.Stopwatch.StartNew();
+        SecureApp.Presentation.Infrastructure.PerfLog.Mark("LoadAsync start");
         try
         {
             // Phase 1 (background, in parallel with the open slide): the cheap change-signature first —
@@ -263,14 +271,18 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
             _olderRows.AddRange(loaded.Older);
 
             var alreadyCurrent = Messages.Count > 0 && loaded.Signature == _displayedSignature;
+            SecureApp.Presentation.Infrastructure.PerfLog.Mark($"LoadAsync bg-load done at {sw.ElapsedMilliseconds}ms; alreadyCurrent={alreadyCurrent}");
             if (!alreadyCurrent)
             {
                 var remaining = AnimationSettleMs - (int)sw.ElapsedMilliseconds;
                 if (remaining > 0) await Task.Delay(remaining);
 
-                Messages = new ObservableCollection<ChatMessageItem>(loaded.Items);
-                _displayedSignature = loaded.Signature;
-                ScrollToBottomRequested?.Invoke();
+                SecureApp.Presentation.Infrastructure.PerfLog.MeasureUiStall($"LoadAsync populate ({loaded.Items.Count} cells)", () =>
+                {
+                    Messages = new ObservableCollection<ChatMessageItem>(loaded.Items);
+                    _displayedSignature = loaded.Signature;
+                    ScrollToBottomRequested?.Invoke();
+                });
             }
 
             _threadCache[_chatSessionId] = new CachedThread(loaded.Title, loaded.Items, [.. loaded.Older], loaded.Signature);
