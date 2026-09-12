@@ -204,7 +204,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
     public event Action<ChatMessageItem>? ScrollAnchorRequested;
 
     /// <summary>How many of the newest messages to show immediately on open, and how many older ones to reveal per scroll-up page (2026-09-11, the user's own ask: "nemusí se načíst celý chat ale třeba jen posledních 5-10 zpráv... možnost rolovat ve zprávách do minulosti").</summary>
-    private const int InitialMessageCount = 12;
+    private const int InitialMessageCount = 8;
     private const int OlderPageSize = 20;
 
     /// <summary>How long the open/close animation needs to settle before the UI is touched (2026-09-11). The load runs in parallel on a background thread during this window, so this is not added latency — it just holds the (cheap) UI assignment back until the slide is done, so populating the list never competes with the animation. The user's own diagnosis: "oddel grafiku a nahravani, jedno necekalo na druhe".</summary>

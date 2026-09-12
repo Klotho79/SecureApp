@@ -47,7 +47,7 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
     private readonly List<Message> _olderLogicalRows = [];
     private Dictionary<Guid, string> _sessionNameById = [];
     private bool _isLoadingOlder;
-    private const int InitialMessageCount = 12;
+    private const int InitialMessageCount = 8;
     private const int OlderPageSize = 20;
 
     /// <summary>See ChatViewModel.AnimationSettleMs — hold the UI assignment back until the open/back animation has settled, while the load runs in parallel on a background thread.</summary>
