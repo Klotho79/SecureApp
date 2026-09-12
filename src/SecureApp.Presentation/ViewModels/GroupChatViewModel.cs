@@ -103,6 +103,10 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
     [ObservableProperty]
     public partial bool IsMembersExpanded { get; set; }
 
+    /// <summary>Member count for the (collapsed) header (2026-09-12). Kept separate from the <see cref="Members"/> chip collection so the count is always shown while the expensive chips — each with two Android Buttons — are built ONLY when the card is expanded. Measurement showed building the hidden chips cost ~56 ms of UI-thread time on every group open (jank source).</summary>
+    [ObservableProperty]
+    public partial int MemberCount { get; set; }
+
     [ObservableProperty]
     public partial bool IsShowingAddMember { get; set; }
 
@@ -357,6 +361,18 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
     /// <summary>Projects <see cref="_members"/> into the bound <see cref="Members"/> chips using the current <see cref="_directoryNames"/> snapshot — factored out so the background refresh can rebuild them with fresh names without duplicating the projection.</summary>
     private void RebuildMemberList()
     {
+        MemberCount = _members.Count; // always current for the collapsed header
+
+        // Build the chips ONLY when the card is expanded (2026-09-12). Each chip carries two Android
+        // Buttons, and measurement showed building all of them cost ~56 ms of UI-thread time on every
+        // group open — pure waste while the card is collapsed (its default). When collapsed we keep the
+        // chip collection empty; ToggleMembersExpanded builds it on demand the first time it opens.
+        if (!IsMembersExpanded)
+        {
+            if (Members.Count > 0) Members = [];
+            return;
+        }
+
         Members = new ObservableCollection<GroupMemberItem>(_members.Select(m => new GroupMemberItem(
             m.Id,
             DirectoryNameResolver.Resolve(_directoryNames, m.PublicKey, m.DisplayName),
@@ -780,7 +796,14 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
     }
 
     [RelayCommand]
-    private void ToggleMembersExpanded() => IsMembersExpanded = !IsMembersExpanded;
+    private void ToggleMembersExpanded()
+    {
+        IsMembersExpanded = !IsMembersExpanded;
+        // Build the chips on demand the first time the card opens (see RebuildMemberList) — this is the
+        // ~56 ms of work we deliberately kept off the group-open path.
+        if (IsMembersExpanded && Members.Count == 0 && _members.Count > 0)
+            RebuildMemberList();
+    }
 
     // --- Membership management (founder/admin/authorized-user only, see CanManageMembers) ---
 

@@ -31,10 +31,10 @@
                     <Grid.GestureRecognizers>
                         <TapGestureRecognizer Command="{Binding ToggleMembersExpandedCommand}" />
                     </Grid.GestureRecognizers>
-                    <Label Grid.Column="0" Text="{Binding Members.Count, StringFormat='Členové ({0}) ▾'}" Style="{StaticResource SectionHeader}" Margin="0" FontSize="14">
+                    <Label Grid.Column="0" Text="{Binding MemberCount, StringFormat='Členové ({0}) ▾'}" Style="{StaticResource SectionHeader}" Margin="0" FontSize="14">
                         <Label.Triggers>
                             <DataTrigger TargetType="Label" Binding="{Binding IsMembersExpanded}" Value="False">
-                                <Setter Property="Text" Value="{Binding Members.Count, StringFormat='Členové ({0}) ▸'}" />
+                                <Setter Property="Text" Value="{Binding MemberCount, StringFormat='Členové ({0}) ▸'}" />
                             </DataTrigger>
                         </Label.Triggers>
                     </Label>
