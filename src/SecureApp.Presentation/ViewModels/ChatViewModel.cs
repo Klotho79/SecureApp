@@ -59,6 +59,12 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
     private sealed record CachedThread(string Title, List<ChatMessageItem> Items, List<Message> Older, string Signature);
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, CachedThread> _threadCache = new();
 
+    // The change-signature of the thread currently on screen (2026-09-12). Set whenever Messages is
+    // populated — by the sync-populate in ApplyQueryAttributes or a rebuild in LoadAsync — so LoadAsync
+    // can tell "the list already shows the current content" from "it needs rebuilding" and skip the
+    // rebuild (and its mid-slide jank) in the common unchanged-revisit case.
+    private string? _displayedSignature;
+
     [ObservableProperty]
     public partial string Title { get; set; }
 
@@ -150,6 +156,20 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
     {
         if (query.TryGetValue("chatSessionId", out var value) && Guid.TryParse(value?.ToString(), out var id))
             _chatSessionId = id;
+
+        // Populate from the warm cache SYNCHRONOUSLY, before the page appears — the smooth path the
+        // user confirmed ("téměř okamžitě"): a revisited chat's content is present before the slide,
+        // so the populated page slides in with no mid-slide populate hitch. LoadAsync then verifies
+        // against the DB and only rebuilds if it actually changed. A cache miss falls through to the
+        // normal cold load.
+        if (_threadCache.TryGetValue(_chatSessionId, out var cached))
+        {
+            Title = cached.Title;
+            _olderRows.Clear();
+            _olderRows.AddRange(cached.Older);
+            Messages = new ObservableCollection<ChatMessageItem>(cached.Items);
+            _displayedSignature = cached.Signature;
+        }
     }
 
     /// <summary>
@@ -228,22 +248,33 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
                 return (session?.PeerDisplayName ?? "Chat", session, older, items, signature);
             });
 
-            // Phase 2 — apply only AFTER the slide has settled, so populating the list never competes
-            // with the open animation. This keeps the open slide as clean as the back slide (the user's
-            // ask); because phase 1 ran during the slide, the content is ready and lands right as it
-            // finishes rather than after a wait.
-            var remaining = AnimationSettleMs - (int)sw.ElapsedMilliseconds;
-            if (remaining > 0) await Task.Delay(remaining);
-
+            // Phase 2 — the common case (re-opening an unchanged chat) does NO UI mutation at all:
+            // ApplyQueryAttributes already sync-populated the identical content before the slide began,
+            // so the page slides in fully rendered and nothing competes with the animation. We only
+            // touch the list when it's genuinely not already current — a cold open (nothing was
+            // sync-populated) or a real change since the warm copy was taken. That rebuild is held back
+            // until the slide has settled so it never renders mid-slide. This is what makes open feel
+            // as clean as the back slide (the user's ask), and kills the re-introduced open jank that
+            // came from rebuilding the list on every open.
             await _currentUserService.InitializeAsync();
             _currentRole = _currentUserService.Current.Role;
             Title = loaded.Title;
             _olderRows.Clear();
             _olderRows.AddRange(loaded.Older);
-            Messages = new ObservableCollection<ChatMessageItem>(loaded.Items);
+
+            var alreadyCurrent = Messages.Count > 0 && loaded.Signature == _displayedSignature;
+            if (!alreadyCurrent)
+            {
+                var remaining = AnimationSettleMs - (int)sw.ElapsedMilliseconds;
+                if (remaining > 0) await Task.Delay(remaining);
+
+                Messages = new ObservableCollection<ChatMessageItem>(loaded.Items);
+                _displayedSignature = loaded.Signature;
+                ScrollToBottomRequested?.Invoke();
+            }
+
             _threadCache[_chatSessionId] = new CachedThread(loaded.Title, loaded.Items, [.. loaded.Older], loaded.Signature);
             IsLoading = false;
-            ScrollToBottomRequested?.Invoke();
 
             var session = loaded.Session ?? await _sessionRepository.GetByIdAsync(_chatSessionId);
             _ = RefreshInBackgroundAsync(session);

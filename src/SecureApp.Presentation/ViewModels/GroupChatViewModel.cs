@@ -189,10 +189,26 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
     private sealed record CachedGroupThread(string Title, List<GroupMessageItem> Items, List<Message> Older, string Signature);
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, CachedGroupThread> _groupThreadCache = new();
 
+    // See ChatViewModel._displayedSignature — the signature of the thread currently on screen, so
+    // LoadAsync can skip the (janky) list rebuild when a revisit's content is already shown.
+    private string? _displayedSignature;
+
     public void ApplyQueryAttributes(IDictionary<string, object> query)
     {
         if (query.TryGetValue("groupChatId", out var value) && Guid.TryParse(value?.ToString(), out var id))
             _groupChatId = id;
+
+        // Sync-populate the visible thread from the warm cache before the page slides in (the smooth
+        // path — see ChatViewModel.ApplyQueryAttributes). Member/session state still loads in LoadAsync;
+        // only the message list needs to be present up front to avoid a mid-slide populate hitch.
+        if (_groupThreadCache.TryGetValue(_groupChatId, out var cached))
+        {
+            Title = cached.Title;
+            _olderLogicalRows.Clear();
+            _olderLogicalRows.AddRange(cached.Older);
+            Messages = new ObservableCollection<GroupMessageItem>(cached.Items);
+            _displayedSignature = cached.Signature;
+        }
     }
 
     [RelayCommand]
@@ -264,10 +280,11 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
                 return;
             }
 
-            // Phase 2 — wait out the rest of the animation (usually already elapsed), THEN touch the UI.
-            var remaining = AnimationSettleMs - (int)sw.ElapsedMilliseconds;
-            if (remaining > 0) await Task.Delay(remaining);
-
+            // Phase 2 — the member/session state below is cheap and doesn't touch the visible message
+            // list, so it's always applied. The message list itself is only rebuilt when it isn't
+            // already current: on a revisit ApplyQueryAttributes sync-populated the identical content
+            // before the slide, so we skip the rebuild (and its mid-slide jank) entirely. A cold open
+            // or a real change rebuilds, held back until the slide settles. See ChatViewModel.LoadAsync.
             _founderPublicKey = loaded.Group.FounderPublicKey;
             _localPublicKey = loaded.LocalPublicKey;
             var isFounder = _founderPublicKey.AsSpan().SequenceEqual(_localPublicKey);
@@ -279,10 +296,20 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
             _olderLogicalRows.Clear();
             _olderLogicalRows.AddRange(loaded.OlderLogical);
             RebuildMemberList();
-            Messages = new ObservableCollection<GroupMessageItem>(loaded.Items);
+
+            var alreadyCurrent = Messages.Count > 0 && loaded.Signature == _displayedSignature;
+            if (!alreadyCurrent)
+            {
+                var remaining = AnimationSettleMs - (int)sw.ElapsedMilliseconds;
+                if (remaining > 0) await Task.Delay(remaining);
+
+                Messages = new ObservableCollection<GroupMessageItem>(loaded.Items);
+                _displayedSignature = loaded.Signature;
+                ScrollToBottomRequested?.Invoke();
+            }
+
             _groupThreadCache[_groupChatId] = new CachedGroupThread(Title, loaded.Items, [.. loaded.OlderLogical], loaded.Signature);
             IsLoading = false;
-            ScrollToBottomRequested?.Invoke();
 
             // Refresh names from the directory, then auto-heal broken pairings — both in the
             // background so neither blocks the thread. Auto-heal on open (2026-09-07) is the user's
