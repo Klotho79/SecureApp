@@ -203,11 +203,18 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
         // only the message list needs to be present up front to avoid a mid-slide populate hitch.
         if (_groupThreadCache.TryGetValue(_groupChatId, out var cached))
         {
-            Title = cached.Title;
-            _olderLogicalRows.Clear();
-            _olderLogicalRows.AddRange(cached.Older);
-            Messages = new ObservableCollection<GroupMessageItem>(cached.Items);
-            _displayedSignature = cached.Signature;
+            SecureApp.Presentation.Infrastructure.PerfLog.MeasureUiStall($"Group ApplyQuery sync-populate ({cached.Items.Count} cells)", () =>
+            {
+                Title = cached.Title;
+                _olderLogicalRows.Clear();
+                _olderLogicalRows.AddRange(cached.Older);
+                Messages = new ObservableCollection<GroupMessageItem>(cached.Items);
+                _displayedSignature = cached.Signature;
+            });
+        }
+        else
+        {
+            SecureApp.Presentation.Infrastructure.PerfLog.Mark("Group ApplyQuery cache MISS (cold open)");
         }
     }
 
@@ -217,6 +224,7 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
         IsLoading = true; // the spinner itself only appears if this lasts — see DelayedActivityIndicator
         StatusErrorMessage = null;
         var sw = System.Diagnostics.Stopwatch.StartNew();
+        SecureApp.Presentation.Infrastructure.PerfLog.Mark("Group LoadAsync start");
         try
         {
             // Phase 1 — load EVERYTHING (group, members, sessions, messages + decrypt) on a
@@ -295,17 +303,22 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
             _sessionNameById = loaded.SessionNames;
             _olderLogicalRows.Clear();
             _olderLogicalRows.AddRange(loaded.OlderLogical);
-            RebuildMemberList();
+            SecureApp.Presentation.Infrastructure.PerfLog.Mark($"Group LoadAsync bg-load done at {sw.ElapsedMilliseconds}ms; members={loaded.Members.Count}");
+            SecureApp.Presentation.Infrastructure.PerfLog.MeasureUiStall($"Group RebuildMemberList ({loaded.Members.Count} members)", RebuildMemberList);
 
             var alreadyCurrent = Messages.Count > 0 && loaded.Signature == _displayedSignature;
+            SecureApp.Presentation.Infrastructure.PerfLog.Mark($"Group alreadyCurrent={alreadyCurrent}");
             if (!alreadyCurrent)
             {
                 var remaining = AnimationSettleMs - (int)sw.ElapsedMilliseconds;
                 if (remaining > 0) await Task.Delay(remaining);
 
-                Messages = new ObservableCollection<GroupMessageItem>(loaded.Items);
-                _displayedSignature = loaded.Signature;
-                ScrollToBottomRequested?.Invoke();
+                SecureApp.Presentation.Infrastructure.PerfLog.MeasureUiStall($"Group populate messages ({loaded.Items.Count} cells)", () =>
+                {
+                    Messages = new ObservableCollection<GroupMessageItem>(loaded.Items);
+                    _displayedSignature = loaded.Signature;
+                    ScrollToBottomRequested?.Invoke();
+                });
             }
 
             _groupThreadCache[_groupChatId] = new CachedGroupThread(Title, loaded.Items, [.. loaded.OlderLogical], loaded.Signature);

@@ -1,6 +1,7 @@
 using Microsoft.Maui.Dispatching;
 using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Domain.ValueObjects;
+using SecureApp.Presentation.Infrastructure;
 using SecureApp.Presentation.ViewModels;
 
 namespace SecureApp.Presentation.Views;
@@ -13,12 +14,15 @@ public partial class GroupChatPage : ContentPage
 
     public GroupChatPage(GroupChatViewModel viewModel, ISharedLibraryService libraryService)
     {
+        PerfLog.Mark("GroupChatPage.ctor start");
         InitializeComponent();
+        PerfLog.Mark("GroupChatPage.ctor InitializeComponent done");
         BindingContext = _viewModel = viewModel;
         _libraryService = libraryService ?? throw new ArgumentNullException(nameof(libraryService));
         _viewModel.ScrollToBottomRequested += ScrollToLatest;
         _viewModel.ScrollAnchorRequested += ScrollToAnchor;
         MessagesView.Scrolled += OnMessagesScrolled;
+        PerfLog.Mark("GroupChatPage.ctor end");
     }
 
     private void ScrollToLatest()
@@ -53,6 +57,7 @@ public partial class GroupChatPage : ContentPage
     protected override void OnAppearing()
     {
         base.OnAppearing();
+        PerfLog.Mark("GroupChatPage.OnAppearing");
         _viewModel.StartListening();
 
         // Load immediately (2026-09-11): the view model shows any cached copy synchronously (already
