@@ -193,15 +193,6 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
     {
         if (query.TryGetValue("groupChatId", out var value) && Guid.TryParse(value?.ToString(), out var id))
             _groupChatId = id;
-
-        // Show the cached thread synchronously, before the page slides in (content already in place).
-        if (_groupThreadCache.TryGetValue(_groupChatId, out var cached))
-        {
-            Title = cached.Title;
-            _olderLogicalRows.Clear();
-            _olderLogicalRows.AddRange(cached.Older);
-            Messages = new ObservableCollection<GroupMessageItem>(cached.Items);
-        }
     }
 
     [RelayCommand]

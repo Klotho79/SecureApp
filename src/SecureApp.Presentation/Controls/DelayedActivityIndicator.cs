@@ -13,9 +13,9 @@ public class DelayedActivityIndicator : ActivityIndicator
     public static readonly BindableProperty IsBusyProperty = BindableProperty.Create(
         nameof(IsBusy), typeof(bool), typeof(DelayedActivityIndicator), false, propertyChanged: OnIsBusyChanged);
 
-    /// <summary>How long busy must persist before the spinner is shown. Default 600 ms — long enough that ordinary loads never flash it, short enough that a genuine wait still gets feedback.</summary>
+    /// <summary>How long busy must persist before the spinner is shown. Default 1000 ms (the user's ask) — ordinary loads finish well before this and never show a spinner; only a genuinely long wait does.</summary>
     public static readonly BindableProperty DelayProperty = BindableProperty.Create(
-        nameof(Delay), typeof(int), typeof(DelayedActivityIndicator), 600);
+        nameof(Delay), typeof(int), typeof(DelayedActivityIndicator), 1000);
 
     public bool IsBusy
     {

@@ -150,18 +150,6 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
     {
         if (query.TryGetValue("chatSessionId", out var value) && Guid.TryParse(value?.ToString(), out var id))
             _chatSessionId = id;
-
-        // Populate from the warm cache SYNCHRONOUSLY, before the page appears/slides in, so a
-        // revisited chat shows its messages already in place as it slides (2026-09-11 — the user's
-        // "už s obrazeným obsahem"). LoadAsync then verifies against the DB and only rebuilds if
-        // something changed. A first-ever open (cache miss) falls through to the normal load.
-        if (_threadCache.TryGetValue(_chatSessionId, out var cached))
-        {
-            Title = cached.Title;
-            _olderRows.Clear();
-            _olderRows.AddRange(cached.Older);
-            Messages = new ObservableCollection<ChatMessageItem>(cached.Items);
-        }
     }
 
     /// <summary>
@@ -205,22 +193,19 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
     [RelayCommand]
     private async Task LoadAsync()
     {
-        // Spinner only matters on a cold open (nothing shown yet); a cached open already has content.
-        IsLoading = Messages.Count == 0;
+        IsLoading = true; // spinner only appears if this outlasts the delay (see DelayedActivityIndicator)
         StatusErrorMessage = null;
-        var alreadyShown = Messages.Count > 0; // populated synchronously from cache in ApplyQueryAttributes
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
-            // Phase 1 (background): first the cheap change-signature. If we already showed a cached
-            // copy and nothing changed, there's nothing to rebuild — skip straight to the network
-            // refresh. Otherwise (cold, or the thread changed) do the full load + decrypt here, off
-            // the UI thread, in parallel with the open animation.
-            var loaded = await Task.Run<(bool Changed, ChatSession? Session, List<Message> Older, List<ChatMessageItem> Items, string Signature)>(async () =>
+            // Phase 1 (background, in parallel with the open slide): the cheap change-signature first —
+            // if the warm cache is still current, reuse its already-decrypted items (no decrypt); else
+            // do the full load + decrypt. Either way, NOTHING touches the UI here.
+            var loaded = await Task.Run<(string Title, ChatSession? Session, List<Message> Older, List<ChatMessageItem> Items, string Signature)>(async () =>
             {
                 var signature = await _messageRepository.GetSessionSignatureAsync(_chatSessionId);
-                if (alreadyShown && _threadCache.TryGetValue(_chatSessionId, out var c) && c.Signature == signature)
-                    return (false, null, [], [], signature);
+                if (_threadCache.TryGetValue(_chatSessionId, out var c) && c.Signature == signature)
+                    return (c.Title, null, c.Older, c.Items, signature);
 
                 await _currentUserService.InitializeAsync();
                 var session = await _sessionRepository.GetByIdAsync(_chatSessionId);
@@ -240,39 +225,28 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
                 foreach (var message in initialRows)
                     items.Add(await BuildItemAsync(message, role));
 
-                return (true, session, older, items, signature);
+                return (session?.PeerDisplayName ?? "Chat", session, older, items, signature);
             });
+
+            // Phase 2 — apply only AFTER the slide has settled, so populating the list never competes
+            // with the open animation. This keeps the open slide as clean as the back slide (the user's
+            // ask); because phase 1 ran during the slide, the content is ready and lands right as it
+            // finishes rather than after a wait.
+            var remaining = AnimationSettleMs - (int)sw.ElapsedMilliseconds;
+            if (remaining > 0) await Task.Delay(remaining);
 
             await _currentUserService.InitializeAsync();
             _currentRole = _currentUserService.Current.Role;
-
-            if (!loaded.Changed)
-            {
-                // The already-shown cached copy is current — nothing to re-render, just settle at the newest.
-                IsLoading = false;
-                ScrollToBottomRequested?.Invoke();
-                var cachedSession = await _sessionRepository.GetByIdAsync(_chatSessionId);
-                _ = RefreshInBackgroundAsync(cachedSession);
-                return;
-            }
-
-            // Only hold the UI assignment back for the animation on a COLD open (blank screen); when a
-            // cached copy is already on screen, apply the refreshed content right away.
-            if (!alreadyShown)
-            {
-                var remaining = AnimationSettleMs - (int)sw.ElapsedMilliseconds;
-                if (remaining > 0) await Task.Delay(remaining);
-            }
-
-            Title = loaded.Session?.PeerDisplayName ?? "Chat";
+            Title = loaded.Title;
             _olderRows.Clear();
             _olderRows.AddRange(loaded.Older);
             Messages = new ObservableCollection<ChatMessageItem>(loaded.Items);
-            _threadCache[_chatSessionId] = new CachedThread(Title, loaded.Items, [.. loaded.Older], loaded.Signature);
+            _threadCache[_chatSessionId] = new CachedThread(loaded.Title, loaded.Items, [.. loaded.Older], loaded.Signature);
             IsLoading = false;
             ScrollToBottomRequested?.Invoke();
 
-            _ = RefreshInBackgroundAsync(loaded.Session);
+            var session = loaded.Session ?? await _sessionRepository.GetByIdAsync(_chatSessionId);
+            _ = RefreshInBackgroundAsync(session);
         }
         catch (Exception ex)
         {
