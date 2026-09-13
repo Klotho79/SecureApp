@@ -7,13 +7,16 @@
     x:DataType="vm:ChatListViewModel"
     Title="Chaty">
 
+    <!-- Outer Grid (2026-09-13): holds the list/detail split AND a full-screen persistent thread
+         overlay for phones. The overlay hosts ONE reused ChatThreadView (see code-behind's view cache)
+         that is shown/hidden instead of a page being pushed/popped — so reopening a chat does NOT
+         rebuild + re-render the whole page every time (the measured ~74ms MAUI render floor). This is
+         exactly why the chat LIST is fast: a persistent tab that's only shown/hidden, never rebuilt. -->
+    <Grid>
+
     <!-- Adaptive list+detail split (2026-09-06) — on a wide window (tablet/desktop) the list stays
          on screen and tapping a chat fills DetailPane in place; on a narrow one (phone) DetailColumn
-         collapses to 0 and tapping a chat pushes ChatPage instead, same as before. Built this way
-         specifically because Windows' Shell back button doesn't reliably return from a pushed
-         ChatPage to this list (works fine on Android) — see ChatThreadView's own remarks. Widths
-         are toggled from code-behind's SizeChanged handler, not a XAML trigger — MAUI has no
-         window-width VisualState trigger, only per-page/OS idioms this app doesn't otherwise use. -->
+         collapses to 0. Widths are toggled from code-behind's SizeChanged handler. -->
     <Grid x:Name="RootGrid" ColumnSpacing="0">
         <Grid.ColumnDefinitions>
             <ColumnDefinition x:Name="ListColumn" Width="*" />
@@ -119,5 +122,16 @@
                 <Label Text="Vyberte konverzaci ze seznamu a začněte číst." FontSize="13" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" HorizontalOptions="Center" />
             </VerticalStackLayout>
         </Grid>
+    </Grid>
+
+        <!-- Phone-only persistent thread overlay (2026-09-13). Covers the list full-screen when a chat
+             is open; hosts a reused ChatThreadView so reopening is instant (no page rebuild). Its own
+             back chevron hides it (see OnNarrowThreadBack) — hardware back is handled in code-behind. -->
+        <Grid x:Name="NarrowThreadOverlay" IsVisible="False" RowDefinitions="Auto,*"
+              BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource OffBlack}}">
+            <Button Grid.Row="0" Text="‹ Zpět" HorizontalOptions="Start" Style="{StaticResource SecondaryButton}" Margin="8,6" Clicked="OnNarrowThreadBack" />
+            <ContentView Grid.Row="1" x:Name="NarrowThreadHost" />
+        </Grid>
+
     </Grid>
 </ContentPage>

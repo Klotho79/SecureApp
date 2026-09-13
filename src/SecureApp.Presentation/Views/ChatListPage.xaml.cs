@@ -21,6 +21,13 @@ public partial class ChatListPage : ContentPage
     private bool _isWideLayout;
     private ChatViewModel? _activeThreadViewModel;
 
+    // Persistent phone thread hosting (2026-09-13): reuse ONE ChatThreadView per session (shown/hidden
+    // in NarrowThreadOverlay) instead of pushing/popping a page — so reopening a chat doesn't rebuild +
+    // re-render it (the ~74ms MAUI floor). Small LRU so memory stays bounded. See OnSessionSelected.
+    private readonly LinkedList<(Guid Id, ChatThreadView View, ChatViewModel Vm)> _narrowThreads = new();
+    private const int _maxCachedNarrowThreads = 4;
+    private ChatViewModel? _activeNarrowThreadViewModel;
+
     public ChatListPage(ChatListViewModel viewModel, IServiceProvider services)
     {
         InitializeComponent();
@@ -37,12 +44,22 @@ public partial class ChatListPage : ContentPage
         // while closing a chat; reloading it during that slide was what janked the close. The list's
         // current content stays visible, then refreshes once the animation is done.
         Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(280), () => _viewModel.LoadCommand.Execute(null));
+
+        // Returning to the Chats tab with a chat still open in the overlay: resume its live listener
+        // (it was stopped in OnDisappearing) so new messages arrive live again. The view itself stayed
+        // built, so this is just re-subscribing, no rebuild.
+        if (NarrowThreadOverlay.IsVisible)
+            _activeNarrowThreadViewModel?.StartListening();
     }
 
     protected override void OnDisappearing()
     {
         base.OnDisappearing();
         _activeThreadViewModel?.StopListening();
+        // Leaving the Chats tab: stop the open narrow thread's live listener too (the overlay stays
+        // visible so returning to the tab shows the same chat instantly — App-level OnEnvelopeReceived
+        // still persists any messages that arrive meanwhile; the next open reloads them).
+        _activeNarrowThreadViewModel?.StopListening();
     }
 
     private void OnPageSizeChanged(object? sender, EventArgs e)
@@ -78,7 +95,7 @@ public partial class ChatListPage : ContentPage
 
         if (!_isWideLayout)
         {
-            _viewModel.OpenSessionCommand.Execute(session);
+            ShowNarrowThread(session.Id);
             return;
         }
 
@@ -99,6 +116,65 @@ public partial class ChatListPage : ContentPage
 
         threadViewModel.LoadCommand.Execute(null);
         threadViewModel.StartListening();
+    }
+
+    /// <summary>
+    /// Phone path (2026-09-13): show the chat in a persistent, reused ChatThreadView inside
+    /// NarrowThreadOverlay instead of pushing a page. Reopening the same chat reuses the already-built
+    /// view (its CollectionView cells are still realized) so there is NO page rebuild/re-render — the
+    /// win the user's own observation pointed to (the chat LIST is fast because it's persistent).
+    /// </summary>
+    private void ShowNarrowThread(Guid sessionId)
+    {
+        _activeNarrowThreadViewModel?.StopListening();
+
+        // Reuse the cached view for this session if we have it; otherwise build one and cache it (LRU).
+        ChatThreadView view;
+        ChatViewModel vm;
+        var existing = _narrowThreads.FirstOrDefault(t => t.Id == sessionId);
+        if (existing.View is not null)
+        {
+            view = existing.View;
+            vm = existing.Vm;
+            _narrowThreads.Remove(existing);
+            _narrowThreads.AddFirst(existing);
+        }
+        else
+        {
+            vm = _services.GetRequiredService<ChatViewModel>();
+            vm.ApplyQueryAttributes(new Dictionary<string, object> { ["chatSessionId"] = sessionId.ToString() });
+            view = new ChatThreadView(_services.GetRequiredService<ISharedLibraryService>()) { BindingContext = vm };
+            _narrowThreads.AddFirst((sessionId, view, vm));
+            while (_narrowThreads.Count > _maxCachedNarrowThreads) _narrowThreads.RemoveLast();
+        }
+
+        if (!ReferenceEquals(NarrowThreadHost.Content, view))
+            NarrowThreadHost.Content = view;
+        NarrowThreadOverlay.IsVisible = true;
+        _activeNarrowThreadViewModel = vm;
+
+        vm.StartListening();
+        vm.LoadCommand.Execute(null); // fast: reused page skips the rebuild when content is unchanged
+    }
+
+    private void HideNarrowThread()
+    {
+        _activeNarrowThreadViewModel?.StopListening();
+        _activeNarrowThreadViewModel = null;
+        NarrowThreadOverlay.IsVisible = false;
+    }
+
+    private void OnNarrowThreadBack(object? sender, EventArgs e) => HideNarrowThread();
+
+    /// <summary>Hardware/gesture back closes the open chat overlay (hide, don't destroy — keeps it warm) instead of leaving the Chats tab.</summary>
+    protected override bool OnBackButtonPressed()
+    {
+        if (NarrowThreadOverlay.IsVisible)
+        {
+            HideNarrowThread();
+            return true;
+        }
+        return base.OnBackButtonPressed();
     }
 
     /// <summary>Group chats (2026-09-07) always push <see cref="Views.GroupChatPage"/> — not folded into the adaptive list+detail split above, a scope call for this first pass (see the XAML's own remarks), not a technical limitation.</summary>
