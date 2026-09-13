@@ -1,0 +1,262 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentView
+    x:Class="SecureApp.Presentation.Views.GroupChatThreadView"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
+    xmlns:controls="clr-namespace:SecureApp.Presentation.Controls"
+    x:DataType="vm:GroupChatViewModel"
+    x:Name="GroupChatRoot">
+
+    <!-- Extracted from GroupChatPage (2026-09-13) so the same group UI can be hosted two ways: as a
+         pushed page (GroupChatPage, e.g. right after creating a group) OR embedded persistently in
+         ChatListPage's overlay on a phone, shown/hidden instead of rebuilt each open. Mirrors the
+         ChatThreadView split for 1:1. Does NOT manage its own Load/StartListening/StopListening —
+         the host does that. -->
+    <Grid RowDefinitions="Auto,Auto,*,Auto,Auto" Padding="0" RowSpacing="0">
+
+        <Label
+            Grid.Row="0"
+            Text="{Binding StatusErrorMessage}"
+            IsVisible="{Binding HasStatusError}"
+            Margin="20,12,20,0"
+            TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}"
+            LineBreakMode="WordWrap" />
+
+        <!-- Member list + management — visible to everyone (read-only), Add/Remove only for the
+             founder or an Admin/Modifier device (CanManageMembers). -->
+        <Border Grid.Row="1" Style="{StaticResource CardBorder}" Margin="12,10,12,0">
+            <VerticalStackLayout Spacing="8">
+                <Grid ColumnDefinitions="*,Auto,Auto">
+                    <Grid.GestureRecognizers>
+                        <TapGestureRecognizer Command="{Binding ToggleMembersExpandedCommand}" />
+                    </Grid.GestureRecognizers>
+                    <Label Grid.Column="0" Text="{Binding MemberCount, StringFormat='Členové ({0}) ▾'}" Style="{StaticResource SectionHeader}" Margin="0" FontSize="14">
+                        <Label.Triggers>
+                            <DataTrigger TargetType="Label" Binding="{Binding IsMembersExpanded}" Value="False">
+                                <Setter Property="Text" Value="{Binding MemberCount, StringFormat='Členové ({0}) ▸'}" />
+                            </DataTrigger>
+                        </Label.Triggers>
+                    </Label>
+                    <Button Grid.Column="1" Text="+ Přidat" Style="{StaticResource SecondaryButton}" Command="{Binding ToggleAddMemberCommand}" IsVisible="{Binding CanManageMembers}" />
+                    <Button Grid.Column="2" Text="🚪 Opustit" Style="{StaticResource SecondaryButton}" Clicked="OnLeaveGroupClicked" />
+                </Grid>
+
+                <FlexLayout IsVisible="{Binding IsMembersExpanded}" BindableLayout.ItemsSource="{Binding Members}" Wrap="Wrap" Direction="Row" JustifyContent="Start" AlignItems="Center">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="vm:GroupMemberItem">
+                            <Border Style="{StaticResource Chip}" Margin="0,3,6,0">
+                                <Grid ColumnDefinitions="Auto,Auto,Auto" ColumnSpacing="4">
+                                    <Label Grid.Column="0" Text="{Binding DisplayNameWithRoleSuffix}" Style="{StaticResource ChipLabel}" />
+                                    <Button
+                                        Grid.Column="1"
+                                        Text="↺"
+                                        FontSize="12"
+                                        Padding="4,0"
+                                        BackgroundColor="Transparent"
+                                        TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}"
+                                        Command="{Binding ResetPairingCommand}"
+                                        CommandParameter="{Binding .}"
+                                        IsVisible="{Binding CanResetPairing}" />
+                                    <Button
+                                        Grid.Column="2"
+                                        Text="✕"
+                                        FontSize="11"
+                                        Padding="4,0"
+                                        BackgroundColor="Transparent"
+                                        TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}"
+                                        Command="{Binding RemoveCommand}"
+                                        CommandParameter="{Binding Id}"
+                                        IsVisible="{Binding CanRemove}" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </FlexLayout>
+
+                <VerticalStackLayout Spacing="6" IsVisible="{Binding IsShowingAddMember}">
+                    <controls:DelayedActivityIndicator IsBusy="{Binding IsLoadingAddableMembers}" HorizontalOptions="Center" />
+                    <CollectionView ItemsSource="{Binding AddableMembers}" SelectionMode="None" HeightRequest="140">
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:SelectableMemberItem">
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" Padding="0,4">
+                                    <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected}" />
+                                    <Label Grid.Column="1" Text="{Binding DisplayName}" VerticalOptions="Center" />
+                                </Grid>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                    <Button Text="Přidat vybrané" Command="{Binding ConfirmAddMembersCommand}" />
+                </VerticalStackLayout>
+            </VerticalStackLayout>
+        </Border>
+
+        <Grid Grid.Row="2">
+            <controls:DelayedActivityIndicator IsBusy="{Binding IsLoading}" HorizontalOptions="Center" VerticalOptions="Center" />
+
+            <CollectionView x:Name="MessagesView" ItemsSource="{Binding Messages}" ItemsUpdatingScrollMode="KeepItemsInView" Margin="12,12,12,4">
+                <CollectionView.ItemTemplate>
+                    <controls:GroupMessageTemplateSelector>
+                        <controls:GroupMessageTemplateSelector.TextTemplate>
+                            <DataTemplate x:DataType="vm:GroupMessageItem">
+                                <Grid Padding="3,0">
+                                    <Border
+                                        Padding="7,3"
+                                        StrokeShape="RoundRectangle 18,18,5,18"
+                                        StrokeThickness="1"
+                                        Stroke="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}"
+                                        BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray950}}"
+                                        HorizontalOptions="Start"
+                                        MaximumWidthRequest="340">
+                                        <Border.Triggers>
+                                            <DataTrigger TargetType="Border" Binding="{Binding IsOutbound}" Value="True">
+                                                <Setter Property="StrokeShape" Value="RoundRectangle 18,18,18,5" />
+                                                <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
+                                                <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
+                                                <Setter Property="HorizontalOptions" Value="End" />
+                                            </DataTrigger>
+                                        </Border.Triggers>
+                                        <Grid RowDefinitions="Auto,Auto" RowSpacing="0">
+                                            <HorizontalStackLayout Grid.Row="0" Spacing="6">
+                                                <Label
+                                                    Text="{Binding TimeLabel}"
+                                                    FontSize="9"
+                                                    TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}">
+                                                    <Label.Triggers>
+                                                        <DataTrigger TargetType="Label" Binding="{Binding IsOutbound}" Value="True">
+                                                            <Setter Property="TextColor" Value="{AppThemeBinding Light=#CFE7F0, Dark={StaticResource PrimaryDarkText}}" />
+                                                        </DataTrigger>
+                                                    </Label.Triggers>
+                                                </Label>
+                                                <Label
+                                                    Text="{Binding SenderDisplayName}"
+                                                    FontSize="10"
+                                                    FontAttributes="Bold"
+                                                    LineBreakMode="TailTruncation"
+                                                    IsVisible="{Binding IsInbound}"
+                                                    TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
+                                                <Label
+                                                    Text="🗑"
+                                                    FontSize="11"
+                                                    VerticalOptions="Center"
+                                                    TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}"
+                                                    IsVisible="{Binding CanDelete}">
+                                                    <Label.GestureRecognizers>
+                                                        <TapGestureRecognizer
+                                                            Command="{Binding Source={x:Reference GroupChatRoot}, Path=BindingContext.DeleteMessageCommand}"
+                                                            CommandParameter="{Binding .}" />
+                                                    </Label.GestureRecognizers>
+                                                </Label>
+                                            </HorizontalStackLayout>
+
+                                            <Label Grid.Row="1" Text="{Binding Text}" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" FontSize="13" LineBreakMode="WordWrap">
+                                                <Label.Triggers>
+                                                    <DataTrigger TargetType="Label" Binding="{Binding IsOutbound}" Value="True">
+                                                        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource PrimaryDarkText}}" />
+                                                    </DataTrigger>
+                                                </Label.Triggers>
+                                            </Label>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+                            </DataTemplate>
+                        </controls:GroupMessageTemplateSelector.TextTemplate>
+
+                        <controls:GroupMessageTemplateSelector.AttachmentTemplate>
+                            <DataTemplate x:DataType="vm:GroupMessageItem">
+                                <Grid Padding="3,0">
+                                    <Border
+                                        Padding="7,3"
+                                        StrokeShape="RoundRectangle 18,18,5,18"
+                                        StrokeThickness="1"
+                                        Stroke="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}"
+                                        BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray950}}"
+                                        HorizontalOptions="Start"
+                                        MaximumWidthRequest="340">
+                                        <Border.Triggers>
+                                            <DataTrigger TargetType="Border" Binding="{Binding IsOutbound}" Value="True">
+                                                <Setter Property="StrokeShape" Value="RoundRectangle 18,18,18,5" />
+                                                <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
+                                                <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
+                                                <Setter Property="HorizontalOptions" Value="End" />
+                                            </DataTrigger>
+                                        </Border.Triggers>
+                                        <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="0">
+                                            <HorizontalStackLayout Grid.Row="0" Spacing="6">
+                                                <Label
+                                                    Text="{Binding TimeLabel}"
+                                                    FontSize="9"
+                                                    TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}">
+                                                    <Label.Triggers>
+                                                        <DataTrigger TargetType="Label" Binding="{Binding IsOutbound}" Value="True">
+                                                            <Setter Property="TextColor" Value="{AppThemeBinding Light=#CFE7F0, Dark={StaticResource PrimaryDarkText}}" />
+                                                        </DataTrigger>
+                                                    </Label.Triggers>
+                                                </Label>
+                                                <Label
+                                                    Text="{Binding SenderDisplayName}"
+                                                    FontSize="10"
+                                                    FontAttributes="Bold"
+                                                    LineBreakMode="TailTruncation"
+                                                    IsVisible="{Binding IsInbound}"
+                                                    TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
+                                                <Label
+                                                    Text="🗑"
+                                                    FontSize="11"
+                                                    VerticalOptions="Center"
+                                                    TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}"
+                                                    IsVisible="{Binding CanDelete}">
+                                                    <Label.GestureRecognizers>
+                                                        <TapGestureRecognizer
+                                                            Command="{Binding Source={x:Reference GroupChatRoot}, Path=BindingContext.DeleteMessageCommand}"
+                                                            CommandParameter="{Binding .}" />
+                                                    </Label.GestureRecognizers>
+                                                </Label>
+                                            </HorizontalStackLayout>
+
+                                            <Label Grid.Row="1" Text="{Binding Text}" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" FontSize="13" LineBreakMode="WordWrap" IsVisible="{Binding HasText}">
+                                                <Label.Triggers>
+                                                    <DataTrigger TargetType="Label" Binding="{Binding IsOutbound}" Value="True">
+                                                        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource PrimaryDarkText}}" />
+                                                    </DataTrigger>
+                                                </Label.Triggers>
+                                            </Label>
+
+                                            <Border Grid.Row="2" Padding="8,6" StrokeShape="RoundRectangle 10" Stroke="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
+                                                <Border.GestureRecognizers>
+                                                    <TapGestureRecognizer
+                                                        Command="{Binding Source={x:Reference GroupChatRoot}, Path=BindingContext.OpenAttachmentCommand}"
+                                                        CommandParameter="{Binding .}" />
+                                                </Border.GestureRecognizers>
+                                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9" RowDefinitions="Auto,Auto">
+                                                    <Label Grid.Column="0" Grid.RowSpan="2" Text="📄" FontSize="18" VerticalOptions="Center" />
+                                                    <Label Grid.Column="1" Grid.Row="0" Text="{Binding AttachmentFileName}" FontSize="12.5" FontAttributes="Bold" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" LineBreakMode="TailTruncation" />
+                                                    <Label Grid.Column="1" Grid.Row="1" Text="Ze sdílené knihovny" FontSize="10.5" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
+                                                </Grid>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+                            </DataTemplate>
+                        </controls:GroupMessageTemplateSelector.AttachmentTemplate>
+                    </controls:GroupMessageTemplateSelector>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </Grid>
+
+        <Border Grid.Row="3" Margin="12,0" Padding="8,6" IsVisible="{Binding HasPendingAttachment}" StrokeShape="RoundRectangle 10" Stroke="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <Label Grid.Column="0" Text="📎" VerticalOptions="Center" Margin="0,0,8,0" />
+                <Label Grid.Column="1" Text="{Binding PendingAttachmentFileName}" VerticalOptions="Center" LineBreakMode="TailTruncation" />
+                <Button Grid.Column="2" Text="✕" Style="{StaticResource SecondaryButton}" WidthRequest="40" Padding="0" Command="{Binding ClearPendingAttachmentCommand}" />
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="4" Padding="12,10" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10" BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource OffBlack}}">
+            <BoxView Grid.ColumnSpan="3" HeightRequest="1" VerticalOptions="Start" Margin="-12,-10,-12,0" Color="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}" />
+            <Button Grid.Column="0" Text="📎" Style="{StaticResource SecondaryButton}" WidthRequest="44" Padding="0" Clicked="OnAttachClicked" />
+            <Entry Grid.Column="1" Text="{Binding ComposeText}" Placeholder="Napište zprávu skupině…" ReturnCommand="{Binding SendCommand}" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}" />
+            <Button Grid.Column="2" Text="Odeslat" Command="{Binding SendCommand}" IsEnabled="{Binding CanSend}" />
+        </Grid>
+    </Grid>
+</ContentView>

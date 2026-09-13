@@ -21,12 +21,16 @@ public partial class ChatListPage : ContentPage
     private bool _isWideLayout;
     private ChatViewModel? _activeThreadViewModel;
 
-    // Persistent phone thread hosting (2026-09-13): reuse ONE ChatThreadView per session (shown/hidden
-    // in NarrowThreadOverlay) instead of pushing/popping a page — so reopening a chat doesn't rebuild +
-    // re-render it (the ~74ms MAUI floor). Small LRU so memory stays bounded. See OnSessionSelected.
+    // Persistent phone thread hosting (2026-09-13): reuse ONE view per conversation (shown/hidden in
+    // NarrowThreadOverlay) instead of pushing/popping a page — so reopening a chat doesn't rebuild +
+    // re-render it (the ~74ms MAUI floor). Small LRU per kind so memory stays bounded. 1:1 and group
+    // both host into the same overlay; the active listener is tracked via start/stop delegates so the
+    // overlay code doesn't care which VM type is showing. See ShowNarrowThread / ShowNarrowGroup.
     private readonly LinkedList<(Guid Id, ChatThreadView View, ChatViewModel Vm)> _narrowThreads = new();
+    private readonly LinkedList<(Guid Id, GroupChatThreadView View, GroupChatViewModel Vm)> _narrowGroups = new();
     private const int _maxCachedNarrowThreads = 4;
-    private ChatViewModel? _activeNarrowThreadViewModel;
+    private Action? _activeNarrowStop;
+    private Action? _activeNarrowResume;
 
     public ChatListPage(ChatListViewModel viewModel, IServiceProvider services)
     {
@@ -49,7 +53,7 @@ public partial class ChatListPage : ContentPage
         // (it was stopped in OnDisappearing) so new messages arrive live again. The view itself stayed
         // built, so this is just re-subscribing, no rebuild.
         if (NarrowThreadOverlay.IsVisible)
-            _activeNarrowThreadViewModel?.StartListening();
+            _activeNarrowResume?.Invoke();
     }
 
     protected override void OnDisappearing()
@@ -59,7 +63,7 @@ public partial class ChatListPage : ContentPage
         // Leaving the Chats tab: stop the open narrow thread's live listener too (the overlay stays
         // visible so returning to the tab shows the same chat instantly — App-level OnEnvelopeReceived
         // still persists any messages that arrive meanwhile; the next open reloads them).
-        _activeNarrowThreadViewModel?.StopListening();
+        _activeNarrowStop?.Invoke();
     }
 
     private void OnPageSizeChanged(object? sender, EventArgs e)
@@ -126,7 +130,7 @@ public partial class ChatListPage : ContentPage
     /// </summary>
     private void ShowNarrowThread(Guid sessionId)
     {
-        _activeNarrowThreadViewModel?.StopListening();
+        _activeNarrowStop?.Invoke();
 
         // Reuse the cached view for this session if we have it; otherwise build one and cache it (LRU).
         ChatThreadView view;
@@ -151,16 +155,52 @@ public partial class ChatListPage : ContentPage
         if (!ReferenceEquals(NarrowThreadHost.Content, view))
             NarrowThreadHost.Content = view;
         NarrowThreadOverlay.IsVisible = true;
-        _activeNarrowThreadViewModel = vm;
+        _activeNarrowStop = vm.StopListening;
+        _activeNarrowResume = vm.StartListening;
 
         vm.StartListening();
-        vm.LoadCommand.Execute(null); // fast: reused page skips the rebuild when content is unchanged
+        vm.LoadCommand.Execute(null); // fast: reused view skips the rebuild when content is unchanged
+    }
+
+    /// <summary>Group counterpart of <see cref="ShowNarrowThread"/> — hosts a reused GroupChatThreadView in the same overlay so reopening a group is instant.</summary>
+    private void ShowNarrowGroup(Guid groupId)
+    {
+        _activeNarrowStop?.Invoke();
+
+        GroupChatThreadView view;
+        GroupChatViewModel vm;
+        var existing = _narrowGroups.FirstOrDefault(t => t.Id == groupId);
+        if (existing.View is not null)
+        {
+            view = existing.View;
+            vm = existing.Vm;
+            _narrowGroups.Remove(existing);
+            _narrowGroups.AddFirst(existing);
+        }
+        else
+        {
+            vm = _services.GetRequiredService<GroupChatViewModel>();
+            vm.ApplyQueryAttributes(new Dictionary<string, object> { ["groupChatId"] = groupId.ToString() });
+            view = new GroupChatThreadView(_services.GetRequiredService<ISharedLibraryService>()) { BindingContext = vm };
+            _narrowGroups.AddFirst((groupId, view, vm));
+            while (_narrowGroups.Count > _maxCachedNarrowThreads) _narrowGroups.RemoveLast();
+        }
+
+        if (!ReferenceEquals(NarrowThreadHost.Content, view))
+            NarrowThreadHost.Content = view;
+        NarrowThreadOverlay.IsVisible = true;
+        _activeNarrowStop = vm.StopListening;
+        _activeNarrowResume = vm.StartListening;
+
+        vm.StartListening();
+        vm.LoadCommand.Execute(null);
     }
 
     private void HideNarrowThread()
     {
-        _activeNarrowThreadViewModel?.StopListening();
-        _activeNarrowThreadViewModel = null;
+        _activeNarrowStop?.Invoke();
+        _activeNarrowStop = null;
+        _activeNarrowResume = null;
         NarrowThreadOverlay.IsVisible = false;
     }
 
@@ -181,8 +221,12 @@ public partial class ChatListPage : ContentPage
     private void OnGroupSelected(object? sender, SelectionChangedEventArgs e)
     {
         GroupsView.SelectedItem = null;
-        if (e.CurrentSelection.FirstOrDefault() is GroupChatListItem group)
-            _viewModel.OpenGroupCommand.Execute(group);
+        if (e.CurrentSelection.FirstOrDefault() is not GroupChatListItem group) return;
+
+        if (_isWideLayout)
+            _viewModel.OpenGroupCommand.Execute(group); // wide/PC: keep push navigation (unchanged)
+        else
+            ShowNarrowGroup(group.Id); // phone: persistent overlay, no rebuild on reopen
     }
 
     /// <summary>Confirmation dialog lives here per this codebase's established "native prompts live in the page code-behind" convention — <see cref="ChatListViewModel.ResetSessionAsync"/> does the actual resync once confirmed (2026-09-07: a single tap now fully re-pairs on its own, nothing to do on the other device).</summary>
