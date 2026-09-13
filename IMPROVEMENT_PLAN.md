@@ -38,14 +38,15 @@ entries; 6 custom fonts incl. a variable font (first-render weight).
 
 ---
 
-## Phase 0 — Diagnostics infrastructure (DO FIRST)  ⬅ in progress
+## Phase 0 — Diagnostics infrastructure (DO FIRST)  ✅ mostly done
 Durable, on-device, structured logs so tuning is data-driven and self-serve.
-- [ ] `AppLog`: local rotating files in AppData — `logs/errors.log`, `logs/metrics.log`.
-- [ ] Error log: global unhandled-exception hook + explicit `AppLog.Error(source, msg, ex)`.
-- [ ] Metrics log: `AppLog.Metric(name, valueMs, tags…)` — auto-captures chat-open
-      phases (ctor, load, apply) so no manual gfxinfo/port dance is needed.
-- [ ] In-app viewer + export (Settings → Diagnostics) and easy `adb` pull path.
-- [ ] Keep the existing relay reporter for opt-in centralized reporting.
+- [x] `AppLog`: local rotating files in AppData — `logs/errors.log`, `logs/metrics.log`.
+- [x] Error log: global unhandled-exception hook + explicit `AppLog.Error(source, msg, ex)`.
+- [x] Metrics log: `AppLog.Metric(name, valueMs, tags…)` — chat/group open now record
+      `chat.open.load` / `group.open.load` (bg/cells/members) + page ctor timing.
+- [x] Keep the existing relay reporter for opt-in centralized reporting.
+- [ ] In-app viewer + export (Settings → Diagnostika) — pull via `adb` for now:
+      `run-as com.companyname.secureapp.presentation cat files/logs/metrics.log`.
 
 ## Phase 1 — Speed: kill the chat-open layout cost
 Root cause = fresh CollectionView built + laid out every open, ×3–4 passes.
@@ -71,4 +72,6 @@ Root cause = fresh CollectionView built + laid out every open, ×3–4 passes.
 ---
 
 ## Log of changes
-- 2026-09-13: Plan created; Phase 0 started (durable AppLog error + metrics).
+- 2026-09-13: Plan created; Phase 0 (durable AppLog error + metrics) landed; chat/group
+  open self-record timings. Single-batch apply on open (removed sync-populate). Next:
+  Phase 1 — verify open metrics on-device, then cut layout passes / keep pages in memory.
