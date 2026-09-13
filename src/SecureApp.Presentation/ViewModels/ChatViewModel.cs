@@ -196,7 +196,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
     public event Action<ChatMessageItem>? ScrollAnchorRequested;
 
     /// <summary>How many of the newest messages to show immediately on open, and how many older ones to reveal per scroll-up page (2026-09-11, the user's own ask: "nemusí se načíst celý chat ale třeba jen posledních 5-10 zpráv... možnost rolovat ve zprávách do minulosti").</summary>
-    private const int InitialMessageCount = 15; // cells proved ~free (halving 8->4 didn't change layout time — it's fixed page overhead), so we can afford a generous first page.
+    private const int InitialMessageCount = 8; // 2026-09-13: fewer initial messages cut decrypt cost on open; scroll-up loads older history on demand.
     private const int OlderPageSize = 20;
 
     /// <summary>Settle delay before touching the UI. Now 0 (2026-09-12): the chat push no longer animates (see ChatListViewModel.OpenSessionAsync — the janky slide was dropped for an instant cut), so there is no slide to hold content back from — populate immediately for the snappiest possible open. Kept as a named constant so the delay can be reinstated if an animation is ever brought back.</summary>
