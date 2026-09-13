@@ -74,6 +74,56 @@ public partial class App : Application
 		// chat — doing it here means a chat opened moments later reads an already-open connection
 		// instead of waiting ~a second behind a spinner for the DB to come up. Best-effort.
 		_ = WarmUpDatabaseAsync();
+
+		// 2026-09-13: prune churned sessions. Resync/auto-heal/group-mesh close the old session and
+		// create a new one each time (see SessionRecoveryHelper.ResyncAsync), leaving stale EMPTY,
+		// Closed rows behind. Besides cluttering the list (now deduped per peer in ChatListViewModel),
+		// they bloat every GetAllAsync — which GroupChatViewModel runs on each open to build sender
+		// names — so pruning them also speeds up opening. Deletes ONLY empty (no messages) Closed
+		// sessions that have another session for the same peer, so no history is lost and every peer
+		// keeps at least one session. Best-effort, once at launch.
+		_ = PruneChurnedSessionsAsync();
+	}
+
+	private static async Task PruneChurnedSessionsAsync()
+	{
+		try
+		{
+			var services = IPlatformApplication.Current?.Services;
+			if (services is null) return;
+			using var scope = services.CreateScope();
+			var sessionRepository = scope.ServiceProvider.GetRequiredService<IChatSessionRepository>();
+			var messageRepository = scope.ServiceProvider.GetRequiredService<IMessageRepository>();
+
+			var sessions = await sessionRepository.GetAllAsync();
+			var pruned = 0;
+			foreach (var peerGroup in sessions.GroupBy(s => Convert.ToHexStringLower(s.PeerIdentityPublicKey)))
+			{
+				if (peerGroup.Count() < 2) continue; // never touch a peer's only session
+
+				// Keep the one the list would show (a live session over Closed, then most recent).
+				var keep = peerGroup
+					.OrderByDescending(s => s.State != ChatSessionState.Closed)
+					.ThenByDescending(s => s.LastRatchetedAtUtc ?? s.CreatedAtUtc)
+					.First();
+
+				foreach (var candidate in peerGroup)
+				{
+					if (candidate.Id == keep.Id || candidate.State != ChatSessionState.Closed) continue;
+					var messages = await messageRepository.GetBySessionAsync(candidate.Id);
+					if (messages.Count > 0) continue; // has history — keep it
+					await sessionRepository.DeleteAsync(candidate.Id);
+					pruned++;
+				}
+			}
+
+			if (pruned > 0)
+				AppLog.Metric("sessions.pruned", pruned, "count", ("total", sessions.Count));
+		}
+		catch (Exception ex)
+		{
+			AppLog.Error(nameof(PruneChurnedSessionsAsync), "session prune failed", ex);
+		}
 	}
 
 	private static async Task WarmUpDatabaseAsync()

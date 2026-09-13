@@ -310,7 +310,8 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
             _groupThreadCache[_groupChatId] = new CachedGroupThread(Title, loaded.Items, [.. loaded.OlderLogical], loaded.Signature);
             IsLoading = false;
             AppLog.Metric("group.open.load", sw.Elapsed.TotalMilliseconds, "ms",
-                ("bg", System.Math.Round(bgMs, 1)), ("cells", loaded.Items.Count), ("members", loaded.Members.Count), ("reused", reused));
+                ("bg", System.Math.Round(bgMs, 1)), ("cells", loaded.Items.Count), ("members", loaded.Members.Count),
+                ("sessions", loaded.SessionNames.Count), ("reused", reused));
 
             // Refresh names from the directory, then auto-heal broken pairings — both in the
             // background so neither blocks the thread. Auto-heal on open (2026-09-07) is the user's
