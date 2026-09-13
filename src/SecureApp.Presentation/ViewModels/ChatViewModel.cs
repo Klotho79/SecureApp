@@ -157,26 +157,11 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         if (query.TryGetValue("chatSessionId", out var value) && Guid.TryParse(value?.ToString(), out var id))
             _chatSessionId = id;
 
-        // Populate from the warm cache SYNCHRONOUSLY, before the page appears — the smooth path the
-        // user confirmed ("téměř okamžitě"): a revisited chat's content is present before the slide,
-        // so the populated page slides in with no mid-slide populate hitch. LoadAsync then verifies
-        // against the DB and only rebuilds if it actually changed. A cache miss falls through to the
-        // normal cold load.
-        if (_threadCache.TryGetValue(_chatSessionId, out var cached))
-        {
-            SecureApp.Presentation.Infrastructure.PerfLog.MeasureUiStall($"ApplyQuery sync-populate ({cached.Items.Count} cells)", () =>
-            {
-                Title = cached.Title;
-                _olderRows.Clear();
-                _olderRows.AddRange(cached.Older);
-                Messages = new ObservableCollection<ChatMessageItem>(cached.Items);
-                _displayedSignature = cached.Signature;
-            });
-        }
-        else
-        {
-            SecureApp.Presentation.Infrastructure.PerfLog.Mark("ApplyQuery cache MISS (cold open)");
-        }
+        // No sync-populate here anymore (2026-09-12). It set Messages in its OWN layout pass, and then
+        // LoadAsync applied the rest in ANOTHER — framestats showed the group open doing ~4 full-page
+        // layout passes of ~180ms each (the cost is fixed page overhead, NOT the cell count). Applying
+        // everything in ONE synchronous batch in LoadAsync collapses those into a single pass. With the
+        // open animation already removed, there is no slide to show cached content "during" anyway.
     }
 
     /// <summary>
@@ -211,7 +196,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
     public event Action<ChatMessageItem>? ScrollAnchorRequested;
 
     /// <summary>How many of the newest messages to show immediately on open, and how many older ones to reveal per scroll-up page (2026-09-11, the user's own ask: "nemusí se načíst celý chat ale třeba jen posledních 5-10 zpráv... možnost rolovat ve zprávách do minulosti").</summary>
-    private const int InitialMessageCount = 8;
+    private const int InitialMessageCount = 15; // cells proved ~free (halving 8->4 didn't change layout time — it's fixed page overhead), so we can afford a generous first page.
     private const int OlderPageSize = 20;
 
     /// <summary>Settle delay before touching the UI. Now 0 (2026-09-12): the chat push no longer animates (see ChatListViewModel.OpenSessionAsync — the janky slide was dropped for an instant cut), so there is no slide to hold content back from — populate immediately for the snappiest possible open. Kept as a named constant so the delay can be reinstated if an animation is ever brought back.</summary>

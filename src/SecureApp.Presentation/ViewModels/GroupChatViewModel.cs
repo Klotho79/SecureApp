@@ -47,7 +47,7 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
     private readonly List<Message> _olderLogicalRows = [];
     private Dictionary<Guid, string> _sessionNameById = [];
     private bool _isLoadingOlder;
-    private const int InitialMessageCount = 8;
+    private const int InitialMessageCount = 15; // cells proved ~free (see ChatViewModel) — generous first page is fine.
     private const int OlderPageSize = 20;
 
     /// <summary>See ChatViewModel.AnimationSettleMs — now 0 (the group push no longer animates, so there is no slide to hold content back from; populate immediately).</summary>
@@ -202,24 +202,10 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
         if (query.TryGetValue("groupChatId", out var value) && Guid.TryParse(value?.ToString(), out var id))
             _groupChatId = id;
 
-        // Sync-populate the visible thread from the warm cache before the page slides in (the smooth
-        // path — see ChatViewModel.ApplyQueryAttributes). Member/session state still loads in LoadAsync;
-        // only the message list needs to be present up front to avoid a mid-slide populate hitch.
-        if (_groupThreadCache.TryGetValue(_groupChatId, out var cached))
-        {
-            SecureApp.Presentation.Infrastructure.PerfLog.MeasureUiStall($"Group ApplyQuery sync-populate ({cached.Items.Count} cells)", () =>
-            {
-                Title = cached.Title;
-                _olderLogicalRows.Clear();
-                _olderLogicalRows.AddRange(cached.Older);
-                Messages = new ObservableCollection<GroupMessageItem>(cached.Items);
-                _displayedSignature = cached.Signature;
-            });
-        }
-        else
-        {
-            SecureApp.Presentation.Infrastructure.PerfLog.Mark("Group ApplyQuery cache MISS (cold open)");
-        }
+        // No sync-populate here anymore (2026-09-12) — see ChatViewModel.ApplyQueryAttributes. Applying
+        // messages here in a separate layout pass and the member card in another was part of the ~4
+        // full-page layout passes framestats caught on group open. Everything now lands in ONE batch in
+        // LoadAsync.
     }
 
     [RelayCommand]
