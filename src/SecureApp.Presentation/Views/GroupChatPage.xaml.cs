@@ -14,15 +14,15 @@ public partial class GroupChatPage : ContentPage
 
     public GroupChatPage(GroupChatViewModel viewModel, ISharedLibraryService libraryService)
     {
-        PerfLog.Mark("GroupChatPage.ctor start");
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         InitializeComponent();
-        PerfLog.Mark("GroupChatPage.ctor InitializeComponent done");
+        var inflateMs = sw.Elapsed.TotalMilliseconds;
         BindingContext = _viewModel = viewModel;
         _libraryService = libraryService ?? throw new ArgumentNullException(nameof(libraryService));
         _viewModel.ScrollToBottomRequested += ScrollToLatest;
         _viewModel.ScrollAnchorRequested += ScrollToAnchor;
         MessagesView.Scrolled += OnMessagesScrolled;
-        PerfLog.Mark("GroupChatPage.ctor end");
+        AppLog.Metric("group.page.ctor", sw.Elapsed.TotalMilliseconds, "ms", ("inflate", System.Math.Round(inflateMs, 1)));
     }
 
     private void ScrollToLatest()
@@ -57,7 +57,6 @@ public partial class GroupChatPage : ContentPage
     protected override void OnAppearing()
     {
         base.OnAppearing();
-        PerfLog.Mark("GroupChatPage.OnAppearing");
         _viewModel.StartListening();
 
         // Load immediately (2026-09-11): the view model shows any cached copy synchronously (already

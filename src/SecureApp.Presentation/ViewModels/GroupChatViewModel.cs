@@ -9,6 +9,7 @@ using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Domain.Policies;
 using SecureApp.Domain.ValueObjects;
 using SecureApp.Presentation.Chat;
+using SecureApp.Presentation.Infrastructure;
 using SecureApp.Presentation.Views;
 
 namespace SecureApp.Presentation.ViewModels;
@@ -193,10 +194,6 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
     private sealed record CachedGroupThread(string Title, List<GroupMessageItem> Items, List<Message> Older, string Signature);
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, CachedGroupThread> _groupThreadCache = new();
 
-    // See ChatViewModel._displayedSignature — the signature of the thread currently on screen, so
-    // LoadAsync can skip the (janky) list rebuild when a revisit's content is already shown.
-    private string? _displayedSignature;
-
     public void ApplyQueryAttributes(IDictionary<string, object> query)
     {
         if (query.TryGetValue("groupChatId", out var value) && Guid.TryParse(value?.ToString(), out var id))
@@ -214,7 +211,6 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
         IsLoading = true; // the spinner itself only appears if this lasts — see DelayedActivityIndicator
         StatusErrorMessage = null;
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        SecureApp.Presentation.Infrastructure.PerfLog.Mark("Group LoadAsync start");
         try
         {
             // Phase 1 — load EVERYTHING (group, members, sessions, messages + decrypt) on a
@@ -278,11 +274,10 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
                 return;
             }
 
-            // Phase 2 — the member/session state below is cheap and doesn't touch the visible message
-            // list, so it's always applied. The message list itself is only rebuilt when it isn't
-            // already current: on a revisit ApplyQueryAttributes sync-populated the identical content
-            // before the slide, so we skip the rebuild (and its mid-slide jank) entirely. A cold open
-            // or a real change rebuilds, held back until the slide settles. See ChatViewModel.LoadAsync.
+            // Phase 2 — apply everything (member/session state + messages) in ONE synchronous batch so
+            // the page does a single layout pass instead of several (the open no longer animates and
+            // there is no separate sync-populate). See ChatViewModel.LoadAsync.
+            var bgMs = sw.Elapsed.TotalMilliseconds;
             _founderPublicKey = loaded.Group.FounderPublicKey;
             _localPublicKey = loaded.LocalPublicKey;
             var isFounder = _founderPublicKey.AsSpan().SequenceEqual(_localPublicKey);
@@ -293,26 +288,18 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
             _sessionNameById = loaded.SessionNames;
             _olderLogicalRows.Clear();
             _olderLogicalRows.AddRange(loaded.OlderLogical);
-            SecureApp.Presentation.Infrastructure.PerfLog.Mark($"Group LoadAsync bg-load done at {sw.ElapsedMilliseconds}ms; members={loaded.Members.Count}");
-            SecureApp.Presentation.Infrastructure.PerfLog.MeasureUiStall($"Group RebuildMemberList ({loaded.Members.Count} members)", RebuildMemberList);
+            RebuildMemberList();
 
-            var alreadyCurrent = Messages.Count > 0 && loaded.Signature == _displayedSignature;
-            SecureApp.Presentation.Infrastructure.PerfLog.Mark($"Group alreadyCurrent={alreadyCurrent}");
-            if (!alreadyCurrent)
-            {
-                var remaining = AnimationSettleMs - (int)sw.ElapsedMilliseconds;
-                if (remaining > 0) await Task.Delay(remaining);
+            var remaining = AnimationSettleMs - (int)sw.ElapsedMilliseconds;
+            if (remaining > 0) await Task.Delay(remaining);
 
-                SecureApp.Presentation.Infrastructure.PerfLog.MeasureUiStall($"Group populate messages ({loaded.Items.Count} cells)", () =>
-                {
-                    Messages = new ObservableCollection<GroupMessageItem>(loaded.Items);
-                    _displayedSignature = loaded.Signature;
-                    ScrollToBottomRequested?.Invoke();
-                });
-            }
+            Messages = new ObservableCollection<GroupMessageItem>(loaded.Items);
+            ScrollToBottomRequested?.Invoke();
 
             _groupThreadCache[_groupChatId] = new CachedGroupThread(Title, loaded.Items, [.. loaded.OlderLogical], loaded.Signature);
             IsLoading = false;
+            AppLog.Metric("group.open.load", sw.Elapsed.TotalMilliseconds, "ms",
+                ("bg", System.Math.Round(bgMs, 1)), ("cells", loaded.Items.Count), ("members", loaded.Members.Count));
 
             // Refresh names from the directory, then auto-heal broken pairings — both in the
             // background so neither blocks the thread. Auto-heal on open (2026-09-07) is the user's
@@ -323,6 +310,7 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
         catch (Exception ex)
         {
             StatusErrorMessage = $"Nepodařilo se načíst skupinu: {ex.Message}";
+            AppLog.Error("GroupChatViewModel.LoadAsync", "group load failed", ex);
         }
         finally
         {

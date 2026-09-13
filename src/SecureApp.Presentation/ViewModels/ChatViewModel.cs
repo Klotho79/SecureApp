@@ -10,6 +10,7 @@ using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Domain.Policies;
 using SecureApp.Domain.ValueObjects;
 using SecureApp.Presentation.Chat;
+using SecureApp.Presentation.Infrastructure;
 using SecureApp.Presentation.Views;
 
 namespace SecureApp.Presentation.ViewModels;
@@ -58,12 +59,6 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
     // view model because it's static.
     private sealed record CachedThread(string Title, List<ChatMessageItem> Items, List<Message> Older, string Signature);
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, CachedThread> _threadCache = new();
-
-    // The change-signature of the thread currently on screen (2026-09-12). Set whenever Messages is
-    // populated — by the sync-populate in ApplyQueryAttributes or a rebuild in LoadAsync — so LoadAsync
-    // can tell "the list already shows the current content" from "it needs rebuilding" and skip the
-    // rebuild (and its mid-slide jank) in the common unchanged-revisit case.
-    private string? _displayedSignature;
 
     [ObservableProperty]
     public partial string Title { get; set; }
@@ -208,12 +203,11 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         IsLoading = true; // spinner only appears if this outlasts the delay (see DelayedActivityIndicator)
         StatusErrorMessage = null;
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        SecureApp.Presentation.Infrastructure.PerfLog.Mark("LoadAsync start");
         try
         {
-            // Phase 1 (background, in parallel with the open slide): the cheap change-signature first —
-            // if the warm cache is still current, reuse its already-decrypted items (no decrypt); else
-            // do the full load + decrypt. Either way, NOTHING touches the UI here.
+            // Phase 1 (background): the cheap change-signature first — if the warm cache is still
+            // current, reuse its already-decrypted items (no decrypt); else do the full load + decrypt.
+            // Either way, NOTHING touches the UI here.
             var loaded = await Task.Run<(string Title, ChatSession? Session, List<Message> Older, List<ChatMessageItem> Items, string Signature)>(async () =>
             {
                 var signature = await _messageRepository.GetSessionSignatureAsync(_chatSessionId);
@@ -241,37 +235,25 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
                 return (session?.PeerDisplayName ?? "Chat", session, older, items, signature);
             });
 
-            // Phase 2 — the common case (re-opening an unchanged chat) does NO UI mutation at all:
-            // ApplyQueryAttributes already sync-populated the identical content before the slide began,
-            // so the page slides in fully rendered and nothing competes with the animation. We only
-            // touch the list when it's genuinely not already current — a cold open (nothing was
-            // sync-populated) or a real change since the warm copy was taken. That rebuild is held back
-            // until the slide has settled so it never renders mid-slide. This is what makes open feel
-            // as clean as the back slide (the user's ask), and kills the re-introduced open jank that
-            // came from rebuilding the list on every open.
+            // Phase 2 — apply everything in ONE synchronous batch (no separate sync-populate pass, and
+            // the open no longer animates), so the page does a single layout pass instead of several.
+            var bgMs = sw.Elapsed.TotalMilliseconds;
             await _currentUserService.InitializeAsync();
             _currentRole = _currentUserService.Current.Role;
             Title = loaded.Title;
             _olderRows.Clear();
             _olderRows.AddRange(loaded.Older);
 
-            var alreadyCurrent = Messages.Count > 0 && loaded.Signature == _displayedSignature;
-            SecureApp.Presentation.Infrastructure.PerfLog.Mark($"LoadAsync bg-load done at {sw.ElapsedMilliseconds}ms; alreadyCurrent={alreadyCurrent}");
-            if (!alreadyCurrent)
-            {
-                var remaining = AnimationSettleMs - (int)sw.ElapsedMilliseconds;
-                if (remaining > 0) await Task.Delay(remaining);
+            var remaining = AnimationSettleMs - (int)sw.ElapsedMilliseconds;
+            if (remaining > 0) await Task.Delay(remaining);
 
-                SecureApp.Presentation.Infrastructure.PerfLog.MeasureUiStall($"LoadAsync populate ({loaded.Items.Count} cells)", () =>
-                {
-                    Messages = new ObservableCollection<ChatMessageItem>(loaded.Items);
-                    _displayedSignature = loaded.Signature;
-                    ScrollToBottomRequested?.Invoke();
-                });
-            }
+            Messages = new ObservableCollection<ChatMessageItem>(loaded.Items);
+            ScrollToBottomRequested?.Invoke();
 
             _threadCache[_chatSessionId] = new CachedThread(loaded.Title, loaded.Items, [.. loaded.Older], loaded.Signature);
             IsLoading = false;
+            AppLog.Metric("chat.open.load", sw.Elapsed.TotalMilliseconds, "ms",
+                ("bg", System.Math.Round(bgMs, 1)), ("cells", loaded.Items.Count));
 
             var session = loaded.Session ?? await _sessionRepository.GetByIdAsync(_chatSessionId);
             _ = RefreshInBackgroundAsync(session);
@@ -279,6 +261,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         catch (Exception ex)
         {
             StatusErrorMessage = $"Nepodařilo se načíst tento chat: {ex.Message}";
+            AppLog.Error("ChatViewModel.LoadAsync", "chat load failed", ex);
         }
         finally
         {

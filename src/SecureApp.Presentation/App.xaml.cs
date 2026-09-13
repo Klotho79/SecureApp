@@ -6,6 +6,7 @@ using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Domain.ValueObjects;
 using SecureApp.Presentation.Chat;
+using SecureApp.Presentation.Infrastructure;
 
 namespace SecureApp.Presentation;
 
@@ -92,6 +93,10 @@ public partial class App : Application
 	/// <summary>Best-effort resolve-and-report, shared by both global exception handlers below — never throws, since a handler for "something already went catastrophically wrong" is the last place that can afford to introduce a NEW exception.</summary>
 	private static void ReportFireAndForget(DiagnosticLogLevel level, string message, string context, Exception? exception)
 	{
+		// Durable local log first (2026-09-13) — works offline and survives a crash-on-exit, unlike the
+		// relay reporter which needs a live connection. AppLog.Error never throws.
+		AppLog.Error(context, $"[{level}] {message}", exception);
+
 		try
 		{
 			var reporter = IPlatformApplication.Current?.Services.GetService<IDiagnosticsReporter>();

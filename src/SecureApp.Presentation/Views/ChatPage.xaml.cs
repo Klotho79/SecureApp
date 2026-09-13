@@ -12,17 +12,16 @@ public partial class ChatPage : ContentPage
 
     public ChatPage(ChatViewModel viewModel, ISharedLibraryService libraryService)
     {
-        PerfLog.Mark("ChatPage.ctor start");
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         InitializeComponent();
         BindingContext = _viewModel = viewModel;
         Content = new ChatThreadView(libraryService) { BindingContext = viewModel };
-        PerfLog.Mark("ChatPage.ctor end");
+        AppLog.Metric("chat.page.ctor", sw.Elapsed.TotalMilliseconds);
     }
 
     protected override void OnAppearing()
     {
         base.OnAppearing();
-        PerfLog.Mark("ChatPage.OnAppearing");
         _viewModel.StartListening();
 
         // Load immediately — the view model shows any cached copy synchronously and runs the load in
