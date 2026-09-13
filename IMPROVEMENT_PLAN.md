@@ -48,13 +48,27 @@ Durable, on-device, structured logs so tuning is data-driven and self-serve.
 - [ ] In-app viewer + export (Settings → Diagnostika) — pull via `adb` for now:
       `run-as com.companyname.secureapp.presentation cat files/logs/metrics.log`.
 
-## Phase 1 — Speed: kill the chat-open layout cost
-Root cause = fresh CollectionView built + laid out every open, ×3–4 passes.
-- [ ] Reduce passes to 1: avoid redundant relayout triggers on open (ScrollTo,
-      RefreshNames rebuild when names unchanged, IsLoading toggles).
-- [ ] Keep pages/CollectionView in memory (page reuse / cache) so revisits do **zero**
-      rebuild — the user's repeated ask; needs on-device verify (handler lifecycle).
-- [ ] Verify each step by the metrics log (target: 1 pass, then ~0 on revisit).
+## Phase 1 — Speed: kill the chat-open cost
+Systematic isolation on the S23+ (each ruled out by measurement, not guessed):
+- **Message count** — ruled out (4 vs 8 initial cells = same open cost).
+- **Page reuse / keep-in-memory** — IMPLEMENTED and reuse engaged (page.reuse.hit,
+  no ctor, no rebuild), but the open was still slow → Android re-lays-out the page's
+  views on every show regardless of caching. So caching the page does NOT avoid the
+  cost. (Kept: it still saves the ctor + rebuild, a small win.)
+- **CollectionView** — ruled out: hiding the message list left the open cost.
+- **Variable font** — CONFIRMED a major cost. Every Label/Button/Entry used the
+  variable `IBMPlexSans-Variable.ttf` ("PlexSans"); variable-font text rendering is
+  heavy on Android. Aliasing "PlexSans" to the static OpenSans made the open
+  **"rozhodně lepší"** (user, 2026-09-13). ✅ shipped.
+
+Note: per-phase framestats parsing (25-col format) proved unreliable here (garbage
+values) — trust the summary's janky-% / GPU numbers and the user's feel, not my
+per-phase attribution.
+
+Remaining (if still not fully smooth):
+- [ ] Quantify with a clean gfxinfo SUMMARY (janky-%), not per-phase framestats.
+- [ ] Consider static IBM Plex weight files to restore the intended look (keep static).
+- [ ] Re-check whether any residual open cost remains after the font fix.
 
 ## Phase 2 — Functionality audit
 - [ ] Systematic pass over each feature (chat, group, library, logbook, contacts,
@@ -73,5 +87,7 @@ Root cause = fresh CollectionView built + laid out every open, ×3–4 passes.
 
 ## Log of changes
 - 2026-09-13: Plan created; Phase 0 (durable AppLog error + metrics) landed; chat/group
-  open self-record timings. Single-batch apply on open (removed sync-populate). Next:
-  Phase 1 — verify open metrics on-device, then cut layout passes / keep pages in memory.
+  open self-record timings. Single-batch apply on open. Page-reuse added (small win only).
+- 2026-09-13: Phase 1 breakthrough — isolated the open cost to the **variable font** and
+  switched "PlexSans" to a static face; user confirms "rozhodně lepší". Ruled out message
+  count, page caching, and the CollectionView along the way, each by measurement.

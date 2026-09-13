@@ -37,7 +37,14 @@ public static class MauiProgram
 				fonts.AddFont("Spectral-Medium.ttf", "SpectralMedium");
 				fonts.AddFont("Spectral-SemiBold.ttf", "SpectralSemibold");
 				fonts.AddFont("Spectral-Bold.ttf", "SpectralBold");
-				fonts.AddFont("IBMPlexSans-Variable.ttf", "PlexSans");
+				// Body/UI font (2026-09-13): the "PlexSans" alias — used across the XAML for every
+				// Label/Button/Entry — now maps to the STATIC OpenSans, not the variable
+				// IBMPlexSans-Variable.ttf it used before. Measured on the S23+: swapping the variable
+				// font for a static face made opening a chat markedly smoother (the user confirmed) —
+				// variable-font text rendering is much heavier on Android. Spectral (headings) was
+				// already static. To restore the exact IBM Plex look later, bundle static IBM Plex Sans
+				// weight files and point this alias at them — just keep it static, not variable.
+				fonts.AddFont("OpenSans-Regular.ttf", "PlexSans");
 			});
 
 #if DEBUG
