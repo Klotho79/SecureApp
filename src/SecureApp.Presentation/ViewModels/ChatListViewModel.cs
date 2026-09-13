@@ -110,9 +110,23 @@ public sealed partial class ChatListViewModel : ObservableObject
     {
         _displayedNames = directoryNames;
 
+        // One chat per PEER, not per session (2026-09-13, the user's live bug: "sami od sebe se tvoří
+        // nové a nové chaty"). Resync/auto-heal/group-mesh CLOSE the old session and CREATE a new one
+        // each time (see SessionRecoveryHelper.ResyncAsync), leaving stale Closed rows behind — listing
+        // every session showed each of those as a separate chat. Collapse by peer identity key, keeping
+        // the one that best represents the current chat (prefer a non-Closed session, then the most
+        // recent). Nothing is deleted here, so no message history is lost — only the duplicates are
+        // hidden from the list.
         var sessions = await _sessionRepository.GetAllAsync();
+        var oneSessionPerPeer = sessions
+            .GroupBy(s => Convert.ToHexStringLower(s.PeerIdentityPublicKey))
+            .Select(peer => peer
+                .OrderByDescending(s => s.State != ChatSessionState.Closed) // prefer a live session over a Closed one
+                .ThenByDescending(s => s.LastRatchetedAtUtc ?? s.CreatedAtUtc) // then the most recent
+                .First());
+
         Sessions = new ObservableCollection<ChatSessionItem>(
-            sessions.OrderByDescending(s => s.LastRatchetedAtUtc ?? s.CreatedAtUtc)
+            oneSessionPerPeer.OrderByDescending(s => s.LastRatchetedAtUtc ?? s.CreatedAtUtc)
                 .Select(s =>
                 {
                     var name = DirectoryNameResolver.Resolve(directoryNames, s.PeerIdentityPublicKey, s.PeerDisplayName);
