@@ -54,9 +54,15 @@ public sealed class DocumentRenderingService : IDocumentRenderingService
     {
         try
         {
-            using var bmp = new SKBitmap(2, 2);
-            using var data = bmp.Encode(SKEncodedImageFormat.Png, 100);
-            using var _ = SKBitmap.Decode(data.ToArray());
+            using var bmp = new SKBitmap(8, 8);
+            // Warm BOTH codecs' decode paths (2026-09-13): measurement showed a ~400ms first-photo cost
+            // even after a PNG-only warmup, because photos are JPEG and the JPEG decoder inits on first
+            // real use. Decode is the path that matters for viewing, so round-trip each format.
+            foreach (var format in new[] { SKEncodedImageFormat.Jpeg, SKEncodedImageFormat.Png })
+            {
+                using var data = bmp.Encode(format, 90);
+                using var decoded = SKBitmap.Decode(data.ToArray());
+            }
         }
         catch { /* best-effort warmup */ }
     }
