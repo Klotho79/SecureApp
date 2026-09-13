@@ -26,7 +26,7 @@ namespace SecureApp.Presentation.ViewModels;
 /// which — per this codebase's established convention — live in <see cref="Views.ChatPage"/>'s
 /// code-behind instead; it just calls <see cref="SetPendingAttachment"/> with the result.
 /// </summary>
-public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
+public sealed partial class ChatViewModel : ChatThreadViewModelBase<ChatMessageItem>, IQueryAttributable
 {
     private readonly IChatSessionRepository _sessionRepository;
     private readonly IMessageRepository _messageRepository;
@@ -36,7 +36,6 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
     private readonly ITransportSettingsRepository _transportSettingsRepository;
     private readonly ICurrentUserService _currentUserService;
     private readonly IContactDirectoryService _contactDirectoryService;
-    private readonly IDiagnosticsReporter _diagnosticsReporter;
 
     private Guid _chatSessionId;
     private EventHandler<MessageEnvelope>? _envelopeReceivedHandler;
@@ -65,37 +64,6 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
     // the already-realized CollectionView cells stay put — no ~180 ms layout pass. See CachedRouteFactory.
     private string? _displayedSignature;
 
-    [ObservableProperty]
-    public partial string Title { get; set; }
-
-    [ObservableProperty]
-    public partial ObservableCollection<ChatMessageItem> Messages { get; set; }
-
-    [ObservableProperty]
-    public partial string ComposeText { get; set; }
-
-    [ObservableProperty]
-    public partial bool CanSend { get; set; }
-
-    [ObservableProperty]
-    public partial bool IsLoading { get; set; }
-
-    [ObservableProperty]
-    public partial string? StatusErrorMessage { get; set; }
-
-    [ObservableProperty]
-    public partial bool HasStatusError { get; set; }
-
-    /// <summary>Set by <see cref="Views.ChatPage"/>'s attach flow (library pick or upload-then-attach); attached to the next message sent, then cleared.</summary>
-    [ObservableProperty]
-    public partial Guid? PendingAttachmentLibraryFileId { get; set; }
-
-    [ObservableProperty]
-    public partial string? PendingAttachmentFileName { get; set; }
-
-    [ObservableProperty]
-    public partial bool HasPendingAttachment { get; set; }
-
     public ChatViewModel(
         IChatSessionRepository sessionRepository,
         IMessageRepository messageRepository,
@@ -105,7 +73,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         ITransportSettingsRepository transportSettingsRepository,
         ICurrentUserService currentUserService,
         IContactDirectoryService contactDirectoryService,
-        IDiagnosticsReporter diagnosticsReporter)
+        IDiagnosticsReporter diagnosticsReporter) : base(diagnosticsReporter)
     {
         _sessionRepository = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
         _messageRepository = messageRepository ?? throw new ArgumentNullException(nameof(messageRepository));
@@ -115,41 +83,8 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         _transportSettingsRepository = transportSettingsRepository ?? throw new ArgumentNullException(nameof(transportSettingsRepository));
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         _contactDirectoryService = contactDirectoryService ?? throw new ArgumentNullException(nameof(contactDirectoryService));
-        _diagnosticsReporter = diagnosticsReporter ?? throw new ArgumentNullException(nameof(diagnosticsReporter));
 
         Title = "Chat"; // "Chat" is used identically in Czech, kept as-is
-        Messages = [];
-        ComposeText = string.Empty;
-    }
-
-    partial void OnStatusErrorMessageChanged(string? value)
-    {
-        HasStatusError = !string.IsNullOrEmpty(value);
-        if (HasStatusError) _ = _diagnosticsReporter.ReportAsync(DiagnosticLogLevel.Error, value!, nameof(ChatViewModel));
-    }
-
-    partial void OnComposeTextChanged(string value) => RecomputeCanSend();
-
-    partial void OnPendingAttachmentFileNameChanged(string? value)
-    {
-        HasPendingAttachment = !string.IsNullOrEmpty(value);
-        RecomputeCanSend();
-    }
-
-    private void RecomputeCanSend() => CanSend = !string.IsNullOrWhiteSpace(ComposeText) || HasPendingAttachment;
-
-    /// <summary>Called from <see cref="Views.ChatPage"/>'s code-behind once a library file has been picked or uploaded.</summary>
-    public void SetPendingAttachment(Guid libraryFileId, string fileName)
-    {
-        PendingAttachmentLibraryFileId = libraryFileId;
-        PendingAttachmentFileName = fileName;
-    }
-
-    [RelayCommand]
-    private void ClearPendingAttachment()
-    {
-        PendingAttachmentLibraryFileId = null;
-        PendingAttachmentFileName = null;
     }
 
     public void ApplyQueryAttributes(IDictionary<string, object> query)
@@ -188,19 +123,6 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
             // Best-effort — SendAsync already tolerates staying Pending if this doesn't pan out.
         }
     }
-
-    /// <summary>Raised once the thread has been (re)populated so the hosting view can scroll to the newest message — see ChatThreadView's own subscription. Kept as a plain event (not a bound property) since "scroll now" is a one-shot action, not state.</summary>
-    public event Action? ScrollToBottomRequested;
-
-    /// <summary>Raised after older history has been prepended, carrying the item that was at the top BEFORE the prepend — the hosting view scrolls back to it so revealing history never jumps the view (see ChatThreadView). Without this, inserting rows above the viewport shifts it to the oldest message, the exact jump the user reported.</summary>
-    public event Action<ChatMessageItem>? ScrollAnchorRequested;
-
-    /// <summary>How many of the newest messages to show immediately on open, and how many older ones to reveal per scroll-up page (2026-09-11, the user's own ask: "nemusí se načíst celý chat ale třeba jen posledních 5-10 zpráv... možnost rolovat ve zprávách do minulosti").</summary>
-    private const int InitialMessageCount = 8; // 2026-09-13: fewer initial messages cut decrypt cost on open; scroll-up loads older history on demand.
-    private const int OlderPageSize = 20;
-
-    /// <summary>Settle delay before touching the UI. Now 0 (2026-09-12): the chat push no longer animates (see ChatListViewModel.OpenSessionAsync — the janky slide was dropped for an instant cut), so there is no slide to hold content back from — populate immediately for the snappiest possible open. Kept as a named constant so the delay can be reinstated if an animation is ever brought back.</summary>
-    private const int AnimationSettleMs = 0;
 
     [RelayCommand]
     private async Task LoadAsync()
@@ -260,7 +182,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
             {
                 Messages = new ObservableCollection<ChatMessageItem>(loaded.Items);
                 _displayedSignature = loaded.Signature;
-                ScrollToBottomRequested?.Invoke();
+                RaiseScrollToBottom();
             }
 
             _threadCache[_chatSessionId] = new CachedThread(loaded.Title, loaded.Items, [.. loaded.Older], loaded.Signature);
@@ -335,7 +257,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
                 Messages.Insert(0, pageItems[i]);
 
             if (anchor is not null)
-                ScrollAnchorRequested?.Invoke(anchor);
+                RaiseScrollToAnchor(anchor);
         }
         catch
         {
@@ -376,7 +298,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
             // Best-effort shared-library-key offer (2026-09-10) — see SharedLibraryKeySync's own
             // remarks. Fired on open (not just at pairing time) so a session paired before this
             // mechanism existed still gets the key; its own cooldown keeps repeated opens cheap.
-            _ = SharedLibraryKeySync.OfferKeyAsync(_libraryService, _messagingService, _messageTransport, session.Id, _diagnosticsReporter);
+            _ = SharedLibraryKeySync.OfferKeyAsync(_libraryService, _messagingService, _messageTransport, session.Id, DiagnosticsReporter);
         }
     }
 
@@ -411,7 +333,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
 
             // A just-sent message is always the actor's own, so it's always deletable by them (every role may delete its own).
             Messages.Add(new ChatMessageItem(message.Id, true, text, message.CreatedAtUtc, message.Status, message.AttachmentLibraryFileId, message.AttachmentFileName, CanDelete: true, CorrelationId: message.OriginMessageId));
-            ScrollToBottomRequested?.Invoke();
+            RaiseScrollToBottom();
             _ = UpdateCacheAsync();
 
             // Best-effort live send: the message is already durably persisted as Pending above
@@ -549,7 +471,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
             var text = await TryDecryptAsync(message);
             var canDelete = RoleAccessPolicy.CanDeleteMessage(_currentUserService.Current.Role, false, message.SenderRole);
             Messages.Add(new ChatMessageItem(message.Id, false, text, message.CreatedAtUtc, message.Status, message.AttachmentLibraryFileId, message.AttachmentFileName, canDelete, message.OriginMessageId));
-            ScrollToBottomRequested?.Invoke();
+            RaiseScrollToBottom();
             _ = UpdateCacheAsync();
         }
         catch (Exception ex)
@@ -687,3 +609,4 @@ public sealed record ChatMessageItem(Guid Id, bool IsOutbound, string Text, Date
         ? SentAtUtc.LocalDateTime.ToString("d")
         : SentAtUtc.LocalDateTime.ToString("t");
 }
+

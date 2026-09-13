@@ -20,7 +20,7 @@ namespace SecureApp.Presentation.ViewModels;
 /// every send — <em>not</em> a new group ratchet) — this view model is what actually drives that
 /// fan-out and the corresponding "collapse my own N outbound copies back into one bubble" read side.
 /// </summary>
-public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttributable
+public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMessageItem>, IQueryAttributable
 {
     private readonly IGroupChatRepository _groupChatRepository;
     private readonly IGroupMemberRepository _groupMemberRepository;
@@ -32,7 +32,6 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
     private readonly ISharedLibraryService _libraryService;
     private readonly IContactDirectoryService _contactDirectoryService;
     private readonly ITransportSettingsRepository _transportSettingsRepository;
-    private readonly IDiagnosticsReporter _diagnosticsReporter;
 
     private Guid _groupChatId;
     private byte[] _localPublicKey = [];
@@ -48,11 +47,6 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
     private readonly List<Message> _olderLogicalRows = [];
     private Dictionary<Guid, string> _sessionNameById = [];
     private bool _isLoadingOlder;
-    private const int InitialMessageCount = 8; // 2026-09-13: fewer initial messages cut BOTH decrypt (~40ms for 15 -> ~21ms) and cells to render; scroll-up loads older history on demand.
-    private const int OlderPageSize = 20;
-
-    /// <summary>See ChatViewModel.AnimationSettleMs — now 0 (the group push no longer animates, so there is no slide to hold content back from; populate immediately).</summary>
-    private const int AnimationSettleMs = 0;
 
     /// <summary>Everything the group thread needs, computed entirely on a background thread so it can run in parallel with the open animation without touching the UI (2026-09-11).</summary>
     private sealed record GroupInitialLoad(
@@ -66,35 +60,11 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
         List<GroupMessageItem> Items,
         string Signature);
 
-    /// <summary>Raised after older history is prepended, carrying the previously-top item so the page can re-anchor (no jump) — mirrors ChatViewModel.ScrollAnchorRequested.</summary>
-    public event Action<GroupMessageItem>? ScrollAnchorRequested;
-
     /// <summary>True while older group history remains unrevealed.</summary>
     public bool HasOlderMessages => _olderLogicalRows.Count > 0;
 
     [ObservableProperty]
-    public partial string Title { get; set; }
-
-    [ObservableProperty]
-    public partial ObservableCollection<GroupMessageItem> Messages { get; set; }
-
-    [ObservableProperty]
     public partial ObservableCollection<GroupMemberItem> Members { get; set; }
-
-    [ObservableProperty]
-    public partial string ComposeText { get; set; }
-
-    [ObservableProperty]
-    public partial bool CanSend { get; set; }
-
-    [ObservableProperty]
-    public partial bool IsLoading { get; set; }
-
-    [ObservableProperty]
-    public partial string? StatusErrorMessage { get; set; }
-
-    [ObservableProperty]
-    public partial bool HasStatusError { get; set; }
 
     /// <summary>Founder, or an Admin/Modifier-role device — see <c>RbacAction.InviteGroupMember</c>'s own remarks for why Modifier already counts as "an authorized user" in this app's 3-role model.</summary>
     [ObservableProperty]
@@ -117,15 +87,6 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
     [ObservableProperty]
     public partial bool IsLoadingAddableMembers { get; set; }
 
-    [ObservableProperty]
-    public partial Guid? PendingAttachmentLibraryFileId { get; set; }
-
-    [ObservableProperty]
-    public partial string? PendingAttachmentFileName { get; set; }
-
-    [ObservableProperty]
-    public partial bool HasPendingAttachment { get; set; }
-
     public GroupChatViewModel(
         IGroupChatRepository groupChatRepository,
         IGroupMemberRepository groupMemberRepository,
@@ -137,7 +98,7 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
         ISharedLibraryService libraryService,
         IContactDirectoryService contactDirectoryService,
         ITransportSettingsRepository transportSettingsRepository,
-        IDiagnosticsReporter diagnosticsReporter)
+        IDiagnosticsReporter diagnosticsReporter) : base(diagnosticsReporter)
     {
         _groupChatRepository = groupChatRepository ?? throw new ArgumentNullException(nameof(groupChatRepository));
         _groupMemberRepository = groupMemberRepository ?? throw new ArgumentNullException(nameof(groupMemberRepository));
@@ -149,42 +110,10 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
         _libraryService = libraryService ?? throw new ArgumentNullException(nameof(libraryService));
         _contactDirectoryService = contactDirectoryService ?? throw new ArgumentNullException(nameof(contactDirectoryService));
         _transportSettingsRepository = transportSettingsRepository ?? throw new ArgumentNullException(nameof(transportSettingsRepository));
-        _diagnosticsReporter = diagnosticsReporter ?? throw new ArgumentNullException(nameof(diagnosticsReporter));
 
         Title = "Skupina";
-        Messages = [];
         Members = [];
         AddableMembers = [];
-        ComposeText = string.Empty;
-    }
-
-    partial void OnStatusErrorMessageChanged(string? value)
-    {
-        HasStatusError = !string.IsNullOrEmpty(value);
-        if (HasStatusError) _ = _diagnosticsReporter.ReportAsync(DiagnosticLogLevel.Error, value!, nameof(GroupChatViewModel));
-    }
-
-    partial void OnComposeTextChanged(string value) => RecomputeCanSend();
-
-    partial void OnPendingAttachmentFileNameChanged(string? value)
-    {
-        HasPendingAttachment = !string.IsNullOrEmpty(value);
-        RecomputeCanSend();
-    }
-
-    private void RecomputeCanSend() => CanSend = !string.IsNullOrWhiteSpace(ComposeText) || HasPendingAttachment;
-
-    public void SetPendingAttachment(Guid libraryFileId, string fileName)
-    {
-        PendingAttachmentLibraryFileId = libraryFileId;
-        PendingAttachmentFileName = fileName;
-    }
-
-    [RelayCommand]
-    private void ClearPendingAttachment()
-    {
-        PendingAttachmentLibraryFileId = null;
-        PendingAttachmentFileName = null;
     }
 
     // Warm message-thread cache (2026-09-11) — see ChatViewModel's own remarks. Caches the group's
@@ -323,7 +252,7 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
             {
                 Messages = new ObservableCollection<GroupMessageItem>(loaded.Items);
                 _displayedSignature = loaded.Signature;
-                ScrollToBottomRequested?.Invoke();
+                RaiseScrollToBottom();
             }
 
             _groupThreadCache[_groupChatId] = new CachedGroupThread(Title, loaded.Items, [.. loaded.OlderLogical], loaded.Signature);
@@ -348,9 +277,6 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
             IsLoading = false;
         }
     }
-
-    /// <summary>Raised once the thread is (re)populated so the page can scroll to the newest message — see GroupChatPage's own subscription. Mirrors ChatViewModel.ScrollToBottomRequested.</summary>
-    public event Action? ScrollToBottomRequested;
 
     /// <summary>Refreshes the warm cache with the currently-displayed group thread (2026-09-11) — called after a live send/receive/delete so the next open shows the up-to-date thread instantly. Best-effort.</summary>
     private async Task UpdateCacheAsync()
@@ -455,7 +381,7 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
         });
 
         Messages = new ObservableCollection<GroupMessageItem>(initialItems);
-        ScrollToBottomRequested?.Invoke();
+        RaiseScrollToBottom();
         _ = UpdateCacheAsync();
     }
 
@@ -497,7 +423,7 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
                 Messages.Insert(0, pageItems[i]);
 
             if (anchor is not null)
-                ScrollAnchorRequested?.Invoke(anchor);
+                RaiseScrollToAnchor(anchor);
         }
         catch
         {
@@ -586,7 +512,7 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
 
             // Own message — always deletable by this user; correlated across the fan-out by groupMessageId.
             Messages.Add(new GroupMessageItem(Guid.NewGuid(), true, _currentUserService.Current.DisplayName, text, DateTimeOffset.UtcNow, attachmentId, attachmentName, CanDelete: true, CorrelationId: groupMessageId));
-            ScrollToBottomRequested?.Invoke();
+            RaiseScrollToBottom();
             _ = UpdateCacheAsync();
 
             if (undelivered.Count > 0)
@@ -725,7 +651,7 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
                 // shared-library-key offer (2026-09-10, own cooldown) for the same reason
                 // ChatViewModel.LoadAsync's own call does: a session paired before this mechanism
                 // existed never gets a fresh pairing event to hang the offer off of.
-                _ = SharedLibraryKeySync.OfferKeyAsync(_libraryService, _messagingService, _messageTransport, existing.Id, _diagnosticsReporter);
+                _ = SharedLibraryKeySync.OfferKeyAsync(_libraryService, _messagingService, _messageTransport, existing.Id, DiagnosticsReporter);
                 continue;
             }
 
@@ -911,7 +837,7 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
                     // Best-effort shared-library-key offer (2026-09-10) — see SharedLibraryKeySync's
                     // own remarks; every group member's pairwise session gets the same offer a 1:1
                     // pairing already would.
-                    await SharedLibraryKeySync.OfferKeyAsync(_libraryService, _messagingService, _messageTransport, memberSession.Id, _diagnosticsReporter);
+                    await SharedLibraryKeySync.OfferKeyAsync(_libraryService, _messagingService, _messageTransport, memberSession.Id, DiagnosticsReporter);
                 }
                 catch
                 {
@@ -947,7 +873,7 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
     /// Unlike <c>NewChatViewModel.LoadMembersAsync</c>, there's no manual paste/QR fallback for
     /// adding an existing group's member — this IS the only path — so a failure here (2026-09-07,
     /// same "an unexplained empty list looks exactly like a bug" complaint as <c>NewGroupViewModel</c>)
-    /// gets a real <see cref="StatusErrorMessage"/>, not silence.
+    /// gets a real <c>StatusErrorMessage</c>, not silence.
     /// </summary>
     [RelayCommand]
     private async Task LoadAddableMembersAsync()
@@ -1035,7 +961,7 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
             var text = await TryDecryptAsync(message);
             var canDelete = RoleAccessPolicy.CanDeleteMessage(_currentUserService.Current.Role, false, message.SenderRole);
             Messages.Add(new GroupMessageItem(message.Id, false, senderName, text, message.CreatedAtUtc, message.AttachmentLibraryFileId, message.AttachmentFileName, canDelete, message.GroupMessageId));
-            ScrollToBottomRequested?.Invoke();
+            RaiseScrollToBottom();
             _ = UpdateCacheAsync();
         }
         catch (Exception ex)
