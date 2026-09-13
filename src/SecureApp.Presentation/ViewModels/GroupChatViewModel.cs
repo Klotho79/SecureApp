@@ -223,6 +223,9 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
             // background. Only the newest InitialMessageCount are decrypted.
             var loaded = await Task.Run<GroupInitialLoad?>(async () =>
             {
+                // Sub-phase timing (2026-09-13) to pin down where the ~116ms bg-load actually goes,
+                // instead of guessing. Logged once at the end of the background load.
+                var pw = System.Diagnostics.Stopwatch.StartNew();
                 var group = await _groupChatRepository.GetByIdAsync(_groupChatId);
                 if (group is null) return null;
 
@@ -231,21 +234,31 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
                 var role = _currentUserService.Current.Role;
                 var ownName = _currentUserService.Current.DisplayName;
                 var members = await _groupMemberRepository.GetByGroupAsync(_groupChatId);
+                var tMeta = pw.Elapsed.TotalMilliseconds;
 
                 var directoryNames = DirectoryNameResolver.LastKnown;
                 var allSessions = await _chatSessionRepository.GetAllAsync();
                 var sessionNames = allSessions.ToDictionary(
                     s => s.Id,
                     s => DirectoryNameResolver.Resolve(directoryNames, s.PeerIdentityPublicKey, s.PeerDisplayName));
+                var tSessions = pw.Elapsed.TotalMilliseconds;
 
                 // If the already-shown cached copy is still current, skip the expensive per-message
                 // decrypt entirely — reuse the cached items. Member/session state above is cheap and
                 // always loaded (needed for the member list, sending, delete gating).
                 var signature = await _messageRepository.GetGroupSignatureAsync(_groupChatId);
+                var tSig = pw.Elapsed.TotalMilliseconds;
                 if (_groupThreadCache.TryGetValue(_groupChatId, out var c) && c.Signature == signature)
                     return new GroupInitialLoad(group, localPublicKey, role, members, directoryNames, sessionNames, c.Older, c.Items, signature);
 
                 var rawMessages = await _messageRepository.GetByGroupAsync(_groupChatId);
+                var tRawMsgs = pw.Elapsed.TotalMilliseconds;
+                AppLog.Metric("group.open.bg.phases", pw.Elapsed.TotalMilliseconds, "ms",
+                    ("meta", System.Math.Round(tMeta, 1)),
+                    ("sessions", System.Math.Round(tSessions - tMeta, 1)),
+                    ("sig", System.Math.Round(tSig - tSessions, 1)),
+                    ("rawMsgs", System.Math.Round(tRawMsgs - tSig, 1)),
+                    ("rows", rawMessages.Count));
                 var seen = new HashSet<Guid>();
                 var logical = new List<Message>();
                 foreach (var m in rawMessages.OrderBy(x => x.CreatedAtUtc))
