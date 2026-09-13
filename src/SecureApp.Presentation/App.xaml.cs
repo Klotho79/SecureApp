@@ -83,6 +83,10 @@ public partial class App : Application
 		// sessions that have another session for the same peer, so no history is lost and every peer
 		// keeps at least one session. Best-effort, once at launch.
 		_ = PruneChurnedSessionsAsync();
+
+		// 2026-09-13: warm the SkiaSharp render pipeline in the background so the first photo/document
+		// open doesn't pay the ~157ms one-time native init. Best-effort.
+		_ = Task.Run(SecureApp.Presentation.Rendering.DocumentRenderingService.WarmUp);
 	}
 
 	private static async Task PruneChurnedSessionsAsync()
