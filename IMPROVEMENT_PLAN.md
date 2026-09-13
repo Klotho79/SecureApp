@@ -65,10 +65,20 @@ Note: per-phase framestats parsing (25-col format) proved unreliable here (garba
 values) — trust the summary's janky-% / GPU numbers and the user's feel, not my
 per-phase attribution.
 
-Remaining (if still not fully smooth):
-- [ ] Quantify with a clean gfxinfo SUMMARY (janky-%), not per-phase framestats.
-- [ ] Consider static IBM Plex weight files to restore the intended look (keep static).
-- [ ] Re-check whether any residual open cost remains after the font fix.
+**RESOLVED (2026-09-13):** the real fix was the user's own insight — the chat LIST
+is fast because it's a persistent tab (built once, shown/hidden), while the THREAD
+was pushed as a transient page and rebuilt every open. Now both 1:1 and group are
+hosted persistently in a phone overlay in ChatListPage (reused view per conversation,
+shown/hidden, not pushed). Measured: group reopen dropped ~80-120ms → ~23ms, and
+open/close are uniform with no push animation. Cold open floor is now just the data
+(~65-85ms, decrypt-bound). User confirmed "dobry".
+
+Remaining polish:
+- [ ] Unify 1:1 and group into ONE thread view + view model (a 1:1 is a group of 2;
+      already unified at the crypto/session layer — only the UI/VM is duplicated).
+      User asked for this (code savings); do as a dedicated refactor.
+- [ ] Optional: static IBM Plex weight files to restore the intended look (keep static).
+- [ ] Remove the diagnostic per-step bg metrics once tuning settles.
 
 ## Phase 2 — Functionality audit
 - [ ] Systematic pass over each feature (chat, group, library, logbook, contacts,

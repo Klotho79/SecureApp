@@ -61,6 +61,8 @@ public sealed partial class DocumentBrowserViewModel
     {
         if (document is null) return;
 
-        await Shell.Current.GoToAsync($"{nameof(DocumentViewerPage)}?documentId={document.Id}");
+        // animate:false (2026-09-13) — uniform with chat opens; drops the push slide that made opening a
+        // photo/document jank the same way the chat did.
+        await Shell.Current.GoToAsync($"{nameof(DocumentViewerPage)}?documentId={document.Id}", animate: false);
     }
 }

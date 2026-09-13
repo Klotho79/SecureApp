@@ -607,7 +607,7 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
         try
         {
             var document = await _libraryService.DownloadAndImportAsync(libraryFileId);
-            await Shell.Current.GoToAsync($"{nameof(DocumentViewerPage)}?documentId={document.Id}");
+            await Shell.Current.GoToAsync($"{nameof(DocumentViewerPage)}?documentId={document.Id}", animate: false); // uniform with chat opens
         }
         catch (Exception ex)
         {

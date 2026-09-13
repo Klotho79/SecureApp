@@ -112,18 +112,24 @@ public sealed partial class DocumentViewerViewModel : ObservableObject, IQueryAt
     {
         IsLoading = true;
         ErrorMessage = null;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             var document = await _documentRepository.GetByIdAsync(_documentId) ?? throw new DocumentNotFoundException(_documentId);
             Title = document.Title;
+            var tMeta = sw.Elapsed.TotalMilliseconds;
             PageCount = await _renderingService.GetPageCountAsync(_documentId);
+            var tPageCount = sw.Elapsed.TotalMilliseconds;
 
             CurrentPageNumber = 0; // forces RenderCurrentPageAsync below to actually render page 1
             await GoToPageAsync(1);
+            SecureApp.Presentation.Infrastructure.AppLog.Metric("doc.open", sw.Elapsed.TotalMilliseconds, "ms",
+                ("meta", System.Math.Round(tMeta, 1)), ("pageCount", System.Math.Round(tPageCount - tMeta, 1)), ("pages", PageCount));
         }
         catch (NotSupportedException ex)
         {
             ErrorMessage = ex.Message;
+            SecureApp.Presentation.Infrastructure.AppLog.Error("DocumentViewer.Load", "unsupported document", ex);
         }
         catch (DocumentNotFoundException)
         {
@@ -152,7 +158,9 @@ public sealed partial class DocumentViewerViewModel : ObservableObject, IQueryAt
             // Rasterize off the UI thread (2026-09-11) so decoding/resizing a large image never
             // stutters the animation or the UI — the continuation resumes on the UI thread for the
             // (cheap) ImageSource assignment.
+            var rsw = System.Diagnostics.Stopwatch.StartNew();
             var rendered = await Task.Run(() => _renderingService.RenderPageAsync(_documentId, pageNumber - 1, MaxRenderWidth, MaxRenderHeight));
+            SecureApp.Presentation.Infrastructure.AppLog.Metric("doc.render", rsw.Elapsed.TotalMilliseconds, "ms", ("page", pageNumber), ("bytes", rendered.PixelData.Length));
             CurrentPageImage = ImageSource.FromStream(() => new MemoryStream(rendered.PixelData));
             CurrentPageNumber = pageNumber;
             CanGoToPreviousPage = CurrentPageNumber > 1;
