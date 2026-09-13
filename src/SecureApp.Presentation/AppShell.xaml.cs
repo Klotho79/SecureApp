@@ -1,10 +1,15 @@
 using Microsoft.Maui.Storage;
+using SecureApp.Presentation.Infrastructure;
 using SecureApp.Presentation.Views;
 
 namespace SecureApp.Presentation;
 
 public partial class AppShell : Shell
 {
+	/// <summary>Route factories that keep chat/group pages in memory and reuse them on revisit (2026-09-13) — see CachedRouteFactory. The navigating code sets <c>PendingKey</c> on the matching one right before GoToAsync.</summary>
+	public static readonly CachedRouteFactory ChatPageFactory = new(typeof(Views.ChatPage));
+	public static readonly CachedRouteFactory GroupChatPageFactory = new(typeof(Views.GroupChatPage));
+
 	/// <summary>Shared with <c>SettingsViewModel</c>'s own show/hide toggle for the Logbook tab — see <see cref="ApplyLogbookTabVisibility"/>'s own remarks.</summary>
 	public const string LogbookVisibilityPreferenceKey = "logbook_visible";
 
@@ -35,15 +40,17 @@ public partial class AppShell : Shell
 		Routing.RegisterRoute(nameof(NewChatPage), typeof(NewChatPage));
 
 		// Reached via GoToAsync from ChatListPage/NewChatPage, carrying a chatSessionId query
-		// parameter that ChatViewModel.ApplyQueryAttributes picks up.
-		Routing.RegisterRoute(nameof(ChatPage), typeof(ChatPage));
+		// parameter that ChatViewModel.ApplyQueryAttributes picks up. Registered with a caching factory
+		// (2026-09-13) so reopening the same chat reuses the already-built page instead of rebuilding it.
+		Routing.RegisterRoute(nameof(ChatPage), ChatPageFactory);
 
 		// Group chats (2026-09-07) — reached via the '+ Nová skupina' button on ChatListPage.
 		Routing.RegisterRoute(nameof(NewGroupPage), typeof(NewGroupPage));
 
 		// Reached via GoToAsync from ChatListPage/NewGroupViewModel, carrying a groupChatId query
-		// parameter that GroupChatViewModel.ApplyQueryAttributes picks up.
-		Routing.RegisterRoute(nameof(GroupChatPage), typeof(GroupChatPage));
+		// parameter that GroupChatViewModel.ApplyQueryAttributes picks up. Caching factory (2026-09-13),
+		// same reasoning as ChatPage above.
+		Routing.RegisterRoute(nameof(GroupChatPage), GroupChatPageFactory);
 
 		// Logbook (2026-09-09) — reached via GoToAsync from LogbookPage, carrying a checklistId
 		// query parameter that LogbookChecklistViewModel.ApplyQueryAttributes picks up. LogbookPage

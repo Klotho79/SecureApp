@@ -194,6 +194,10 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
     private sealed record CachedGroupThread(string Title, List<GroupMessageItem> Items, List<Message> Older, string Signature);
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, CachedGroupThread> _groupThreadCache = new();
 
+    // See ChatViewModel._displayedSignature — lets a reused (kept-in-memory) group page skip rebuilding
+    // an unchanged thread on reopen, keeping the realized cells and avoiding the ~180 ms layout pass.
+    private string? _displayedSignature;
+
     public void ApplyQueryAttributes(IDictionary<string, object> query)
     {
         if (query.TryGetValue("groupChatId", out var value) && Guid.TryParse(value?.ToString(), out var id))
@@ -293,13 +297,20 @@ public sealed partial class GroupChatViewModel : ObservableObject, IQueryAttribu
             var remaining = AnimationSettleMs - (int)sw.ElapsedMilliseconds;
             if (remaining > 0) await Task.Delay(remaining);
 
-            Messages = new ObservableCollection<GroupMessageItem>(loaded.Items);
-            ScrollToBottomRequested?.Invoke();
+            // Rebuild only when content differs from what this (possibly reused) page already shows —
+            // see ChatViewModel.LoadAsync. A reopened, unchanged group keeps its realized cells.
+            var reused = Messages.Count > 0 && loaded.Signature == _displayedSignature;
+            if (!reused)
+            {
+                Messages = new ObservableCollection<GroupMessageItem>(loaded.Items);
+                _displayedSignature = loaded.Signature;
+                ScrollToBottomRequested?.Invoke();
+            }
 
             _groupThreadCache[_groupChatId] = new CachedGroupThread(Title, loaded.Items, [.. loaded.OlderLogical], loaded.Signature);
             IsLoading = false;
             AppLog.Metric("group.open.load", sw.Elapsed.TotalMilliseconds, "ms",
-                ("bg", System.Math.Round(bgMs, 1)), ("cells", loaded.Items.Count), ("members", loaded.Members.Count));
+                ("bg", System.Math.Round(bgMs, 1)), ("cells", loaded.Items.Count), ("members", loaded.Members.Count), ("reused", reused));
 
             // Refresh names from the directory, then auto-heal broken pairings — both in the
             // background so neither blocks the thread. Auto-heal on open (2026-09-07) is the user's

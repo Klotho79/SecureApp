@@ -60,6 +60,11 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
     private sealed record CachedThread(string Title, List<ChatMessageItem> Items, List<Message> Older, string Signature);
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, CachedThread> _threadCache = new();
 
+    // Signature of the thread currently shown by THIS (possibly reused) page instance (2026-09-13).
+    // When the page is kept in memory and reopened unchanged, LoadAsync skips rebuilding Messages so
+    // the already-realized CollectionView cells stay put — no ~180 ms layout pass. See CachedRouteFactory.
+    private string? _displayedSignature;
+
     [ObservableProperty]
     public partial string Title { get; set; }
 
@@ -247,13 +252,21 @@ public sealed partial class ChatViewModel : ObservableObject, IQueryAttributable
             var remaining = AnimationSettleMs - (int)sw.ElapsedMilliseconds;
             if (remaining > 0) await Task.Delay(remaining);
 
-            Messages = new ObservableCollection<ChatMessageItem>(loaded.Items);
-            ScrollToBottomRequested?.Invoke();
+            // Rebuild the list only when the content actually differs from what this (possibly reused)
+            // page already shows — a reopened, unchanged chat keeps its realized cells and does zero
+            // layout work. Fresh page: Messages is empty, so this always builds.
+            var reused = Messages.Count > 0 && loaded.Signature == _displayedSignature;
+            if (!reused)
+            {
+                Messages = new ObservableCollection<ChatMessageItem>(loaded.Items);
+                _displayedSignature = loaded.Signature;
+                ScrollToBottomRequested?.Invoke();
+            }
 
             _threadCache[_chatSessionId] = new CachedThread(loaded.Title, loaded.Items, [.. loaded.Older], loaded.Signature);
             IsLoading = false;
             AppLog.Metric("chat.open.load", sw.Elapsed.TotalMilliseconds, "ms",
-                ("bg", System.Math.Round(bgMs, 1)), ("cells", loaded.Items.Count));
+                ("bg", System.Math.Round(bgMs, 1)), ("cells", loaded.Items.Count), ("reused", reused));
 
             var session = loaded.Session ?? await _sessionRepository.GetByIdAsync(_chatSessionId);
             _ = RefreshInBackgroundAsync(session);

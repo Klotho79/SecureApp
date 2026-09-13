@@ -45,6 +45,7 @@ public sealed partial class NewChatViewModel
     private async Task OpenCreatedChatAsync()
     {
         if (CreatedSession is null) return;
+        AppShell.ChatPageFactory.PendingKey = CreatedSession.Id.ToString();
         await Shell.Current.GoToAsync($"{nameof(ChatPage)}?chatSessionId={CreatedSession.Id}", animate: false); // see ChatListViewModel.OpenSessionAsync
     }
 
@@ -52,6 +53,7 @@ public sealed partial class NewChatViewModel
     private async Task OpenAcceptedChatAsync()
     {
         if (AcceptedSession is null) return;
+        AppShell.ChatPageFactory.PendingKey = AcceptedSession.Id.ToString();
         await Shell.Current.GoToAsync($"{nameof(ChatPage)}?chatSessionId={AcceptedSession.Id}", animate: false); // see ChatListViewModel.OpenSessionAsync
     }
 }

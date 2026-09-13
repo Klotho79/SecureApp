@@ -234,6 +234,7 @@ public sealed partial class NewGroupViewModel : ObservableObject
     private async Task OpenCreatedGroupAsync()
     {
         if (CreatedGroupId is not { } groupId) return;
+        AppShell.GroupChatPageFactory.PendingKey = groupId.ToString();
         await Shell.Current.GoToAsync($"{nameof(GroupChatPage)}?groupChatId={groupId}", animate: false); // see ChatListViewModel.OpenSessionAsync
     }
 }
