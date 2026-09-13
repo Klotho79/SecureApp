@@ -74,11 +74,16 @@ open/close are uniform with no push animation. Cold open floor is now just the d
 (~65-85ms, decrypt-bound). User confirmed "dobry".
 
 Remaining polish:
-- [ ] Unify 1:1 and group into ONE thread view + view model (a 1:1 is a group of 2;
-      already unified at the crypto/session layer — only the UI/VM is duplicated).
-      User asked for this (code savings); do as a dedicated refactor.
+- [x] Unify chat view models — shared ChatThreadViewModelBase<TItem> holds the
+      duplicated thread scaffolding; 1:1 and group derive from it (−169/+128 lines).
+      Message/crypto/member logic deliberately kept per-subclass. Verified: both open
+      clean, no errors. (2026-09-13)
+- [x] Persistent phone overlay for BOTH 1:1 and group (show/hide, no rebuild); photo/
+      doc open made uniform (animate:false) + decrypt-once + JPEG/Skia warmup.
 - [ ] Optional: static IBM Plex weight files to restore the intended look (keep static).
-- [ ] Remove the diagnostic per-step bg metrics once tuning settles.
+- [ ] Optional: unify the two thread VIEWS (XAML) too — bubbles/compose are near-identical.
+- [ ] Release build (single ABI + trimming) — APK ~112MB Debug → ~30-45MB Release.
+- [ ] Remove the diagnostic per-step bg/doc metrics once tuning settles.
 
 ## Phase 2 — Functionality audit
 - [ ] Systematic pass over each feature (chat, group, library, logbook, contacts,
