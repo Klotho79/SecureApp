@@ -6,6 +6,7 @@ using SecureApp.Domain.Enums;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Presentation.Chat;
+using SecureApp.Presentation.Infrastructure;
 
 namespace SecureApp.Presentation.ViewModels;
 
@@ -227,11 +228,13 @@ public sealed partial class ChatListViewModel : ObservableObject
         try
         {
             await _sessionRepository.DeleteAsync(item.Id);
+            AppLog.Event("chat.deleted", ("peer", item.PeerDisplayName), ("session", item.Id));
             await LoadAsync();
         }
         catch (Exception ex)
         {
             DeleteErrorMessage = $"Nepodařilo se smazat chat s {item.PeerDisplayName}: {ex.Message}";
+            AppLog.Error("ChatList.DeleteSession", "delete chat failed", ex);
         }
     }
 
@@ -253,11 +256,13 @@ public sealed partial class ChatListViewModel : ObservableObject
         try
         {
             await _groupChatRepository.DeleteAsync(item.Id);
+            AppLog.Event("group.deleted-local", ("group", item.Id), ("name", item.Name));
             await LoadAsync();
         }
         catch (Exception ex)
         {
             DeleteErrorMessage = $"Nepodařilo se smazat skupinu {item.Name}: {ex.Message}";
+            AppLog.Error("ChatList.DeleteGroup", "delete group failed", ex);
         }
     }
 

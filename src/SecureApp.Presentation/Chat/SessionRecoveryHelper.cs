@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
+using SecureApp.Presentation.Infrastructure;
 
 namespace SecureApp.Presentation.Chat;
 
@@ -54,8 +55,12 @@ public static class SessionRecoveryHelper
         var now = DateTimeOffset.UtcNow;
         var lastAttempt = _lastResyncAttemptUtc.GetOrAdd(peerKeyHex, DateTimeOffset.MinValue);
         if (now - lastAttempt < _cooldown)
+        {
+            AppLog.Event("session.resync.skip", ("peer", peerDisplayName), ("reason", "cooldown"));
             return; // Another trigger already resynced this same peer moments ago — let it settle.
+        }
         _lastResyncAttemptUtc[peerKeyHex] = now;
+        AppLog.Event("session.resync.start", ("peer", peerDisplayName), ("peerDevice", peerRelayDeviceId));
 
         var existing = await messagingService.FindExistingSessionAsync(peerPublicKey, ct);
         if (existing is not null)
@@ -71,7 +76,14 @@ public static class SessionRecoveryHelper
         var invite = new ChatInviteBlob(currentUserService.Current.DisplayName, ownPublicKey, ownDeviceId, handshakeCipherText);
 
         if (messageTransport.IsConnected)
+        {
             await messageTransport.SendPairingInviteAsync(peerRelayDeviceId, ContactCardCodec.Encode(invite), ct);
+            AppLog.Event("session.resync.invite-sent", ("peer", peerDisplayName), ("peerDevice", peerRelayDeviceId));
+        }
+        else
+        {
+            AppLog.Event("session.resync.invite-queued", ("peer", peerDisplayName), ("reason", "relay-not-connected"));
+        }
         // Not connected right now: the session stays PendingHandshake locally, same "no error
         // surfaced" policy this app already uses elsewhere. It isn't retried automatically the
         // instant the relay reconnects — App.AutoConnectRelayAsync's periodic health check (below)

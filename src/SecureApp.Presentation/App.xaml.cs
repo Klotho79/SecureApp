@@ -315,7 +315,14 @@ public partial class App : Application
 		var stalePeers = sessions
 			.GroupBy(s => Convert.ToHexStringLower(s.PeerIdentityPublicKey))
 			.Where(group => group.All(s => s.State == ChatSessionState.Closed))
-			.Select(group => group.OrderByDescending(s => s.ModifiedAtUtc).First());
+			.Select(group => group.OrderByDescending(s => s.ModifiedAtUtc).First())
+				.ToList();
+
+			if (stalePeers.Count > 0)
+				AppLog.Event("sweep.stale-peers-resyncing", ("count", stalePeers.Count));
+			// NOTE: this sweep is the path that kept recreating the ghost "Local User" — logging it is
+			// exactly the visibility 2.5 is about; 2.2 will add a suppression so a user-removed peer
+			// isn't auto-resynced here at all.
 
 		foreach (var stale in stalePeers)
 		{
@@ -422,6 +429,7 @@ public partial class App : Application
 			// handler to also attempt this a moment later for the same peer.
 			var reporter = scope.ServiceProvider.GetRequiredService<IDiagnosticsReporter>();
 			_ = reporter.ReportAsync(DiagnosticLogLevel.Error, "Přijatou zprávu se nepodařilo dešifrovat — spouští se automatické obnovení spojení.", nameof(OnEnvelopeReceived), ex);
+			AppLog.Error("App.Receive", "decrypt failed; auto-healing session", ex);
 			try
 			{
 				var sessionRepository = scope.ServiceProvider.GetRequiredService<IChatSessionRepository>();
@@ -473,6 +481,7 @@ public partial class App : Application
 				await messagingService.CloseSessionAsync(existingSession.Id);
 
 			var acceptedSession = await messagingService.AcceptSessionAsync(invite.InitiatorDisplayName, invite.InitiatorPublicKey, invite.InitiatorRelayDeviceId, invite.HandshakeCipherText);
+			AppLog.Event("pairing.accepted", ("peer", invite.InitiatorDisplayName), ("peerDevice", invite.InitiatorRelayDeviceId));
 
 			// Best-effort shared-library-key offer (2026-09-10) — see SharedLibraryKeySync's own
 			// remarks; this is the auto-pairing counterpart of NewChatViewModel.AcceptInviteAsync's
@@ -491,6 +500,7 @@ public partial class App : Application
 			// Best-effort, same reasoning as AutoConnectRelayAsync below — the manual QR/copy-paste
 			// fallback the initiator's own screen still shows remains available either way.
 			ReportFireAndForget(DiagnosticLogLevel.Warning, $"Automatické spárování s {invite.InitiatorDisplayName} selhalo — zůstává dostupný ruční QR/kopírovací postup.", nameof(OnPairingInviteReceived), ex);
+			AppLog.Error("App.Pairing", $"auto-pair with {invite.InitiatorDisplayName} failed", ex);
 		}
 	}
 
@@ -542,6 +552,7 @@ public partial class App : Application
 				.Select(m => new GroupMember(invite.GroupId, m.DisplayName, m.PublicKey, m.RelayDeviceId))
 				.ToList();
 			await groupMemberRepository.ReplaceAllAsync(invite.GroupId, members);
+			AppLog.Event("group.membership.synced", ("group", invite.GroupId), ("name", invite.GroupName), ("members", members.Count));
 
 			foreach (var member in invite.Members)
 			{
@@ -562,6 +573,7 @@ public partial class App : Application
 
 					if (messageTransport.IsConnected)
 						await messageTransport.SendPairingInviteAsync(member.RelayDeviceId, ContactCardCodec.Encode(chatInvite));
+					AppLog.Event("group.member.pairing-initiated", ("member", member.DisplayName), ("memberDevice", member.RelayDeviceId), ("connected", messageTransport.IsConnected));
 					// Not connected right now: the session still exists locally (PendingHandshake),
 					// same "stays Pending, no error surfaced" policy this app already uses elsewhere
 					// (ChatViewModel.SendAsync). No manual QR/copy fallback UI for this particular
@@ -574,16 +586,18 @@ public partial class App : Application
 					var reporterForMember = scope.ServiceProvider.GetRequiredService<IDiagnosticsReporter>();
 					await SharedLibraryKeySync.OfferKeyAsync(sharedLibraryServiceForMember, messagingService, messageTransport, newMemberSession.Id, reporterForMember);
 				}
-				catch
+				catch (Exception memberEx)
 				{
 					// Best-effort per member — one failed pairwise handshake must never abort
 					// establishing sessions with the group's other members.
+					AppLog.Error("App.GroupInvite", $"pairing with member {member.DisplayName} failed", memberEx);
 				}
 			}
 		}
-		catch
+		catch (Exception ex)
 		{
 			// Best-effort, same reasoning as OnPairingInviteReceived above.
+			AppLog.Error("App.GroupInvite", "group invite handling failed", ex);
 		}
 	}
 

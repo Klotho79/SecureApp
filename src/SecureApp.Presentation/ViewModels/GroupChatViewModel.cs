@@ -762,7 +762,9 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
     {
         if (!CanManageMembers) return;
 
+        var removed = _members.FirstOrDefault(m => m.Id == memberId);
         var remaining = _members.Where(m => m.Id != memberId).ToList();
+        AppLog.Event("group.member.removed", ("group", _groupChatId), ("member", removed?.DisplayName ?? memberId.ToString()), ("remaining", remaining.Count));
         await BroadcastMembershipAsync(remaining);
     }
 
@@ -785,6 +787,7 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
     private async Task LeaveGroupAsync()
     {
         var remaining = _members.Where(m => !m.PublicKey.AsSpan().SequenceEqual(_localPublicKey)).ToList();
+        AppLog.Event("group.left", ("group", _groupChatId), ("remaining", remaining.Count));
         await BroadcastMembershipAsync(remaining);
 
         try

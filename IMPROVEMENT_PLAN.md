@@ -118,6 +118,15 @@ Proposed order: 2.5 (visibility — catches these bugs) → 2.2 (stop silent rea
 Rationale: get diagnosability first, then stop the recurrence, then the deeper
 lifecycle/RBAC features. Confirm order or override.
 
+### Known gaps to fix in Phase 2
+- **Leave-group from the phone overlay**: `GroupChatViewModel.LeaveGroupAsync` ends with
+  `GoToAsync("..")`, which pops the Shell stack — but on phone the group now lives in
+  ChatListPage's overlay (not a pushed page), so it won't close the overlay. Handle the
+  overlay-hosted case (hide overlay) when leaving. (Introduced by the persistent-overlay refactor.)
+- **Logs everywhere** (user ask, 2026-09-14): 2.5A covered send/receive/reconnect; this pass
+  added resync, pairing accept/fail, group membership sync + per-member pairing, stale-sweep,
+  and delete/leave/remove. Keep extending as new paths are added.
+
 ## Phase 2b — Functionality audit
 - [ ] Systematic pass over each feature (chat, group, library, logbook, contacts,
       settings, pairing/resync, key distribution) for correctness + edge cases.
