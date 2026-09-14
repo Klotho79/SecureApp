@@ -85,7 +85,40 @@ Remaining polish:
 - [ ] Release build (single ABI + trimming) — APK ~112MB Debug → ~30-45MB Release.
 - [ ] Remove the diagnostic per-step bg/doc metrics once tuning settles.
 
-## Phase 2 — Functionality audit
+## Phase 2 — Robustness & chat lifecycle (user's list, 2026-09-14)
+Triggered by a real incident: a wiped/reinstalled device left a **ghost identity**
+(`6d7b56f3` "Local User") that was the GROUP FOUNDER; messages to it black-holed in
+the relay outbox (120 stuck), both directions silently failed, and the ghost 1:1
+kept auto-reappearing because the group still listed it and the app kept recreating
+the session. Manual recovery: purge relay + delete group everywhere + recreate. These
+items make the app handle this itself. Do ONE at a time, each deployed + tested.
+
+- [ ] **2.1 User/registration management + no dead souls.** Detect & drop stale device
+      registrations; don't leave dead members hanging in chats/groups. Founder-transfer
+      (or "remove an unreachable founder") so a group is never hostage to a dead identity.
+      Surface a member whose device is gone as "nedostupný / přepárovat", not silently.
+- [ ] **2.2 Deleted chat stays deleted.** When a user removes a chat it must NOT silently
+      auto-reappear (today the sweeps / group-resync / unknown-sender auto-pair recreate
+      it). It returns ONLY when the chat's creator re-invites AND the user consents
+      (accept/decline). Needs a per-peer "removed/declined" suppression + a consent prompt.
+- [ ] **2.3 Archive a chat that lost all its users.** When a chat/group loses every other
+      participant, move it to an Archive instead of deleting/hanging. Read access to the
+      archive: **Admin, Modifier, and a participant of that chat.** (New store + RBAC + UI.)
+- [ ] **2.4 Attach files not in the shared library.** Let chat participants attach files
+      that aren't already in the community library (today attach = library only). Decide:
+      auto-import into library vs. a per-chat attachment store; keep E2EE.
+- [ ] **2.5 Delivery feedback + reasoned logging.** Show whether participants RECEIVED a
+      message (sent/delivered/failed), and log the reason on failure + any automatic
+      remedy taken (reconnect, resync). This is exactly what would have made the ghost
+      black-hole visible instead of silent. Needs relay delivery-ack + per-message status
+      + AppLog entries.
+
+Proposed order: 2.5 (visibility — catches these bugs) → 2.2 (stop silent reappear) →
+2.1 (registration/ghost + founder transfer) → 2.3 (archive) → 2.4 (attachments).
+Rationale: get diagnosability first, then stop the recurrence, then the deeper
+lifecycle/RBAC features. Confirm order or override.
+
+## Phase 2b — Functionality audit
 - [ ] Systematic pass over each feature (chat, group, library, logbook, contacts,
       settings, pairing/resync, key distribution) for correctness + edge cases.
 - [ ] Error log review to surface silent failures.
@@ -106,3 +139,6 @@ Remaining polish:
 - 2026-09-13: Phase 1 breakthrough — isolated the open cost to the **variable font** and
   switched "PlexSans" to a static face; user confirms "rozhodně lepší". Ruled out message
   count, page caching, and the CollectionView along the way, each by measurement.
+- 2026-09-14: Ghost-identity incident (see Phase 2). Diagnosed via relay outbox (120 dead
+  msgs → dead founder `6d7b56f3`), recovered manually (relay purge + recreate group). Logged
+  the 5-item robustness backlog (Phase 2). Starting 2.5 (delivery feedback + logging).
