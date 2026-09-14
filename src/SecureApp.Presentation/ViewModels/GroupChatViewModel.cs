@@ -237,6 +237,7 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
             var isFounder = _founderPublicKey.AsSpan().SequenceEqual(_localPublicKey);
             CanManageMembers = isFounder || RoleAccessPolicy.IsAllowed(loaded.Role, RbacAction.InviteGroupMember);
             Title = loaded.Group.Name;
+            IsArchived = ArchivedChatsStore.Contains(_groupChatId); // 2.3: read-only if archived
             _members = loaded.Members;
             _directoryNames = loaded.DirectoryNames;
             _sessionNameById = loaded.SessionNames;
@@ -758,6 +759,25 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
         catch (Exception ex)
         {
             StatusErrorMessage = $"Nepodařilo se otevřít '{item.AttachmentFileName}': {ex.Message}";
+        }
+    }
+
+    /// <summary>Promotes an archived chat's private attachment to the community library (2.3, 2026-09-14) — the "move from local archive to global" the user asked for. After this it's browsable in the shared library by everyone.</summary>
+    [RelayCommand]
+    private async Task PublishAttachmentToLibraryAsync(GroupMessageItem? item)
+    {
+        if (item?.AttachmentLibraryFileId is not { } libraryFileId) return;
+        StatusErrorMessage = null;
+        try
+        {
+            await _libraryService.PublishToLibraryAsync(libraryFileId);
+            AppLog.Event("archive.file-published", ("group", _groupChatId), ("file", item.AttachmentFileName ?? ""));
+            StatusErrorMessage = $"'{item.AttachmentFileName}' přesunuto do sdílené knihovny.";
+        }
+        catch (Exception ex)
+        {
+            StatusErrorMessage = $"Nepodařilo se přesunout '{item.AttachmentFileName}' do knihovny: {ex.Message}";
+            AppLog.Error("Archive.PublishFile", "publish to library failed", ex);
         }
     }
 

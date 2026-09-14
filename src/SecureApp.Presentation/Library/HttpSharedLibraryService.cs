@@ -202,6 +202,17 @@ public sealed class HttpSharedLibraryService : ISharedLibraryService
         response.EnsureSuccessStatusCode();
     }
 
+    public async Task PublishToLibraryAsync(Guid libraryFileId, string? folderPath = null, CancellationToken ct = default)
+    {
+        var endpoint = await GetHttpEndpointAsync(ct);
+        var uri = new Uri(endpoint, $"library/files/{libraryFileId}/publish?folderPath={Uri.EscapeDataString(folderPath ?? string.Empty)}");
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, uri);
+        await AddDeviceAuthAsync(request, ct);
+        using var response = await _httpClient.SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
+    }
+
     // --- Relay-mediated shared-library-key escrow (2026-09-11) — see ISharedLibraryService's own
     // remarks. Uses only the crypto primitives already in this codebase: ML-KEM EncapsulateAsync
     // against a recipient's raw directory public key + AES-256-GCM under a shared secret HKDF'd to a

@@ -265,6 +265,23 @@ app.MapDelete("/library/files/{id:guid}", (Guid id, HttpRequest request, RelayDa
     return Results.NoContent();
 });
 
+// Promote a private chat attachment to the community library (2026-09-14, 2.3 "move from local archive
+// to global") — flips is_listed to 1 so it appears in the browser. Uploader or admin only, mirroring
+// the delete endpoint's cooperative-role trust.
+app.MapPost("/library/files/{id:guid}/publish", (Guid id, HttpRequest request, RelayDatabase db) =>
+{
+    var isAdmin = IsAdminAuthorized(request, adminSecret);
+    var isDeviceAuthed = TryGetDeviceAuth(request, db, out var callerDeviceId);
+    if (!isAdmin && !isDeviceAuthed)
+        return Results.Unauthorized();
+
+    var folderPath = request.Query["folderPath"].ToString();
+    if (!db.TryPublishLibraryFile(id, callerDeviceId, isAdmin, folderPath))
+        return Results.NotFound();
+
+    return Results.NoContent();
+});
+
 // --- Member directory (2026-09-06) — see Contracts.cs's own remarks. Device-authenticated
 // (X-Device-Id/X-Device-Secret), same as /library/files — not admin-gated, since any already
 // admin-approved device is exactly who this is meant to be visible to.

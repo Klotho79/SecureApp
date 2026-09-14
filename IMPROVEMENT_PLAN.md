@@ -105,9 +105,15 @@ items make the app handle this itself. Do ONE at a time, each deployed + tested.
       removed. Starting a new chat / manually accepting an invite also clears the removal. (A
       removed peer re-added to a GROUP is left as a legitimate re-introduction — not gated.) Needs
       2 devices to test the accept/decline flow.
-- [ ] **2.3 Archive a chat that lost all its users.** When a chat/group loses every other
-      participant, move it to an Archive instead of deleting/hanging. Read access to the
-      archive: **Admin, Modifier, and a participant of that chat.** (New store + RBAC + UI.)
+- [x] **2.3 Archive a chat that lost all its users** ✅ (2026-09-14). LOCAL archive
+      (ArchivedChatsStore, Preferences) — a group auto-archives when it loses every other
+      member; archived chats/groups move out of the main list into a collapsible "📦 Archiv (N)"
+      section and open READ-ONLY (compose hidden, "Archivováno" footer). The archive is local
+      (each device has its own = it was a participant; no server archive, which would break E2EE).
+      Plus the user's ask: **move a file from the local archive to the GLOBAL library** — an
+      archived attachment shows a →📚 button that promotes the private file to the community
+      library (relay is_listed 0→1 via /library/files/{id}/publish, uploader/admin). Relay
+      migration + both targets build clean. (1:1 archive UI/publish button is group-only for now.)
 - [x] **2.4 Attach files not in the shared library** ✅ (2026-09-14). Chat "Nahrát nový
       soubor" now uploads the file PRIVATE — same encrypted storage + community-key encryption
       as a library file (user: "fungovalo by to stejně jako vkládání do knihovny"), but hidden

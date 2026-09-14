@@ -377,6 +377,30 @@ public sealed class RelayDatabase
         return reader.Read() ? ReadLibraryFileRecord(reader) : null;
     }
 
+    /// <summary>
+    /// Promotes a private chat attachment to the community library (2026-09-14, 2.3 "move from local
+    /// archive to global") — flips is_listed to 1 so it becomes browsable, optionally moving it into a
+    /// folder. Returns false (no-op) unless the caller is the original uploader or
+    /// <paramref name="isAdminOverride"/> is set (the same cooperative-role trust as delete). Already-
+    /// listed files are unaffected (idempotent).
+    /// </summary>
+    public bool TryPublishLibraryFile(Guid id, Guid callerDeviceId, bool isAdminOverride, string? folderPath)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        var setFolder = string.IsNullOrWhiteSpace(folderPath) ? "" : ", folder_path = @folder";
+        command.CommandText = isAdminOverride
+            ? $"UPDATE library_files SET is_listed = 1{setFolder} WHERE id = @id"
+            : $"UPDATE library_files SET is_listed = 1{setFolder} WHERE id = @id AND uploaded_by_device_id = @caller";
+        command.Parameters.AddWithValue("@id", id.ToString());
+        if (!isAdminOverride)
+            command.Parameters.AddWithValue("@caller", callerDeviceId.ToString());
+        if (!string.IsNullOrWhiteSpace(folderPath))
+            command.Parameters.AddWithValue("@folder", folderPath);
+
+        return command.ExecuteNonQuery() > 0;
+    }
+
     /// <summary>Deletes metadata only — the caller is responsible for also removing the on-disk blob (see <see cref="GetLibraryFilePath"/>). Deletes nothing (returns false) unless the caller is the original uploader or <paramref name="isAdminOverride"/> is set.</summary>
     public bool TryDeleteLibraryFile(Guid id, Guid callerDeviceId, bool isAdminOverride)
     {

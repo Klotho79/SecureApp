@@ -41,6 +41,9 @@ public interface ISharedLibraryService
 
     Task DeleteAsync(Guid libraryFileId, CancellationToken ct = default);
 
+    /// <summary>Promotes a private chat attachment to the community library (2026-09-14, 2.3 "move from local archive to global") — makes it browsable (relay is_listed=1), optionally in <paramref name="folderPath"/>. Uploader or admin only; idempotent for an already-listed file.</summary>
+    Task PublishToLibraryAsync(Guid libraryFileId, string? folderPath = null, CancellationToken ct = default);
+
     /// <summary>
     /// Relay-mediated key escrow, push side (2026-09-11): if this device HAS the shared key, wraps it
     /// for every other community member (ML-KEM encapsulation to each member's published directory

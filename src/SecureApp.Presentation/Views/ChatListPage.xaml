@@ -130,6 +130,52 @@
                             </CollectionView.ItemTemplate>
                         </CollectionView>
 
+                        <!-- Archive (2.3, 2026-09-14): chats/groups that lost all users, kept read-only.
+                             Collapsed header (tap to expand); opening an item shows read-only history. -->
+                        <VerticalStackLayout Spacing="8" IsVisible="{Binding HasArchivedChats}">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <Grid.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding ToggleArchiveCommand}" />
+                                </Grid.GestureRecognizers>
+                                <Label Grid.Column="0" Text="{Binding ArchivedCount, StringFormat='📦 Archiv ({0}) ▾'}" FontAttributes="Bold" FontSize="13" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}">
+                                    <Label.Triggers>
+                                        <DataTrigger TargetType="Label" Binding="{Binding IsArchiveExpanded}" Value="False">
+                                            <Setter Property="Text" Value="{Binding ArchivedCount, StringFormat='📦 Archiv ({0}) ▸'}" />
+                                        </DataTrigger>
+                                    </Label.Triggers>
+                                </Label>
+                            </Grid>
+
+                            <VerticalStackLayout Spacing="6" IsVisible="{Binding IsArchiveExpanded}">
+                                <CollectionView ItemsSource="{Binding ArchivedGroups}" SelectionMode="Single" SelectionChanged="OnGroupSelected">
+                                    <CollectionView.ItemsLayout><LinearItemsLayout Orientation="Vertical" ItemSpacing="6" /></CollectionView.ItemsLayout>
+                                    <CollectionView.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:GroupChatListItem">
+                                            <Border Style="{StaticResource CardBorder}" Margin="0" Padding="10,8" Opacity="0.7">
+                                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                                                    <Label Grid.Column="0" Text="📦" FontSize="16" VerticalOptions="Center" />
+                                                    <Label Grid.Column="1" Text="{Binding Name}" FontSize="14" FontAttributes="Bold" VerticalOptions="Center" />
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </CollectionView.ItemTemplate>
+                                </CollectionView>
+                                <CollectionView ItemsSource="{Binding ArchivedSessions}" SelectionMode="Single" SelectionChanged="OnSessionSelected">
+                                    <CollectionView.ItemsLayout><LinearItemsLayout Orientation="Vertical" ItemSpacing="6" /></CollectionView.ItemsLayout>
+                                    <CollectionView.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:ChatSessionItem">
+                                            <Border Style="{StaticResource CardBorder}" Margin="0" Padding="10,8" Opacity="0.7">
+                                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                                                    <Label Grid.Column="0" Text="📦" FontSize="16" VerticalOptions="Center" />
+                                                    <Label Grid.Column="1" Text="{Binding PeerDisplayName}" FontSize="14" FontAttributes="Bold" VerticalOptions="Center" />
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </CollectionView.ItemTemplate>
+                                </CollectionView>
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+
                     </VerticalStackLayout>
                 </ScrollView>
             </RefreshView>

@@ -37,6 +37,21 @@ public abstract partial class ChatThreadViewModelBase<TItem> : ObservableObject
         DiagnosticsReporter = diagnosticsReporter ?? throw new ArgumentNullException(nameof(diagnosticsReporter));
         Messages = [];
         ComposeText = string.Empty;
+        CanCompose = true;
+    }
+
+    /// <summary>True when this chat/group has been archived (2.3, 2026-09-14) — the thread is read-only: the compose bar is hidden and sending is blocked. Set by the subclass's load from ArchivedChatsStore.</summary>
+    [ObservableProperty]
+    public partial bool IsArchived { get; set; }
+
+    /// <summary>Inverse of <see cref="IsArchived"/> — bound by the compose bar's visibility (no negating converter, this codebase's convention).</summary>
+    [ObservableProperty]
+    public partial bool CanCompose { get; set; }
+
+    partial void OnIsArchivedChanged(bool value)
+    {
+        CanCompose = !value;
+        if (value) CanSend = false; // archived threads never send
     }
 
     /// <summary>Raised once the thread is (re)populated so the hosting view can scroll to the newest message.</summary>

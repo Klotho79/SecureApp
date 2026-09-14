@@ -168,6 +168,7 @@ public sealed partial class ChatViewModel : ChatThreadViewModelBase<ChatMessageI
             await _currentUserService.InitializeAsync();
             _currentRole = _currentUserService.Current.Role;
             Title = loaded.Title;
+            IsArchived = ArchivedChatsStore.Contains(_chatSessionId); // 2.3: read-only if archived
             _olderRows.Clear();
             _olderRows.AddRange(loaded.Older);
 

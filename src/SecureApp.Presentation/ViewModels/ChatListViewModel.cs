@@ -60,6 +60,26 @@ public sealed partial class ChatListViewModel : ObservableObject
     [ObservableProperty]
     public partial bool HasPendingInvites { get; set; }
 
+    // Archive section (2.3, 2026-09-14) — chats/groups that lost all users, kept read-only and out of
+    // the main list; the section is collapsed by default and expands on tap.
+    [ObservableProperty]
+    public partial ObservableCollection<ChatSessionItem> ArchivedSessions { get; set; }
+
+    [ObservableProperty]
+    public partial ObservableCollection<GroupChatListItem> ArchivedGroups { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasArchivedChats { get; set; }
+
+    [ObservableProperty]
+    public partial int ArchivedCount { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsArchiveExpanded { get; set; }
+
+    [RelayCommand]
+    private void ToggleArchive() => IsArchiveExpanded = !IsArchiveExpanded;
+
     private IReadOnlyDictionary<string, string> _displayedNames = new Dictionary<string, string>();
 
     public ChatListViewModel(
@@ -81,6 +101,8 @@ public sealed partial class ChatListViewModel : ObservableObject
         Sessions = [];
         Groups = [];
         PendingInvites = [];
+        ArchivedSessions = [];
+        ArchivedGroups = [];
         HasNoGroups = true;
     }
 
@@ -127,28 +149,45 @@ public sealed partial class ChatListViewModel : ObservableObject
         // the one that best represents the current chat (prefer a non-Closed session, then the most
         // recent). Nothing is deleted here, so no message history is lost — only the duplicates are
         // hidden from the list.
+        var archived = ArchivedChatsStore.All();
+
         var sessions = await _sessionRepository.GetAllAsync();
         var oneSessionPerPeer = sessions
             .GroupBy(s => Convert.ToHexStringLower(s.PeerIdentityPublicKey))
             .Select(peer => peer
                 .OrderByDescending(s => s.State != ChatSessionState.Closed) // prefer a live session over a Closed one
                 .ThenByDescending(s => s.LastRatchetedAtUtc ?? s.CreatedAtUtc) // then the most recent
-                .First());
+                .First())
+            .ToList();
 
+        ChatSessionItem ToSessionItem(ChatSession s)
+        {
+            var name = DirectoryNameResolver.Resolve(directoryNames, s.PeerIdentityPublicKey, s.PeerDisplayName);
+            return new ChatSessionItem(s.Id, name, s.State, DescribeLastActivity(s), ComputeInitials(name));
+        }
+
+        // 2.3 (2026-09-14): archived chats/groups are moved OUT of the main list into a separate,
+        // read-only Archive section (see ArchivedChatsStore).
         Sessions = new ObservableCollection<ChatSessionItem>(
-            oneSessionPerPeer.OrderByDescending(s => s.LastRatchetedAtUtc ?? s.CreatedAtUtc)
-                .Select(s =>
-                {
-                    var name = DirectoryNameResolver.Resolve(directoryNames, s.PeerIdentityPublicKey, s.PeerDisplayName);
-                    return new ChatSessionItem(s.Id, name, s.State, DescribeLastActivity(s), ComputeInitials(name));
-                }));
+            oneSessionPerPeer.Where(s => !archived.Contains(s.Id))
+                .OrderByDescending(s => s.LastRatchetedAtUtc ?? s.CreatedAtUtc).Select(ToSessionItem));
         IsEmpty = Sessions.Count == 0;
 
         var groups = await _groupChatRepository.GetAllAsync();
+        GroupChatListItem ToGroupItem(GroupChat g) => new(g.Id, g.Name, ComputeInitials(g.Name));
+
         Groups = new ObservableCollection<GroupChatListItem>(
-            groups.OrderByDescending(g => g.ModifiedAtUtc)
-                .Select(g => new GroupChatListItem(g.Id, g.Name, ComputeInitials(g.Name))));
+            groups.Where(g => !archived.Contains(g.Id)).OrderByDescending(g => g.ModifiedAtUtc).Select(ToGroupItem));
         HasNoGroups = Groups.Count == 0;
+
+        // Archive section contents.
+        ArchivedSessions = new ObservableCollection<ChatSessionItem>(
+            oneSessionPerPeer.Where(s => archived.Contains(s.Id))
+                .OrderByDescending(s => s.LastRatchetedAtUtc ?? s.CreatedAtUtc).Select(ToSessionItem));
+        ArchivedGroups = new ObservableCollection<GroupChatListItem>(
+            groups.Where(g => archived.Contains(g.Id)).OrderByDescending(g => g.ModifiedAtUtc).Select(ToGroupItem));
+        ArchivedCount = ArchivedSessions.Count + ArchivedGroups.Count;
+        HasArchivedChats = ArchivedCount > 0;
 
         // Consent banner (2.2): pairing invites from removed peers, held for the user to accept/decline.
         PendingInvites = new ObservableCollection<PendingInviteItem>(

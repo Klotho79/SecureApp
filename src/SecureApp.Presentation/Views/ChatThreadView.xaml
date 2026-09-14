@@ -202,11 +202,16 @@
             </Grid>
         </Border>
 
-        <Grid Grid.Row="3" Padding="12,10" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10" BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource OffBlack}}">
+        <Grid Grid.Row="3" Padding="12,10" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10" IsVisible="{Binding CanCompose}" BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource OffBlack}}">
             <BoxView Grid.ColumnSpan="3" HeightRequest="1" VerticalOptions="Start" Margin="-12,-10,-12,0" Color="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}" />
             <Button Grid.Column="0" Text="📎" Style="{StaticResource SecondaryButton}" WidthRequest="44" Padding="0" Clicked="OnAttachClicked" />
             <Entry Grid.Column="1" Text="{Binding ComposeText}" Placeholder="Napište zprávu…" ReturnCommand="{Binding SendCommand}" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}" />
             <Button Grid.Column="2" Text="Odeslat" Command="{Binding SendCommand}" IsEnabled="{Binding CanSend}" />
         </Grid>
+
+        <!-- Archived chat (2.3): read-only footer. -->
+        <Label Grid.Row="3" IsVisible="{Binding IsArchived}" Padding="12,12" HorizontalOptions="Center"
+               Text="📦 Archivováno — jen ke čtení" FontSize="12"
+               TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
     </Grid>
 </ContentView>

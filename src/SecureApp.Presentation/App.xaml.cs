@@ -599,6 +599,20 @@ public partial class App : Application
 			await groupMemberRepository.ReplaceAllAsync(invite.GroupId, members);
 			AppLog.Event("group.membership.synced", ("group", invite.GroupId), ("name", invite.GroupName), ("members", members.Count));
 
+			// 2.3 (2026-09-14): a group that has lost every OTHER member is moved to the local archive
+			// (read-only history) instead of hanging in the main list; if members later return, it's
+			// un-archived. See ArchivedChatsStore.
+			var othersRemain = invite.Members.Any(m => !m.PublicKey.AsSpan().SequenceEqual(localPublicKey));
+			if (!othersRemain)
+			{
+				ArchivedChatsStore.Add(invite.GroupId);
+				AppLog.Event("group.auto-archived", ("group", invite.GroupId), ("reason", "no-members-left"));
+			}
+			else
+			{
+				ArchivedChatsStore.Remove(invite.GroupId);
+			}
+
 			foreach (var member in invite.Members)
 			{
 				if (member.PublicKey.AsSpan().SequenceEqual(localPublicKey))
