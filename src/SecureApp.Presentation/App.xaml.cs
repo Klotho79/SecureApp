@@ -265,10 +265,15 @@ public partial class App : Application
 		try
 		{
 			await transport.ConnectAsync(endpoint);
+			// 2.5 (2026-09-14): log the automatic reconnect so a recovered connection (and thus why a
+			// stuck-Pending message suddenly went through) is visible in the log.
+			SecureApp.Presentation.Infrastructure.AppLog.Event("relay.reconnected");
 		}
-		catch
+		catch (Exception ex)
 		{
-			// Best-effort — retried again next tick, ~10s later.
+			// Best-effort — retried again next tick, ~10s later. Logged (not silent) so a persistently
+			// failing reconnect — the reason messages aren't leaving — is diagnosable.
+			SecureApp.Presentation.Infrastructure.AppLog.Error("App.TryConnect", "relay reconnect attempt failed", ex);
 		}
 	}
 
@@ -349,6 +354,11 @@ public partial class App : Application
 		try
 		{
 			var message = await messagingService.ReceiveMessageAsync(envelope);
+
+			// 2.5 (2026-09-14): receive logging — correlates with the sender's "msg.sent" (same corr id)
+			// so a sent-but-never-received message (the ghost black-hole) is diagnosable from the logs
+			// on either side, instead of being silent.
+			AppLog.Event("msg.received", ("corr", envelope.OriginMessageId), ("group", envelope.GroupChatId), ("system", envelope.IsSystemPayload));
 
 			// Shared-library-key offer arriving (2026-09-10) — see SharedLibraryKeySync's own
 			// remarks. Decrypt-and-import right here, unconditionally, regardless of whether any

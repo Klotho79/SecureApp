@@ -328,6 +328,7 @@ public sealed partial class ChatViewModel : ChatThreadViewModelBase<ChatMessageI
                 // The session broke earlier (a decrypt-failure auto-heal, or a manual "↺" reset) but
                 // nothing had re-paired since — resync right now and retry this exact send once
                 // (2026-09-07), instead of just failing and making the user notice and act.
+                AppLog.Event("msg.autoremedy", ("chat", "1:1"), ("action", "resync-and-retry"), ("reason", "session-closed"));
                 (message, envelope) = await ResyncAndRetrySendAsync(plaintext, attachmentId, attachmentName);
             }
 
@@ -350,16 +351,28 @@ public sealed partial class ChatViewModel : ChatThreadViewModelBase<ChatMessageI
                     message.MarkSent();
                     await _messageRepository.UpdateAsync(message);
                     ReplaceItem(message.Id, item => item with { Status = message.Status });
+                    // 2.5 (2026-09-14): send outcome logging. "sent" = reached the relay — NOT yet
+                    // confirmed delivered to the peer (delivery-ack is slice B). Correlation id ties
+                    // this to a later delivered-ack and to the peer's receive log.
+                    AppLog.Event("msg.sent", ("chat", "1:1"), ("corr", message.OriginMessageId), ("session", _chatSessionId));
                 }
-                catch (Exception)
+                catch (Exception sendEx)
                 {
-                    // Stays Pending in storage — nothing further to do here.
+                    // Stays Pending in storage — logged with the reason so a silent stuck-Pending is diagnosable.
+                    AppLog.Error("ChatViewModel.Send", "send to relay failed; stays Pending", sendEx);
                 }
+            }
+            else
+            {
+                // Queued locally as Pending because the relay isn't connected — the connection
+                // supervisor will retry; logged so "message never left" has a visible reason.
+                AppLog.Event("msg.queued", ("chat", "1:1"), ("reason", "relay-not-connected"), ("corr", message.OriginMessageId));
             }
         }
         catch (Exception ex)
         {
             StatusErrorMessage = $"Nepodařilo se odeslat: {ex.Message}";
+            AppLog.Error("ChatViewModel.Send", "send failed", ex);
         }
     }
 

@@ -496,7 +496,7 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
                     if (_messageTransport.IsConnected)
                     {
                         try { await _messageTransport.SendEnvelopeAsync(envelope); }
-                        catch (Exception sendEx) { undelivered.Add((member.DisplayName, $"uloženo, ale nepodařilo se odeslat na relay: {sendEx.Message}")); /* stays Pending in storage, same policy ChatViewModel.SendAsync already uses */ }
+                        catch (Exception sendEx) { undelivered.Add((member.DisplayName, $"uloženo, ale nepodařilo se odeslat na relay: {sendEx.Message}")); AppLog.Error("GroupChat.Send", "leg to relay failed; stays Pending", sendEx); /* stays Pending in storage, same policy ChatViewModel.SendAsync already uses */ }
                     }
                     else
                     {
@@ -507,8 +507,15 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
                 {
                     // One member's send failing must never stop delivery to the rest of the group.
                     undelivered.Add((member.DisplayName, $"šifrování/odeslání selhalo: {encryptEx.Message}"));
+                    AppLog.Error("GroupChat.Send", "leg encrypt/send failed", encryptEx);
                 }
             }
+
+            // 2.5 (2026-09-14): group send outcome summary — how many legs reached the relay vs stayed
+            // undelivered, with reasons. "reached relay" is not the same as "peer received it"
+            // (delivery-ack is slice B); corr ties to the peer's receive log.
+            AppLog.Event("msg.sent", ("chat", "group"), ("corr", groupMessageId),
+                ("legs", otherMembers.Count), ("undelivered", undelivered.Count));
 
             // Own message — always deletable by this user; correlated across the fan-out by groupMessageId.
             Messages.Add(new GroupMessageItem(Guid.NewGuid(), true, _currentUserService.Current.DisplayName, text, DateTimeOffset.UtcNow, attachmentId, attachmentName, CanDelete: true, CorrelationId: groupMessageId));
@@ -521,6 +528,7 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
         catch (Exception ex)
         {
             StatusErrorMessage = $"Nepodařilo se odeslat: {ex.Message}";
+            AppLog.Error("GroupChat.Send", "group send failed", ex);
         }
     }
 
