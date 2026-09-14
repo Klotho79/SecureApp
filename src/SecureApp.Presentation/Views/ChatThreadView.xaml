@@ -73,19 +73,26 @@
                                                             CommandParameter="{Binding .}" />
                                                     </Label.GestureRecognizers>
                                                 </Label>
-                                                <Label
-                                                    Grid.Column="1"
-                                                    Text="{Binding TimeLabel}"
-                                                    FontSize="9"
-                                                    HorizontalOptions="End"
-                                                    VerticalOptions="Center"
-                                                    TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}">
-                                                    <Label.Triggers>
-                                                        <DataTrigger TargetType="Label" Binding="{Binding IsOutbound}" Value="True">
-                                                            <Setter Property="TextColor" Value="{AppThemeBinding Light=#CFE7F0, Dark={StaticResource PrimaryDarkText}}" />
-                                                        </DataTrigger>
-                                                    </Label.Triggers>
-                                                </Label>
+                                                <HorizontalStackLayout Grid.Column="1" Spacing="4" HorizontalOptions="End">
+                                                    <Label
+                                                        Text="{Binding TimeLabel}"
+                                                        FontSize="9"
+                                                        VerticalOptions="Center"
+                                                        TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}">
+                                                        <Label.Triggers>
+                                                            <DataTrigger TargetType="Label" Binding="{Binding IsOutbound}" Value="True">
+                                                                <Setter Property="TextColor" Value="{AppThemeBinding Light=#CFE7F0, Dark={StaticResource PrimaryDarkText}}" />
+                                                            </DataTrigger>
+                                                        </Label.Triggers>
+                                                    </Label>
+                                                    <!-- Delivery indicator (2026-09-14): ✓ sent, ✓✓ delivered — only on own messages. -->
+                                                    <Label
+                                                        Text="{Binding StatusGlyph}"
+                                                        IsVisible="{Binding ShowStatusGlyph}"
+                                                        FontSize="9"
+                                                        VerticalOptions="Center"
+                                                        TextColor="{AppThemeBinding Light=#CFE7F0, Dark={StaticResource PrimaryDarkText}}" />
+                                                </HorizontalStackLayout>
                                             </Grid>
 
                                             <Label Grid.Row="1" Text="{Binding Text}" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" FontSize="13" LineBreakMode="WordWrap">
@@ -136,19 +143,25 @@
                                                             CommandParameter="{Binding .}" />
                                                     </Label.GestureRecognizers>
                                                 </Label>
-                                                <Label
-                                                    Grid.Column="1"
-                                                    Text="{Binding TimeLabel}"
-                                                    FontSize="9"
-                                                    HorizontalOptions="End"
-                                                    VerticalOptions="Center"
-                                                    TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}">
-                                                    <Label.Triggers>
-                                                        <DataTrigger TargetType="Label" Binding="{Binding IsOutbound}" Value="True">
-                                                            <Setter Property="TextColor" Value="{AppThemeBinding Light=#CFE7F0, Dark={StaticResource PrimaryDarkText}}" />
-                                                        </DataTrigger>
-                                                    </Label.Triggers>
-                                                </Label>
+                                                <HorizontalStackLayout Grid.Column="1" Spacing="4" HorizontalOptions="End">
+                                                    <Label
+                                                        Text="{Binding TimeLabel}"
+                                                        FontSize="9"
+                                                        VerticalOptions="Center"
+                                                        TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}">
+                                                        <Label.Triggers>
+                                                            <DataTrigger TargetType="Label" Binding="{Binding IsOutbound}" Value="True">
+                                                                <Setter Property="TextColor" Value="{AppThemeBinding Light=#CFE7F0, Dark={StaticResource PrimaryDarkText}}" />
+                                                            </DataTrigger>
+                                                        </Label.Triggers>
+                                                    </Label>
+                                                    <Label
+                                                        Text="{Binding StatusGlyph}"
+                                                        IsVisible="{Binding ShowStatusGlyph}"
+                                                        FontSize="9"
+                                                        VerticalOptions="Center"
+                                                        TextColor="{AppThemeBinding Light=#CFE7F0, Dark={StaticResource PrimaryDarkText}}" />
+                                                </HorizontalStackLayout>
                                             </Grid>
 
                                             <Label Grid.Row="1" Text="{Binding Text}" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" FontSize="13" LineBreakMode="WordWrap" IsVisible="{Binding HasText}">

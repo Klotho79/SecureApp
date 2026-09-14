@@ -367,6 +367,24 @@ public partial class App : Application
 			// on either side, instead of being silent.
 			AppLog.Event("msg.received", ("corr", envelope.OriginMessageId), ("group", envelope.GroupChatId), ("system", envelope.IsSystemPayload));
 
+			// Delivery ack (2026-09-14): confirm back to the SENDER that this device's app received the
+			// message, so their UI can show ✓✓ (delivery receipt, not read). Only for real messages —
+			// acks and other system payloads are never themselves acked, so there is no ack loop. A group
+			// message is acked by its GroupMessageId (shared across the sender's fan-out legs), a 1:1 by
+			// its OriginMessageId. Best-effort: a failed ack just leaves the sender showing ✓ (sent).
+			if (!envelope.IsSystemPayload && (envelope.GroupMessageId ?? envelope.OriginMessageId) is { } incomingCorr)
+			{
+				try
+				{
+					var ackTransport = scope.ServiceProvider.GetRequiredService<IMessageTransport>();
+					var ackPayload = DeliveryAckSync.BuildAck(incomingCorr);
+					var (_, ackEnvelope) = await messagingService.SendMessageAsync(message.ChatSessionId, ackPayload, isSystemPayload: true);
+					if (ackTransport.IsConnected) await ackTransport.SendEnvelopeAsync(ackEnvelope);
+					AppLog.Event("msg.ack-sent", ("corr", incomingCorr));
+				}
+				catch (Exception ackEx) { AppLog.Error("App.Receive", "sending delivery ack failed", ackEx); }
+			}
+
 			// Shared-library-key offer arriving (2026-09-10) — see SharedLibraryKeySync's own
 			// remarks. Decrypt-and-import right here, unconditionally, regardless of whether any
 			// chat page happens to be open — same "always-on persistence" reasoning this handler's
@@ -381,6 +399,15 @@ public partial class App : Application
 				try
 				{
 					var plaintext = await messagingService.DecryptMessageAsync(message.Id);
+						// Delivery ack (2026-09-14): the recipient's app confirmed it received one of OUR
+						// messages — mark our own outbound copy Delivered (UI ✓✓). Standalone check, independent
+						// of the key/delete chain below (an ack matches none of those).
+						if (DeliveryAckSync.TryParseAck(plaintext, out var ackCorrelationId))
+						{
+							var ackRepo = scope.ServiceProvider.GetRequiredService<IMessageRepository>();
+							var upgraded = await ackRepo.MarkDeliveredByCorrelationAsync(ackCorrelationId);
+							AppLog.Event("msg.delivered", ("corr", ackCorrelationId), ("upgraded", upgraded));
+						}
 					if (SharedLibraryKeySync.TryParseKeyOffer(plaintext, out var keyBlob))
 					{
 						var sharedLibraryService = scope.ServiceProvider.GetRequiredService<ISharedLibraryService>();

@@ -508,6 +508,15 @@ public sealed partial class ChatViewModel : ChatThreadViewModelBase<ChatMessageI
                     Messages.Remove(item);
                 if (doomed.Count > 0) _ = UpdateCacheAsync();
             }
+            else if (DeliveryAckSync.TryParseAck(plaintext, out var ackCorrelationId))
+            {
+                // The peer's app acknowledged one of our messages (2026-09-14) — upgrade the visible
+                // bubble to Delivered (✓✓) live. The app-wide handler persists it to the DB; here we
+                // just refresh what's on screen. Idempotent.
+                await _messageRepository.MarkDeliveredByCorrelationAsync(ackCorrelationId);
+                foreach (var item in Messages.Where(m => m.IsOutbound && m.CorrelationId == ackCorrelationId && m.Status < MessageStatus.Delivered).ToList())
+                    ReplaceItem(item.Id, i => i with { Status = MessageStatus.Delivered });
+            }
         }
         catch
         {
@@ -621,5 +630,18 @@ public sealed record ChatMessageItem(Guid Id, bool IsOutbound, string Text, Date
     public string TimeLabel => (DateTimeOffset.Now - SentAtUtc).TotalHours >= 24
         ? SentAtUtc.LocalDateTime.ToString("d")
         : SentAtUtc.LocalDateTime.ToString("t");
+
+    /// <summary>WhatsApp-style delivery indicator for the sender's own messages (2026-09-14): clock while Pending, one check when it reached the relay (Sent), two checks once the recipient's app confirmed receipt (Delivered/Read). Empty for inbound messages.</summary>
+    public string StatusGlyph => !IsOutbound ? string.Empty : Status switch
+    {
+        MessageStatus.Pending => "🕓",
+        MessageStatus.Sent => "✓",
+        MessageStatus.Delivered => "✓✓",
+        MessageStatus.Read => "✓✓",
+        _ => string.Empty
+    };
+
+    /// <summary>Only the sender's own messages show a delivery indicator.</summary>
+    public bool ShowStatusGlyph => IsOutbound;
 }
 

@@ -141,6 +141,33 @@ public sealed class MessageRepository : IMessageRepository
             correlationId.ToString(), correlationId.ToString());
     }
 
+    /// <summary>
+    /// Marks this device's OWN outbound copy of a message Delivered when the recipient's app has
+    /// acknowledged receipt (2026-09-14, delivery receipts). Matches by cross-device correlation id
+    /// (origin_message_id for 1:1, group_message_id for a group fan-out) and only upgrades a message
+    /// that is still Pending/Sent (status &lt; Delivered) so a later ack never downgrades a Read
+    /// message. Idempotent: a duplicate ack (or an ack for a message this device doesn't have) is a
+    /// harmless no-op. Returns true if a row was actually upgraded, so the caller can refresh the UI.
+    /// </summary>
+    public async Task<bool> MarkDeliveredByCorrelationAsync(Guid correlationId, CancellationToken ct = default)
+    {
+        var connection = await _connectionFactory.GetConnectionAsync(ct);
+        var now = Format(DateTimeOffset.UtcNow);
+        var rows = await connection.ExecuteAsync(
+            """
+            UPDATE messages
+            SET status = ?, delivered_at_utc = ?, modified_at_utc = ?
+            WHERE (origin_message_id = ? OR group_message_id = ?)
+              AND direction = ?
+              AND status < ?
+            """,
+            (int)MessageStatus.Delivered, now, now,
+            correlationId.ToString(), correlationId.ToString(),
+            (int)MessageDirection.Outbound,
+            (int)MessageStatus.Delivered);
+        return rows > 0;
+    }
+
     private static Message ToEntity(MessageRow row)
     {
         var entity = EntityMaterializer.Create<Message>();

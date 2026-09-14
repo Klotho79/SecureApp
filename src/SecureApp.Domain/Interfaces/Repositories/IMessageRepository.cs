@@ -35,4 +35,12 @@ public interface IMessageRepository
     /// both a 1:1 message and (on the sender's side) all N fan-out legs of a group message. Idempotent.
     /// </summary>
     Task DeleteByCorrelationAsync(Guid correlationId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Marks this device's own outbound message Delivered when the recipient's app acknowledged receipt
+    /// (2026-09-14, delivery receipts / WhatsApp-style ✓✓). Matches by cross-device correlation id
+    /// (<see cref="Message.OriginMessageId"/> or a group message's <see cref="Message.GroupMessageId"/>),
+    /// only upgrades a still-Pending/Sent row, and is idempotent. Returns true if a row was upgraded.
+    /// </summary>
+    Task<bool> MarkDeliveredByCorrelationAsync(Guid correlationId, CancellationToken ct = default);
 }

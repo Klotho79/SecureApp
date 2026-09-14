@@ -107,7 +107,13 @@ items make the app handle this itself. Do ONE at a time, each deployed + tested.
 - [ ] **2.4 Attach files not in the shared library.** Let chat participants attach files
       that aren't already in the community library (today attach = library only). Decide:
       auto-import into library vs. a per-chat attachment store; keep E2EE.
-- [ ] **2.5 Delivery feedback + reasoned logging.** Show whether participants RECEIVED a
+- [~] **2.5 Delivery feedback + reasoned logging.** Part A (logging) ✅. Part B: 1:1
+      delivery receipts ✅ — recipient app sends an encrypted `delivery-ack:v1:<corr>`
+      system payload back; sender marks its message Delivered and the bubble shows
+      ✓ (sent) / ✓✓ (delivered), WhatsApp-style (delivery, not read). GROUP delivery
+      receipts deferred: the ack is already sent + persisted for group too, but the
+      group bubble has no Status field/checkmarks yet, and "delivered to ALL members"
+      needs per-member ack tracking — follow-up. Show whether participants RECEIVED a
       message (sent/delivered/failed), and log the reason on failure + any automatic
       remedy taken (reconnect, resync). This is exactly what would have made the ghost
       black-hole visible instead of silent. Needs relay delivery-ack + per-message status
