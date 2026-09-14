@@ -483,13 +483,19 @@ public sealed class RelayDatabase
             ("@id", deviceId.ToString()), ("@name", displayName), ("@key", publicKey), ("@now", Format(DateTimeOffset.UtcNow)));
     }
 
-    /// <summary>Every published member except the caller — a device never needs to "start a chat" with its own identity.</summary>
+    /// <summary>How long since a device last refreshed its directory entry before it's treated as INACTIVE and hidden from the member listing (2026-09-14, the user's ask: "server hlásí jen aktivní uživatele"). A live device republishes on every relay (re)connect — the client forces a reconnect every ~5 min — so an active device is always fresh; only a wiped/abandoned identity (like the ghost founder that caused the black-hole incident) ever goes stale. Generous enough (2 days) that a device merely offline over a weekend reappears the moment it reconnects and republishes.</summary>
+    private static readonly TimeSpan DirectoryActiveWindow = TimeSpan.FromDays(2);
+
+    /// <summary>Every ACTIVE published member except the caller — a device never needs to "start a chat" with its own identity, and inactive/dead identities are filtered out (see <see cref="DirectoryActiveWindow"/>) so they never clutter the picker or get re-paired to.</summary>
     public IReadOnlyList<(Guid DeviceId, string DisplayName, byte[] PublicKey)> GetDirectoryMembers(Guid excludingDeviceId)
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT device_id, display_name, public_key FROM directory_entries WHERE device_id != @excluded ORDER BY display_name COLLATE NOCASE";
+        // updated_at_utc is stored in ISO-8601 "O" format at UTC (+00:00), so lexicographic string
+        // comparison is chronological — a plain >= cutoff filter selects only recently-seen devices.
+        command.CommandText = "SELECT device_id, display_name, public_key FROM directory_entries WHERE device_id != @excluded AND updated_at_utc >= @cutoff ORDER BY display_name COLLATE NOCASE";
         command.Parameters.AddWithValue("@excluded", excludingDeviceId.ToString());
+        command.Parameters.AddWithValue("@cutoff", Format(DateTimeOffset.UtcNow - DirectoryActiveWindow));
 
         var results = new List<(Guid, string, byte[])>();
         using var reader = command.ExecuteReader();
