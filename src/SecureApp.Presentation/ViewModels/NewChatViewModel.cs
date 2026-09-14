@@ -263,6 +263,10 @@ public sealed partial class NewChatViewModel : ObservableObject
                 return;
             }
 
+            // Starting a chat with this peer is an explicit action — clear any earlier user-removal so
+            // the chat isn't treated as suppressed (2.2, 2026-09-14).
+            RemovedPeersStore.Remove(peerCard.PublicKey);
+
             var ownCard = await BuildOwnContactCardAsync();
             var (session, handshakeCipherText) = await _messagingService.CreateSessionAsync(peerCard.DisplayName, peerCard.PublicKey, peerCard.RelayDeviceId);
 
@@ -348,6 +352,9 @@ public sealed partial class NewChatViewModel : ObservableObject
         IsBusy = true;
         try
         {
+            // Manually accepting an invite is explicit consent — clear any earlier user-removal (2.2).
+            RemovedPeersStore.Remove(invite.InitiatorPublicKey);
+
             var existing = await _messagingService.FindExistingSessionAsync(invite.InitiatorPublicKey);
             if (existing is not null)
             {

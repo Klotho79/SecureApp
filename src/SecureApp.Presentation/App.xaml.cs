@@ -316,6 +316,8 @@ public partial class App : Application
 			.GroupBy(s => Convert.ToHexStringLower(s.PeerIdentityPublicKey))
 			.Where(group => group.All(s => s.State == ChatSessionState.Closed))
 			.Select(group => group.OrderByDescending(s => s.ModifiedAtUtc).First())
+					// 2.2 (2026-09-14): never auto-resurrect a chat the user removed (RemovedPeersStore).
+					.Where(s => !RemovedPeersStore.Contains(s.PeerIdentityPublicKey))
 				.ToList();
 
 			if (stalePeers.Count > 0)
@@ -506,6 +508,20 @@ public partial class App : Application
 			// (The old behavior assumed "already paired" could only mean a redundant duplicate scan
 			// of the initiator's own QR — accepting-and-replacing is harmless in that case too, just
 			// a wasted extra handshake.)
+			// 2.2 (2026-09-14): if the user REMOVED this peer, do NOT auto-accept a fresh invite. Hold it
+			// for explicit consent (a banner in the chat list) — the chat returns only when the user
+			// accepts. Accepting clears the removal; declining keeps it. See PendingInvitesStore.
+			if (RemovedPeersStore.Contains(invite.InitiatorPublicKey))
+			{
+				PendingInvitesStore.Add(new PendingInvite(
+					invite.InitiatorDisplayName,
+					Convert.ToHexStringLower(invite.InitiatorPublicKey),
+					inviteBlob,
+					DateTimeOffset.UtcNow));
+				AppLog.Event("pairing.held-for-consent", ("peer", invite.InitiatorDisplayName));
+				return;
+			}
+
 			if (await messagingService.FindExistingSessionAsync(invite.InitiatorPublicKey) is { } existingSession)
 				await messagingService.CloseSessionAsync(existingSession.Id);
 

@@ -97,10 +97,14 @@ items make the app handle this itself. Do ONE at a time, each deployed + tested.
       registrations; don't leave dead members hanging in chats/groups. Founder-transfer
       (or "remove an unreachable founder") so a group is never hostage to a dead identity.
       Surface a member whose device is gone as "nedostupný / přepárovat", not silently.
-- [ ] **2.2 Deleted chat stays deleted.** When a user removes a chat it must NOT silently
-      auto-reappear (today the sweeps / group-resync / unknown-sender auto-pair recreate
-      it). It returns ONLY when the chat's creator re-invites AND the user consents
-      (accept/decline). Needs a per-peer "removed/declined" suppression + a consent prompt.
+- [x] **2.2 Deleted chat stays deleted** ✅ (2026-09-14). Deleting a chat records the peer in
+      RemovedPeersStore (Preferences); the stale-session sweep skips removed peers, and a fresh
+      pairing invite from a removed peer is NOT auto-accepted — it's held in PendingInvitesStore
+      and surfaced as a consent banner ("X vás chce znovu přidat — Přijmout/Odmítnout") at the top
+      of the chat list. Accepting clears the removal + completes the handshake; declining keeps it
+      removed. Starting a new chat / manually accepting an invite also clears the removal. (A
+      removed peer re-added to a GROUP is left as a legitimate re-introduction — not gated.) Needs
+      2 devices to test the accept/decline flow.
 - [ ] **2.3 Archive a chat that lost all its users.** When a chat/group loses every other
       participant, move it to an Archive instead of deleting/hanging. Read access to the
       archive: **Admin, Modifier, and a participant of that chat.** (New store + RBAC + UI.)

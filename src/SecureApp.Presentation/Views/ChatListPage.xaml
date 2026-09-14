@@ -37,6 +37,28 @@
                 <ScrollView>
                     <VerticalStackLayout Spacing="14">
 
+                        <!-- Consent banner (2.2, 2026-09-14): pairing invites from peers the user
+                             previously removed — held here for explicit accept/decline instead of
+                             silently re-appearing. See RemovedPeersStore / PendingInvitesStore. -->
+                        <VerticalStackLayout Spacing="8" IsVisible="{Binding HasPendingInvites}">
+                            <Label Text="Žádosti o opětovné přidání" FontAttributes="Bold" FontSize="13" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
+                            <VerticalStackLayout Spacing="6" BindableLayout.ItemsSource="{Binding PendingInvites}">
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:PendingInviteItem">
+                                        <Border Style="{StaticResource CardBorder}" Margin="0" Padding="10,8">
+                                            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                                                <Label Grid.Column="0" VerticalOptions="Center" LineBreakMode="TailTruncation" Text="{Binding InitiatorDisplayName, StringFormat='{0} vás chce znovu přidat'}" />
+                                                <Button Grid.Column="1" Text="Přijmout" WidthRequest="90" Padding="0"
+                                                        Command="{Binding Source={x:Reference RootGrid}, Path=BindingContext.AcceptInviteCommand}" CommandParameter="{Binding .}" />
+                                                <Button Grid.Column="2" Text="Odmítnout" Style="{StaticResource SecondaryButton}" WidthRequest="96" Padding="0"
+                                                        Command="{Binding Source={x:Reference RootGrid}, Path=BindingContext.DeclineInviteCommand}" CommandParameter="{Binding .}" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+
                         <!-- Group chats (2026-09-07) — a full mesh of ordinary pairwise sessions
                              under the hood, see GroupChat's own remarks; listed separately from
                              1:1 Sessions below since the two item shapes genuinely differ (a group
