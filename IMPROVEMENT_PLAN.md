@@ -108,9 +108,11 @@ items make the app handle this itself. Do ONE at a time, each deployed + tested.
 - [ ] **2.3 Archive a chat that lost all its users.** When a chat/group loses every other
       participant, move it to an Archive instead of deleting/hanging. Read access to the
       archive: **Admin, Modifier, and a participant of that chat.** (New store + RBAC + UI.)
-- [ ] **2.4 Attach files not in the shared library.** Let chat participants attach files
-      that aren't already in the community library (today attach = library only). Decide:
-      auto-import into library vs. a per-chat attachment store; keep E2EE.
+- [x] **2.4 Attach files not in the shared library** ✅ (2026-09-14). Chat "Nahrát nový
+      soubor" now uploads the file PRIVATE — same encrypted storage + community-key encryption
+      as a library file (user: "fungovalo by to stejně jako vkládání do knihovny"), but hidden
+      from the community library browser (relay is_listed=0) and reachable only by the id in the
+      E2EE message. Recipients open it via id as before. Relay migration verified live.
 - [x] **2.5 Delivery feedback + reasoned logging.** Part A (logging) ✅. Part B: delivery
       receipts for BOTH 1:1 and group ✅ (user: "obecně pro chaty, jak 1:1 tak skupinový,
       odesláno i doručeno"). Recipient app sends an encrypted `delivery-ack:v1:<corr>`
