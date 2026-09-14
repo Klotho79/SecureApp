@@ -93,7 +93,7 @@ public sealed class HttpSharedLibraryService : ISharedLibraryService
         return Convert.ToBase64String(key);
     }
 
-    public async Task<SharedLibraryFileSummary> UploadAsync(string folderPath, string fileName, IReadOnlyList<string> tags, Stream content, CancellationToken ct = default)
+    public async Task<SharedLibraryFileSummary> UploadAsync(string folderPath, string fileName, IReadOnlyList<string> tags, Stream content, bool listed = true, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(content);
         ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
@@ -109,8 +109,11 @@ public sealed class HttpSharedLibraryService : ISharedLibraryService
 
         var endpoint = await GetHttpEndpointAsync(ct);
         var tagsParam = string.Join(",", tags ?? []);
+        // listed=false -> a private chat attachment: same encrypted storage, but hidden from the library
+        // browser (2026-09-14). Only send the flag when private, so the default stays a normal upload.
+        var listedParam = listed ? string.Empty : "&listed=false";
         var uri = new Uri(endpoint,
-            $"library/files?folderPath={Uri.EscapeDataString(folderPath ?? string.Empty)}&fileName={Uri.EscapeDataString(fileName)}&tags={Uri.EscapeDataString(tagsParam)}&contentHash={contentHash}");
+            $"library/files?folderPath={Uri.EscapeDataString(folderPath ?? string.Empty)}&fileName={Uri.EscapeDataString(fileName)}&tags={Uri.EscapeDataString(tagsParam)}&contentHash={contentHash}{listedParam}");
 
         using var request = new HttpRequestMessage(HttpMethod.Post, uri) { Content = new ByteArrayContent(wireBytes) };
         await AddDeviceAuthAsync(request, ct);

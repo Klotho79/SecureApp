@@ -186,6 +186,9 @@ app.MapPost("/library/files", async (HttpRequest request, RelayDatabase db) =>
     var fileName = request.Query["fileName"].ToString();
     var tagsRaw = request.Query["tags"].ToString();
     var expectedHash = request.Query["contentHash"].ToString();
+    // listed=false marks a PRIVATE chat attachment: same encrypted storage, but hidden from the
+    // library browser and reachable only by id from the E2EE message (2026-09-14). Default listed.
+    var listed = !string.Equals(request.Query["listed"].ToString(), "false", StringComparison.OrdinalIgnoreCase);
 
     if (string.IsNullOrWhiteSpace(fileName))
         return Results.BadRequest("fileName is required.");
@@ -202,7 +205,7 @@ app.MapPost("/library/files", async (HttpRequest request, RelayDatabase db) =>
         return Results.BadRequest("contentHash did not match the uploaded bytes.");
 
     var tags = tagsRaw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-    var record = db.InsertLibraryFileMetadata(folderPath, fileName, tags, contentBytes.LongLength, actualHash, deviceId);
+    var record = db.InsertLibraryFileMetadata(folderPath, fileName, tags, contentBytes.LongLength, actualHash, deviceId, listed);
 
     await File.WriteAllBytesAsync(db.GetLibraryFilePath(record.Id), contentBytes);
 

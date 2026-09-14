@@ -128,7 +128,8 @@ public partial class GroupChatThreadView : ContentView
         try
         {
             await using var stream = await picked.OpenReadAsync();
-            var summary = await _libraryService.UploadAsync(string.Empty, picked.FileName, [], stream);
+            // listed: false (2026-09-14) — a chat attachment is private, not added to the community library browser.
+            var summary = await _libraryService.UploadAsync(string.Empty, picked.FileName, [], stream, listed: false);
             ViewModel?.SetPendingAttachment(summary.Id, summary.FileName);
         }
         catch (Exception ex)

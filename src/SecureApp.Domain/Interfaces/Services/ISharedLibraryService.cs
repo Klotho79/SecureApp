@@ -30,7 +30,8 @@ public interface ISharedLibraryService
     /// </summary>
     Task<string> ExportSharedKeyAsync(CancellationToken ct = default);
 
-    Task<SharedLibraryFileSummary> UploadAsync(string folderPath, string fileName, IReadOnlyList<string> tags, Stream content, CancellationToken ct = default);
+    /// <summary>Uploads an encrypted file. <paramref name="listed"/> = false marks it a PRIVATE chat attachment (2026-09-14): same encrypted storage, but hidden from the community library browser and reachable only by the id carried in the E2EE chat message. Default true = a normal community-library file.</summary>
+    Task<SharedLibraryFileSummary> UploadAsync(string folderPath, string fileName, IReadOnlyList<string> tags, Stream content, bool listed = true, CancellationToken ct = default);
 
     /// <summary>Metadata-only search (file name, folder path, tag) — the relay never sees plaintext content, so it cannot search inside it either. All parameters are optional filters; omit all for "list everything".</summary>
     Task<IReadOnlyList<SharedLibraryFileSummary>> SearchAsync(string? query = null, string? folderPath = null, string? tag = null, CancellationToken ct = default);

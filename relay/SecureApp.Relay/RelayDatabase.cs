@@ -94,6 +94,12 @@ public sealed class RelayDatabase
             )
             """);
         Execute(connection, "CREATE INDEX IF NOT EXISTS ix_library_files_folder ON library_files(folder_path)");
+        // 2026-09-14: is_listed distinguishes a real community-library file (1) from a PRIVATE chat
+        // attachment (0) — same encrypted storage, but private ones are hidden from the library browser
+        // and reachable only by the id carried in the E2EE chat message. Guarded ALTER (SQLite has no
+        // ADD COLUMN IF NOT EXISTS); existing rows default to listed.
+        if (!ColumnExists(connection, "library_files", "is_listed"))
+            Execute(connection, "ALTER TABLE library_files ADD COLUMN is_listed INTEGER NOT NULL DEFAULT 1");
 
         // device_secret holds the new device's PLAINTEXT bearer secret once approved — unlike
         // `devices.secret_hash` (salted + HMAC-hashed, never recoverable), this one genuinely needs
@@ -306,7 +312,7 @@ public sealed class RelayDatabase
         return frames;
     }
 
-    public LibraryFileRecord InsertLibraryFileMetadata(string folderPath, string fileName, IReadOnlyList<string> tags, long sizeBytes, string contentHash, Guid uploadedByDeviceId)
+    public LibraryFileRecord InsertLibraryFileMetadata(string folderPath, string fileName, IReadOnlyList<string> tags, long sizeBytes, string contentHash, Guid uploadedByDeviceId, bool listed = true)
     {
         var id = Guid.NewGuid();
         var uploadedAtUtc = DateTimeOffset.UtcNow;
@@ -314,9 +320,9 @@ public sealed class RelayDatabase
 
         using var connection = OpenConnection();
         Execute(connection,
-            "INSERT INTO library_files (id, folder_path, file_name, tags_json, size_bytes, content_hash, uploaded_by_device_id, uploaded_at_utc) VALUES (@id, @folder, @name, @tags, @size, @hash, @uploader, @created)",
+            "INSERT INTO library_files (id, folder_path, file_name, tags_json, size_bytes, content_hash, uploaded_by_device_id, uploaded_at_utc, is_listed) VALUES (@id, @folder, @name, @tags, @size, @hash, @uploader, @created, @listed)",
             ("@id", id.ToString()), ("@folder", folderPath), ("@name", fileName), ("@tags", tagsJson),
-            ("@size", sizeBytes), ("@hash", contentHash), ("@uploader", uploadedByDeviceId.ToString()), ("@created", Format(uploadedAtUtc)));
+            ("@size", sizeBytes), ("@hash", contentHash), ("@uploader", uploadedByDeviceId.ToString()), ("@created", Format(uploadedAtUtc)), ("@listed", listed ? 1 : 0));
 
         return new LibraryFileRecord(id, folderPath, fileName, tags, sizeBytes, uploadedByDeviceId, uploadedAtUtc);
     }
@@ -327,7 +333,9 @@ public sealed class RelayDatabase
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
 
-        var whereParts = new List<string>();
+        // Only real community-library files are browsable — private chat attachments (is_listed = 0)
+        // are reachable only by id via GetLibraryFile, never listed here (2026-09-14).
+        var whereParts = new List<string> { "is_listed = 1" };
         if (!string.IsNullOrWhiteSpace(query))
         {
             whereParts.Add("file_name LIKE @query");
@@ -677,6 +685,17 @@ public sealed class RelayDatabase
         foreach (var (name, value) in parameters)
             command.Parameters.AddWithValue(name, value);
         command.ExecuteNonQuery();
+    }
+
+    private static bool ColumnExists(SqliteConnection connection, string table, string column)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = $"PRAGMA table_info({table})";
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            if (string.Equals(reader["name"] as string, column, StringComparison.OrdinalIgnoreCase))
+                return true;
+        return false;
     }
 
     private static byte[] HashSecret(string secret, byte[] salt)
