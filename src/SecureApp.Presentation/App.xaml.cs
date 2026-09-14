@@ -404,9 +404,11 @@ public partial class App : Application
 						// of the key/delete chain below (an ack matches none of those).
 						if (DeliveryAckSync.TryParseAck(plaintext, out var ackCorrelationId))
 						{
+							// Mark only THIS member's leg Delivered (the ack arrived on their session), so a
+							// group message reads ✓✓ only once every member has acked; a 1:1 has one leg.
 							var ackRepo = scope.ServiceProvider.GetRequiredService<IMessageRepository>();
-							var upgraded = await ackRepo.MarkDeliveredByCorrelationAsync(ackCorrelationId);
-							AppLog.Event("msg.delivered", ("corr", ackCorrelationId), ("upgraded", upgraded));
+							var upgraded = await ackRepo.MarkDeliveredForSessionAsync(message.ChatSessionId, ackCorrelationId);
+							AppLog.Event("msg.delivered-leg", ("corr", ackCorrelationId), ("upgraded", upgraded));
 						}
 					if (SharedLibraryKeySync.TryParseKeyOffer(plaintext, out var keyBlob))
 					{

@@ -205,6 +205,7 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
                 var older = logical.Take(initialStart).ToList();
                 var initialRows = logical.Skip(initialStart).ToList();
 
+                var outboundStatusByGid = AggregateOutboundStatusByGroupMessageId(rawMessages);
                 var tDecryptStart = pw.Elapsed.TotalMilliseconds;
                 var items = new List<GroupMessageItem>(initialRows.Count);
                 foreach (var m in initialRows)
@@ -213,7 +214,8 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
                     var senderName = isOwn ? ownName : (sessionNames.TryGetValue(m.ChatSessionId, out var n) ? n : "Neznámý člen");
                     var text = await TryDecryptAsync(m);
                     var canDelete = RoleAccessPolicy.CanDeleteMessage(role, isOwn, m.SenderRole);
-                    items.Add(new GroupMessageItem(m.Id, isOwn, senderName, text, m.CreatedAtUtc, m.AttachmentLibraryFileId, m.AttachmentFileName, canDelete, m.GroupMessageId));
+                    var status = OutboundStatusFor(m, outboundStatusByGid);
+                    items.Add(new GroupMessageItem(m.Id, isOwn, senderName, text, m.CreatedAtUtc, m.AttachmentLibraryFileId, m.AttachmentFileName, canDelete, m.GroupMessageId, status));
                 }
                 LogPhases("miss", rawMessages.Count, tRawMsgs, pw.Elapsed.TotalMilliseconds - tDecryptStart);
 
@@ -372,11 +374,17 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
         _olderLogicalRows.AddRange(logical.Take(initialStart));
 
         var currentRole = _currentUserService.Current.Role;
+        var aggByGid = AggregateOutboundStatusByGroupMessageId(rawMessages);
         var initialItems = await Task.Run(async () =>
         {
             var list = new List<GroupMessageItem>(initialRows.Count);
             foreach (var message in initialRows)
-                list.Add(await BuildItemAsync(message, currentRole));
+            {
+                var item = await BuildItemAsync(message, currentRole);
+                if (item.IsOutbound && message.GroupMessageId is { } gid && aggByGid.TryGetValue(gid, out var st))
+                    item = item with { Status = st };
+                list.Add(item);
+            }
             return list;
         });
 
@@ -394,8 +402,20 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
             : (_sessionNameById.TryGetValue(message.ChatSessionId, out var name) ? name : "Neznámý člen");
         var text = await TryDecryptAsync(message);
         var canDelete = RoleAccessPolicy.CanDeleteMessage(currentRole, isOwn, message.SenderRole);
-        return new GroupMessageItem(message.Id, isOwn, senderName, text, message.CreatedAtUtc, message.AttachmentLibraryFileId, message.AttachmentFileName, canDelete, message.GroupMessageId);
+        return new GroupMessageItem(message.Id, isOwn, senderName, text, message.CreatedAtUtc, message.AttachmentLibraryFileId, message.AttachmentFileName, canDelete, message.GroupMessageId, message.Status);
     }
+
+    /// <summary>Delivery status per group-message id = the MINIMUM status across that message's outbound fan-out legs (2026-09-14), so ✓✓ shows only once EVERY member's leg is Delivered. Computed from the already-loaded rows, no extra query.</summary>
+    private static Dictionary<Guid, MessageStatus> AggregateOutboundStatusByGroupMessageId(IReadOnlyList<Message> rawMessages) =>
+        rawMessages
+            .Where(x => x.Direction == MessageDirection.Outbound && x.GroupMessageId is not null)
+            .GroupBy(x => x.GroupMessageId!.Value)
+            .ToDictionary(g => g.Key, g => g.Min(x => x.Status));
+
+    private static MessageStatus OutboundStatusFor(Message m, IReadOnlyDictionary<Guid, MessageStatus> byGid) =>
+        m.Direction == MessageDirection.Outbound && m.GroupMessageId is { } gid && byGid.TryGetValue(gid, out var st)
+            ? st
+            : m.Status;
 
     /// <summary>Reveals the next older page of group history on scroll-up (2026-09-11) — mirrors ChatViewModel.LoadOlderAsync, including the re-anchor so the view never jumps.</summary>
     [RelayCommand]
@@ -489,13 +509,20 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
 
                 try
                 {
-                    var (_, envelope) = await _messagingService.SendMessageAsync(
+                    var (legMessage, envelope) = await _messagingService.SendMessageAsync(
                         session.Id, plaintext, attachmentLibraryFileId: attachmentId, attachmentFileName: attachmentName,
                         groupChatId: _groupChatId, groupMessageId: groupMessageId);
 
                     if (_messageTransport.IsConnected)
                     {
-                        try { await _messageTransport.SendEnvelopeAsync(envelope); }
+                        try
+                        {
+                            await _messageTransport.SendEnvelopeAsync(envelope);
+                            // Mark this leg Sent (reached relay) so delivery receipts work — the leg upgrades
+                            // to Delivered when this member acks (2026-09-14). Group send didn't do this before.
+                            legMessage.MarkSent();
+                            await _messageRepository.UpdateAsync(legMessage);
+                        }
                         catch (Exception sendEx) { undelivered.Add((member.DisplayName, $"uloženo, ale nepodařilo se odeslat na relay: {sendEx.Message}")); AppLog.Error("GroupChat.Send", "leg to relay failed; stays Pending", sendEx); /* stays Pending in storage, same policy ChatViewModel.SendAsync already uses */ }
                     }
                     else
@@ -996,6 +1023,21 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
                     Messages.Remove(item);
                 if (doomed.Count > 0) _ = UpdateCacheAsync();
             }
+            else if (DeliveryAckSync.TryParseAck(plaintext, out var ackCorrelationId))
+            {
+                // A member's app acknowledged one of our group messages (2026-09-14). Mark that member's
+                // leg Delivered (the ack arrived on their session), then recompute the aggregate across
+                // all legs — the visible bubble shows ✓✓ only once EVERY member has acked. The app-wide
+                // handler persists the same; here we refresh what's on screen.
+                await _messageRepository.MarkDeliveredForSessionAsync(message.ChatSessionId, ackCorrelationId);
+                var aggregate = await _messageRepository.GetOutboundAggregateStatusAsync(ackCorrelationId);
+                if (aggregate is { } status)
+                    foreach (var item in Messages.Where(m => m.IsOutbound && m.CorrelationId == ackCorrelationId && m.Status != status).ToList())
+                    {
+                        var idx = Messages.IndexOf(item);
+                        if (idx >= 0) Messages[idx] = item with { Status = status };
+                    }
+            }
         }
         catch
         {
@@ -1005,7 +1047,7 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
 }
 
 /// <summary>One message in a group's thread — unlike <see cref="ChatMessageItem"/>, always carries the sender's display name, since "who sent this" isn't implicit the way it is in a 1:1 thread. <see cref="IsInbound"/> is a plain negation kept as its own field (not a XAML converter) — this codebase's established pattern (see <c>SettingsViewModel.HasPendingActivations</c>'s own remarks) so no binding ever needs to negate another.</summary>
-public sealed record GroupMessageItem(Guid Id, bool IsOutbound, string SenderDisplayName, string Text, DateTimeOffset SentAtUtc, Guid? AttachmentLibraryFileId = null, string? AttachmentFileName = null, bool CanDelete = false, Guid? CorrelationId = null)
+public sealed record GroupMessageItem(Guid Id, bool IsOutbound, string SenderDisplayName, string Text, DateTimeOffset SentAtUtc, Guid? AttachmentLibraryFileId = null, string? AttachmentFileName = null, bool CanDelete = false, Guid? CorrelationId = null, MessageStatus Status = MessageStatus.Sent)
 {
     public bool HasAttachment => AttachmentLibraryFileId is not null;
     public bool HasText => !string.IsNullOrEmpty(Text);
@@ -1015,6 +1057,18 @@ public sealed record GroupMessageItem(Guid Id, bool IsOutbound, string SenderDis
     public string TimeLabel => (DateTimeOffset.Now - SentAtUtc).TotalHours >= 24
         ? SentAtUtc.LocalDateTime.ToString("d")
         : SentAtUtc.LocalDateTime.ToString("t");
+
+    /// <summary>WhatsApp-style delivery indicator for the sender's own messages (2026-09-14): ✓ sent, ✓✓ delivered to ALL members. See ChatMessageItem.StatusGlyph.</summary>
+    public string StatusGlyph => !IsOutbound ? string.Empty : Status switch
+    {
+        MessageStatus.Pending => "🕓",
+        MessageStatus.Sent => "✓",
+        MessageStatus.Delivered => "✓✓",
+        MessageStatus.Read => "✓✓",
+        _ => string.Empty
+    };
+
+    public bool ShowStatusGlyph => IsOutbound;
 }
 
 /// <summary>

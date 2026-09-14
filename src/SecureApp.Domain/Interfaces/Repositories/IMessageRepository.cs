@@ -1,4 +1,5 @@
 using SecureApp.Domain.Entities;
+using SecureApp.Domain.Enums;
 
 namespace SecureApp.Domain.Interfaces.Repositories;
 
@@ -43,4 +44,10 @@ public interface IMessageRepository
     /// only upgrades a still-Pending/Sent row, and is idempotent. Returns true if a row was upgraded.
     /// </summary>
     Task<bool> MarkDeliveredByCorrelationAsync(Guid correlationId, CancellationToken ct = default);
+
+    /// <summary>Marks the one outbound fan-out leg on <paramref name="chatSessionId"/> Delivered (2026-09-14, group delivery receipts) — an ack arrives on the acking member's session, so this upgrades only that member's leg. Also correct for a 1:1 (single leg). Idempotent; returns true if a row was upgraded.</summary>
+    Task<bool> MarkDeliveredForSessionAsync(Guid chatSessionId, Guid correlationId, CancellationToken ct = default);
+
+    /// <summary>The aggregate delivery status of an outbound message — the MINIMUM status across all its fan-out legs, so a group message reads Delivered only once EVERY member's leg is Delivered. Null if no such outbound row exists.</summary>
+    Task<MessageStatus?> GetOutboundAggregateStatusAsync(Guid correlationId, CancellationToken ct = default);
 }

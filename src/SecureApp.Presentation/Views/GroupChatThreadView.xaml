@@ -128,6 +128,13 @@
                                                         </DataTrigger>
                                                     </Label.Triggers>
                                                 </Label>
+                                                <!-- Delivery indicator (2026-09-14): ✓ sent, ✓✓ delivered to ALL members — own messages only. -->
+                                                <Label
+                                                    Text="{Binding StatusGlyph}"
+                                                    IsVisible="{Binding ShowStatusGlyph}"
+                                                    FontSize="9"
+                                                    VerticalOptions="Center"
+                                                    TextColor="{AppThemeBinding Light=#CFE7F0, Dark={StaticResource PrimaryDarkText}}" />
                                                 <Label
                                                     Text="{Binding SenderDisplayName}"
                                                     FontSize="10"
@@ -193,6 +200,13 @@
                                                         </DataTrigger>
                                                     </Label.Triggers>
                                                 </Label>
+                                                <!-- Delivery indicator (2026-09-14): ✓ sent, ✓✓ delivered to ALL members — own messages only. -->
+                                                <Label
+                                                    Text="{Binding StatusGlyph}"
+                                                    IsVisible="{Binding ShowStatusGlyph}"
+                                                    FontSize="9"
+                                                    VerticalOptions="Center"
+                                                    TextColor="{AppThemeBinding Light=#CFE7F0, Dark={StaticResource PrimaryDarkText}}" />
                                                 <Label
                                                     Text="{Binding SenderDisplayName}"
                                                     FontSize="10"

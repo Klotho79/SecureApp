@@ -168,6 +168,56 @@ public sealed class MessageRepository : IMessageRepository
         return rows > 0;
     }
 
+    /// <summary>
+    /// Marks the ONE outbound fan-out leg that went to a specific member Delivered (2026-09-14, group
+    /// delivery receipts). A group message fans out one row per member (each a Message on that member's
+    /// pairwise session, all sharing group_message_id); an ack arrives on that member's session, so
+    /// matching by chat_session_id + correlation id upgrades only that member's leg — letting the sender
+    /// show ✓✓ only once EVERY member's leg is Delivered (see <see cref="GetOutboundAggregateStatusAsync"/>).
+    /// Also correct for a 1:1 message (a single leg on that session). Idempotent; returns true if upgraded.
+    /// </summary>
+    public async Task<bool> MarkDeliveredForSessionAsync(Guid chatSessionId, Guid correlationId, CancellationToken ct = default)
+    {
+        var connection = await _connectionFactory.GetConnectionAsync(ct);
+        var now = Format(DateTimeOffset.UtcNow);
+        var rows = await connection.ExecuteAsync(
+            """
+            UPDATE messages
+            SET status = ?, delivered_at_utc = ?, modified_at_utc = ?
+            WHERE chat_session_id = ?
+              AND (origin_message_id = ? OR group_message_id = ?)
+              AND direction = ?
+              AND status < ?
+            """,
+            (int)MessageStatus.Delivered, now, now,
+            chatSessionId.ToString(),
+            correlationId.ToString(), correlationId.ToString(),
+            (int)MessageDirection.Outbound,
+            (int)MessageStatus.Delivered);
+        return rows > 0;
+    }
+
+    /// <summary>
+    /// The aggregate delivery status of an outbound message across all its fan-out legs (2026-09-14) —
+    /// the MINIMUM status over every outbound row sharing this correlation id. So a group message reads
+    /// Delivered only when EVERY member's leg is Delivered, and stays Sent while any leg is still
+    /// un-acked; a 1:1 message has one leg so it's just that leg's status. Null if no such outbound row
+    /// exists (e.g. a very old message with no correlation id).
+    /// </summary>
+    public async Task<MessageStatus?> GetOutboundAggregateStatusAsync(Guid correlationId, CancellationToken ct = default)
+    {
+        var connection = await _connectionFactory.GetConnectionAsync(ct);
+        var count = await connection.ExecuteScalarAsync<int>(
+            "SELECT COUNT(*) FROM messages WHERE (origin_message_id = ? OR group_message_id = ?) AND direction = ?",
+            correlationId.ToString(), correlationId.ToString(), (int)MessageDirection.Outbound);
+        if (count == 0) return null;
+
+        var min = await connection.ExecuteScalarAsync<int>(
+            "SELECT MIN(status) FROM messages WHERE (origin_message_id = ? OR group_message_id = ?) AND direction = ?",
+            correlationId.ToString(), correlationId.ToString(), (int)MessageDirection.Outbound);
+        return (MessageStatus)min;
+    }
+
     private static Message ToEntity(MessageRow row)
     {
         var entity = EntityMaterializer.Create<Message>();
