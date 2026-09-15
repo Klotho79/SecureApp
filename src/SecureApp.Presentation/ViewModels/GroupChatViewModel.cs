@@ -653,7 +653,7 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
         try
         {
             await SessionRecoveryHelper.ResyncAsync(
-                _messagingService, _messageTransport, _transportSettingsRepository, _currentUserService,
+                _messagingService, _messageTransport, _transportSettingsRepository, _currentUserService, _messageRepository,
                 groupMember.DisplayName, groupMember.PublicKey, groupMember.RelayDeviceId);
             StatusErrorMessage = $"Spojení s {member.DisplayName} bylo obnoveno.";
         }
@@ -701,7 +701,7 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
         try
         {
             await SessionRecoveryHelper.ResyncAsync(
-                _messagingService, _messageTransport, _transportSettingsRepository, _currentUserService,
+                _messagingService, _messageTransport, _transportSettingsRepository, _currentUserService, _messageRepository,
                 member.DisplayName, member.PublicKey, member.RelayDeviceId);
         }
         catch
@@ -714,10 +714,15 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
     /// Auto-heal (2026-09-07): triggered from <see cref="HandleEnvelopeReceivedAsync"/>'s catch
     /// block whenever a genuine ratchet decrypt failure surfaces (not the idempotency guard's
     /// silent-duplicate case — that never throws) — resyncs the broken member's pairwise session
-    /// automatically, no button press required on either device. The one message that failed to
-    /// decrypt is unrecoverable either way (Double Ratchet forward secrecy — see
-    /// <c>MessagingService.ReceiveMessageAsync</c>'s own remarks), but everything the member sends
-    /// after this point should go through cleanly once the resync completes.
+    /// automatically, no button press required on either device. That one specific ciphertext is
+    /// unrecoverable either way (Double Ratchet forward secrecy — see
+    /// <c>MessagingService.ReceiveMessageAsync</c>'s own remarks); its content isn't, though — the
+    /// member's own device re-sends anything of theirs still undelivered the moment it accepts this
+    /// device's fresh invite (see <c>App.OnPairingInviteReceived</c>).
+    ///
+    /// 2026-09-15 (user: "reconnect zvládne, ale ta hláška už je navíc — na chyby je log"): a
+    /// successful auto-heal is logged only, not shown — same change as <c>ChatViewModel</c>'s own
+    /// <c>TryAutoHealAsync</c>, see its remarks. The FAILURE branch still surfaces a banner.
     /// </summary>
     private async Task TryAutoHealAsync(Guid sessionId, Exception originalError)
     {
@@ -735,9 +740,9 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
             }
 
             await SessionRecoveryHelper.ResyncAsync(
-                _messagingService, _messageTransport, _transportSettingsRepository, _currentUserService,
+                _messagingService, _messageTransport, _transportSettingsRepository, _currentUserService, _messageRepository,
                 member.DisplayName, member.PublicKey, member.RelayDeviceId);
-            StatusErrorMessage = $"Spojení s {member.DisplayName} se automaticky obnovilo na pozadí. Tahle jedna zpráva se ztratila, další už by měly projít v pořádku.";
+            AppLog.Event("group.auto-heal", ("member", member.DisplayName), ("originalError", originalError.Message));
         }
         catch (Exception healEx)
         {

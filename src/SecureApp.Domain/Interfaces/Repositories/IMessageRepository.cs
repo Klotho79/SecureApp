@@ -50,4 +50,14 @@ public interface IMessageRepository
 
     /// <summary>The aggregate delivery status of an outbound message — the MINIMUM status across all its fan-out legs, so a group message reads Delivered only once EVERY member's leg is Delivered. Null if no such outbound row exists.</summary>
     Task<MessageStatus?> GetOutboundAggregateStatusAsync(Guid correlationId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Re-parents every message row from one session to another (2026-09-15) — a session that gets
+    /// closed and replaced by a resync (see <c>SessionRecoveryHelper</c> in the Presentation layer)
+    /// otherwise strands its whole prior history: the thread view only ever queries the CURRENT
+    /// session id, so once the peer starts using the new session, every message still filed under the
+    /// old, now-Closed one silently stops showing up — nothing is deleted, it just becomes invisible.
+    /// A no-op if <paramref name="oldChatSessionId"/> has no rows.
+    /// </summary>
+    Task ReassignSessionAsync(Guid oldChatSessionId, Guid newChatSessionId, CancellationToken ct = default);
 }

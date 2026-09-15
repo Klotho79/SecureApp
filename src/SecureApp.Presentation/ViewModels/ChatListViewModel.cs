@@ -22,6 +22,7 @@ public sealed partial class ChatListViewModel : ObservableObject
 {
     private readonly IChatSessionRepository _sessionRepository;
     private readonly IGroupChatRepository _groupChatRepository;
+    private readonly IMessageRepository _messageRepository;
     private readonly IMessagingService _messagingService;
     private readonly IMessageTransport _messageTransport;
     private readonly ITransportSettingsRepository _transportSettingsRepository;
@@ -85,6 +86,7 @@ public sealed partial class ChatListViewModel : ObservableObject
     public ChatListViewModel(
         IChatSessionRepository sessionRepository,
         IGroupChatRepository groupChatRepository,
+        IMessageRepository messageRepository,
         IMessagingService messagingService,
         IMessageTransport messageTransport,
         ITransportSettingsRepository transportSettingsRepository,
@@ -93,6 +95,7 @@ public sealed partial class ChatListViewModel : ObservableObject
     {
         _sessionRepository = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
         _groupChatRepository = groupChatRepository ?? throw new ArgumentNullException(nameof(groupChatRepository));
+        _messageRepository = messageRepository ?? throw new ArgumentNullException(nameof(messageRepository));
         _messagingService = messagingService ?? throw new ArgumentNullException(nameof(messagingService));
         _messageTransport = messageTransport ?? throw new ArgumentNullException(nameof(messageTransport));
         _transportSettingsRepository = transportSettingsRepository ?? throw new ArgumentNullException(nameof(transportSettingsRepository));
@@ -248,7 +251,7 @@ public sealed partial class ChatListViewModel : ObservableObject
         try
         {
             await SessionRecoveryHelper.ResyncAsync(
-                _messagingService, _messageTransport, _transportSettingsRepository, _currentUserService,
+                _messagingService, _messageTransport, _transportSettingsRepository, _currentUserService, _messageRepository,
                 session.PeerDisplayName, session.PeerIdentityPublicKey, relayDeviceId);
         }
         catch (Exception ex)
@@ -340,10 +343,20 @@ public sealed partial class ChatListViewModel : ObservableObject
             var invite = ContactCardCodec.Decode<ChatInviteBlob>(stored.InviteBlob);
             RemovedPeersStore.Remove(invite.InitiatorPublicKey); // consent clears the removal
 
-            if (await _messagingService.FindExistingSessionAsync(invite.InitiatorPublicKey) is { } existing)
+            var existing = await _messagingService.FindExistingSessionAsync(invite.InitiatorPublicKey);
+            if (existing is not null)
                 await _messagingService.CloseSessionAsync(existing.Id);
-            await _messagingService.AcceptSessionAsync(invite.InitiatorDisplayName, invite.InitiatorPublicKey, invite.InitiatorRelayDeviceId, invite.HandshakeCipherText);
+            var accepted = await _messagingService.AcceptSessionAsync(invite.InitiatorDisplayName, invite.InitiatorPublicKey, invite.InitiatorRelayDeviceId, invite.HandshakeCipherText);
             AppLog.Event("pairing.consent-accepted", ("peer", invite.InitiatorDisplayName));
+
+            // Same history migration + resend as App.OnPairingInviteReceived's ordinary auto-accept
+            // path — see its own remarks. A removed-then-reinvited peer can just as easily be a resync
+            // of a peer whose session broke before the removal, not only a first-ever re-add.
+            if (existing is not null)
+            {
+                await _messageRepository.ReassignSessionAsync(existing.Id, accepted.Id);
+                await SessionRecoveryHelper.ResendUndeliveredAsync(_messagingService, _messageRepository, _messageTransport, accepted.Id);
+            }
         }
         catch (Exception ex)
         {

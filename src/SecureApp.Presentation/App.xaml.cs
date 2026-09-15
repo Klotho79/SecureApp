@@ -291,6 +291,7 @@ public partial class App : Application
 		var messagingService = scope.ServiceProvider.GetRequiredService<IMessagingService>();
 		var transportSettings = scope.ServiceProvider.GetRequiredService<ITransportSettingsRepository>();
 		var currentUserService = scope.ServiceProvider.GetRequiredService<ICurrentUserService>();
+		var messageRepository = scope.ServiceProvider.GetRequiredService<IMessageRepository>();
 
 		// Fully automatic shared-library-key distribution (2026-09-11) — the app does this itself,
 		// no user action, no manual "resend key" step (the user's explicit demand). Every sweep,
@@ -334,7 +335,7 @@ public partial class App : Application
 			try
 			{
 				await SessionRecoveryHelper.ResyncAsync(
-					messagingService, transport, transportSettings, currentUserService,
+					messagingService, transport, transportSettings, currentUserService, messageRepository,
 					stale.PeerDisplayName, stale.PeerIdentityPublicKey, relayDeviceId);
 			}
 			catch (Exception ex)
@@ -470,8 +471,9 @@ public partial class App : Application
 					var messageTransport = scope.ServiceProvider.GetRequiredService<IMessageTransport>();
 					var transportSettings = scope.ServiceProvider.GetRequiredService<ITransportSettingsRepository>();
 					var currentUserService = scope.ServiceProvider.GetRequiredService<ICurrentUserService>();
+					var messageRepositoryForHeal = scope.ServiceProvider.GetRequiredService<IMessageRepository>();
 					await SessionRecoveryHelper.ResyncAsync(
-						messagingService, messageTransport, transportSettings, currentUserService,
+						messagingService, messageTransport, transportSettings, currentUserService, messageRepositoryForHeal,
 						session.PeerDisplayName, session.PeerIdentityPublicKey, relayDeviceId);
 				}
 			}
@@ -522,11 +524,37 @@ public partial class App : Application
 				return;
 			}
 
-			if (await messagingService.FindExistingSessionAsync(invite.InitiatorPublicKey) is { } existingSession)
+			var existingSession = await messagingService.FindExistingSessionAsync(invite.InitiatorPublicKey);
+			if (existingSession is not null)
 				await messagingService.CloseSessionAsync(existingSession.Id);
 
 			var acceptedSession = await messagingService.AcceptSessionAsync(invite.InitiatorDisplayName, invite.InitiatorPublicKey, invite.InitiatorRelayDeviceId, invite.HandshakeCipherText);
 			AppLog.Event("pairing.accepted", ("peer", invite.InitiatorDisplayName), ("peerDevice", invite.InitiatorRelayDeviceId));
+
+			// 2026-09-15 (user: a message that failed to reach the peer before a resync "musí být
+			// vyhledána a vložena do chatu" — must be found and put back in the chat): this device is
+			// the one accepting a FRESH invite for a peer it already knew, i.e. exactly the resync
+			// scenario — the peer's own decrypt broke and it rebuilt the session from scratch. Whatever
+			// THIS device had sent on the old, now-closed session but never got a delivery ack for is
+			// migrated onto the new session (so it's visible again) and re-sent over it (so it actually
+			// arrives) — see SessionRecoveryHelper's own remarks for why this is safe to do HERE
+			// (session fully established both ways by this point) but not from the resyncing side itself.
+			if (existingSession is not null)
+			{
+				var messageRepositoryForHeal = scope.ServiceProvider.GetRequiredService<IMessageRepository>();
+				var messageTransportForHeal = scope.ServiceProvider.GetRequiredService<IMessageTransport>();
+				try
+				{
+					await messageRepositoryForHeal.ReassignSessionAsync(existingSession.Id, acceptedSession.Id);
+					await SessionRecoveryHelper.ResendUndeliveredAsync(messagingService, messageRepositoryForHeal, messageTransportForHeal, acceptedSession.Id);
+				}
+				catch (Exception reassignEx)
+				{
+					// Best-effort — the pairing itself already succeeded above; losing the ability to
+					// migrate/resend old history must never undo that.
+					AppLog.Error("App.Pairing", $"history migration/resend after re-pairing with {invite.InitiatorDisplayName} failed", reassignEx);
+				}
+			}
 
 			// Best-effort shared-library-key offer (2026-09-10) — see SharedLibraryKeySync's own
 			// remarks; this is the auto-pairing counterpart of NewChatViewModel.AcceptInviteAsync's

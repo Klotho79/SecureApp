@@ -386,7 +386,7 @@ public sealed partial class ChatViewModel : ChatThreadViewModelBase<ChatMessageI
             throw new InvalidOperationException($"S {session.PeerDisplayName} chybí propojení na relay zařízení — obnovit spojení nelze.");
 
         await SessionRecoveryHelper.ResyncAsync(
-            _messagingService, _messageTransport, _transportSettingsRepository, _currentUserService,
+            _messagingService, _messageTransport, _transportSettingsRepository, _currentUserService, _messageRepository,
             session.PeerDisplayName, session.PeerIdentityPublicKey, relayDeviceId);
 
         var newSession = await _sessionRepository.GetByPeerPublicKeyAsync(session.PeerIdentityPublicKey)
@@ -399,9 +399,21 @@ public sealed partial class ChatViewModel : ChatThreadViewModelBase<ChatMessageI
     /// <summary>
     /// Auto-heal (2026-09-07): triggered from <see cref="HandleEnvelopeReceivedAsync"/>'s catch block
     /// on a genuine ratchet decrypt failure — resyncs the session automatically, no button press
-    /// required. That one message is unrecoverable either way (Double Ratchet forward secrecy — see
-    /// <c>MessagingService.ReceiveMessageAsync</c>'s own remarks), but future messages should go
-    /// through once this completes.
+    /// required. That one specific ciphertext is unrecoverable either way (Double Ratchet forward
+    /// secrecy — see <c>MessagingService.ReceiveMessageAsync</c>'s own remarks); its CONTENT isn't,
+    /// though — the sender's device still holds its own outbound copy and re-sends anything undelivered
+    /// the moment it accepts this device's fresh invite (see <c>App.OnPairingInviteReceived</c> /
+    /// <c>SessionRecoveryHelper.ResendUndeliveredAsync</c>), so it reappears here as a new incoming
+    /// message rather than being gone for good.
+    ///
+    /// 2026-09-15 (user: "reconnect zvládne, ale ta hláška už je navíc — na chyby je log"): a
+    /// successful auto-heal is no longer shown to the user at all — it's exactly the kind of thing
+    /// this app already handles silently everywhere else (see <c>App.RunConnectionSupervisorLoopAsync</c>'s
+    /// own "no user action anywhere in it" policy) — only logged via <see cref="AppLog"/>. The FAILURE
+    /// branch still surfaces a banner since that's a real problem the user can't otherwise discover.
+    /// Also repoints <see cref="_chatSessionId"/> to the fresh session (a bug caught alongside this,
+    /// found by tracing the report through — without it this open thread would keep listening on the
+    /// now-Closed old session id and silently stop receiving anything new until reopened).
     /// </summary>
     private async Task TryAutoHealAsync(Exception originalError)
     {
@@ -415,9 +427,13 @@ public sealed partial class ChatViewModel : ChatThreadViewModelBase<ChatMessageI
             }
 
             await SessionRecoveryHelper.ResyncAsync(
-                _messagingService, _messageTransport, _transportSettingsRepository, _currentUserService,
+                _messagingService, _messageTransport, _transportSettingsRepository, _currentUserService, _messageRepository,
                 session.PeerDisplayName, session.PeerIdentityPublicKey, relayDeviceId);
-            StatusErrorMessage = $"Spojení s {session.PeerDisplayName} se automaticky obnovilo na pozadí. Tahle jedna zpráva se ztratila, další už by měly projít v pořádku.";
+
+            if (await _sessionRepository.GetByPeerPublicKeyAsync(session.PeerIdentityPublicKey) is { } newSession)
+                _chatSessionId = newSession.Id;
+
+            AppLog.Event("chat.auto-heal", ("peer", session.PeerDisplayName), ("originalError", originalError.Message));
         }
         catch (Exception healEx)
         {

@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using SecureApp.Domain.Entities;
+using SecureApp.Domain.Enums;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Presentation.Infrastructure;
@@ -50,6 +52,30 @@ public static class SessionRecoveryHelper
         byte[] peerPublicKey,
         Guid peerRelayDeviceId,
         CancellationToken ct = default)
+        => await ResyncAsync(messagingService, messageTransport, transportSettingsRepository, currentUserService, null, peerDisplayName, peerPublicKey, peerRelayDeviceId, ct);
+
+    /// <param name="messageRepository">
+    /// Optional (2026-09-15) — when given, the OLD session's message history is re-parented onto the
+    /// fresh session id it's about to be replaced by (see <see cref="IMessageRepository.ReassignSessionAsync"/>'s
+    /// own remarks for why that matters: without it, every message on the closed session silently stops
+    /// being shown once the thread starts querying the new one). Kept optional rather than required so
+    /// every existing call site doesn't have to change at once; omitting it just means the closed
+    /// session's history stays stranded under its old id, the pre-existing behavior. Deliberately does
+    /// NOT also resend this device's own undelivered messages on the old session — unlike the ACCEPTING
+    /// side (see <c>App.OnPairingInviteReceived</c>), the peer hasn't necessarily processed this
+    /// device's fresh invite yet at this point, so an ordinary message sent immediately after could
+    /// race ahead of it and arrive at a peer with no session to decrypt it against yet.
+    /// </param>
+    public static async Task ResyncAsync(
+        IMessagingService messagingService,
+        IMessageTransport messageTransport,
+        ITransportSettingsRepository transportSettingsRepository,
+        ICurrentUserService currentUserService,
+        IMessageRepository? messageRepository,
+        string peerDisplayName,
+        byte[] peerPublicKey,
+        Guid peerRelayDeviceId,
+        CancellationToken ct = default)
     {
         var peerKeyHex = Convert.ToHexStringLower(peerPublicKey);
         var now = DateTimeOffset.UtcNow;
@@ -72,8 +98,14 @@ public static class SessionRecoveryHelper
         var ownPublicKey = await messagingService.GetLocalIdentityPublicKeyAsync(ct);
         await currentUserService.InitializeAsync(ct);
 
-        var (_, handshakeCipherText) = await messagingService.CreateSessionAsync(peerDisplayName, peerPublicKey, peerRelayDeviceId, ct);
+        var (newSession, handshakeCipherText) = await messagingService.CreateSessionAsync(peerDisplayName, peerPublicKey, peerRelayDeviceId, ct);
         var invite = new ChatInviteBlob(currentUserService.Current.DisplayName, ownPublicKey, ownDeviceId, handshakeCipherText);
+
+        if (existing is not null && messageRepository is not null)
+        {
+            await messageRepository.ReassignSessionAsync(existing.Id, newSession.Id, ct);
+            AppLog.Event("session.resync.history-migrated", ("peer", peerDisplayName), ("from", existing.Id), ("to", newSession.Id));
+        }
 
         if (messageTransport.IsConnected)
         {
@@ -88,5 +120,61 @@ public static class SessionRecoveryHelper
         // surfaced" policy this app already uses elsewhere. It isn't retried automatically the
         // instant the relay reconnects — App.AutoConnectRelayAsync's periodic health check (below)
         // is what eventually picks this back up.
+    }
+
+    /// <summary>
+    /// Re-sends this device's own not-yet-delivered outbound messages on <paramref name="sessionId"/>
+    /// (2026-09-15) — call right after a session was (re)established well enough to send on, so
+    /// anything that got stuck under whatever session this one replaced actually reaches the peer
+    /// instead of quietly staying Pending forever. Each candidate row is decrypted from local storage
+    /// (see <c>Message.Payload</c>'s own remarks — it's vault-encrypted, not the one-shot ratchet
+    /// ciphertext, so it's always redecryptable), its stale copy deleted, and a fresh
+    /// <see cref="IMessagingService.SendMessageAsync"/> issues a brand-new envelope over the current
+    /// ratchet — reusing the OLD ciphertext is not an option, that key was consumed and is gone the
+    /// moment the old session closed (forward secrecy). Best-effort per message: one failing never
+    /// stops the rest, and a transport failure just leaves the fresh copy Pending like any other send.
+    /// Call this ONLY once the recipient side is known ready (e.g. right after this device itself
+    /// accepted a fresh session) — see <see cref="ResyncAsync"/>'s own remarks on why the INITIATING
+    /// side of a resync does not do this.
+    /// </summary>
+    public static async Task ResendUndeliveredAsync(
+        IMessagingService messagingService,
+        IMessageRepository messageRepository,
+        IMessageTransport messageTransport,
+        Guid sessionId,
+        CancellationToken ct = default)
+    {
+        var rows = await messageRepository.GetBySessionAsync(sessionId, ct: ct);
+        var undelivered = rows.Where(m =>
+            m.Direction == MessageDirection.Outbound &&
+            !m.IsSystemPayload &&
+            m.Status is MessageStatus.Pending or MessageStatus.Sent or MessageStatus.Failed);
+
+        foreach (var old in undelivered)
+        {
+            try
+            {
+                var plaintext = await messagingService.DecryptMessageAsync(old.Id, ct);
+                await messageRepository.DeleteAsync(old.Id, ct);
+                var (_, envelope) = await messagingService.SendMessageAsync(
+                    sessionId, plaintext,
+                    attachmentDocumentId: old.AttachmentDocumentId,
+                    attachmentLibraryFileId: old.AttachmentLibraryFileId,
+                    attachmentFileName: old.AttachmentFileName,
+                    groupChatId: old.GroupChatId,
+                    groupMessageId: old.GroupMessageId,
+                    ct: ct);
+                if (messageTransport.IsConnected)
+                    await messageTransport.SendEnvelopeAsync(envelope, ct);
+                AppLog.Event("session.resend", ("session", sessionId));
+            }
+            catch (Exception ex)
+            {
+                // Best-effort — one message failing to resend must not block the rest, and the old row
+                // is already gone either way (either resent successfully, or lost the same way it would
+                // have been anyway; leaving a half-decrypted duplicate around would be worse).
+                AppLog.Error("SessionRecovery.Resend", "failed to resend an undelivered message after resync", ex);
+            }
+        }
     }
 }

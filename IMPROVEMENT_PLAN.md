@@ -145,6 +145,41 @@ lifecycle/RBAC features. Confirm order or override.
 - **Logs everywhere** (user ask, 2026-09-14): 2.5A covered send/receive/reconnect; this pass
   added resync, pairing accept/fail, group membership sync + per-member pairing, stale-sweep,
   and delete/leave/remove. Keep extending as new paths are added.
+- **Not yet live-tested (2026-09-15): the resync history-migration + resend-undelivered fix below.**
+  Needs a real 2-device run that deliberately breaks a ratchet (or just taps "↺ reset") and confirms:
+  (a) the accepting device's old chat history is still visible after re-pairing, (b) an unacked
+  message sent right before the break actually reappears in the recipient's thread afterward.
+
+**2026-09-15 — quiet auto-heal + a real bug it led to (user: "reconnect zvládne, ale ta hláška už je
+navíc... zpráva která nebyla přeposlána musí být vyhledána a vložena do chatu — na chyby je log"):**
+- **Banner removed on successful auto-heal** — `ChatViewModel`/`GroupChatViewModel.TryAutoHealAsync`
+  no longer show a red "connection recovered" banner when the background resync succeeds (only
+  `AppLog.Event`, consistent with this app's existing "no user action" recovery policy); the FAILURE
+  branch still shows a banner since that's a real actionable problem.
+- **Real bug found tracing the report through: a resync always forked chat history onto a brand-new
+  session id, and the thread view only ever queries the CURRENT session** — so every prior message
+  became invisible (not deleted, just unreachable) the moment either side's `ChatListViewModel` picked
+  up the fresh session; `ChatListViewModel`'s own 2026-09-13 comment ("nothing is deleted, so no
+  history is lost") only covered the LIST row, not the thread content. Fixed with a new
+  `IMessageRepository.ReassignSessionAsync(oldId, newId)` (verified with a real-DB scratchpad smoke
+  test — 7/7 checks) that re-parents every message row onto the fresh session id, called both from
+  `SessionRecoveryHelper.ResyncAsync` (the initiating side) and from every accept-a-fresh-invite site
+  (`App.OnPairingInviteReceived`, `ChatListViewModel.AcceptInviteAsync`).
+- **Also closes the literal "one message got lost" report**: a genuine ratchet decrypt failure really
+  is unrecoverable for that one ciphertext (Double Ratchet forward secrecy), but its CONTENT isn't —
+  the sender still holds its own outbound copy. New `SessionRecoveryHelper.ResendUndeliveredAsync`
+  decrypts every not-yet-delivered outbound message on the just-migrated session (from local vault-
+  encrypted storage, not the one-shot ratchet ciphertext) and re-sends it fresh. Deliberately only
+  called from the ACCEPTING side of a re-pair (session fully established both directions by then) —
+  the initiating side only migrates history, it does not resend, to avoid a message racing ahead of
+  the peer's own invite-processing over the wire.
+- **A separate real bug caught tracing this**: `ChatViewModel.TryAutoHealAsync` (unlike its sibling
+  `ResyncAndRetrySendAsync`) never repointed `_chatSessionId` to the fresh session after a successful
+  resync — the open thread kept listening on the now-Closed old session id and silently stopped
+  receiving anything live until the page was closed and reopened. Fixed to match the existing
+  `ResyncAndRetrySendAsync` precedent. (`GroupChatViewModel` was never affected — it filters incoming
+  envelopes by the stable `GroupChatId`, not a single session id.)
+- Whole solution builds 0-error on all 4 Presentation targets + Domain/Data/Relay.
 
 ## Phase 2b — Functionality audit
 - [ ] Systematic pass over each feature (chat, group, library, logbook, contacts,

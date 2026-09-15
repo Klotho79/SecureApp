@@ -218,6 +218,14 @@ public sealed class MessageRepository : IMessageRepository
         return (MessageStatus)min;
     }
 
+    public async Task ReassignSessionAsync(Guid oldChatSessionId, Guid newChatSessionId, CancellationToken ct = default)
+    {
+        var connection = await _connectionFactory.GetConnectionAsync(ct);
+        await connection.ExecuteAsync(
+            "UPDATE messages SET chat_session_id = ? WHERE chat_session_id = ?",
+            newChatSessionId.ToString(), oldChatSessionId.ToString());
+    }
+
     private static Message ToEntity(MessageRow row)
     {
         var entity = EntityMaterializer.Create<Message>();
