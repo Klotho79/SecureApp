@@ -653,7 +653,7 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
         try
         {
             await SessionRecoveryHelper.ResyncAsync(
-                _messagingService, _messageTransport, _transportSettingsRepository, _currentUserService, _messageRepository,
+                _messagingService, _messageTransport, _transportSettingsRepository, _currentUserService, _messageRepository, _chatSessionRepository,
                 groupMember.DisplayName, groupMember.PublicKey, groupMember.RelayDeviceId);
             StatusErrorMessage = $"Spojení s {member.DisplayName} bylo obnoveno.";
         }
@@ -701,7 +701,7 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
         try
         {
             await SessionRecoveryHelper.ResyncAsync(
-                _messagingService, _messageTransport, _transportSettingsRepository, _currentUserService, _messageRepository,
+                _messagingService, _messageTransport, _transportSettingsRepository, _currentUserService, _messageRepository, _chatSessionRepository,
                 member.DisplayName, member.PublicKey, member.RelayDeviceId);
         }
         catch
@@ -740,7 +740,7 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
             }
 
             await SessionRecoveryHelper.ResyncAsync(
-                _messagingService, _messageTransport, _transportSettingsRepository, _currentUserService, _messageRepository,
+                _messagingService, _messageTransport, _transportSettingsRepository, _currentUserService, _messageRepository, _chatSessionRepository,
                 member.DisplayName, member.PublicKey, member.RelayDeviceId);
             AppLog.Event("group.auto-heal", ("member", member.DisplayName), ("originalError", originalError.Message));
         }

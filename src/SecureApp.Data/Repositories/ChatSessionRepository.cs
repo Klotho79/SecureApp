@@ -40,6 +40,13 @@ public sealed class ChatSessionRepository : IChatSessionRepository
         return all.FirstOrDefault(s => s.State != ChatSessionState.Closed && s.PeerIdentityPublicKey.AsSpan().SequenceEqual(peerIdentityPublicKey));
     }
 
+    public async Task<IReadOnlyList<ChatSession>> GetAllByPeerPublicKeyAsync(byte[] peerIdentityPublicKey, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(peerIdentityPublicKey);
+        var all = await GetAllAsync(ct);
+        return all.Where(s => s.PeerIdentityPublicKey.AsSpan().SequenceEqual(peerIdentityPublicKey)).ToList();
+    }
+
     public async Task AddAsync(ChatSession chatSession, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(chatSession);

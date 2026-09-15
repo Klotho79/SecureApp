@@ -251,7 +251,7 @@ public sealed partial class ChatListViewModel : ObservableObject
         try
         {
             await SessionRecoveryHelper.ResyncAsync(
-                _messagingService, _messageTransport, _transportSettingsRepository, _currentUserService, _messageRepository,
+                _messagingService, _messageTransport, _transportSettingsRepository, _currentUserService, _messageRepository, _sessionRepository,
                 session.PeerDisplayName, session.PeerIdentityPublicKey, relayDeviceId);
         }
         catch (Exception ex)
@@ -354,7 +354,7 @@ public sealed partial class ChatListViewModel : ObservableObject
             // of a peer whose session broke before the removal, not only a first-ever re-add.
             if (existing is not null)
             {
-                await _messageRepository.ReassignSessionAsync(existing.Id, accepted.Id);
+                await SessionRecoveryHelper.ReassignAllHistoryAsync(_sessionRepository, _messageRepository, invite.InitiatorPublicKey, accepted.Id);
                 await SessionRecoveryHelper.ResendUndeliveredAsync(_messagingService, _messageRepository, _messageTransport, accepted.Id);
             }
         }

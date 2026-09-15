@@ -335,7 +335,7 @@ public partial class App : Application
 			try
 			{
 				await SessionRecoveryHelper.ResyncAsync(
-					messagingService, transport, transportSettings, currentUserService, messageRepository,
+					messagingService, transport, transportSettings, currentUserService, messageRepository, sessionRepository,
 					stale.PeerDisplayName, stale.PeerIdentityPublicKey, relayDeviceId);
 			}
 			catch (Exception ex)
@@ -473,7 +473,7 @@ public partial class App : Application
 					var currentUserService = scope.ServiceProvider.GetRequiredService<ICurrentUserService>();
 					var messageRepositoryForHeal = scope.ServiceProvider.GetRequiredService<IMessageRepository>();
 					await SessionRecoveryHelper.ResyncAsync(
-						messagingService, messageTransport, transportSettings, currentUserService, messageRepositoryForHeal,
+						messagingService, messageTransport, transportSettings, currentUserService, messageRepositoryForHeal, sessionRepository,
 						session.PeerDisplayName, session.PeerIdentityPublicKey, relayDeviceId);
 				}
 			}
@@ -542,10 +542,11 @@ public partial class App : Application
 			if (existingSession is not null)
 			{
 				var messageRepositoryForHeal = scope.ServiceProvider.GetRequiredService<IMessageRepository>();
+				var sessionRepositoryForHeal = scope.ServiceProvider.GetRequiredService<IChatSessionRepository>();
 				var messageTransportForHeal = scope.ServiceProvider.GetRequiredService<IMessageTransport>();
 				try
 				{
-					await messageRepositoryForHeal.ReassignSessionAsync(existingSession.Id, acceptedSession.Id);
+					await SessionRecoveryHelper.ReassignAllHistoryAsync(sessionRepositoryForHeal, messageRepositoryForHeal, invite.InitiatorPublicKey, acceptedSession.Id);
 					await SessionRecoveryHelper.ResendUndeliveredAsync(messagingService, messageRepositoryForHeal, messageTransportForHeal, acceptedSession.Id);
 				}
 				catch (Exception reassignEx)

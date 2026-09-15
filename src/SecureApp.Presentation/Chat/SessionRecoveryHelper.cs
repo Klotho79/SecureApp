@@ -52,26 +52,27 @@ public static class SessionRecoveryHelper
         byte[] peerPublicKey,
         Guid peerRelayDeviceId,
         CancellationToken ct = default)
-        => await ResyncAsync(messagingService, messageTransport, transportSettingsRepository, currentUserService, null, peerDisplayName, peerPublicKey, peerRelayDeviceId, ct);
+        => await ResyncAsync(messagingService, messageTransport, transportSettingsRepository, currentUserService, null, null, peerDisplayName, peerPublicKey, peerRelayDeviceId, ct);
 
     /// <param name="messageRepository">
-    /// Optional (2026-09-15) — when given, the OLD session's message history is re-parented onto the
-    /// fresh session id it's about to be replaced by (see <see cref="IMessageRepository.ReassignSessionAsync"/>'s
-    /// own remarks for why that matters: without it, every message on the closed session silently stops
-    /// being shown once the thread starts querying the new one). Kept optional rather than required so
-    /// every existing call site doesn't have to change at once; omitting it just means the closed
-    /// session's history stays stranded under its old id, the pre-existing behavior. Deliberately does
-    /// NOT also resend this device's own undelivered messages on the old session — unlike the ACCEPTING
-    /// side (see <c>App.OnPairingInviteReceived</c>), the peer hasn't necessarily processed this
-    /// device's fresh invite yet at this point, so an ordinary message sent immediately after could
-    /// race ahead of it and arrive at a peer with no session to decrypt it against yet.
+    /// Optional (2026-09-15) — when given together with <paramref name="sessionRepository"/>, this
+    /// peer's ENTIRE session history (every prior Closed session, not just the one just superseded —
+    /// see <see cref="ReassignAllHistoryAsync"/>'s own remarks for why a single hop isn't enough) is
+    /// re-parented onto the fresh session id. Without it, closed sessions' history stays stranded
+    /// under their old ids, the pre-existing behavior. Deliberately does NOT also resend this device's
+    /// own undelivered messages on the old session — unlike the ACCEPTING side (see
+    /// <c>App.OnPairingInviteReceived</c>), the peer hasn't necessarily processed this device's fresh
+    /// invite yet at this point, so an ordinary message sent immediately after could race ahead of it
+    /// and arrive at a peer with no session to decrypt it against yet.
     /// </param>
+    /// <param name="sessionRepository">Optional, paired with <paramref name="messageRepository"/> — see above.</param>
     public static async Task ResyncAsync(
         IMessagingService messagingService,
         IMessageTransport messageTransport,
         ITransportSettingsRepository transportSettingsRepository,
         ICurrentUserService currentUserService,
         IMessageRepository? messageRepository,
+        IChatSessionRepository? sessionRepository,
         string peerDisplayName,
         byte[] peerPublicKey,
         Guid peerRelayDeviceId,
@@ -101,10 +102,11 @@ public static class SessionRecoveryHelper
         var (newSession, handshakeCipherText) = await messagingService.CreateSessionAsync(peerDisplayName, peerPublicKey, peerRelayDeviceId, ct);
         var invite = new ChatInviteBlob(currentUserService.Current.DisplayName, ownPublicKey, ownDeviceId, handshakeCipherText);
 
-        if (existing is not null && messageRepository is not null)
+        if (messageRepository is not null && sessionRepository is not null)
         {
-            await messageRepository.ReassignSessionAsync(existing.Id, newSession.Id, ct);
-            AppLog.Event("session.resync.history-migrated", ("peer", peerDisplayName), ("from", existing.Id), ("to", newSession.Id));
+            var migrated = await ReassignAllHistoryAsync(sessionRepository, messageRepository, peerPublicKey, newSession.Id, ct);
+            if (migrated > 0)
+                AppLog.Event("session.resync.history-migrated", ("peer", peerDisplayName), ("sessions", migrated), ("to", newSession.Id));
         }
 
         if (messageTransport.IsConnected)
@@ -120,6 +122,31 @@ public static class SessionRecoveryHelper
         // surfaced" policy this app already uses elsewhere. It isn't retried automatically the
         // instant the relay reconnects — App.AutoConnectRelayAsync's periodic health check (below)
         // is what eventually picks this back up.
+    }
+
+    /// <summary>
+    /// Re-parents EVERY prior session's message history for this peer onto the fresh session
+    /// (2026-09-15) — not just the one session that was JUST superseded. A peer can accumulate several
+    /// generations of Closed sessions across repeated resyncs (each one itself superseding the one
+    /// before it); reassigning only the immediately-preceding session leaves anything stranded on an
+    /// EARLIER one permanently orphaned — including messages stuck there from before this migration
+    /// mechanism even existed. Walks every session this device has EVER had with this peer (any state)
+    /// via <see cref="IChatSessionRepository.GetAllByPeerPublicKeyAsync"/> and migrates each one's
+    /// messages onto <paramref name="newSessionId"/>; a session with no messages is a cheap no-op.
+    /// Returns how many OTHER sessions were found (0 = nothing to migrate, not an error).
+    /// </summary>
+    public static async Task<int> ReassignAllHistoryAsync(
+        IChatSessionRepository sessionRepository,
+        IMessageRepository messageRepository,
+        byte[] peerPublicKey,
+        Guid newSessionId,
+        CancellationToken ct = default)
+    {
+        var allForPeer = await sessionRepository.GetAllByPeerPublicKeyAsync(peerPublicKey, ct);
+        var others = allForPeer.Where(s => s.Id != newSessionId).ToList();
+        foreach (var old in others)
+            await messageRepository.ReassignSessionAsync(old.Id, newSessionId, ct);
+        return others.Count;
     }
 
     /// <summary>

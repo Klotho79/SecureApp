@@ -386,7 +386,7 @@ public sealed partial class ChatViewModel : ChatThreadViewModelBase<ChatMessageI
             throw new InvalidOperationException($"S {session.PeerDisplayName} chybí propojení na relay zařízení — obnovit spojení nelze.");
 
         await SessionRecoveryHelper.ResyncAsync(
-            _messagingService, _messageTransport, _transportSettingsRepository, _currentUserService, _messageRepository,
+            _messagingService, _messageTransport, _transportSettingsRepository, _currentUserService, _messageRepository, _sessionRepository,
             session.PeerDisplayName, session.PeerIdentityPublicKey, relayDeviceId);
 
         var newSession = await _sessionRepository.GetByPeerPublicKeyAsync(session.PeerIdentityPublicKey)
@@ -427,7 +427,7 @@ public sealed partial class ChatViewModel : ChatThreadViewModelBase<ChatMessageI
             }
 
             await SessionRecoveryHelper.ResyncAsync(
-                _messagingService, _messageTransport, _transportSettingsRepository, _currentUserService, _messageRepository,
+                _messagingService, _messageTransport, _transportSettingsRepository, _currentUserService, _messageRepository, _sessionRepository,
                 session.PeerDisplayName, session.PeerIdentityPublicKey, relayDeviceId);
 
             if (await _sessionRepository.GetByPeerPublicKeyAsync(session.PeerIdentityPublicKey) is { } newSession)

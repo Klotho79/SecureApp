@@ -145,10 +145,30 @@ lifecycle/RBAC features. Confirm order or override.
 - **Logs everywhere** (user ask, 2026-09-14): 2.5A covered send/receive/reconnect; this pass
   added resync, pairing accept/fail, group membership sync + per-member pairing, stale-sweep,
   and delete/leave/remove. Keep extending as new paths are added.
-- **Not yet live-tested (2026-09-15): the resync history-migration + resend-undelivered fix below.**
-  Needs a real 2-device run that deliberately breaks a ratchet (or just taps "↺ reset") and confirms:
-  (a) the accepting device's old chat history is still visible after re-pairing, (b) an unacked
-  message sent right before the break actually reappears in the recipient's thread afterward.
+- **Live-tested 2026-09-15 (PC ↔ S9+, real relay, via UI Automation/adb — see below): history
+  migration confirmed working; resend-of-undelivered has a real scope gap, confirmed live too.**
+  (a) CONFIRMED: sent a marker message in an empty 1:1 PC→s9+ thread, reset the pairing, reopened —
+  the message was still there after the session was replaced (list showed "Čeká na připojení…",
+  proving a genuinely new session, not a no-op). (b) NOT reproduced: a stuck-Pending ("🕓") group
+  message from earlier the same day did NOT get resent after resetting that member's pairing.
+  **Root cause, found and fixed same day**: `ReassignSessionAsync` only migrated from the ONE
+  immediately-preceding session to the new one (single hop) — a message stranded on an EARLIER
+  session, already superseded by a prior resync before this fix was even deployed, was never reached.
+  User's own question ("neni lepsi/bezpecnejsi aby byl chat na serveru?") prompted confirming the
+  right fix stays fully client-side (moving history server-side would mean the relay either sees
+  plaintext or must retain key material — both break the E2EE/forward-secrecy model the whole app is
+  built on; the relay's existing store-and-forward OUTBOX, which only ever holds already-ratchet-
+  encrypted envelopes transiently until delivery, is unaffected and stays as-is). **Fixed**: new
+  `IChatSessionRepository.GetAllByPeerPublicKeyAsync` (every session ever had with a peer, any state)
+  + `SessionRecoveryHelper.ReassignAllHistoryAsync` (walks ALL of a peer's prior sessions — not just
+  the latest — and re-parents each one's messages onto the fresh session). Called from `ResyncAsync`
+  (initiator side) and both accept-a-fresh-invite sites (`App.OnPairingInviteReceived`,
+  `ChatListViewModel.AcceptInviteAsync`), replacing the old single-hop calls. Verified with the
+  scratchpad DB smoke test extended to 11/11 checks (added: messages stranded 2 AND 1 generations
+  back both correctly land on a brand-new 3rd-generation session). Whole solution builds 0-error.
+  **Still not live-verified**: whether this actually resolves the specific stuck 🕓 group message
+  found during the live 2-device test (it predates even the single-hop fix, so it's a good real-world
+  case for this) — worth checking next time either phone is available.
 
 **2026-09-15 — quiet auto-heal + a real bug it led to (user: "reconnect zvládne, ale ta hláška už je
 navíc... zpráva která nebyla přeposlána musí být vyhledána a vložena do chatu — na chyby je log"):**
