@@ -13,8 +13,8 @@ public partial class AppShell : Shell
 	/// <summary>Shared with <c>SettingsViewModel</c>'s own show/hide toggle for the Logbook tab — see <see cref="ApplyLogbookTabVisibility"/>'s own remarks.</summary>
 	public const string LogbookVisibilityPreferenceKey = "logbook_visible";
 
-	/// <summary>Nastavení is XAML index 4 (Chaty/Knihovna/Dokumenty/Kontakty/Nastavení, after the 2026-09-10 Kontakty tab landed at index 3) — inserting the Logbook tab at that same index pushes it one slot right instead of landing after it, the user's own explicit ask: "nastavení bych nechal jako poslední" (keep Settings last).</summary>
-	private const int LogbookTabInsertIndex = 4;
+	/// <summary>Nastavení is XAML index 3 (Chaty/Soubory/Kontakty/Nastavení, after 2026-09-16 merged the old separate Knihovna+Dokumenty tabs into one "Soubory" tab) — inserting the Logbook tab at that same index pushes it one slot right instead of landing after it, the user's own explicit ask: "nastavení bych nechal jako poslední" (keep Settings last).</summary>
+	private const int LogbookTabInsertIndex = 3;
 
 	private Tab? _logbookTab;
 

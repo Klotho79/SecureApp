@@ -232,6 +232,13 @@ Along the way: discovered and documented [[adb-wireless-technique]] (adb over Wi
 no cable needed) and [[android-fast-deploy-gotcha]] (never `adb install` a debug APK directly — crashes
 instantly, "No assemblies found... Fast Deployment" — always deploy via `dotnet build -t:Run`).
 
+**2026-09-16 — merged the Knihovna and Dokumenty bottom tabs into one ("🗂 Soubory") — user's own ask:**
+tab bar was crowding (Nastavení was already pushed into Android's "More" overflow on phone). Pure
+navigation merge, no data/storage change — AppShell.xaml now nests both ShellContent under one Tab,
+which Shell renders as a top sub-tab strip natively; DocumentBrowserPage/LibraryPage and their
+ViewModels are untouched. `AppShell.xaml.cs`'s `LogbookTabInsertIndex` adjusted 4→3 to match the new
+tab count. Deployed and confirmed on S9+ and S23+.
+
 ## Log of changes
 - 2026-09-13: Plan created; Phase 0 (durable AppLog error + metrics) landed; chat/group
   open self-record timings. Single-batch apply on open. Page-reuse added (small win only).
