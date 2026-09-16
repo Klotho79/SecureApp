@@ -4,7 +4,6 @@
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
-    xmlns:zxing="clr-namespace:ZXing.Net.Maui.Controls;assembly=ZXing.Net.MAUI.Controls"
     xmlns:controls="clr-namespace:SecureApp.Presentation.Controls"
     x:DataType="vm:NewChatViewModel"
     Title="Nový chat">
@@ -16,10 +15,14 @@
             <Label Text="{Binding StatusInfoMessage}" IsVisible="{Binding HasStatusInfo}" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" LineBreakMode="WordWrap" />
             <controls:DelayedActivityIndicator IsBusy="{Binding IsBusy}" HorizontalOptions="Center" />
 
-            <!-- Member directory (2026-09-06) — the primary, one-tap path: everyone here already
-                 went through admin-approved activation, so no contact-card exchange is needed at
-                 all. See NewChatViewModel's class-level remarks for why the manual paste/QR cards
-                 below stay as a fallback rather than being removed. -->
+            <!-- Member directory (2026-09-06) — the ONLY path now (2026-09-16, user's own ask: "1:1 by
+                 mel byt jako skupinovy" — mirror how adding a GROUP member already works, see
+                 GroupChatViewModel.LoadAddableMembersAsync's own remarks: "there's no manual paste/QR
+                 fallback... this IS the only path"). The manual contact-card/invite-blob paste+QR cards
+                 that used to sit below this as a fallback for someone not yet in the directory are
+                 removed from the UI; NewChatViewModel's underlying commands (CreateSessionCommand,
+                 AcceptInviteCommand, the QR scan toggles) are left in place, unused, rather than torn
+                 out — same low-risk "UI-only" scope as this session's other navigation cleanups. -->
             <Border Style="{StaticResource CardBorder}">
                 <VerticalStackLayout Spacing="8">
                     <Label Text="Chat s někým z komunity" Style="{StaticResource SectionHeader}" Margin="0" />
@@ -41,60 +44,6 @@
                             </DataTemplate>
                         </CollectionView.ItemTemplate>
                     </CollectionView>
-                </VerticalStackLayout>
-            </Border>
-
-            <Label Text="Nebo ručně (pokud dotyčný ještě není v seznamu výše)" FontSize="12.5" FontAttributes="Bold" TextColor="Gray" Margin="0,8,0,0" />
-
-            <Border Style="{StaticResource CardBorder}">
-                <VerticalStackLayout Spacing="8">
-                    <Label Text="Začít nový chat" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Label Text="Vložte kontaktní kartu, kterou vám někdo sdílel ze své stránky Nastavení." FontSize="12" TextColor="Gray" />
-                    <Editor Text="{Binding PeerContactCardText}" HeightRequest="80" Placeholder="Sem vložte kontaktní kartu" />
-                    <Button Text="{Binding ScanPeerCardButtonText}" Style="{StaticResource SecondaryButton}" Command="{Binding ToggleScanPeerCardCommand}" />
-                    <zxing:CameraBarcodeReaderView
-                        x:Name="PeerCardScanner"
-                        IsVisible="{Binding IsScanningPeerCard}"
-                        IsDetecting="{Binding IsScanningPeerCard}"
-                        HeightRequest="250"
-                        BarcodesDetected="OnPeerCardBarcodeDetected" />
-                    <Button Text="Vytvořit chat" Command="{Binding CreateSessionCommand}" />
-
-                    <VerticalStackLayout IsVisible="{Binding HasCreatedSession}" Spacing="8" Margin="0,8,0,0">
-                        <VerticalStackLayout IsVisible="{Binding HasGeneratedInvite}" Spacing="8">
-                            <Label Text="Pošlete jim toto zpět pro dokončení spojení:" FontSize="12" TextColor="Gray" />
-                            <Editor Text="{Binding GeneratedInviteText}" IsReadOnly="True" HeightRequest="80" />
-                            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
-                                <Button Grid.Column="0" Text="Kopírovat" Style="{StaticResource SecondaryButton}" Command="{Binding CopyInviteCommand}" />
-                                <Button Grid.Column="1" Text="Zobrazit QR" Style="{StaticResource SecondaryButton}" Command="{Binding ToggleShowInviteQrCommand}" />
-                            </Grid>
-                            <Image
-                                IsVisible="{Binding IsShowingInviteQr}"
-                                Source="{Binding GeneratedInviteQrImage}"
-                                BackgroundColor="White"
-                                HeightRequest="420"
-                                WidthRequest="420"
-                                HorizontalOptions="Center" />
-                        </VerticalStackLayout>
-                        <Button Text="Otevřít chat" Command="{Binding OpenCreatedChatCommand}" />
-                    </VerticalStackLayout>
-                </VerticalStackLayout>
-            </Border>
-
-            <Border Style="{StaticResource CardBorder}">
-                <VerticalStackLayout Spacing="8">
-                    <Label Text="Přijmout pozvánku" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Label Text="Vložte pozvánku, kterou vám někdo poslal poté, co jste sdíleli svou kontaktní kartu." FontSize="12" TextColor="Gray" />
-                    <Editor Text="{Binding InviteBlobText}" HeightRequest="80" Placeholder="Sem vložte pozvánku" />
-                    <Button Text="{Binding ScanInviteButtonText}" Style="{StaticResource SecondaryButton}" Command="{Binding ToggleScanInviteCommand}" />
-                    <zxing:CameraBarcodeReaderView
-                        x:Name="InviteScanner"
-                        IsVisible="{Binding IsScanningInvite}"
-                        IsDetecting="{Binding IsScanningInvite}"
-                        HeightRequest="250"
-                        BarcodesDetected="OnInviteBarcodeDetected" />
-                    <Button Text="Přijmout pozvánku" Command="{Binding AcceptInviteCommand}" />
-                    <Button Text="Otevřít chat" Command="{Binding OpenAcceptedChatCommand}" IsVisible="{Binding HasAcceptedSession}" />
                 </VerticalStackLayout>
             </Border>
 
