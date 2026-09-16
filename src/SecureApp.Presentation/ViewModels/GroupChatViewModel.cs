@@ -691,6 +691,15 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
                 continue;
             }
 
+            // 2026-09-16 (user: "porad se objevuje chat lokal user zjisti proc a oprav to") — same gap
+            // as App.OnGroupInviteReceived's own remarks: this method runs on every group screen open,
+            // unattended, and used to resync EVERY unpaired member unconditionally — including one the
+            // user explicitly deleted (RemovedPeersStore). A removed member who's still in the group's
+            // roster (a stale test/dev entry, still literally "Local User" in real testing) got its 1:1
+            // chat silently recreated on every open. Stays gone here too unless re-invited/accepted.
+            if (RemovedPeersStore.Contains(member.PublicKey))
+                continue;
+
             await TryBackgroundResyncAsync(member);
         }
     }

@@ -650,6 +650,18 @@ public partial class App : Application
 				if (await messagingService.FindExistingSessionAsync(member.PublicKey) is not null)
 					continue; // already paired with this member from an earlier group/1:1 chat
 
+				// 2026-09-16 (user: "porad se objevuje chat lokal user zjisti proc a oprav to") — the
+				// real cause: a group's own membership sync runs on every incoming group/invite event,
+				// completely unattended, and this loop used to auto-initiate a fresh 1:1 pairing with
+				// EVERY unpaired member unconditionally — including one the user had explicitly deleted
+				// (RemovedPeersStore). As long as that peer stayed in a shared group's roster (a stale
+				// test/dev member still called "Local User" is exactly this shape), every subsequent
+				// membership sync silently recreated the 1:1 chat the user just removed. 2.2 already
+				// closed this gap on the RECEIVING side (OnPairingInviteReceived, below) and in the
+				// stale-session sweep — this INITIATING side was the one path still missing it.
+				if (RemovedPeersStore.Contains(member.PublicKey))
+					continue; // stays gone unless the user explicitly re-invites/accepts, same policy as everywhere else
+
 				if (!ShouldInitiateTo(localPublicKey, member.PublicKey))
 					continue; // the deterministic tie-break says THEY initiate toward us instead — OnPairingInviteReceived above auto-accepts whenever that arrives
 
