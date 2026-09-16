@@ -821,6 +821,15 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
     }
 
     /// <summary>
+    /// Raised once <see cref="LeaveGroupAsync"/> has actually finished (2026-09-16) instead of this
+    /// ViewModel navigating directly — a real gap this fixes: <c>Shell.Current.GoToAsync("..")</c> only
+    /// makes sense for the PUSHED-page host (<see cref="Views.GroupChatPage"/>), and was a silent no-op
+    /// on the phone overlay host (<see cref="Views.ChatListPage"/>), which shows this same view without
+    /// ever pushing a Shell page. Each host subscribes and does whatever "close" means for it.
+    /// </summary>
+    public event Action? LeftGroup;
+
+    /// <summary>
     /// Voluntary self-removal (2026-09-10, user's own ask: "přidej možnost vystoupení z chatu") —
     /// deliberately NOT gated behind <see cref="CanManageMembers"/>, unlike <see cref="RemoveAsync"/>
     /// above: removing yourself needs no "authorized user" permission, only removing someone ELSE
@@ -848,7 +857,7 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
             // around locally would just mean the group reappears the next time ANY membership
             // change is rebroadcast by someone who doesn't yet know this device already left.
             await _groupChatRepository.DeleteAsync(_groupChatId);
-            await Shell.Current.GoToAsync("..");
+            LeftGroup?.Invoke();
         }
         catch (Exception ex)
         {

@@ -24,13 +24,18 @@
             LineBreakMode="WordWrap" />
 
         <!-- Member list + management — visible to everyone (read-only), Add/Remove only for the
-             founder or an Admin/Modifier device (CanManageMembers). 2026-09-16 (user's own ask): sits
-             flush against the host overlay's own "‹ Zpět" row above it (no CardBorder/top margin) so
-             the two read as one continuous header instead of two visually separate bars — same reason
-             Shell's own redundant title bar was removed, see ChatListPage.xaml's own remark. Add/Leave
-             are icon-only now too, to fit this tighter header. -->
+             founder or an Admin/Modifier device (CanManageMembers). No CardBorder/top margin (2026-09-16,
+             user's own ask) so it sits flush against whatever's above it. -->
         <VerticalStackLayout Grid.Row="1" Spacing="8" Padding="12,6,12,0">
-                <Grid ColumnDefinitions="*,Auto,Auto">
+                <!-- x:Name'd (2026-09-16) so ChatListPage.xaml.cs can hide just THIS row (not the
+                     expanded member chips/add-picker below, which stay wherever IsMembersExpanded/
+                     IsShowingAddMember already put them) when this view is hosted in the phone overlay
+                     — there, the user wanted Members/Add/Leave on the SAME row as the overlay's own
+                     "‹ Zpět" button (see ChatListPage.xaml's NarrowGroupHeaderExtras), so this row would
+                     otherwise duplicate it. Stays visible as normal when hosted in GroupChatPage (the
+                     wide/desktop push case, and "right after creating a group" — see this view's own
+                     class remarks), which has no such compact header of its own. -->
+                <Grid x:Name="OwnMembersHeaderRow" ColumnDefinitions="*,Auto,Auto">
                     <Grid.GestureRecognizers>
                         <TapGestureRecognizer Command="{Binding ToggleMembersExpandedCommand}" />
                     </Grid.GestureRecognizers>

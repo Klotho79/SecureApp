@@ -28,6 +28,16 @@ public partial class GroupChatThreadView : ContentView
 
     private GroupChatViewModel? ViewModel => BindingContext as GroupChatViewModel;
 
+    /// <summary>
+    /// Hides this view's OWN Members/Add/Leave row (2026-09-16) — call with true when the host
+    /// supplies its own copy of those specific controls instead (see <c>ChatListPage.xaml</c>'s
+    /// <c>NarrowGroupHeaderExtras</c> and <see cref="OwnMembersHeaderRow"/>'s own remarks). The
+    /// expanded member chips / add-member picker below it are untouched either way — they're governed
+    /// by their own IsMembersExpanded/IsShowingAddMember bindings, not this. Idempotent; safe to call
+    /// every time a view is (re)shown, regardless of previous state.
+    /// </summary>
+    public void SetCompactHeaderHosted(bool hostedCompactly) => OwnMembersHeaderRow.IsVisible = !hostedCompactly;
+
     protected override void OnBindingContextChanged()
     {
         base.OnBindingContextChanged();
@@ -138,8 +148,15 @@ public partial class GroupChatThreadView : ContentView
         }
     }
 
-    /// <summary>Confirmation dialog lives here per this codebase's convention — <see cref="GroupChatViewModel.LeaveGroupCommand"/> does the actual removal once confirmed.</summary>
-    private async void OnLeaveGroupClicked(object? sender, EventArgs e)
+    private async void OnLeaveGroupClicked(object? sender, EventArgs e) => await LeaveGroupAsync();
+
+    /// <summary>
+    /// Confirmation dialog lives here per this codebase's convention — <see cref="GroupChatViewModel.LeaveGroupCommand"/>
+    /// does the actual removal once confirmed. Public (2026-09-16) so <c>ChatListPage.xaml.cs</c>'s own
+    /// compact-header leave button — see <see cref="SetCompactHeaderHosted"/> — can trigger the exact
+    /// same confirmed flow instead of duplicating the dialog text.
+    /// </summary>
+    public async Task LeaveGroupAsync()
     {
         if (ViewModel is not { } vm) return;
         var confirmed = await Shell.Current.DisplayAlertAsync(

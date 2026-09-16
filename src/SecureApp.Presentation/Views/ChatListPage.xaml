@@ -200,11 +200,33 @@
     </Grid>
 
         <!-- Phone-only persistent thread overlay (2026-09-13). Covers the list full-screen when a chat
-             is open; hosts a reused ChatThreadView so reopening is instant (no page rebuild). Its own
-             back chevron hides it (see OnNarrowThreadBack) — hardware back is handled in code-behind. -->
+             is open; hosts a reused ChatThreadView/GroupChatThreadView so reopening is instant (no page
+             rebuild). Its own back chevron hides it (see OnNarrowThreadBack) — hardware back is handled
+             in code-behind. -->
         <Grid x:Name="NarrowThreadOverlay" IsVisible="False" RowDefinitions="Auto,*"
               BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource OffBlack}}">
-            <Button Grid.Row="0" Text="‹ Zpět" HorizontalOptions="Start" Style="{StaticResource SecondaryButton}" Margin="8,6" Clicked="OnNarrowThreadBack" />
+            <Grid Grid.Row="0" ColumnDefinitions="Auto,*" Padding="8,6" ColumnSpacing="6">
+                <Button Grid.Column="0" Text="‹ Zpět" HorizontalOptions="Start" Style="{StaticResource SecondaryButton}" Clicked="OnNarrowThreadBack" />
+                <!-- Group-only header extras (2026-09-16, user's own ask: Members/Add/Leave on the SAME
+                     row as "‹ Zpět", not a row of their own). Hidden for a 1:1 thread; code-behind
+                     (ShowNarrowGroup/ShowNarrowThread/HideNarrowThread) sets this Grid's BindingContext
+                     to the hosted GroupChatViewModel and toggles IsVisible whenever what the overlay
+                     hosts changes — GroupChatThreadView's OWN copy of these controls is hidden at the
+                     same time (see its SetCompactHeaderHosted) so they show in exactly one place. -->
+                <Grid x:Name="NarrowGroupHeaderExtras" x:DataType="vm:GroupChatViewModel" Grid.Column="1" IsVisible="False"
+                      ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+                    <Label Grid.Column="0" VerticalOptions="Center" HorizontalOptions="End" FontSize="13"
+                           Text="{Binding MemberCount, StringFormat='Členové ({0}) ▸'}">
+                        <Label.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding ToggleMembersExpandedCommand}" />
+                        </Label.GestureRecognizers>
+                    </Label>
+                    <Button Grid.Column="1" Text="➕" Style="{StaticResource SecondaryButton}" WidthRequest="44" Padding="0"
+                            Command="{Binding ToggleAddMemberCommand}" IsVisible="{Binding CanManageMembers}" />
+                    <Button Grid.Column="2" Text="🚪" Style="{StaticResource SecondaryButton}" WidthRequest="44" Padding="0"
+                            Clicked="OnNarrowGroupLeaveClicked" />
+                </Grid>
+            </Grid>
             <ContentView Grid.Row="1" x:Name="NarrowThreadHost" />
         </Grid>
 

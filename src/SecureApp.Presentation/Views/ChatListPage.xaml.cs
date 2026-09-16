@@ -31,6 +31,8 @@ public partial class ChatListPage : ContentPage
     private const int _maxCachedNarrowThreads = 4;
     private Action? _activeNarrowStop;
     private Action? _activeNarrowResume;
+    /// <summary>Set only while a group is the active narrow thread (2026-09-16) — lets OnNarrowGroupLeaveClicked reuse GroupChatThreadView's own confirmed-leave flow instead of duplicating its dialog text.</summary>
+    private GroupChatThreadView? _activeNarrowGroupView;
 
     public ChatListPage(ChatListViewModel viewModel, IServiceProvider services)
     {
@@ -155,6 +157,8 @@ public partial class ChatListPage : ContentPage
         if (!ReferenceEquals(NarrowThreadHost.Content, view))
             NarrowThreadHost.Content = view;
         NarrowThreadOverlay.IsVisible = true;
+        NarrowGroupHeaderExtras.IsVisible = false;
+        _activeNarrowGroupView = null;
         _activeNarrowStop = vm.StopListening;
         _activeNarrowResume = vm.StartListening;
 
@@ -182,6 +186,10 @@ public partial class ChatListPage : ContentPage
             vm = _services.GetRequiredService<GroupChatViewModel>();
             vm.ApplyQueryAttributes(new Dictionary<string, object> { ["groupChatId"] = groupId.ToString() });
             view = new GroupChatThreadView(_services.GetRequiredService<ISharedLibraryService>()) { BindingContext = vm };
+            // 2026-09-16 — see GroupChatViewModel.LeftGroup's own remarks: this overlay is the
+            // non-pushed host, so leaving means hiding it, not a Shell pop. Subscribed once here (not
+            // in the "existing" branch above) since this vm is cached/reused across reopens.
+            vm.LeftGroup += HideNarrowThread;
             _narrowGroups.AddFirst((groupId, view, vm));
             while (_narrowGroups.Count > _maxCachedNarrowThreads) _narrowGroups.RemoveLast();
         }
@@ -189,6 +197,15 @@ public partial class ChatListPage : ContentPage
         if (!ReferenceEquals(NarrowThreadHost.Content, view))
             NarrowThreadHost.Content = view;
         NarrowThreadOverlay.IsVisible = true;
+
+        // Compact header (2026-09-16, user's own ask): this view's own Members/Add/Leave row is
+        // hidden and the SAME controls appear instead on the overlay's "‹ Zpět" row — see
+        // GroupChatThreadView.SetCompactHeaderHosted's own remarks.
+        view.SetCompactHeaderHosted(true);
+        NarrowGroupHeaderExtras.BindingContext = vm;
+        NarrowGroupHeaderExtras.IsVisible = true;
+        _activeNarrowGroupView = view;
+
         _activeNarrowStop = vm.StopListening;
         _activeNarrowResume = vm.StartListening;
 
@@ -201,7 +218,16 @@ public partial class ChatListPage : ContentPage
         _activeNarrowStop?.Invoke();
         _activeNarrowStop = null;
         _activeNarrowResume = null;
+        NarrowGroupHeaderExtras.IsVisible = false;
+        _activeNarrowGroupView = null;
         NarrowThreadOverlay.IsVisible = false;
+    }
+
+    /// <summary>Compact-header counterpart of GroupChatThreadView's own OnLeaveGroupClicked — reuses its public LeaveGroupAsync so the confirm dialog text lives in exactly one place.</summary>
+    private async void OnNarrowGroupLeaveClicked(object? sender, EventArgs e)
+    {
+        if (_activeNarrowGroupView is { } view)
+            await view.LeaveGroupAsync();
     }
 
     private void OnNarrowThreadBack(object? sender, EventArgs e) => HideNarrowThread();
