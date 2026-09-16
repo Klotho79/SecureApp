@@ -43,6 +43,19 @@
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">15.0</SupportedOSPlatformVersion>
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">15.0</SupportedOSPlatformVersion>
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">21.0</SupportedOSPlatformVersion>
+
+		<!-- 2026-09-16, real live bug: opening the on-screen keyboard in a chat's compose box pushed
+		     the whole page up and out of reach on a real Android 16 device (S23+). Root cause: the
+		     .NET Android workload resolves net10.0-android's targetSdkVersion to 36, and Android
+		     mandates edge-to-edge rendering once targetSdkVersion >= 35 — MainActivity's own
+		     WindowSoftInputMode="AdjustResize" alone isn't enough under edge-to-edge without the app
+		     also consuming WindowInsets itself, confirmed live. Tried pinning AndroidTargetSdkVersion
+		     down first (the "obvious" fix) — doesn't work in this SDK release: `AndroidTargetSdkVersion`
+		     isn't actually read as an input anywhere in Microsoft.Android.Sdk.Windows's own .targets
+		     (confirmed by inspecting them directly; only an internal `_AndroidTargetSdkVersion` OUTPUT
+		     exists, always resolving to the latest installed platform regardless of what's set here or
+		     on the command line, even with an older platform SDK installed alongside it). Fixed instead
+		     in code — see MainActivity.OnCreate's own remarks — which works regardless of targetSdk. -->
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</SupportedOSPlatformVersion>
 		<TargetPlatformMinVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</TargetPlatformMinVersion>
 

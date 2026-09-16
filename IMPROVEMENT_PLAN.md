@@ -216,6 +216,22 @@ navíc... zpráva která nebyla přeposlána musí být vyhledána a vložena do
 
 ---
 
+**2026-09-15/16 — real live bug: chat compose-box keyboard pans the whole window up (S23+, S9+).**
+Root cause: Android mandates edge-to-edge rendering once targetSdkVersion >= 35 (this app resolves to
+36); the manifest-declared `WindowSoftInputMode="AdjustResize"` compiled correctly but had zero
+runtime effect (`adb dumpsys window` showed the live window still `sim={adjust=pan}` — something,
+most likely MAUI's own Android bootstrap, resets it after `Activity.OnCreate`). Pinning
+`AndroidTargetSdkVersion` down turned out to be a dead end in this SDK release (the property isn't
+read anywhere in `Microsoft.Android.Sdk.Windows`'s own `.targets`, confirmed by reading them
+directly). **Fixed** by forcing `Window.SetSoftInputMode(SoftInput.AdjustResize)` + `WindowCompat.SetDecorFitsSystemWindows(Window, true)`
+in code, re-asserted on every `OnResume` (not just `OnCreate`) so it always wins. Verified empirically
+on S23+ via `dumpsys window` (now shows `sim={adjust=resize}`) and measured UI bounds before/after
+opening the keyboard (header stays put, compose bar moves up exactly by the keyboard height). Deployed
+to both S9+ and S23+. Full diagnostic trail in [[android-keyboard-edge-to-edge-fix]] (session memory).
+Along the way: discovered and documented [[adb-wireless-technique]] (adb over WiFi/WireGuard tunnel,
+no cable needed) and [[android-fast-deploy-gotcha]] (never `adb install` a debug APK directly — crashes
+instantly, "No assemblies found... Fast Deployment" — always deploy via `dotnet build -t:Run`).
+
 ## Log of changes
 - 2026-09-13: Plan created; Phase 0 (durable AppLog error + metrics) landed; chat/group
   open self-record timings. Single-batch apply on open. Page-reuse added (small win only).
