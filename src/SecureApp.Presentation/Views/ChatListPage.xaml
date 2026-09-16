@@ -5,7 +5,14 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
     x:DataType="vm:ChatListViewModel"
-    Title="Chaty">
+    Title="Chaty"
+    Shell.NavBarIsVisible="False">
+
+    <!-- Shell.NavBarIsVisible="False" (2026-09-16, user's own ask) — this page already draws its own
+         "Chaty" title in-content (the PageTitle Label below) and the phone overlay draws its own
+         "‹ Zpět" row, so Shell's own chrome ("Chaty" + nothing else, since this page is never pushed)
+         was a genuinely redundant second bar sitting above whichever of those was showing. Same
+         pattern ContactsPage/LogbookPage already use for the same reason. -->
 
     <!-- Outer Grid (2026-09-13): holds the list/detail split AND a full-screen persistent thread
          overlay for phones. The overlay hosts ONE reused ChatThreadView (see code-behind's view cache)

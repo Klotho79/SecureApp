@@ -24,9 +24,12 @@
             LineBreakMode="WordWrap" />
 
         <!-- Member list + management — visible to everyone (read-only), Add/Remove only for the
-             founder or an Admin/Modifier device (CanManageMembers). -->
-        <Border Grid.Row="1" Style="{StaticResource CardBorder}" Margin="12,10,12,0">
-            <VerticalStackLayout Spacing="8">
+             founder or an Admin/Modifier device (CanManageMembers). 2026-09-16 (user's own ask): sits
+             flush against the host overlay's own "‹ Zpět" row above it (no CardBorder/top margin) so
+             the two read as one continuous header instead of two visually separate bars — same reason
+             Shell's own redundant title bar was removed, see ChatListPage.xaml's own remark. Add/Leave
+             are icon-only now too, to fit this tighter header. -->
+        <VerticalStackLayout Grid.Row="1" Spacing="8" Padding="12,6,12,0">
                 <Grid ColumnDefinitions="*,Auto,Auto">
                     <Grid.GestureRecognizers>
                         <TapGestureRecognizer Command="{Binding ToggleMembersExpandedCommand}" />
@@ -38,8 +41,8 @@
                             </DataTrigger>
                         </Label.Triggers>
                     </Label>
-                    <Button Grid.Column="1" Text="+ Přidat" Style="{StaticResource SecondaryButton}" Command="{Binding ToggleAddMemberCommand}" IsVisible="{Binding CanManageMembers}" />
-                    <Button Grid.Column="2" Text="🚪 Opustit" Style="{StaticResource SecondaryButton}" Clicked="OnLeaveGroupClicked" />
+                    <Button Grid.Column="1" Text="➕" Style="{StaticResource SecondaryButton}" WidthRequest="44" Padding="0" Command="{Binding ToggleAddMemberCommand}" IsVisible="{Binding CanManageMembers}" />
+                    <Button Grid.Column="2" Text="🚪" Style="{StaticResource SecondaryButton}" WidthRequest="44" Padding="0" Clicked="OnLeaveGroupClicked" />
                 </Grid>
 
                 <FlexLayout IsVisible="{Binding IsMembersExpanded}" BindableLayout.ItemsSource="{Binding Members}" Wrap="Wrap" Direction="Row" JustifyContent="Start" AlignItems="Center">
@@ -88,8 +91,7 @@
                     </CollectionView>
                     <Button Text="Přidat vybrané" Command="{Binding ConfirmAddMembersCommand}" />
                 </VerticalStackLayout>
-            </VerticalStackLayout>
-        </Border>
+        </VerticalStackLayout>
 
         <Grid Grid.Row="2">
             <controls:DelayedActivityIndicator IsBusy="{Binding IsLoading}" HorizontalOptions="Center" VerticalOptions="Center" />
