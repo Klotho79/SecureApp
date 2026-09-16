@@ -31,9 +31,31 @@
                 </VerticalStackLayout>
             </Border>
 
+            <!-- Chaty/Soubory/Kontakty toggles added 2026-09-16 (user's own ask: "chci mít možnost
+                 schovávat jednotlivé menu kromě settings samozřejmě") — same Grid+Switch+description
+                 pattern as the pre-existing Logbook row, one per hideable tab. Nastavení itself has no
+                 row here on purpose: it can never be hidden (see AppShell's own remarks). -->
             <Border Style="{StaticResource CardBorder}">
                 <VerticalStackLayout Spacing="8">
                     <Label Text="Zobrazení" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Grid.Column="0" Text="Chaty" VerticalOptions="Center" FontAttributes="Bold" />
+                        <Switch Grid.Column="1" IsToggled="{Binding IsChatsTabVisible}" />
+                    </Grid>
+                    <Label Text="Přidá/skryje záložku Chaty — projeví se hned. Platí jen pro toto zařízení." FontSize="12" TextColor="Gray" />
+
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Grid.Column="0" Text="Soubory" VerticalOptions="Center" FontAttributes="Bold" />
+                        <Switch Grid.Column="1" IsToggled="{Binding IsFilesTabVisible}" />
+                    </Grid>
+                    <Label Text="Přidá/skryje záložku Soubory (Knihovna a Dokumenty) — projeví se hned. Platí jen pro toto zařízení." FontSize="12" TextColor="Gray" />
+
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Grid.Column="0" Text="Kontakty" VerticalOptions="Center" FontAttributes="Bold" />
+                        <Switch Grid.Column="1" IsToggled="{Binding IsContactsTabVisible}" />
+                    </Grid>
+                    <Label Text="Přidá/skryje záložku Kontakty — projeví se hned. Platí jen pro toto zařízení." FontSize="12" TextColor="Gray" />
+
                     <Grid ColumnDefinitions="*,Auto">
                         <Label Grid.Column="0" Text="Logbook" VerticalOptions="Center" FontAttributes="Bold" />
                         <Switch Grid.Column="1" IsToggled="{Binding IsLogbookVisible}" />

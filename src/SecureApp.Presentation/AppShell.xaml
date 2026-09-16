@@ -13,8 +13,12 @@
     <!-- Chats leads — the user's own call (2026-09-06): discussing a procedure is the actual
          day-to-day activity, Documents (private per-device files) is used far less often.
          Tab labels translated to Czech 2026-09-06 (user's own ask: "preved to do cestiny"). -->
+    <!-- x:Name'd on every tab except Nastavení (2026-09-16, user's own ask: "chci mít možnost
+         schovávat jednotlivé menu kromě settings") — AppShell.xaml.cs's RebuildTabBar reads these
+         by reference to insert/remove them from the live TabBar per a per-device Settings toggle,
+         the same mechanism Logbook's own show/hide already used, now generalized to every tab. -->
     <TabBar>
-        <Tab Title="💬 Chaty">
+        <Tab x:Name="ChatsTab" Title="💬 Chaty">
             <ShellContent ContentTemplate="{DataTemplate views:ChatListPage}" Route="ChatListTab" />
         </Tab>
         <!-- Knihovna + Dokumenty merged under one bottom-tab item (2026-09-16, user's own ask: two
@@ -24,17 +28,14 @@
              the shared relay-hosted Library) — only the NAVIGATION merged: Shell natively renders
              multiple ShellContent children of one Tab as a top sub-tab strip, so this needed no new
              page/switcher of its own. -->
-        <Tab Title="🗂 Soubory">
+        <Tab x:Name="FilesTab" Title="🗂 Soubory">
             <ShellContent Title="Knihovna" ContentTemplate="{DataTemplate views:LibraryPage}" Route="LibraryTab" />
             <ShellContent Title="Dokumenty" ContentTemplate="{DataTemplate views:DocumentBrowserPage}" Route="DocumentBrowser" />
         </Tab>
         <!-- Kontakty (2026-09-10) — telefonní seznam + rychlé kontakty, user's own ask for its own
-             standalone menu, separate from Logbook. Always visible (no Settings toggle the way
-             Logbook has) — it's a single lightweight read-only reference page, not a whole
-             subsystem with RBAC/admin forms, so tab-crowding isn't the same concern here. Inserted
-             BEFORE Nastavení, same "keep Settings last" convention as Logbook's own insertion in
-             AppShell.xaml.cs (which now targets one index further right to still land before it). -->
-        <Tab Title="☎ Kontakty">
+             standalone menu, separate from Logbook. Inserted BEFORE Nastavení, same "keep Settings
+             last" convention as Logbook's own insertion in AppShell.xaml.cs. -->
+        <Tab x:Name="ContactsTab" Title="☎ Kontakty">
             <ShellContent ContentTemplate="{DataTemplate views:ContactsPage}" Route="ContactsTab" />
         </Tab>
         <Tab Title="⚙ Nastavení">

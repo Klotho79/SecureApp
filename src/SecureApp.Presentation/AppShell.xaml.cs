@@ -10,11 +10,21 @@ public partial class AppShell : Shell
 	public static readonly CachedRouteFactory ChatPageFactory = new(typeof(Views.ChatPage));
 	public static readonly CachedRouteFactory GroupChatPageFactory = new(typeof(Views.GroupChatPage));
 
-	/// <summary>Shared with <c>SettingsViewModel</c>'s own show/hide toggle for the Logbook tab — see <see cref="ApplyLogbookTabVisibility"/>'s own remarks.</summary>
+	/// <summary>Shared with <c>SettingsViewModel</c>'s own show/hide toggles — see <see cref="RebuildTabBar"/>'s own remarks. Key spelling kept unchanged from before this was generalized (2026-09-16) so an existing install's already-stored preference still applies.</summary>
 	public const string LogbookVisibilityPreferenceKey = "logbook_visible";
+	public const string ChatsTabVisibilityPreferenceKey = "tab_chaty_visible";
+	public const string FilesTabVisibilityPreferenceKey = "tab_soubory_visible";
+	public const string ContactsTabVisibilityPreferenceKey = "tab_kontakty_visible";
 
-	/// <summary>Nastavení is XAML index 3 (Chaty/Soubory/Kontakty/Nastavení, after 2026-09-16 merged the old separate Knihovna+Dokumenty tabs into one "Soubory" tab) — inserting the Logbook tab at that same index pushes it one slot right instead of landing after it, the user's own explicit ask: "nastavení bych nechal jako poslední" (keep Settings last).</summary>
-	private const int LogbookTabInsertIndex = 3;
+	/// <summary>
+	/// Every tab that can be hidden (2026-09-16, user's own ask: "chci mít možnost schovávat
+	/// jednotlivé menu kromě settings samozřejmě") plus how, in the desired FINAL order — Nastavení
+	/// itself is deliberately absent: it's declared directly in AppShell.xaml, always last, and
+	/// RebuildTabBar never touches it, so there's always at least one tab left regardless of what
+	/// the user hides. Logbook's own default (hidden until turned on) is unchanged; the other three
+	/// default to visible, matching how they've always behaved before this toggle existed.
+	/// </summary>
+	private (Tab Tab, string PreferenceKey, bool DefaultVisible)[] _hideableTabs = null!;
 
 	private Tab? _logbookTab;
 
@@ -22,10 +32,22 @@ public partial class AppShell : Shell
 	{
 		InitializeComponent();
 
-		// Logbook (2026-09-09) — shown as a tab only when enabled in Settings ("v nastavení přidej
-		// možnost zobrazení a schování logbooku" — the user's own explicit ask). See
-		// ApplyLogbookTabVisibility's own remarks for how this now applies live (2026-09-10).
-		ApplyLogbookTabVisibility(Preferences.Default.Get(LogbookVisibilityPreferenceKey, false));
+		// Logbook (2026-09-09) — its Tab object didn't exist in XAML before this pass (created here,
+		// once, same as the others now are) since it was the only one ever hidden by default.
+		_logbookTab = new Tab
+		{
+			Title = "📓 Logbook",
+			Items = { new ShellContent { ContentTemplate = new DataTemplate(typeof(LogbookPage)), Route = "LogbookTab" } }
+		};
+
+		_hideableTabs =
+		[
+			(ChatsTab, ChatsTabVisibilityPreferenceKey, true),
+			(FilesTab, FilesTabVisibilityPreferenceKey, true),
+			(ContactsTab, ContactsTabVisibilityPreferenceKey, true),
+			(_logbookTab, LogbookVisibilityPreferenceKey, false),
+		];
+		RebuildTabBar();
 
 		// DocumentBrowserPage, ChatListPage, LibraryPage, and SettingsPage are the four
 		// TabBar sections declared directly in AppShell.xaml — no RegisterRoute needed for
@@ -65,36 +87,40 @@ public partial class AppShell : Shell
 	}
 
 	/// <summary>
-	/// Adds or removes the Logbook tab from the TabBar LIVE (2026-09-10, user's own ask: "aby se
-	/// změny v nastavení projevili hned a ne až po restartu") — replaces the earlier "read once at
-	/// Shell construction, takes effect next launch" behavior. Manipulating <c>TabBar.Items</c>
-	/// directly (Insert/Remove) is a live, Shell-observed collection — the earlier documented
-	/// limitation was about toggling a <see cref="Tab"/>'s own <c>IsVisible</c> after the fact
-	/// (unreliable across this app's own platform testing), not about inserting/removing the Tab
-	/// object itself, which this always could have done. Called both from the constructor (seeded
-	/// from the persisted preference) and immediately from <c>SettingsViewModel.OnIsLogbookVisibleChanged</c>
-	/// whenever the toggle flips, on whichever device the user actually changed it on — this is
-	/// still a genuinely per-device display preference (see <c>IsLogbookVisible</c>'s own remarks),
-	/// not something the Logbook catalog sync (<c>ILogbookCatalogSyncService</c>) propagates to
-	/// other devices.
+	/// Sets one tab's show/hide preference and re-applies the whole TabBar live (2026-09-10, user's
+	/// own ask for Logbook originally: "aby se změny v nastavení projevili hned a ne až po
+	/// restartu"; generalized 2026-09-16 to every tab). Called from each of <c>SettingsViewModel</c>'s
+	/// <c>OnIs*TabVisibleChanged</c> partial-property hooks — still a genuinely per-device display
+	/// preference (see <c>IsLogbookVisible</c>'s own remarks), not something synced to other devices.
 	/// </summary>
-	public void ApplyLogbookTabVisibility(bool visible)
+	public void ApplyTabVisibility(string preferenceKey, bool visible)
+	{
+		Preferences.Default.Set(preferenceKey, visible);
+		RebuildTabBar();
+	}
+
+	/// <summary>
+	/// Rebuilds the live TabBar from <see cref="_hideableTabs"/> against each entry's CURRENT
+	/// preference value, in that list's fixed order, always inserted right before the last item
+	/// (Nastavení, declared directly in AppShell.xaml and never touched here — so there's always at
+	/// least one tab left no matter what's hidden). Manipulating <c>TabBar.Items</c> directly
+	/// (Remove then Insert) is a live, Shell-observed collection — Remove on an item not currently
+	/// present is a harmless no-op, which is what makes rebuilding from scratch on every call safe
+	/// and simple instead of diffing old vs. new visibility. The earlier per-tab "toggle IsVisible
+	/// after the fact" approach was dropped for Logbook specifically because it proved unreliable
+	/// across this app's own platform testing — this Insert/Remove approach has always worked.
+	/// </summary>
+	private void RebuildTabBar()
 	{
 		if (Items.Count == 0 || Items[0] is not TabBar tabBar) return;
 
-		if (visible && _logbookTab is null)
+		foreach (var (tab, _, _) in _hideableTabs)
+			tabBar.Items.Remove(tab);
+
+		foreach (var (tab, preferenceKey, defaultVisible) in _hideableTabs)
 		{
-			_logbookTab = new Tab
-			{
-				Title = "📓 Logbook",
-				Items = { new ShellContent { ContentTemplate = new DataTemplate(typeof(LogbookPage)), Route = "LogbookTab" } }
-			};
-			tabBar.Items.Insert(Math.Min(LogbookTabInsertIndex, tabBar.Items.Count), _logbookTab);
-		}
-		else if (!visible && _logbookTab is not null)
-		{
-			tabBar.Items.Remove(_logbookTab);
-			_logbookTab = null;
+			if (Preferences.Default.Get(preferenceKey, defaultVisible))
+				tabBar.Items.Insert(Math.Max(0, tabBar.Items.Count - 1), tab);
 		}
 	}
 }

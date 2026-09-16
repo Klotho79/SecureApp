@@ -55,9 +55,19 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsAdmin { get; set; }
 
-    /// <summary>Logbook tab show/hide (2026-09-09) — the user's own explicit ask. Stored via <c>Preferences</c> (a per-device display setting, not User data — see LoadAsync/OnIsLogbookVisibleChanged) rather than a new Domain entity/table; takes effect on next launch, not live — see <c>AppShell</c>'s own remarks on why.</summary>
+    /// <summary>Logbook tab show/hide (2026-09-09) — the user's own explicit ask. Stored via <c>Preferences</c> (a per-device display setting, not User data — see LoadAsync/OnIsLogbookVisibleChanged) rather than a new Domain entity/table; applies live, see <c>AppShell.RebuildTabBar</c>'s own remarks.</summary>
     [ObservableProperty]
     public partial bool IsLogbookVisible { get; set; }
+
+    /// <summary>Chaty/Soubory/Kontakty tab show/hide (2026-09-16, user's own ask: "chci mít možnost schovávat jednotlivé menu kromě settings") — same per-device Preferences mechanism as <see cref="IsLogbookVisible"/>, generalized to every tab except Nastavení itself.</summary>
+    [ObservableProperty]
+    public partial bool IsChatsTabVisible { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsFilesTabVisible { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsContactsTabVisible { get; set; }
 
     // --- Relay (Milestone 5) ---
 
@@ -324,15 +334,22 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// there's nothing to "save" beyond flipping the switch. <c>LoadAsync</c> below sets the
     /// initial value, which re-invokes this too — a harmless idempotent re-write of the same value.
     /// Also applies the change to the actual TabBar right away (2026-09-10, user's own ask: no
-    /// restart needed) via <see cref="AppShell.ApplyLogbookTabVisibility"/> — <c>Shell.Current</c>
+    /// restart needed) via <see cref="AppShell.ApplyTabVisibility"/> — <c>Shell.Current</c>
     /// is always the app's one <see cref="AppShell"/> instance in this app (there's only ever one
     /// Shell), so the cast is safe without a null-forgiving check beyond the `as` itself.
     /// </summary>
-    partial void OnIsLogbookVisibleChanged(bool value)
-    {
-        Preferences.Default.Set(AppShell.LogbookVisibilityPreferenceKey, value);
-        (Shell.Current as AppShell)?.ApplyLogbookTabVisibility(value);
-    }
+    partial void OnIsLogbookVisibleChanged(bool value) =>
+        (Shell.Current as AppShell)?.ApplyTabVisibility(AppShell.LogbookVisibilityPreferenceKey, value);
+
+    /// <summary>Same mechanism as <see cref="OnIsLogbookVisibleChanged"/>, one per hideable tab (2026-09-16).</summary>
+    partial void OnIsChatsTabVisibleChanged(bool value) =>
+        (Shell.Current as AppShell)?.ApplyTabVisibility(AppShell.ChatsTabVisibilityPreferenceKey, value);
+
+    partial void OnIsFilesTabVisibleChanged(bool value) =>
+        (Shell.Current as AppShell)?.ApplyTabVisibility(AppShell.FilesTabVisibilityPreferenceKey, value);
+
+    partial void OnIsContactsTabVisibleChanged(bool value) =>
+        (Shell.Current as AppShell)?.ApplyTabVisibility(AppShell.ContactsTabVisibilityPreferenceKey, value);
 
     [RelayCommand]
     private async Task LoadAsync()
@@ -344,6 +361,9 @@ public sealed partial class SettingsViewModel : ObservableObject
         IsSaved = false;
         ErrorMessage = null;
         IsLogbookVisible = Preferences.Default.Get(AppShell.LogbookVisibilityPreferenceKey, false);
+        IsChatsTabVisible = Preferences.Default.Get(AppShell.ChatsTabVisibilityPreferenceKey, true);
+        IsFilesTabVisible = Preferences.Default.Get(AppShell.FilesTabVisibilityPreferenceKey, true);
+        IsContactsTabVisible = Preferences.Default.Get(AppShell.ContactsTabVisibilityPreferenceKey, true);
 
         var configuration = await _transportSettingsRepository.GetAsync();
         // No saved endpoint yet (first time this device opens Settings) -> pre-fill the
