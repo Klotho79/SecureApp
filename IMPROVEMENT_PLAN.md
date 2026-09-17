@@ -93,10 +93,57 @@ kept auto-reappearing because the group still listed it and the app kept recreat
 the session. Manual recovery: purge relay + delete group everywhere + recreate. These
 items make the app handle this itself. Do ONE at a time, each deployed + tested.
 
-- [ ] **2.1 User/registration management + no dead souls.** Detect & drop stale device
-      registrations; don't leave dead members hanging in chats/groups. Founder-transfer
-      (or "remove an unreachable founder") so a group is never hostage to a dead identity.
-      Surface a member whose device is gone as "nedostupný / přepárovat", not silently.
+- [x] **2.1 User/registration management + no dead souls** ✅ (2026-09-17). Three parts, all
+      confirmed in scope with the user before building:
+      - **Founder succession.** `GroupChat.TransferFounder` (new) + two commands on
+        `GroupChatViewModel`: explicit "👑 Předat vedení" per non-founder member row (founder OR any
+        Admin/Modifier device, same `CanManageMembers` bar `RemoveAsync` already used) and "👑
+        Zakladatel je nedostupný — převzít vedení" (self-claim, gated on `CanClaimFounder` — the
+        CURRENT founder absent from the relay's active directory, not just offline right now; also
+        requires `CanManageMembers` and `!IsArchived`, so an abandoned/archived group has nothing to
+        claim). Both funnel through one `TransferFounderToAsync`: persist the new founder locally,
+        then re-broadcast the SAME full membership snapshot every other membership change already
+        uses (`GroupInviteBlob.FounderPublicKey` was already carried on every broadcast — no new wire
+        message needed). **Real receiving-side bug found and fixed in the same pass**:
+        `App.OnGroupInviteReceived`'s existing-group branch only ever checked the NAME for a change
+        (`Rename`), never the founder — an incoming snapshot after a transfer/claim would have
+        silently left every OTHER device's local copy pointing at the OLD founder forever, even
+        though the broadcaster's own copy updated correctly. Fixed by adding the identical
+        change-detection + `TransferFounder` call the rename branch already had. The old founder
+        becomes an ordinary member the instant `IsFounder` recomputes false, so `CanRemove` (which
+        already excluded the founder) applies to them with zero further change — transfer-then-remove
+        is the only path, never a group left with no founder at all.
+      - **Dead-registration detection, client side, on BOTH 1:1 and group.** New
+        `DirectoryNameResolver.IsActive` (reuses the exact directory fetch every screen already does
+        for name resolution — no second network round trip) — a peer absent from a freshly-fetched
+        ACTIVE directory is stale (the relay's own `DirectoryActiveWindow`, 2 days, already excludes
+        anyone who hasn't reconnected-and-republished that recently). `ChatSessionItem.IsUnavailable`
+        (`ChatListViewModel`) and `GroupMemberItem.IsUnavailable` (`GroupChatViewModel`) both guard on
+        `directoryNames.Count > 0` first — an EMPTY directory means "nothing fetched yet", never
+        "everyone is dead". Surfaced as a small "⚠ nedostupný — zkuste přepárovat" label next to each
+        1:1 row (paired with the row's existing ↺ resync button) and folded into the group member
+        chip's existing `DisplayNameWithRoleSuffix` (e.g. "Jméno (zakladatel, nedostupný)").
+      - **Relay-side admin device management** — addresses the actual root cause of the
+        ghost-identity incident that started this whole phase (120 `outbox` frames permanently stuck
+        for a device that would never come back, only discoverable by SSHing into the Pi and querying
+        SQLite by hand). New `RelayDatabase.GetAllDevicesWithStatus()` (LEFT JOINs `devices` against
+        `directory_entries` for staleness + a correlated `COUNT(*)` against `outbox` for pending
+        depth) and `DeregisterDevice(id)` (deletes the `devices`/`directory_entries` rows and purges
+        every `outbox` row still queued for it — idempotent, a double-tap or stale list is a no-op,
+        not an error). New admin-gated endpoints `GET /admin/devices` / `POST
+        /admin/devices/{id}/deregister` (same `X-Admin-Secret` convention as every other `/admin/*`
+        route). Client: `IRelayAdminService.GetRegisteredDevicesAsync`/`DeregisterDeviceAsync` (same
+        "secret is a plain per-call parameter, never persisted" discipline the 2026-09-07 security fix
+        established for every other admin method), new "Admin: Zařízení" card on `SettingsPage`
+        mirroring the existing "Admin: Čekající aktivace" card's shape — staleness text + pending-
+        message count per device, confirm-guarded "🗑 Odregistrovat" (the confirmation dialog lives
+        directly in the RelayCommand, same precedent `GroupChatViewModel.DeleteMessageAsync` already
+        set, since this one's genuinely irreversible).
+      - **Verified**: whole solution (`SecureApp.slnx` — Domain/Data/Relay + all 4 Presentation
+        targets including Android) builds 0-error. **Not yet live-verified**: the founder-transfer/
+        claim flow (needs 2+ devices, one genuinely stale), the unavailable badges rendering correctly
+        on-device, and the new admin device-management card (needs the admin secret typed in against
+        the real Pi relay) — none of this was click-tested or deployed this pass.
 - [x] **2.2 Deleted chat stays deleted** ✅ (2026-09-14). Deleting a chat records the peer in
       RemovedPeersStore (Preferences); the stale-session sweep skips removed peers, and a fresh
       pairing invite from a removed peer is NOT auto-accepted — it's held in PendingInvitesStore
@@ -248,3 +295,29 @@ tab count. Deployed and confirmed on S9+ and S23+.
 - 2026-09-14: Ghost-identity incident (see Phase 2). Diagnosed via relay outbox (120 dead
   msgs → dead founder `6d7b56f3`), recovered manually (relay purge + recreate group). Logged
   the 5-item robustness backlog (Phase 2). Starting 2.5 (delivery feedback + logging).
+- 2026-09-16: Compacted the group chat header — dropped the redundant Shell title bar
+  (`Shell.NavBarIsVisible="False"` on `ChatListPage`, matching `ContactsPage`/`LogbookPage`),
+  then (follow-up same day) put Members/Add/Leave on the SAME row as the phone overlay's own
+  "‹ Zpět" button; found and fixed a real bug along the way — `GroupChatViewModel.LeaveGroupAsync`'s
+  `Shell.Current.GoToAsync("..")` was a silent no-op on the overlay host, fixed via a new
+  `LeftGroup` event each host handles its own way.
+- 2026-09-16: Dropped the manual 1:1 pairing fallback (contact-card paste/QR/invite cards on
+  `NewChatPage`) — user's ask: "1:1 by měl být jako skupinový", mirroring how adding a group
+  member is already directory-only. The one-tap community directory list is now the only path.
+- 2026-09-16: Settings gained per-tab show/hide for Chats/Files/Contacts (Nastavení itself
+  never hideable) — generalized the existing Logbook-only toggle mechanism
+  (`AppShell.ApplyTabVisibility`/`RebuildTabBar`) to all four hideable tabs.
+- 2026-09-16: Fixed a real bug — "Local User" chats kept reappearing after deletion. Two
+  automatic resync paths (`App.OnGroupInviteReceived`, `GroupChatViewModel.ResyncMissingMembersAsync`)
+  were unconditionally re-initiating pairing with any unpaired group member, ignoring
+  `RemovedPeersStore` (2.2's own removal mechanism) — as long as a removed/stale test member
+  stayed in a shared group's roster, every membership sync or group open silently recreated
+  the 1:1 chat. Both now skip a `RemovedPeersStore`-listed peer, matching `OnPairingInviteReceived`
+  and the stale-session sweep, which already did.
+- 2026-09-16: Fixed slow Contacts loading — collapsed sections LOOKED collapsed but
+  `BindableLayout` doesn't virtualize, so all ~130 phone-book rows were built immediately on
+  page open regardless of `IsVisible`. `ContactSectionGroup.VisibleEntries` now returns empty
+  until a section is actually expanded, deferring the real cost to the tap.
+- 2026-09-17: **Phase 2.1 done** — founder transfer/claim, "nedostupný" badges on both 1:1 and
+  group member rows, and relay-side admin device management (list + deregister, purging a dead
+  device's stuck outbox). See Phase 2's own entry above for full detail.
