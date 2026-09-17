@@ -8,6 +8,7 @@ using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Domain.ValueObjects;
 using SecureApp.Presentation.Chat;
+using SecureApp.Presentation.Infrastructure;
 using SecureApp.Presentation.Transport;
 
 namespace SecureApp.Presentation.ViewModels;
@@ -222,6 +223,22 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool CanUseAdminControls { get; set; }
 
+    // --- Relay admin: device management (2.1, 2026-09-17) — see IRelayAdminService.GetRegisteredDevicesAsync's
+    // own remarks. Same "type the admin secret fresh for every action" discipline as the activations
+    // card above — TryTakeAdminSecret is shared, not duplicated.
+
+    [ObservableProperty]
+    public partial ObservableCollection<RegisteredDeviceItem> RegisteredDevices { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsLoadingDevices { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasNoRegisteredDevices { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasRegisteredDevices { get; set; }
+
     // --- Shared diagnostics log (2026-09-10) — see IDiagnosticsReporter's own remarks. Deliberately
     // NOT gated behind IsAdmin/the admin secret: the whole point is any device can report to it and
     // any device can read it, without needing an admin password each time — same reasoning
@@ -284,6 +301,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         HasNoSharedLibraryKey = true;
         PendingActivations = [];
         HasNoPendingActivations = true;
+        RegisteredDevices = [];
+        HasNoRegisteredDevices = true;
     }
 
     partial void OnErrorMessageChanged(string? value) => HasErrorMessage = !string.IsNullOrEmpty(value);
@@ -323,6 +342,8 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnDeployStatusTextChanged(string? value) => HasDeployStatus = !string.IsNullOrEmpty(value);
 
     partial void OnHasNoPendingActivationsChanged(bool value) => HasPendingActivations = !value;
+
+    partial void OnHasNoRegisteredDevicesChanged(bool value) => HasRegisteredDevices = !value;
 
     partial void OnDiagnosticLogErrorMessageChanged(string? value) => HasDiagnosticLogError = !string.IsNullOrEmpty(value);
 
@@ -515,6 +536,101 @@ public sealed partial class SettingsViewModel : ObservableObject
         catch (Exception ex)
         {
             AdminErrorMessage = $"Nepodařilo se zamítnout žádost: {ex.Message}";
+        }
+    }
+
+    /// <summary>Fetches every registered device's staleness + pending-outbox depth (2.1, 2026-09-17) — same on-demand, admin-secret-per-call pattern as <see cref="LoadPendingActivationsAsync"/>.</summary>
+    [RelayCommand]
+    private async Task LoadRegisteredDevicesAsync()
+    {
+        AdminErrorMessage = null;
+        if (!Uri.TryCreate(RelayEndpointText, UriKind.Absolute, out var endpoint))
+        {
+            AdminErrorMessage = "Nejprve zadejte platnou adresu relay serveru výše.";
+            return;
+        }
+        if (!TryTakeAdminSecret(out var adminSecret)) return;
+        await RefreshRegisteredDevicesAsync(endpoint, adminSecret);
+    }
+
+    private async Task RefreshRegisteredDevicesAsync(Uri endpoint, string adminSecret)
+    {
+        IsLoadingDevices = true;
+        try
+        {
+            var devices = await _relayAdminService.GetRegisteredDevicesAsync(endpoint, adminSecret);
+            RegisteredDevices = new ObservableCollection<RegisteredDeviceItem>(devices.Select(ToRegisteredDeviceItem));
+            HasNoRegisteredDevices = RegisteredDevices.Count == 0;
+        }
+        catch (Exception ex)
+        {
+            AdminErrorMessage = $"Nepodařilo se načíst seznam zařízení: {ex.Message}";
+        }
+        finally
+        {
+            IsLoadingDevices = false;
+        }
+    }
+
+    private RegisteredDeviceItem ToRegisteredDeviceItem(RegisteredDevice device)
+    {
+        // DirectoryDisplayName/LastActiveAtUtc are null exactly when this device is currently hidden
+        // from every OTHER device's member picker/directory too (see RegisteredDevice's own remarks)
+        // — that staleness, not CreatedAtUtc, is what actually marks a ghost identity worth deregistering.
+        var statusText = device.LastActiveAtUtc is { } lastActive
+            ? $"Aktivní v adresáři — naposledy {lastActive.LocalDateTime:g}"
+            : "Nikdy nepublikoval do adresáře, nebo je dávno neaktivní";
+        var pendingText = device.PendingOutboxCount > 0
+            ? $"⚠ {device.PendingOutboxCount} zpráv čeká na doručení tomuto zařízení"
+            : "Žádné čekající zprávy";
+
+        return new RegisteredDeviceItem(
+            device.Id,
+            device.DirectoryDisplayName ?? device.DisplayName,
+            statusText,
+            pendingText,
+            device.PendingOutboxCount > 0,
+            device.LastActiveAtUtc is null,
+            DeregisterDeviceCommand);
+    }
+
+    /// <summary>
+    /// Deletes the device's credential, directory entry, and purges its stuck outbox queue (2.1,
+    /// 2026-09-17) — see <c>RelayDatabase.DeregisterDevice</c>'s own remarks. Destructive and
+    /// irreversible (the device would need to re-register/re-activate from scratch), so the
+    /// confirmation dialog lives here, directly in this RelayCommand — same precedent
+    /// <c>GroupChatViewModel.DeleteMessageAsync</c> already established for an in-VM confirm rather
+    /// than routing through the page's code-behind.
+    /// </summary>
+    [RelayCommand]
+    private async Task DeregisterDeviceAsync(Guid deviceId)
+    {
+        AdminErrorMessage = null;
+        if (!Uri.TryCreate(RelayEndpointText, UriKind.Absolute, out var endpoint))
+        {
+            AdminErrorMessage = "Nejprve zadejte platnou adresu relay serveru výše.";
+            return;
+        }
+
+        var target = RegisteredDevices.FirstOrDefault(d => d.Id == deviceId);
+        var confirmed = await Shell.Current.DisplayAlert(
+            "Odregistrovat zařízení",
+            $"Opravdu odregistrovat '{target?.DisplayName ?? deviceId.ToString()}'? Zařízení se bude muset znovu aktivovat od začátku a jeho čekající zprávy budou zahozeny. Tuto akci nelze vrátit zpět.",
+            "Odregistrovat", "Zrušit");
+        if (!confirmed) return;
+
+        if (!TryTakeAdminSecret(out var adminSecret)) return;
+
+        try
+        {
+            await _relayAdminService.DeregisterDeviceAsync(endpoint, adminSecret, deviceId);
+            AppLog.Event("admin.device.deregistered", ("device", deviceId));
+            await RefreshRegisteredDevicesAsync(endpoint, adminSecret);
+        }
+        catch (Exception ex)
+        {
+            AdminErrorMessage = $"Nepodařilo se odregistrovat zařízení: {ex.Message}";
+            AppLog.Error("Settings.DeregisterDevice", "deregister failed", ex);
         }
     }
 
@@ -964,6 +1080,9 @@ public sealed partial class SettingsViewModel : ObservableObject
 
 /// <summary>One row in the admin's "Čekající aktivace" list — carries the same shared Approve/Reject <see cref="RelayCommand{T}"/> instances (bound per-item as <c>CommandParameter="{Binding Id}"</c> in the DataTemplate) rather than an <c>x:Reference</c> back to the page.</summary>
 public sealed record PendingActivationItem(Guid Id, string DisplayName, string Email, string KeyFingerprint, string CreatedText, ICommand ApproveCommand, ICommand RejectCommand);
+
+/// <summary>One row in the admin's device-management list (2.1, 2026-09-17) — <see cref="StatusText"/>/<see cref="PendingText"/> are pre-formatted here (not in XAML) so the CollectionView's DataTemplate needs no value converters, this codebase's established "no converters" convention.</summary>
+public sealed record RegisteredDeviceItem(Guid Id, string DisplayName, string StatusText, string PendingText, bool HasPendingMessages, bool IsStale, ICommand DeregisterCommand);
 
 /// <summary>One row in the "Diagnostický log" list (2026-09-10) — display-only, no per-row command, unlike <see cref="PendingActivationItem"/>. <see cref="Level"/> stays the English enum name (<c>Error</c>/<c>Warning</c>/<c>Info</c>) — the XAML template colors it, doesn't translate it, same "wire-level concept stays English" call this codebase already made for <c>TransportConnectionState</c>. <see cref="HasContext"/> is precomputed here (not a converter) so the DataTemplate's <c>IsVisible</c> binding stays a plain bool — this codebase's established preference over introducing a new <c>IValueConverter</c> for one spot.</summary>
 public sealed record DiagnosticLogItem(string TimeText, string Level, string DeviceDisplayName, string Message, string? Context)

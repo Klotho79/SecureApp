@@ -63,4 +63,16 @@ public static class DirectoryNameResolver
         => directory.TryGetValue(Convert.ToBase64String(publicKey), out var currentName) && !string.IsNullOrWhiteSpace(currentName)
             ? currentName
             : fallback;
+
+    /// <summary>
+    /// Whether a peer is currently ACTIVE on the relay (2.1, 2026-09-17) — the same "nedostupný"
+    /// signal for both the 1:1 chat list and a group's member list: the relay's own
+    /// <c>RelayDatabase.GetDirectoryMembers</c> already excludes anyone who hasn't republished within
+    /// its <c>DirectoryActiveWindow</c> (2 days), so a peer simply absent from <paramref name="directory"/>
+    /// has gone stale/dead — the exact ghost-identity shape that caused the original incident. Reuses
+    /// the SAME directory fetch every caller already does for name resolution (<see cref="BuildAsync"/>),
+    /// no second network round trip.
+    /// </summary>
+    public static bool IsActive(IReadOnlyDictionary<string, string> directory, byte[] publicKey)
+        => directory.ContainsKey(Convert.ToBase64String(publicKey));
 }

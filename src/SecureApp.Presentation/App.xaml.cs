@@ -616,10 +616,25 @@ public partial class App : Application
 			var existingGroup = await groupChatRepository.GetByIdAsync(invite.GroupId);
 			if (existingGroup is null)
 				await groupChatRepository.UpsertAsync(new GroupChat(invite.GroupId, invite.GroupName, invite.FounderPublicKey));
-			else if (existingGroup.Name != invite.GroupName)
+			else
 			{
-				existingGroup.Rename(invite.GroupName);
-				await groupChatRepository.UpsertAsync(existingGroup);
+				var renamed = existingGroup.Name != invite.GroupName;
+				if (renamed) existingGroup.Rename(invite.GroupName);
+
+				// 2.1 (2026-09-17): a real gap this closes — this branch only ever checked the NAME for
+				// a change, never the founder, so an incoming snapshot after a TransferFounder/claim
+				// (see GroupChat.TransferFounder's own remarks) silently left this device's local copy
+				// pointing at the OLD founder forever, even though every other member's device applied
+				// it correctly. Same full-snapshot-replace reasoning as the name check right above.
+				var founderChanged = !existingGroup.FounderPublicKey.AsSpan().SequenceEqual(invite.FounderPublicKey);
+				if (founderChanged)
+				{
+					existingGroup.TransferFounder(invite.FounderPublicKey);
+					AppLog.Event("group.founder.synced", ("group", invite.GroupId));
+				}
+
+				if (renamed || founderChanged)
+					await groupChatRepository.UpsertAsync(existingGroup);
 			}
 
 			var members = invite.Members

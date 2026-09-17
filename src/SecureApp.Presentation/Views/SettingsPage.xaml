@@ -161,6 +161,49 @@
                 </VerticalStackLayout>
             </Border>
 
+            <!-- Zařízení (2.1, 2026-09-17) — vidí staleness (kdy naposledy zařízení publikovalo do
+                 adresáře) a kolik zpráv na něj čeká ve frontě; umožňuje odregistrovat mrtvé zařízení
+                 přímo v appce (dřív jen ruční SSH + SQLite dotazy na relay). -->
+            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding IsAdmin}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Admin: Zařízení" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Label Text="Seznam registrovaných zařízení — kdy naposledy zařízení bylo aktivní v adresáři a kolik zpráv na něj čeká. Nedostupné zařízení lze odsud rovnou odregistrovat." FontSize="12" TextColor="Gray" />
+
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <Button Grid.Column="1" Text="⟳ Obnovit" Style="{StaticResource SecondaryButton}" Command="{Binding LoadRegisteredDevicesCommand}" />
+                    </Grid>
+                    <controls:DelayedActivityIndicator IsBusy="{Binding IsLoadingDevices}" HorizontalOptions="Center" />
+
+                    <Label Text="Žádná zařízení nenalezena." FontSize="12" TextColor="Gray" IsVisible="{Binding HasNoRegisteredDevices}" />
+
+                    <CollectionView ItemsSource="{Binding RegisteredDevices}" IsVisible="{Binding HasRegisteredDevices}">
+                        <CollectionView.ItemsLayout>
+                            <LinearItemsLayout Orientation="Vertical" ItemSpacing="8" />
+                        </CollectionView.ItemsLayout>
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:RegisteredDeviceItem">
+                                <Border Style="{StaticResource CardBorder}" Margin="0" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
+                                    <VerticalStackLayout Spacing="4">
+                                        <Label Text="{Binding DisplayName}" FontAttributes="Bold" FontSize="14.5" />
+                                        <Label Text="{Binding StatusText}" FontSize="11.5" TextColor="Gray" />
+                                        <Label Text="{Binding PendingText}" FontSize="11.5"
+                                               TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}">
+                                            <Label.Triggers>
+                                                <DataTrigger TargetType="Label" Binding="{Binding HasPendingMessages}" Value="False">
+                                                    <Setter Property="TextColor" Value="Gray" />
+                                                </DataTrigger>
+                                            </Label.Triggers>
+                                        </Label>
+                                        <Label Text="Zadej admin heslo výše, pak:" FontSize="10.5" TextColor="Gray" Margin="0,4,0,0" />
+                                        <Button Text="🗑 Odregistrovat" Style="{StaticResource SecondaryButton}" Command="{Binding DeregisterCommand}" CommandParameter="{Binding Id}" />
+                                    </VerticalStackLayout>
+                                </Border>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                </VerticalStackLayout>
+            </Border>
+
             <!-- Kódy pozvánky (2026-09-10) — pro rychlé přidání někoho bez e-mailu/schvalování,
                  typicky když někomu jen dáváte appku na vyzkoušení: vygenerujete kód, řeknete/
                  napíšete mu ho jinou cestou (osobně, SMS...), on ho vloží do "Mám kód pozvánky"

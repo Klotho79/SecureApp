@@ -70,6 +70,19 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
     [ObservableProperty]
     public partial bool CanManageMembers { get; set; }
 
+    /// <summary>
+    /// True when this device may claim founder-ship outright (2.1, 2026-09-17) — it's authorized
+    /// (<see cref="CanManageMembers"/>), isn't already the founder, the group isn't archived (an
+    /// abandoned group with no other members has nothing to claim — <c>ArchivedChatsStore</c> already
+    /// covers that case), and the CURRENT founder is absent from the relay's active directory (see
+    /// <c>DirectoryNameResolver.IsActive</c>) — i.e. genuinely stale/dead, not just offline right now
+    /// (the directory's own 2-day window already tolerates an ordinary "offline over the weekend").
+    /// Recomputed in <see cref="RebuildMemberList"/> so a background directory refresh (the founder
+    /// reconnecting, or finally going stale) updates it live without needing the screen reopened.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool CanClaimFounder { get; set; }
+
     /// <summary>Collapsed by default (2026-09-09 — real complaint: the member card "zabírá třetinu displeje", a third of the screen) so the actual conversation gets the space on a phone; tap the header to expand.</summary>
     [ObservableProperty]
     public partial bool IsMembersExpanded { get; set; }
@@ -297,6 +310,14 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
     {
         MemberCount = _members.Count; // always current for the collapsed header
 
+        // 2.1 (2026-09-17): recomputed here (not just in LoadAsync) so a background directory refresh
+        // — the founder finally going stale, or reconnecting — updates the claim button live. Only
+        // meaningful once a real directory fetch has actually happened (Count > 0); an empty directory
+        // just means "nothing fetched yet", never "everyone is unavailable".
+        var founderIsUnavailable = _directoryNames.Count > 0 && !DirectoryNameResolver.IsActive(_directoryNames, _founderPublicKey);
+        var isFounder = _founderPublicKey.AsSpan().SequenceEqual(_localPublicKey);
+        CanClaimFounder = CanManageMembers && !isFounder && !IsArchived && founderIsUnavailable;
+
         // Build the chips ONLY when the card is expanded (2026-09-12). Each chip carries two Android
         // Buttons, and measurement showed building all of them cost ~56 ms of UI-thread time on every
         // group open — pure waste while the card is collapsed (its default). When collapsed we keep the
@@ -313,9 +334,11 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
             m.PublicKey,
             IsMe: m.PublicKey.AsSpan().SequenceEqual(_localPublicKey),
             IsFounder: m.PublicKey.AsSpan().SequenceEqual(_founderPublicKey),
+            IsUnavailable: _directoryNames.Count > 0 && !DirectoryNameResolver.IsActive(_directoryNames, m.PublicKey),
             ViewerCanManage: CanManageMembers,
             RemoveCommand,
-            ResetPairingCommand)));
+            ResetPairingCommand,
+            TransferFounderCommand)));
     }
 
     /// <summary>
@@ -889,13 +912,20 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
             await _groupMemberRepository.ReplaceAllAsync(_groupChatId, newMembers);
             _members = newMembers;
             _directoryNames = await DirectoryNameResolver.BuildAsync(_contactDirectoryService);
+
+            var founderIsUnavailable = _directoryNames.Count > 0 && !DirectoryNameResolver.IsActive(_directoryNames, _founderPublicKey);
+            var isFounder = _founderPublicKey.AsSpan().SequenceEqual(_localPublicKey);
+            CanClaimFounder = CanManageMembers && !isFounder && !IsArchived && founderIsUnavailable;
+
             Members = new ObservableCollection<GroupMemberItem>(newMembers.Select(m => new GroupMemberItem(
                 m.Id, DirectoryNameResolver.Resolve(_directoryNames, m.PublicKey, m.DisplayName), m.PublicKey,
                 IsMe: m.PublicKey.AsSpan().SequenceEqual(_localPublicKey),
                 IsFounder: m.PublicKey.AsSpan().SequenceEqual(_founderPublicKey),
+                IsUnavailable: _directoryNames.Count > 0 && !DirectoryNameResolver.IsActive(_directoryNames, m.PublicKey),
                 ViewerCanManage: CanManageMembers,
                 RemoveCommand,
-                ResetPairingCommand)));
+                ResetPairingCommand,
+                TransferFounderCommand)));
 
             var inviteBlob = ContactCardCodec.Encode(new GroupInviteBlob(
                 _groupChatId, Title, _founderPublicKey,
@@ -990,6 +1020,67 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
         var newMembers = _members.Concat(toAdd.Select(m => new GroupMember(_groupChatId, m.DisplayName, m.PublicKey, m.RelayDeviceId))).ToList();
         await BroadcastMembershipAsync(newMembers);
         IsShowingAddMember = false;
+    }
+
+    // --- Founder succession (2.1, 2026-09-17) — see GroupChat.TransferFounder's own remarks for the
+    // crypto/design reasoning. Both commands funnel through the same TransferFounderToAsync: persist
+    // the new founder locally, then re-broadcast the full membership snapshot exactly the way any
+    // other membership change already does (App.OnGroupInviteReceived now applies an incoming
+    // founder change too — see its own remarks), so no new wire message type was needed.
+
+    private async Task TransferFounderToAsync(byte[] newFounderPublicKey, string newFounderDisplayName)
+    {
+        StatusErrorMessage = null;
+        try
+        {
+            var group = await _groupChatRepository.GetByIdAsync(_groupChatId);
+            if (group is null) return;
+
+            group.TransferFounder(newFounderPublicKey);
+            await _groupChatRepository.UpsertAsync(group);
+            _founderPublicKey = newFounderPublicKey;
+            AppLog.Event("group.founder.transferred", ("group", _groupChatId), ("to", newFounderDisplayName));
+
+            RebuildMemberList(); // reflects the new founder/claim state immediately, even before the broadcast below returns
+            await BroadcastMembershipAsync(_members); // same member list, unchanged — just re-propagates the new founder pointer to everyone
+            StatusErrorMessage = $"{newFounderDisplayName} je nyní zakladatelem skupiny.";
+        }
+        catch (Exception ex)
+        {
+            StatusErrorMessage = $"Nepodařilo se předat vedení skupiny: {ex.Message}";
+            AppLog.Error("GroupChat.TransferFounder", "founder transfer failed", ex);
+        }
+    }
+
+    /// <summary>Explicit hand-off to a specific existing member — available to the current founder or any Admin/Modifier device (<see cref="GroupMemberItem.CanTransferFounder"/>), whether or not the founder is actually unavailable; this is the "the founder does it themselves before leaving" path the user asked for.</summary>
+    [RelayCommand]
+    private async Task TransferFounderAsync(GroupMemberItem? target)
+    {
+        if (target is null || !target.CanTransferFounder) return;
+
+        var groupMember = _members.FirstOrDefault(m => m.PublicKey.AsSpan().SequenceEqual(target.PublicKey));
+        if (groupMember is null) return;
+
+        var confirmed = await Shell.Current.DisplayAlert("Předat vedení skupiny", $"Opravdu předat vedení skupiny uživateli {target.DisplayName}?", "Předat", "Zrušit");
+        if (!confirmed) return;
+
+        await TransferFounderToAsync(groupMember.PublicKey, groupMember.DisplayName);
+    }
+
+    /// <summary>Self-claim when the founder is genuinely stale, not just offline (<see cref="CanClaimFounder"/>) — the "nobody hands it off, so an authorized member takes it" path: a group must never stay permanently hostage to a dead founder identity (the ghost-identity incident this whole phase started from).</summary>
+    [RelayCommand]
+    private async Task ClaimFounderAsync()
+    {
+        if (!CanClaimFounder) return;
+
+        var confirmed = await Shell.Current.DisplayAlert(
+            "Převzít vedení skupiny",
+            "Zakladatel je dlouhodobě nedostupný (nepřipojil se k relay serveru). Opravdu chcete převzít vedení skupiny?",
+            "Převzít vedení", "Zrušit");
+        if (!confirmed) return;
+
+        await _currentUserService.InitializeAsync();
+        await TransferFounderToAsync(_localPublicKey, _currentUserService.Current.DisplayName);
     }
 
     /// <summary>Call from the page's OnAppearing (paired with <see cref="StopListening"/> in OnDisappearing) — mirrors <c>ChatViewModel.StartListening</c> exactly, just filtering by <c>GroupChatId</c> instead of a single <c>SessionId</c>.</summary>
@@ -1123,19 +1214,32 @@ public sealed record GroupMessageItem(Guid Id, bool IsOutbound, string SenderDis
 /// what <c>GroupChatViewModel.ResetPairingAsync</c> actually needs to look up this member's
 /// pairwise <c>ChatSession</c> — not otherwise displayed.
 /// </summary>
-public sealed record GroupMemberItem(Guid Id, string DisplayName, byte[] PublicKey, bool IsMe, bool IsFounder, bool ViewerCanManage, System.Windows.Input.ICommand RemoveCommand, System.Windows.Input.ICommand ResetPairingCommand)
+public sealed record GroupMemberItem(Guid Id, string DisplayName, byte[] PublicKey, bool IsMe, bool IsFounder, bool IsUnavailable, bool ViewerCanManage, System.Windows.Input.ICommand RemoveCommand, System.Windows.Input.ICommand ResetPairingCommand, System.Windows.Input.ICommand TransferFounderCommand)
 {
-    public string DisplayNameWithRoleSuffix => (IsMe, IsFounder) switch
+    public string DisplayNameWithRoleSuffix => (IsMe, IsFounder, IsUnavailable) switch
     {
-        (true, true) => $"{DisplayName} (já, zakladatel)",
-        (true, false) => $"{DisplayName} (já)",
-        (false, true) => $"{DisplayName} (zakladatel)",
+        (true, true, _) => $"{DisplayName} (já, zakladatel)",
+        (true, false, _) => $"{DisplayName} (já)",
+        (false, true, true) => $"{DisplayName} (zakladatel, nedostupný)",
+        (false, true, false) => $"{DisplayName} (zakladatel)",
+        (false, false, true) => $"{DisplayName} (nedostupný)",
         _ => DisplayName
     };
 
     /// <summary>Unlike <see cref="CanRemove"/>, resetting a broken pairing doesn't need <see cref="ViewerCanManage"/> — it only touches this device's own copy of a session it's already a party to, not the group's shared membership list, so there's no reason to gate it behind the same admin/founder permission.</summary>
     public bool CanResetPairing => !IsMe;
 
-    /// <summary>Requires BOTH that the person looking at this list is allowed to manage members at all (<see cref="ViewerCanManage"/>, mirroring <c>GroupChatViewModel.CanManageMembers</c> at the time this row was built) AND that this particular row isn't the viewer themselves or the founder — leaving/founder-transfer isn't built in this pass (see DEVELOPMENT_PLAN.md's remarks).</summary>
+    /// <summary>
+    /// Requires BOTH that the person looking at this list is allowed to manage members at all
+    /// (<see cref="ViewerCanManage"/>, mirroring <c>GroupChatViewModel.CanManageMembers</c> at the time
+    /// this row was built) AND that this particular row isn't the viewer themselves or the founder.
+    /// The founder can no longer be removed directly (2.1, 2026-09-17) — <see cref="CanTransferFounder"/>
+    /// is the intended path instead: transfer/claim first (the old founder becomes an ordinary member,
+    /// <see cref="IsFounder"/> then false), THEN remove them like anyone else — never a group left with
+    /// no founder at all.
+    /// </summary>
     public bool CanRemove => ViewerCanManage && !IsMe && !IsFounder;
+
+    /// <summary>Explicit hand-off target (2.1, 2026-09-17) — same permission bar as <see cref="CanRemove"/>, just without the "not the founder" exclusion inverted: this IS how the founder role moves off of someone, so it only makes sense for a row that ISN'T already the founder.</summary>
+    public bool CanTransferFounder => ViewerCanManage && !IsMe && !IsFounder;
 }

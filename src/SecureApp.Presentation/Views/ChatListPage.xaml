@@ -125,6 +125,10 @@
                                             <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
                                                 <Label Text="{Binding PeerDisplayName}" FontSize="14" FontAttributes="Bold" />
                                                 <Label Text="{Binding LastActivityText}" FontSize="11.5" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" LineBreakMode="TailTruncation" />
+                                                <!-- 2.1 (2026-09-17): peer absent from the relay's ACTIVE directory (stale/dead
+                                                     registration) — paired with the same ↺ resync button every row already has. -->
+                                                <Label Text="⚠ nedostupný — zkuste přepárovat" FontSize="10.5" IsVisible="{Binding IsUnavailable}"
+                                                       TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" />
                                             </VerticalStackLayout>
                                             <!-- Reset/re-pair (2026-09-07) — recovery path for a session whose ratchet state has
                                                  become genuinely undecryptable, see ChatListViewModel.ResetSessionAsync's own remarks. -->

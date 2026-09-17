@@ -166,7 +166,12 @@ public sealed partial class ChatListViewModel : ObservableObject
         ChatSessionItem ToSessionItem(ChatSession s)
         {
             var name = DirectoryNameResolver.Resolve(directoryNames, s.PeerIdentityPublicKey, s.PeerDisplayName);
-            return new ChatSessionItem(s.Id, name, s.State, DescribeLastActivity(s), ComputeInitials(name));
+            // 2.1 (2026-09-17): same "nedostupný" signal the group member list uses — a peer absent
+            // from a freshly-fetched ACTIVE directory has gone stale/dead on the relay (see
+            // DirectoryNameResolver.IsActive's own remarks). Only meaningful once a real fetch actually
+            // happened (directoryNames.Count > 0); an empty directory just means "nothing fetched yet".
+            var isUnavailable = directoryNames.Count > 0 && !DirectoryNameResolver.IsActive(directoryNames, s.PeerIdentityPublicKey);
+            return new ChatSessionItem(s.Id, name, s.State, DescribeLastActivity(s), ComputeInitials(name), isUnavailable);
         }
 
         // 2.3 (2026-09-14): archived chats/groups are moved OUT of the main list into a separate,
@@ -398,7 +403,7 @@ public sealed partial class ChatListViewModel : ObservableObject
     }
 }
 
-public sealed record ChatSessionItem(Guid Id, string PeerDisplayName, ChatSessionState State, string LastActivityText, string Initials);
+public sealed record ChatSessionItem(Guid Id, string PeerDisplayName, ChatSessionState State, string LastActivityText, string Initials, bool IsUnavailable = false);
 
 public sealed record GroupChatListItem(Guid Id, string Name, string Initials);
 
