@@ -26,6 +26,13 @@ public sealed record ActivationStatusResponse(string Status, Guid? DeviceId, str
 /// <summary>One row in the admin's pending-activations list — deliberately carries no secret, only what the admin needs to decide whether to approve.</summary>
 public sealed record ActivationRequestSummary(Guid Id, string DisplayName, string Email, string KeyFingerprint, DateTimeOffset CreatedAtUtc);
 
+// --- Device management (2.1, 2026-09-17) — lets an admin see every registered device's staleness
+// and pending-outbox depth, and deregister a dead one, instead of only discovering a ghost identity
+// mid-incident (SSH + manual SQLite queries, see RelayDatabase.GetAllDevicesWithStatus's own remarks).
+
+/// <summary>One registered device in the admin's device-management list. <c>DirectoryDisplayName</c>/<c>LastActiveAtUtc</c> are null if the device has never published to the directory (or its entry is old enough that <c>RelayDatabase.DirectoryActiveWindow</c> would already hide it from the member picker) — that's the actual "is this a ghost" signal, not <c>CreatedAtUtc</c>.</summary>
+public sealed record RegisteredDeviceSummary(Guid Id, string DisplayName, DateTimeOffset CreatedAtUtc, string? DirectoryDisplayName, DateTimeOffset? LastActiveAtUtc, int PendingOutboxCount);
+
 // --- Member directory (2026-09-06) — replaces manual contact-card generate/paste for starting a
 // chat with someone already on this relay. Only makes sense BECAUSE activation above already had
 // an admin approve every device's real identity; see RelayDatabase's own remarks on

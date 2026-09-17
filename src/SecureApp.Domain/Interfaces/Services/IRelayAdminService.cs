@@ -34,4 +34,10 @@ public interface IRelayAdminService
     /// request; the actual rebuild happens out-of-band on the Pi's host, not synchronously here.
     /// </summary>
     Task RequestDeployAsync(Uri endpoint, string adminSecret, CancellationToken ct = default);
+
+    /// <summary>Every registered device with its directory staleness + pending-outbox depth (2.1, 2026-09-17) — see <see cref="ValueObjects.RegisteredDevice"/>'s own remarks. Lets an admin actually see a ghost identity forming instead of only discovering it mid-incident.</summary>
+    Task<IReadOnlyList<RegisteredDevice>> GetRegisteredDevicesAsync(Uri endpoint, string adminSecret, CancellationToken ct = default);
+
+    /// <summary>Deregisters a device entirely — deletes its credential, its directory entry, and purges its stuck outbox queue (see <c>RelayDatabase.DeregisterDevice</c>'s own remarks). Idempotent: deregistering an already-gone device is not an error.</summary>
+    Task DeregisterDeviceAsync(Uri endpoint, string adminSecret, Guid deviceId, CancellationToken ct = default);
 }

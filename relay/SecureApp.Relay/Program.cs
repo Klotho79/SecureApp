@@ -177,6 +177,27 @@ app.MapPost("/admin/activation-requests/{id:guid}/reject", (Guid id, HttpRequest
     return Results.Ok();
 });
 
+// --- Device management (2.1, 2026-09-17) — see RelayDatabase.GetAllDevicesWithStatus/DeregisterDevice's own remarks.
+
+app.MapGet("/admin/devices", (HttpRequest request, RelayDatabase db) =>
+{
+    if (!IsAdminAuthorized(request, adminSecret))
+        return Results.Unauthorized();
+
+    var devices = db.GetAllDevicesWithStatus();
+    return Results.Ok(devices.Select(d => new RegisteredDeviceSummary(
+        d.Id, d.DisplayName, d.CreatedAtUtc, d.DirectoryDisplayName, d.LastActiveAtUtc, d.PendingOutboxCount)).ToList());
+});
+
+app.MapPost("/admin/devices/{id:guid}/deregister", (Guid id, HttpRequest request, RelayDatabase db) =>
+{
+    if (!IsAdminAuthorized(request, adminSecret))
+        return Results.Unauthorized();
+
+    db.DeregisterDevice(id);
+    return Results.Ok();
+});
+
 app.MapPost("/library/files", async (HttpRequest request, RelayDatabase db) =>
 {
     if (!TryGetDeviceAuth(request, db, out var deviceId))

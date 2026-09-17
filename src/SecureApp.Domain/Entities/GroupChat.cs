@@ -65,4 +65,25 @@ public sealed class GroupChat : Entity
         Name = name;
         Touch();
     }
+
+    /// <summary>
+    /// Founder succession (2.1, 2026-09-17) — propagates the same way a rename does: whoever calls
+    /// this re-broadcasts a full group-invite snapshot (<c>GroupInviteBlob.FounderPublicKey</c> already
+    /// carried the founder on every broadcast; only applying an incoming CHANGE to it was missing —
+    /// see <c>App.OnGroupInviteReceived</c>'s own remarks), so every other member's local copy picks up
+    /// the new founder the next time it processes one, no dedicated wire message needed. Two triggers,
+    /// both gated by <c>GroupChatViewModel.CanManageMembers</c> (founder or an Admin/Modifier device),
+    /// not enforced here: an explicit hand-off by the current founder (or an authorized member acting
+    /// on their behalf), or an authorized member CLAIMING leadership once the founder is detected
+    /// absent from the relay's active directory for good — a group must never stay permanently hostage
+    /// to a dead founder identity (the actual incident this whole phase started from).
+    /// </summary>
+    public void TransferFounder(byte[] newFounderPublicKey)
+    {
+        if (newFounderPublicKey is null || newFounderPublicKey.Length == 0)
+            throw new ArgumentException("Founder public key cannot be empty.", nameof(newFounderPublicKey));
+
+        FounderPublicKey = newFounderPublicKey;
+        Touch();
+    }
 }

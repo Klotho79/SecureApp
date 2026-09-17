@@ -26,6 +26,15 @@ public sealed record ActivationRequestRecord(
     DateTimeOffset CreatedAtUtc,
     Guid? AssignedDeviceId);
 
+/// <summary>One registered device for the admin's device-management list (2.1, 2026-09-17) — see <see cref="RelayDatabase.GetAllDevicesWithStatus"/>'s own remarks.</summary>
+public sealed record RegisteredDeviceRecord(
+    Guid Id,
+    string DisplayName,
+    DateTimeOffset CreatedAtUtc,
+    string? DirectoryDisplayName,
+    DateTimeOffset? LastActiveAtUtc,
+    int PendingOutboxCount);
+
 /// <summary>
 /// Plain SQLite storage (not SQLCipher) for the relay's own bookkeeping — devices, invites, and
 /// the store-and-forward outbox. Deliberate simplicity/security tradeoff, stated explicitly: the
@@ -242,6 +251,60 @@ public sealed class RelayDatabase
         command.Parameters.AddWithValue("@code", code);
         command.Parameters.AddWithValue("@now", Format(DateTimeOffset.UtcNow));
         return command.ExecuteNonQuery() > 0;
+    }
+
+    /// <summary>
+    /// Every registered device, joined against its directory entry (if any — gives staleness, the
+    /// same signal <c>DirectoryActiveWindow</c> already uses to hide a dead identity from the member
+    /// picker) and its pending outbox queue depth (2.1, 2026-09-17) — lets an admin actually SEE which
+    /// devices are stale/dead instead of only discovering it mid-incident. This is the exact shape of
+    /// the original ghost-identity incident: a wiped/reinstalled device left 120 frames permanently
+    /// stuck in <c>outbox</c> for a recipient that would never come back, discoverable at the time only
+    /// by SSHing into the Pi and querying SQLite directly.
+    /// </summary>
+    public IReadOnlyList<RegisteredDeviceRecord> GetAllDevicesWithStatus()
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT d.id, d.display_name, d.created_at_utc,
+                   dir.display_name AS directory_display_name, dir.updated_at_utc AS last_active_at_utc,
+                   (SELECT COUNT(*) FROM outbox o WHERE o.recipient_device_id = d.id) AS pending_outbox_count
+            FROM devices d
+            LEFT JOIN directory_entries dir ON dir.device_id = d.id
+            ORDER BY d.created_at_utc DESC
+            """;
+
+        var results = new List<RegisteredDeviceRecord>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            results.Add(new RegisteredDeviceRecord(
+                Guid.Parse((string)reader["id"]),
+                (string)reader["display_name"],
+                DateTimeOffset.Parse((string)reader["created_at_utc"], CultureInfo.InvariantCulture),
+                reader["directory_display_name"] is DBNull ? null : (string)reader["directory_display_name"],
+                reader["last_active_at_utc"] is DBNull ? null : DateTimeOffset.Parse((string)reader["last_active_at_utc"], CultureInfo.InvariantCulture),
+                Convert.ToInt32((long)reader["pending_outbox_count"])));
+        }
+        return results;
+    }
+
+    /// <summary>
+    /// Deregisters a device entirely (2.1, 2026-09-17): deletes its <c>devices</c> row (so it can no
+    /// longer authenticate), its <c>directory_entries</c> row (so it silently drops out of every other
+    /// device's member picker/directory — no separate "who's this affect" step needed, the directory
+    /// is already always-rebuilt-live per device), and purges every <c>outbox</c> row still queued for
+    /// it as recipient (exactly the stuck-forever queue the original incident left behind). Idempotent
+    /// — deregistering an already-gone or never-existing id is a harmless no-op, not an error, so a
+    /// double-tap or a stale admin list never throws.
+    /// </summary>
+    public void DeregisterDevice(Guid deviceId)
+    {
+        using var connection = OpenConnection();
+        Execute(connection, "DELETE FROM outbox WHERE recipient_device_id = @id", ("@id", deviceId.ToString()));
+        Execute(connection, "DELETE FROM directory_entries WHERE device_id = @id", ("@id", deviceId.ToString()));
+        Execute(connection, "DELETE FROM devices WHERE id = @id", ("@id", deviceId.ToString()));
     }
 
     public (Guid DeviceId, string Secret) CreateDevice(string displayName)
