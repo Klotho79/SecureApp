@@ -145,6 +145,31 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
         return status;
     }
 
+    public async Task SelfRegisterAsync(Uri endpoint, string displayName, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+        ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
+
+        var registerUri = new Uri(ToHttpUri(endpoint), "self-register");
+        using var response = await _httpClient.PostAsJsonAsync(
+            registerUri,
+            new { DisplayName = displayName },
+            HttpJsonOptions,
+            ct);
+        response.EnsureSuccessStatusCode();
+
+        var credential = await response.Content.ReadFromJsonAsync<DeviceCredential>(HttpJsonOptions, ct)
+            ?? throw new InvalidOperationException("Relay vrátil prázdnou odpověď na self-register.");
+
+        await _vault.StoreSecretAsync(RelayDeviceVaultKeys.DeviceSecret, Encoding.UTF8.GetBytes(credential.Secret), ct);
+
+        using var scope = _scopeFactory.CreateScope();
+        var transportSettings = scope.ServiceProvider.GetRequiredService<ITransportSettingsRepository>();
+        var configuration = await transportSettings.GetAsync(ct) ?? new TransportEndpointConfiguration(endpoint, isAutoConnectEnabled: true);
+        configuration.AssignDevice(credential.DeviceId);
+        await transportSettings.SaveAsync(configuration, ct);
+    }
+
     /// <summary>
     /// A short, human-legible digest of a chat-identity public key for the admin to optionally read
     /// back to whoever's requesting activation (phone call, in person) before approving — not a

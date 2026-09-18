@@ -109,6 +109,19 @@ app.MapPost("/register", (RegisterRequest body, RelayDatabase db) =>
     return Results.Ok(new DeviceCredentialResponse(deviceId, secret));
 });
 
+// No admin approval required — WireGuard is the trust boundary: only devices on the VPN/LAN
+// can reach this endpoint at all, so "you're on the network" is the credential check.
+// Used by the app's silent self-re-registration path when a device's stored credentials are
+// rejected (registration was deleted). The device recovers on the next supervisor tick with no
+// user-visible error or confirmation step.
+app.MapPost("/self-register", (CreateDeviceRequest body, RelayDatabase db, ILogger<Program> logger) =>
+{
+    var displayName = string.IsNullOrWhiteSpace(body.DisplayName) ? "Unknown" : body.DisplayName;
+    var (deviceId, secret) = db.CreateDevice(displayName);
+    logger.LogInformation("Self-registered device {DeviceId} ({DisplayName})", deviceId, displayName);
+    return Results.Ok(new DeviceCredentialResponse(deviceId, secret));
+});
+
 // --- Activation requests (2026-09-06) — see Contracts.cs's own remarks for why this exists
 // alongside (not instead of, at the relay's own storage level) the invite-code endpoints above.
 

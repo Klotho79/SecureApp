@@ -232,12 +232,6 @@ public partial class App : Application
 					if (!wasConnected)
 						await TryConnectAsync(services, transport);
 
-					// If still not connected, check for a pending activation request and poll it
-					// silently — covers the re-registration path (RelayUnauthorizedException cleared
-					// credentials + submitted a request this tick or a prior one).
-					if (!transport.IsConnected)
-						await TryPollPendingActivationAsync(services, transport);
-
 					var justReconnected = !wasConnected && transport.IsConnected;
 					var sweepDue = DateTimeOffset.UtcNow - lastStaleSweep >= _staleSessionSweepInterval;
 
@@ -299,51 +293,23 @@ public partial class App : Application
 	}
 
 	/// <summary>
-	/// Submits a new activation request in the background after credentials are cleared — called
-	/// only when the relay explicitly rejected the stored credentials. No UI is touched; the admin
-	/// sees a new pending-activation badge in Settings and approves normally. The next supervisor
-	/// tick after approval will call <see cref="TryPollPendingActivationAsync"/>, which completes
-	/// registration and lets the subsequent tick connect successfully.
+	/// Called when the relay explicitly rejected stored credentials (registration was deleted).
+	/// Self-registers instantly via <see cref="IMessageTransport.SelfRegisterAsync"/> — WireGuard is
+	/// the trust boundary so no admin approval is required. The next supervisor tick after this
+	/// returns will find valid credentials and connect normally. No UI touched; everything to log.
 	/// </summary>
 	private static async Task SilentReactivateAsync(IServiceProvider services, IMessageTransport transport)
 	{
 		using var scope = services.CreateScope();
-		var transportSettings = scope.ServiceProvider.GetRequiredService<ITransportSettingsRepository>();
 		var currentUser = scope.ServiceProvider.GetRequiredService<ICurrentUserService>();
 		await currentUser.InitializeAsync();
 
+		var transportSettings = scope.ServiceProvider.GetRequiredService<ITransportSettingsRepository>();
 		var configuration = await transportSettings.GetAsync();
 		if (configuration?.EndpointUri is not { } endpoint) return;
 
-		var requestId = await transport.RequestActivationAsync(endpoint, currentUser.Current.DisplayName, string.Empty);
-		configuration.SetPendingActivationRequest(requestId);
-		await transportSettings.SaveAsync(configuration);
-		SecureApp.Presentation.Infrastructure.AppLog.Event("relay.reactivation.requested", ("requestId", requestId.ToString()));
-	}
-
-	/// <summary>
-	/// Polls a pending activation request if one is outstanding and the device is not yet registered.
-	/// <see cref="IMessageTransport.PollActivationAsync"/> already stores the device secret and
-	/// calls <c>AssignDevice</c> when approved, so no extra work is needed here — the next
-	/// supervisor tick after approval will find <c>AssignedDeviceId != null</c> and connect normally.
-	/// </summary>
-	private static async Task TryPollPendingActivationAsync(IServiceProvider services, IMessageTransport transport)
-	{
-		using var scope = services.CreateScope();
-		var transportSettings = scope.ServiceProvider.GetRequiredService<ITransportSettingsRepository>();
-		var configuration = await transportSettings.GetAsync();
-		if (configuration is not { PendingActivationRequestId: { } requestId, EndpointUri: { } endpoint, AssignedDeviceId: null })
-			return;
-
-		try
-		{
-			var status = await transport.PollActivationAsync(endpoint, requestId);
-			SecureApp.Presentation.Infrastructure.AppLog.Event("relay.activation.polled", ("status", status.ToString()));
-		}
-		catch (Exception ex)
-		{
-			SecureApp.Presentation.Infrastructure.AppLog.Error("App.TryPollActivation", "polling failed", ex);
-		}
+		await transport.SelfRegisterAsync(endpoint, currentUser.Current.DisplayName);
+		SecureApp.Presentation.Infrastructure.AppLog.Event("relay.auto.reregistered");
 	}
 
 	/// <summary>

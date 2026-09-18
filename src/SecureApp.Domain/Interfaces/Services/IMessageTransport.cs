@@ -59,6 +59,14 @@ public interface IMessageTransport
     /// the stored credentials, meaning registration was deleted or rotated externally.
     /// </summary>
     Task ClearCredentialsAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Instantly self-registers this device with the relay (no invite code, no admin approval) and
+    /// stores the resulting credentials — same tail as <see cref="RegisterAsync"/>. Only works over
+    /// WireGuard/LAN (the relay's own trust boundary); used exclusively by the silent re-registration
+    /// path when <see cref="ConnectAsync"/> throws <c>RelayUnauthorizedException</c>.
+    /// </summary>
+    Task SelfRegisterAsync(Uri endpoint, string displayName, CancellationToken ct = default);
     Task SendEnvelopeAsync(MessageEnvelope envelope, CancellationToken ct = default);
 
     /// <summary>
