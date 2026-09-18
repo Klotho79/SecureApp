@@ -185,7 +185,7 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
         {
             socket.Dispose();
             RaiseConnectionState(TransportConnectionState.Disconnected);
-            throw new InvalidOperationException("Ověření u relay serveru selhalo.");
+            throw new RelayUnauthorizedException();
         }
 
         _socket = socket;
@@ -247,6 +247,24 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
         _receiveLoopTask = null;
 
         RaiseConnectionState(TransportConnectionState.Disconnected);
+    }
+
+    /// <summary>
+    /// Erases the stored relay device credentials (vault secret + DB assignment) so the next
+    /// <see cref="ConnectAsync"/> attempt — which would fail again with the same rejected credentials
+    /// — is replaced by a fresh activation request. Called by the connection supervisor on
+    /// <see cref="RelayUnauthorizedException"/>; never called on ordinary network failures.
+    /// </summary>
+    public async Task ClearCredentialsAsync(CancellationToken ct = default)
+    {
+        await _vault.RemoveSecretAsync(RelayDeviceVaultKeys.DeviceSecret, ct);
+
+        using var scope = _scopeFactory.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<ITransportSettingsRepository>();
+        var config = await repo.GetAsync(ct);
+        if (config is null) return;
+        config.ClearRegistration();
+        await repo.SaveAsync(config, ct);
     }
 
     public async Task SendEnvelopeAsync(MessageEnvelope envelope, CancellationToken ct = default)

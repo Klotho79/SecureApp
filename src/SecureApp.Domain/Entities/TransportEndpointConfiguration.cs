@@ -62,4 +62,16 @@ public sealed class TransportEndpointConfiguration : Entity
         PendingActivationRequestId = requestId;
         Touch();
     }
+
+    /// <summary>
+    /// Clears the assigned device credentials so this device can re-register — called when the
+    /// relay explicitly rejects stored credentials (device was deleted from the relay or its secret
+    /// was rotated). The vault secret must be cleared separately by the transport layer.
+    /// </summary>
+    public void ClearRegistration()
+    {
+        AssignedDeviceId = null;
+        PendingActivationRequestId = null;
+        Touch();
+    }
 }

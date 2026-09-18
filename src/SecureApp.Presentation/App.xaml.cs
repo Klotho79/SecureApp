@@ -232,6 +232,12 @@ public partial class App : Application
 					if (!wasConnected)
 						await TryConnectAsync(services, transport);
 
+					// If still not connected, check for a pending activation request and poll it
+					// silently — covers the re-registration path (RelayUnauthorizedException cleared
+					// credentials + submitted a request this tick or a prior one).
+					if (!transport.IsConnected)
+						await TryPollPendingActivationAsync(services, transport);
+
 					var justReconnected = !wasConnected && transport.IsConnected;
 					var sweepDue = DateTimeOffset.UtcNow - lastStaleSweep >= _staleSessionSweepInterval;
 
@@ -253,7 +259,13 @@ public partial class App : Application
 		}
 	}
 
-	/// <summary>The actual connect attempt, called from every supervisor tick that finds the transport disconnected (not just once at launch, as the old AutoConnectRelayAsync did). Respects <c>IsAutoConnectEnabled</c>, so a user who deliberately turned auto-connect off in Settings isn't overridden.</summary>
+	/// <summary>
+	/// The actual connect attempt, called from every supervisor tick that finds the transport
+	/// disconnected. Respects <c>IsAutoConnectEnabled</c>. On a <see cref="Transport.RelayUnauthorizedException"/>
+	/// (relay explicitly rejected this device's credentials — registration was deleted or rotated)
+	/// the credentials are cleared and a silent re-activation request is submitted automatically;
+	/// no error is ever shown to the user, everything goes to the log.
+	/// </summary>
 	private static async Task TryConnectAsync(IServiceProvider services, IMessageTransport transport)
 	{
 		using var scope = services.CreateScope();
@@ -265,15 +277,72 @@ public partial class App : Application
 		try
 		{
 			await transport.ConnectAsync(endpoint);
-			// 2.5 (2026-09-14): log the automatic reconnect so a recovered connection (and thus why a
-			// stuck-Pending message suddenly went through) is visible in the log.
 			SecureApp.Presentation.Infrastructure.AppLog.Event("relay.reconnected");
+		}
+		catch (SecureApp.Presentation.Transport.RelayUnauthorizedException)
+		{
+			// Credentials were explicitly rejected — device registration was deleted or rotated.
+			// Clear stored credentials and silently start a new activation request; the admin will
+			// see a badge in Settings. No user-visible error.
+			SecureApp.Presentation.Infrastructure.AppLog.Event("relay.unauthorized.reregistering");
+			try { await transport.ClearCredentialsAsync(); }
+			catch (Exception clearEx) { SecureApp.Presentation.Infrastructure.AppLog.Error("App.TryConnect", "failed to clear stale credentials", clearEx); }
+			try { await SilentReactivateAsync(services, transport); }
+			catch (Exception reactivateEx) { SecureApp.Presentation.Infrastructure.AppLog.Error("App.TryConnect", "silent re-activation failed", reactivateEx); }
 		}
 		catch (Exception ex)
 		{
-			// Best-effort — retried again next tick, ~10s later. Logged (not silent) so a persistently
-			// failing reconnect — the reason messages aren't leaving — is diagnosable.
+			// Transient network failure — retried next tick (~10s). Logged so a persistently failing
+			// reconnect (why messages aren't leaving) is diagnosable.
 			SecureApp.Presentation.Infrastructure.AppLog.Error("App.TryConnect", "relay reconnect attempt failed", ex);
+		}
+	}
+
+	/// <summary>
+	/// Submits a new activation request in the background after credentials are cleared — called
+	/// only when the relay explicitly rejected the stored credentials. No UI is touched; the admin
+	/// sees a new pending-activation badge in Settings and approves normally. The next supervisor
+	/// tick after approval will call <see cref="TryPollPendingActivationAsync"/>, which completes
+	/// registration and lets the subsequent tick connect successfully.
+	/// </summary>
+	private static async Task SilentReactivateAsync(IServiceProvider services, IMessageTransport transport)
+	{
+		using var scope = services.CreateScope();
+		var transportSettings = scope.ServiceProvider.GetRequiredService<ITransportSettingsRepository>();
+		var currentUser = scope.ServiceProvider.GetRequiredService<ICurrentUserService>();
+		await currentUser.InitializeAsync();
+
+		var configuration = await transportSettings.GetAsync();
+		if (configuration?.EndpointUri is not { } endpoint) return;
+
+		var requestId = await transport.RequestActivationAsync(endpoint, currentUser.Current.DisplayName, string.Empty);
+		configuration.SetPendingActivationRequest(requestId);
+		await transportSettings.SaveAsync(configuration);
+		SecureApp.Presentation.Infrastructure.AppLog.Event("relay.reactivation.requested", ("requestId", requestId.ToString()));
+	}
+
+	/// <summary>
+	/// Polls a pending activation request if one is outstanding and the device is not yet registered.
+	/// <see cref="IMessageTransport.PollActivationAsync"/> already stores the device secret and
+	/// calls <c>AssignDevice</c> when approved, so no extra work is needed here — the next
+	/// supervisor tick after approval will find <c>AssignedDeviceId != null</c> and connect normally.
+	/// </summary>
+	private static async Task TryPollPendingActivationAsync(IServiceProvider services, IMessageTransport transport)
+	{
+		using var scope = services.CreateScope();
+		var transportSettings = scope.ServiceProvider.GetRequiredService<ITransportSettingsRepository>();
+		var configuration = await transportSettings.GetAsync();
+		if (configuration is not { PendingActivationRequestId: { } requestId, EndpointUri: { } endpoint, AssignedDeviceId: null })
+			return;
+
+		try
+		{
+			var status = await transport.PollActivationAsync(endpoint, requestId);
+			SecureApp.Presentation.Infrastructure.AppLog.Event("relay.activation.polled", ("status", status.ToString()));
+		}
+		catch (Exception ex)
+		{
+			SecureApp.Presentation.Infrastructure.AppLog.Error("App.TryPollActivation", "polling failed", ex);
 		}
 	}
 

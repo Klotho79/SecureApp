@@ -51,6 +51,14 @@ public interface IMessageTransport
 
     Task ConnectAsync(Uri endpoint, CancellationToken ct = default);
     Task DisconnectAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Erases the stored device credentials (vault secret + DB assignment) so the device can
+    /// re-register. Called automatically by the connection supervisor when
+    /// <see cref="ConnectAsync"/> throws <c>RelayUnauthorizedException</c> — the relay has rejected
+    /// the stored credentials, meaning registration was deleted or rotated externally.
+    /// </summary>
+    Task ClearCredentialsAsync(CancellationToken ct = default);
     Task SendEnvelopeAsync(MessageEnvelope envelope, CancellationToken ct = default);
 
     /// <summary>
