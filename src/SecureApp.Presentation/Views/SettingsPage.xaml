@@ -158,22 +158,9 @@
             <Border Style="{StaticResource CardBorder}">
                 <VerticalStackLayout Spacing="8">
                     <Label Text="Klíč sdílené knihovny" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Label Text="Jeden klíč, sdílený všemi v komunitě, chrání každý soubor ve sdílené knihovně." FontSize="12" TextColor="Gray" />
-                    <Label Text="{Binding SharedLibraryErrorMessage}" IsVisible="{Binding HasSharedLibraryError}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
+                    <Label Text="Jeden klíč, sdílený všemi v komunitě, chrání každý soubor ve sdílené knihovně. Appka si ho sama vyžádá z relay/od ostatních zařízení na pozadí — nic se nezadává ručně." FontSize="12" TextColor="Gray" />
                     <Label Text="✓ Toto zařízení má klíč sdílené knihovny." FontSize="12" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding HasSharedLibraryKey}" />
-
-                    <Button Text="Vygenerovat nový klíč" Command="{Binding GenerateSharedLibraryKeyCommand}" IsVisible="{Binding HasNoSharedLibraryKey}" />
-                    <Button Text="Zobrazit klíč" Style="{StaticResource SecondaryButton}" Command="{Binding ShowSharedLibraryKeyCommand}" IsVisible="{Binding HasSharedLibraryKey}" />
-                    <Editor Text="{Binding SharedLibraryKeyBlob}" IsReadOnly="True" HeightRequest="60" IsVisible="{Binding HasSharedLibraryKeyBlob}" />
-                    <Button Text="Kopírovat" Style="{StaticResource SecondaryButton}" Command="{Binding CopySharedLibraryKeyCommand}" IsVisible="{Binding HasSharedLibraryKeyBlob}" />
-
-                    <Entry Text="{Binding SharedLibraryKeyImportText}" Placeholder="Vložte klíč, který vygeneroval někdo jiný" />
-                    <Button Text="Importovat" Style="{StaticResource SecondaryButton}" Command="{Binding ImportSharedLibraryKeyCommand}" />
-
-                    <!-- Key distribution is fully automatic (2026-09-11) — the app pushes the key to
-                         paired peers and keyless peers pull it, with no user action. This label is
-                         passive confirmation the app did it, not a control to operate. -->
-                    <Label Text="{Binding SharedLibraryBroadcastStatusText}" FontSize="12" TextColor="Gray" IsVisible="{Binding HasSharedLibraryBroadcastStatus}" LineBreakMode="WordWrap" />
+                    <Label Text="Klíč se získává na pozadí…" FontSize="12" TextColor="Gray" IsVisible="{Binding HasNoSharedLibraryKey}" />
                 </VerticalStackLayout>
             </Border>
 

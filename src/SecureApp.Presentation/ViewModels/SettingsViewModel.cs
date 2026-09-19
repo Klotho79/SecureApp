@@ -118,36 +118,17 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool CanUseRelayControls { get; set; }
 
-    // --- Shared library key (Milestone 5 follow-up) ---
+    // --- Shared library key (Milestone 5 follow-up; fully automatic since 2026-09-11, manual
+    // Generate/Show/Import UI removed 2026-09-19 — see SharedLibraryKeySync's own remarks: a device
+    // acquires the key entirely on its own, via relay escrow or paired-session pull, retried every
+    // sweep. Both status properties below are passive display only, never a control to operate. ---
 
     [ObservableProperty]
     public partial bool HasSharedLibraryKey { get; set; }
 
-    /// <summary>Mirrors <see cref="HasSharedLibraryKey"/> — kept as its own bound property (this codebase's established pattern, see HasNoAdminSecret) so XAML never needs to negate a binding. Gates which of Generate/Show is offered, so a key that already exists can only be re-shown, never silently regenerated and desynced from the rest of the community.</summary>
+    /// <summary>Mirrors <see cref="HasSharedLibraryKey"/> — kept as its own bound property (this codebase's established pattern, see HasNoAdminSecret) so XAML never needs to negate a binding.</summary>
     [ObservableProperty]
     public partial bool HasNoSharedLibraryKey { get; set; }
-
-    [ObservableProperty]
-    public partial string? SharedLibraryKeyBlob { get; set; }
-
-    [ObservableProperty]
-    public partial bool HasSharedLibraryKeyBlob { get; set; }
-
-    [ObservableProperty]
-    public partial string SharedLibraryKeyImportText { get; set; }
-
-    [ObservableProperty]
-    public partial string? SharedLibraryErrorMessage { get; set; }
-
-    [ObservableProperty]
-    public partial bool HasSharedLibraryError { get; set; }
-
-    /// <summary>Status text for <see cref="ResendSharedLibraryKeyAsync"/> (2026-09-11) — the user's own explicit ask after the automatic per-chat-open offer still wasn't reliably reaching every already-paired peer: a manual "resend to everyone" action with visible confirmation of how many sessions got it.</summary>
-    [ObservableProperty]
-    public partial string? SharedLibraryBroadcastStatusText { get; set; }
-
-    [ObservableProperty]
-    public partial bool HasSharedLibraryBroadcastStatus { get; set; }
 
     // --- Relay admin (Admin role only) ---
     //
@@ -248,7 +229,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         IsNotConnected = true;
         IsNotRegistered = true;
         CanUseRelayControls = true;
-        SharedLibraryKeyImportText = string.Empty;
         AdminSecretInputText = string.Empty;
         CanUseAdminControls = true;
         HasNoSharedLibraryKey = true;
@@ -276,13 +256,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     partial void OnIsRegisteredChanged(bool value) => IsNotRegistered = !value;
 
-    partial void OnSharedLibraryErrorMessageChanged(string? value) => HasSharedLibraryError = !string.IsNullOrEmpty(value);
-
-    partial void OnSharedLibraryKeyBlobChanged(string? value) => HasSharedLibraryKeyBlob = !string.IsNullOrEmpty(value);
-
     partial void OnHasSharedLibraryKeyChanged(bool value) => HasNoSharedLibraryKey = !value;
-
-    partial void OnSharedLibraryBroadcastStatusTextChanged(string? value) => HasSharedLibraryBroadcastStatus = !string.IsNullOrEmpty(value);
 
     partial void OnAdminErrorMessageChanged(string? value) => HasAdminError = !string.IsNullOrEmpty(value);
 
@@ -504,96 +478,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         finally
         {
             IsBusyWithAdmin = false;
-        }
-    }
-
-    [RelayCommand]
-    private async Task GenerateSharedLibraryKeyAsync()
-    {
-        SharedLibraryErrorMessage = null;
-        try
-        {
-            SharedLibraryKeyBlob = await _sharedLibraryService.GenerateSharedKeyAsync();
-            HasSharedLibraryKey = true;
-
-            // Push the new key straight out to everyone already paired (2026-09-11) — see
-            // SharedLibraryKeySync.BroadcastToAllActiveSessionsAsync's own remarks. Best-effort: a
-            // brand-new key with nobody paired yet is the expected common case on first setup, not
-            // an error.
-            await BroadcastSharedLibraryKeyAsync();
-        }
-        catch (Exception ex)
-        {
-            SharedLibraryErrorMessage = $"Nepodařilo se vygenerovat klíč: {ex.Message}";
-        }
-    }
-
-    /// <summary>Re-shows the already-stored key (e.g. after the blob was dismissed/the app restarted before another device imported it) without minting a new one — see ISharedLibraryService.ExportSharedKeyAsync's own remarks for why that distinction matters.</summary>
-    [RelayCommand]
-    private async Task ShowSharedLibraryKeyAsync()
-    {
-        SharedLibraryErrorMessage = null;
-        try
-        {
-            SharedLibraryKeyBlob = await _sharedLibraryService.ExportSharedKeyAsync();
-        }
-        catch (Exception ex)
-        {
-            SharedLibraryErrorMessage = $"Nepodařilo se načíst uložený klíč: {ex.Message}";
-        }
-    }
-
-    [RelayCommand]
-    private async Task ImportSharedLibraryKeyAsync()
-    {
-        SharedLibraryErrorMessage = null;
-        if (string.IsNullOrWhiteSpace(SharedLibraryKeyImportText))
-        {
-            SharedLibraryErrorMessage = "Nejprve vložte klíč vygenerovaný někým jiným.";
-            return;
-        }
-
-        try
-        {
-            await _sharedLibraryService.ImportSharedKeyAsync(SharedLibraryKeyImportText);
-            HasSharedLibraryKey = true;
-            SharedLibraryKeyImportText = string.Empty;
-
-            // Same reasoning as GenerateSharedLibraryKeyAsync's own call — a freshly-imported key is
-            // exactly as worth re-broadcasting as a freshly-generated one (e.g. this device missed
-            // the original round and someone re-shared the blob manually one more time).
-            await BroadcastSharedLibraryKeyAsync();
-        }
-        catch (Exception ex)
-        {
-            SharedLibraryErrorMessage = $"Nepodařilo se importovat tento klíč: {ex.Message}";
-        }
-    }
-
-    /// <summary>
-    /// Immediately pushes a just-generated/imported key to everyone this device is already paired
-    /// with (2026-09-11) — the automatic distribution's one event-driven trigger, on top of the
-    /// connection supervisor's periodic push/pull sweep (see <c>SharedLibraryKeySync.AutoSyncAsync</c>).
-    /// Deliberately NOT a user-facing button: the user was explicit that passing keys around must
-    /// never be the user's job ("to ma udelat aplikace sama") — this just makes the app react the
-    /// instant a key exists instead of waiting up to one sweep interval.
-    /// </summary>
-    private async Task BroadcastSharedLibraryKeyAsync()
-    {
-        try
-        {
-            // Primary: escrow the key on the relay wrapped for every member (robust, reaches even
-            // offline members when they next connect — see PublishWrappedKeyForMembersAsync).
-            await _sharedLibraryService.PublishWrappedKeyForMembersAsync();
-
-            // Secondary: also offer it live over any already-paired session (instant for online peers).
-            var offeredCount = await SharedLibraryKeySync.BroadcastToAllActiveSessionsAsync(
-                _sharedLibraryService, _messagingService, _messageTransport, _chatSessionRepository, _diagnosticsReporter);
-            SharedLibraryBroadcastStatusText = "Klíč byl automaticky rozeslán ostatním zařízením v komunitě.";
-        }
-        catch (Exception ex)
-        {
-            SharedLibraryBroadcastStatusText = $"Automatické rozeslání klíče se zatím nezdařilo (zkusí se znovu na pozadí): {ex.Message}";
         }
     }
 
