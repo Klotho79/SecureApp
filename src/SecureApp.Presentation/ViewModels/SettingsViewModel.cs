@@ -91,28 +91,6 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool HasActivationStatus { get; set; }
 
-    // --- Join by invite code (2026-09-10) — the original pre-2026-09-06 registration path, kept
-    // working the whole time but unreachable from this UI until now: the user's own follow-up
-    // after asking how to let someone install the app at all — "zatím bez nutnosti zadávat email...
-    // jak jsi to vyřešil s těmi kódy?" (for now without needing an email — how did the old codes
-    // work?). A genuine second onboarding path alongside Aktivovat above, not a replacement: no
-    // email collected, no admin approval step to wait on — the code itself, shared out-of-band by
-    // whoever generated it (see GenerateInviteCommand below), is the only credential needed.
-    // IMessageTransport.RegisterAsync/IRelayAdminService.CreateInviteAsync were never removed when
-    // the activation-request flow superseded this in the UI, exactly so this stayed possible later.
-
-    [ObservableProperty]
-    public partial string JoinInviteCodeText { get; set; }
-
-    [ObservableProperty]
-    public partial string? GeneratedInviteCode { get; set; }
-
-    [ObservableProperty]
-    public partial bool HasGeneratedInviteCode { get; set; }
-
-    [ObservableProperty]
-    public partial string? GeneratedInviteExpiryText { get; set; }
-
     [ObservableProperty]
     public partial string ConnectionStatusText { get; set; }
 
@@ -139,16 +117,6 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     public partial bool CanUseRelayControls { get; set; }
-
-    [ObservableProperty]
-    public partial string ContactCardText { get; set; }
-
-    /// <summary>The same contact card, packed via QrBlobCodec for the "Show QR" flow — see that class's own remarks for why it can't just reuse ContactCardText's copy/paste format.</summary>
-    [ObservableProperty]
-    public partial string ContactCardQrValue { get; set; }
-
-    [ObservableProperty]
-    public partial bool IsShowingContactCardQr { get; set; }
 
     // --- Shared library key (Milestone 5 follow-up) ---
 
@@ -276,13 +244,10 @@ public sealed partial class SettingsViewModel : ObservableObject
         DisplayName = string.Empty;
         RelayEndpointText = string.Empty;
         ActivationEmailText = string.Empty;
-        JoinInviteCodeText = string.Empty;
         ConnectionStatusText = "Odpojeno";
         IsNotConnected = true;
         IsNotRegistered = true;
         CanUseRelayControls = true;
-        ContactCardText = string.Empty;
-        ContactCardQrValue = string.Empty;
         SharedLibraryKeyImportText = string.Empty;
         AdminSecretInputText = string.Empty;
         CanUseAdminControls = true;
@@ -304,8 +269,6 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnRelayErrorMessageChanged(string? value) => HasRelayError = !string.IsNullOrEmpty(value);
 
     partial void OnActivationStatusTextChanged(string? value) => HasActivationStatus = !string.IsNullOrEmpty(value);
-
-    partial void OnGeneratedInviteCodeChanged(string? value) => HasGeneratedInviteCode = !string.IsNullOrEmpty(value);
 
     partial void OnIsBusyWithRelayChanged(bool value) => CanUseRelayControls = !value;
 
@@ -389,8 +352,6 @@ public sealed partial class SettingsViewModel : ObservableObject
             StartActivationPolling(resumedEndpoint);
         }
 
-        await RefreshContactCardAsync();
-
         HasSharedLibraryKey = await _sharedLibraryService.HasSharedKeyAsync();
 
         // Diagnostic log auto-loads here since it needs no admin secret — LoadDiagnosticLogAsync
@@ -399,9 +360,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         // "⟳ Obnovit" retries it explicitly.
         await LoadDiagnosticLogAsync();
     }
-
-    [RelayCommand]
-    private void ToggleContactCardQr() => IsShowingContactCardQr = !IsShowingContactCardQr;
 
     /// <summary>True while <see cref="AdminSecretInputText"/> is validated and about to be used — factored out so every admin command below applies the identical check/clear pattern instead of repeating it.</summary>
     private bool TryTakeAdminSecret(out string adminSecret)
@@ -647,7 +605,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         {
             await _currentUserService.SetCurrentUserAsync(DisplayName, SelectedRole);
             IsSaved = true;
-            await RefreshContactCardAsync(); // display name is embedded in the contact card
 
             // 2026-09-09: a real, repeatedly-reported bug — PublishSelfAsync (what actually pushes
             // this device's name into the relay's directory, which DirectoryNameResolver's whole
@@ -702,81 +659,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// The code-based alternative to <see cref="RequestActivationAsync"/> above (2026-09-10) — see
-    /// <see cref="JoinInviteCodeText"/>'s own remarks. Registers immediately, no admin approval to
-    /// wait for: whoever generated the code (<see cref="GenerateInviteAsync"/> below) already made
-    /// the trust decision by choosing to hand it out.
-    /// </summary>
-    [RelayCommand]
-    private async Task RegisterWithCodeAsync()
-    {
-        RelayErrorMessage = null;
-        if (!Uri.TryCreate(RelayEndpointText, UriKind.Absolute, out var endpoint))
-        {
-            RelayErrorMessage = "Zadejte platnou adresu relay serveru, např. ws://10.8.0.1:8080";
-            return;
-        }
-        if (string.IsNullOrWhiteSpace(JoinInviteCodeText))
-        {
-            RelayErrorMessage = "Zadejte kód pozvánky.";
-            return;
-        }
-
-        IsBusyWithRelay = true;
-        try
-        {
-            await _currentUserService.InitializeAsync();
-            await _messageTransport.RegisterAsync(endpoint, JoinInviteCodeText.Trim(), _currentUserService.Current.DisplayName);
-            IsRegistered = true;
-            JoinInviteCodeText = string.Empty;
-            await RefreshContactCardAsync();
-        }
-        catch (Exception ex)
-        {
-            RelayErrorMessage = $"Registrace kódem se nezdařila: {ex.Message}";
-        }
-        finally
-        {
-            IsBusyWithRelay = false;
-        }
-    }
-
-    /// <summary>
-    /// Admin-only counterpart to <see cref="RegisterWithCodeAsync"/> — mints the code a new device
-    /// pastes there. Same "type the admin secret fresh for this one action" pattern every other
-    /// admin command on this page already uses (<see cref="TryTakeAdminSecret"/>'s own remarks).
-    /// Fixed 60-minute validity — no UI field for it, kept deliberately simple.
-    /// </summary>
-    [RelayCommand]
-    private async Task GenerateInviteAsync()
-    {
-        AdminErrorMessage = null;
-        GeneratedInviteCode = null;
-        if (!Uri.TryCreate(RelayEndpointText, UriKind.Absolute, out var endpoint))
-        {
-            AdminErrorMessage = "Nejprve zadejte platnou adresu relay serveru výše.";
-            return;
-        }
-        if (!TryTakeAdminSecret(out var adminSecret)) return;
-
-        IsBusyWithAdmin = true;
-        try
-        {
-            var (code, expiresAtUtc) = await _relayAdminService.CreateInviteAsync(endpoint, adminSecret, displayNameHint: null, validForMinutes: 60);
-            GeneratedInviteCode = code;
-            GeneratedInviteExpiryText = $"Platí do {expiresAtUtc.LocalDateTime:g}";
-        }
-        catch (Exception ex)
-        {
-            AdminErrorMessage = $"Nepodařilo se vygenerovat kód: {ex.Message}";
-        }
-        finally
-        {
-            IsBusyWithAdmin = false;
-        }
-    }
-
     /// <summary>Ticks every few seconds until the admin decides — see <c>IMessageTransport.PollActivationAsync</c>'s remarks for why one call here does double duty as both "check status" and "finish registering" on Approved.</summary>
     private void StartActivationPolling(Uri endpoint)
     {
@@ -805,7 +687,6 @@ public sealed partial class SettingsViewModel : ObservableObject
                     _pendingActivationRequestId = null;
                     IsRegistered = true;
                     ActivationStatusText = "Aktivováno — zařízení je zaregistrováno.";
-                    await RefreshContactCardAsync();
                     break;
                 case ActivationRequestStatus.Rejected:
                     StopActivationPolling();
@@ -898,30 +779,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         await _messageTransport.DisconnectAsync();
         IsConnected = _messageTransport.IsConnected;
         ConnectionStatusText = "Odpojeno";
-    }
-
-    private async Task RefreshContactCardAsync()
-    {
-        try
-        {
-            var configuration = await _transportSettingsRepository.GetAsync();
-            if (configuration?.AssignedDeviceId is not { } deviceId)
-            {
-                ContactCardText = string.Empty;
-                ContactCardQrValue = string.Empty;
-                return;
-            }
-
-            var publicKey = await _messagingService.GetLocalIdentityPublicKeyAsync();
-            var card = new ContactCardBlob(_currentUserService.Current.DisplayName, publicKey, deviceId);
-            ContactCardText = ContactCardCodec.Encode(card);
-            ContactCardQrValue = QrBlobCodec.EncodeContactCard(card);
-        }
-        catch (Exception)
-        {
-            ContactCardText = string.Empty;
-            ContactCardQrValue = string.Empty;
-        }
     }
 
     /// <summary>

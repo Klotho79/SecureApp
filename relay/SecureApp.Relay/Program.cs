@@ -669,7 +669,7 @@ static string DownloadPageHtml(bool androidAvailable, string? androidSize)
             <li>Stáhněte soubor tlačítkem výše.</li>
             <li>Otevřete stažený soubor — telefon se zeptá na povolení instalace z tohoto zdroje (prohlížeč/Soubory), povolte to.</li>
             <li>Po nainstalování otevřete appku → Nastavení → Relay.</li>
-            <li>Buď <strong>Aktivovat</strong> (zadáte jméno a e-mail, počkáte na schválení administrátorem), nebo pokud máte <strong>kód pozvánky</strong> od administrátora, zadejte ho rovnou dole — registrace proběhne ihned.</li>
+            <li>Zadejte jméno a e-mail a stiskněte <strong>Aktivovat</strong> — registrace proběhne rovnou, bez čekání.</li>
         </ol>
         <p class="muted">Tato stránka je dostupná jen v domácí síti / přes VPN, ne z veřejného internetu.</p>
         </body>
