@@ -131,6 +131,16 @@ app.MapPost("/activation/request", (CreateActivationRequestRequest body, RelayDa
         return Results.BadRequest("DisplayName, Email, and KeyFingerprint are all required.");
 
     var requestId = db.CreateActivationRequest(body.DisplayName, body.Email, body.KeyFingerprint);
+
+    // 2026-09-19 (user's own explicit call, after being shown the tradeoff: an open relay endpoint
+    // is baked into the shared APK, so anyone who ever gets the install file could self-register)
+    // — auto-approve every activation request immediately instead of waiting on an admin's manual
+    // decision. The only remaining gate is who receives the install link at all. Reuses the exact
+    // same device-creation path a manual /admin/activation-requests/{id}/approve already used, so
+    // the client's existing PollActivationAsync loop needs no changes — it just sees "Approved" on
+    // its very next poll instead of staying "Pending" indefinitely.
+    db.ApproveActivationRequest(requestId);
+
     return Results.Ok(new CreateActivationRequestResponse(requestId));
 });
 
