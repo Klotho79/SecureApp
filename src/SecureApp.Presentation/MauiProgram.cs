@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Maui.Devices;
 using Microsoft.Maui.Storage;
 using SecureApp.Data;
 using SecureApp.Domain.Interfaces.Services;
@@ -72,8 +73,14 @@ public static class MauiProgram
 		// which silently terminates the app on startup with no exception/event-log entry.
 		// The factory defers it until something actually resolves DataStorageOptions,
 		// which only happens after the app has launched.
-		builder.Services.AddDataInfrastructure(() =>
-			new DataStorageOptions(string.IsNullOrWhiteSpace(dataDirOverride) ? FileSystem.AppDataDirectory : dataDirOverride));
+		// Default display name (2026-09-19): the OS-reported device name instead of the old
+		// hardcoded "Local User" placeholder — a never-configured or freshly-reset device (identity
+		// resets, see TransportEndpointConfiguration's own remarks) must never need a human to give
+		// it a presentable name before it's usable in the relay directory/chat rosters. Deferred via
+		// factory for the same WinRT/COM-before-UI-thread-ready reason as DataStorageOptions above.
+		builder.Services.AddDataInfrastructure(
+			() => new DataStorageOptions(string.IsNullOrWhiteSpace(dataDirOverride) ? FileSystem.AppDataDirectory : dataDirOverride),
+			() => DeviceInfo.Current.Name);
 
 		// ISecureVaultKeyStore lives here rather than in SecureApp.Data because it needs
 		// Microsoft.Maui.Storage.ISecureStorage (Android Keystore / iOS+macOS Keychain /

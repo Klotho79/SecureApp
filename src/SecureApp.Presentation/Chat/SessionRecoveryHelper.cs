@@ -52,7 +52,7 @@ public static class SessionRecoveryHelper
         byte[] peerPublicKey,
         Guid peerRelayDeviceId,
         CancellationToken ct = default)
-        => await ResyncAsync(messagingService, messageTransport, transportSettingsRepository, currentUserService, null, null, peerDisplayName, peerPublicKey, peerRelayDeviceId, ct);
+        => await ResyncAsync(messagingService, messageTransport, transportSettingsRepository, currentUserService, null, null, peerDisplayName, peerPublicKey, peerRelayDeviceId, migratingFromPublicKey: null, ct: ct);
 
     /// <param name="messageRepository">
     /// Optional (2026-09-15) — when given together with <paramref name="sessionRepository"/>, this
@@ -66,6 +66,14 @@ public static class SessionRecoveryHelper
     /// and arrive at a peer with no session to decrypt it against yet.
     /// </param>
     /// <param name="sessionRepository">Optional, paired with <paramref name="messageRepository"/> — see above.</param>
+    /// <param name="migratingFromPublicKey">
+    /// Identity-migration case (2026-09-19, see <see cref="PeerIdentityReconciler"/>) — when a peer
+    /// re-registered under a brand new <paramref name="peerPublicKey"/> entirely, their OLD sessions'
+    /// history lives under their OLD key, not the new one. Without this, <see cref="ReassignAllHistoryAsync"/>
+    /// would look for history under <paramref name="peerPublicKey"/> itself and (correctly, for the
+    /// plain same-key resync case this parameter defaults to) find nothing new to migrate. Null for
+    /// every pre-existing call site — an ordinary resync's peer key never changes.
+    /// </param>
     public static async Task ResyncAsync(
         IMessagingService messagingService,
         IMessageTransport messageTransport,
@@ -76,6 +84,7 @@ public static class SessionRecoveryHelper
         string peerDisplayName,
         byte[] peerPublicKey,
         Guid peerRelayDeviceId,
+        byte[]? migratingFromPublicKey = null,
         CancellationToken ct = default)
     {
         var peerKeyHex = Convert.ToHexStringLower(peerPublicKey);
@@ -104,9 +113,18 @@ public static class SessionRecoveryHelper
 
         if (messageRepository is not null && sessionRepository is not null)
         {
-            var migrated = await ReassignAllHistoryAsync(sessionRepository, messageRepository, peerPublicKey, newSession.Id, ct);
+            var historySourceKey = migratingFromPublicKey ?? peerPublicKey;
+            var migrated = await ReassignAllHistoryAsync(sessionRepository, messageRepository, historySourceKey, newSession.Id, ct);
             if (migrated > 0)
                 AppLog.Event("session.resync.history-migrated", ("peer", peerDisplayName), ("sessions", migrated), ("to", newSession.Id));
+
+            // Identity migration (migratingFromPublicKey given): unlike an ordinary same-key resync,
+            // THIS device already knows for certain the new identity is the same peer (the directory
+            // match that got us here), so there's no need to wait for the other side to accept first
+            // — resend right away instead of leaving it to whichever side accepts a fresh invite next
+            // (see this method's own remarks on why an ordinary resync defers resending).
+            if (migratingFromPublicKey is not null && migrated > 0)
+                await ResendUndeliveredAsync(messagingService, messageRepository, messageTransport, newSession.Id, ct);
         }
 
         if (messageTransport.IsConnected)

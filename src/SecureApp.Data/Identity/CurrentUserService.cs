@@ -8,7 +8,7 @@ namespace SecureApp.Data.Identity;
 /// <inheritdoc cref="ICurrentUserService"/>
 public sealed class CurrentUserService : ICurrentUserService
 {
-    private const string DefaultDisplayName = "Local User";
+    private const string FallbackDisplayName = "Local User";
 
     private readonly IUserRepository _userRepository;
     private readonly SemaphoreSlim _initLock = new(1, 1);
@@ -19,13 +19,26 @@ public sealed class CurrentUserService : ICurrentUserService
 
     public User Current => _current;
 
-    public CurrentUserService(IUserRepository userRepository)
+    /// <summary>
+    /// <paramref name="defaultDisplayName"/> (2026-09-19) — a never-configured or freshly-reset
+    /// device (see <c>TransportEndpointConfiguration</c>'s own remarks on identity resets) used to
+    /// silently show up everywhere — the relay directory, every group roster, every chat — as the
+    /// literal placeholder "Local User" until a human happened to open Settings and typed a real
+    /// name. The user's own explicit standing requirement ("uzivatel vůbec nema poznat ze je neco
+    /// spatne") rules that out: a device must never need a human to give it a presentable name.
+    /// Presentation passes the OS-reported device name (<c>DeviceInfo.Current.Name</c>) here — the
+    /// Data layer itself stays platform-agnostic (same reasoning as <see cref="SecureApp.Data.DataStorageOptions"/>),
+    /// so this is supplied, not computed. Falls back to <see cref="FallbackDisplayName"/> only if
+    /// that's ever null/blank (e.g. a platform that reports nothing).
+    /// </summary>
+    public CurrentUserService(IUserRepository userRepository, string? defaultDisplayName = null)
     {
         _userRepository = userRepository ?? throw new ArgumentNullException(nameof(userRepository));
+        var displayName = string.IsNullOrWhiteSpace(defaultDisplayName) ? FallbackDisplayName : defaultDisplayName;
         // Sensible in-memory default so Current is never null before InitializeAsync
         // completes — Admin so existing single-user functionality isn't suddenly locked
         // down for anyone upgrading from before RBAC existed.
-        _current = new User(DefaultDisplayName, Role.Admin);
+        _current = new User(displayName, Role.Admin);
     }
 
     public async Task InitializeAsync(CancellationToken ct = default)

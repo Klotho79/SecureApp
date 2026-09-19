@@ -32,7 +32,7 @@ public static class DependencyInjection
     /// MauiProgram.CreateMauiApp() itself, which silently kills the app on startup. Deferring
     /// evaluation to first DI resolution (after the app has actually launched) avoids that.
     /// </summary>
-    public static IServiceCollection AddDataInfrastructure(this IServiceCollection services, Func<DataStorageOptions> optionsFactory)
+    public static IServiceCollection AddDataInfrastructure(this IServiceCollection services, Func<DataStorageOptions> optionsFactory, Func<string>? defaultDisplayNameFactory = null)
     {
         services.AddSingleton(_ => optionsFactory());
 
@@ -49,7 +49,8 @@ public static class DependencyInjection
         // Milestone 3 (RBAC): single local current-user record + role. Singleton so every
         // caller shares one cached User instance for the app's lifetime — see CurrentUserService's remarks.
         services.AddScoped<IUserRepository, UserRepository>();
-        services.AddSingleton<ICurrentUserService, CurrentUserService>();
+        services.AddSingleton<ICurrentUserService>(sp =>
+            new CurrentUserService(sp.GetRequiredService<IUserRepository>(), defaultDisplayNameFactory?.Invoke()));
 
         // Milestone 5 (E2EE Chat, Domain+Data only — see DEVELOPMENT_PLAN.md's note): Direct
         // (1-on-1) sessions, Double Ratchet, messages. IMessageTransport has no implementation

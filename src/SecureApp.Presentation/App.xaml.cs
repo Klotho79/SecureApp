@@ -238,6 +238,7 @@ public partial class App : Application
 					if (transport.IsConnected && (justReconnected || sweepDue))
 					{
 						await RunStaleSessionSweepAsync(services, transport);
+						await RunPeerIdentityReconciliationAsync(services, transport);
 						lastStaleSweep = DateTimeOffset.UtcNow;
 					}
 				}
@@ -378,6 +379,132 @@ public partial class App : Application
 				// Best-effort — retried again next sweep. Reported at Warning (not Error) since
 				// this is an expected, self-correcting retry loop, not a surprise.
 				ReportFireAndForget(DiagnosticLogLevel.Warning, $"Pozadí: obnovení relace s {stale.PeerDisplayName} se nepodařilo, zkusí se znovu při dalším průchodu.", nameof(RunStaleSessionSweepAsync), ex);
+			}
+		}
+	}
+
+	/// <summary>
+	/// Background identity-migration sweep (2026-09-19, the user's own hard standing requirement —
+	/// see <see cref="PeerIdentityReconciler"/>'s own remarks and the "secureapp-self-healing-requirement"
+	/// memory: nobody should ever have to notice or manually fix a broken chat/group member). Runs on
+	/// the SAME cadence as <see cref="RunStaleSessionSweepAsync"/> — every reconnect and every
+	/// <see cref="_staleSessionSweepInterval"/> — independent of which screen, if any, is open. For
+	/// every 1:1 peer and every group member this device knows about, checks the relay's own member
+	/// directory for a same-name-but-different-key match — the shape a peer's identity reset (vault
+	/// wipe, local DB reset) leaves behind — and silently re-pairs under the new key, carrying this
+	/// device's own still-pending outbound history onto the fresh session and resending it right away
+	/// (see <see cref="SessionRecoveryHelper.ResyncAsync"/>'s <c>migratingFromPublicKey</c> remarks).
+	///
+	/// Deliberately does NOT recover content already stuck in the RELAY's own outbox addressed to a
+	/// now-dead identity (an admin/ops concern, not a runtime one) — only this device's own locally-held
+	/// copy of what it tried to send.
+	/// </summary>
+	private static async Task RunPeerIdentityReconciliationAsync(IServiceProvider services, IMessageTransport transport)
+	{
+		using var scope = services.CreateScope();
+		var contactDirectoryService = scope.ServiceProvider.GetRequiredService<IContactDirectoryService>();
+		var sessionRepository = scope.ServiceProvider.GetRequiredService<IChatSessionRepository>();
+		var groupChatRepository = scope.ServiceProvider.GetRequiredService<IGroupChatRepository>();
+		var groupMemberRepository = scope.ServiceProvider.GetRequiredService<IGroupMemberRepository>();
+		var messagingService = scope.ServiceProvider.GetRequiredService<IMessagingService>();
+		var transportSettings = scope.ServiceProvider.GetRequiredService<ITransportSettingsRepository>();
+		var currentUserService = scope.ServiceProvider.GetRequiredService<ICurrentUserService>();
+		var messageRepository = scope.ServiceProvider.GetRequiredService<IMessageRepository>();
+
+		IReadOnlyList<DirectoryMember> directory;
+		try { directory = await contactDirectoryService.ListMembersAsync(); }
+		catch { return; } // best-effort — relay/directory unreachable right now, next sweep tries again
+		if (directory.Count == 0) return;
+
+		byte[] localPublicKey;
+		try { localPublicKey = await messagingService.GetLocalIdentityPublicKeyAsync(); }
+		catch { return; }
+
+		// --- 1:1 sessions ---
+		IReadOnlyList<ChatSession> sessions;
+		try { sessions = await sessionRepository.GetAllAsync(); }
+		catch { sessions = []; }
+
+		var latestByPeer = sessions
+			.GroupBy(s => Convert.ToHexStringLower(s.PeerIdentityPublicKey))
+			.Select(g => g.OrderByDescending(s => s.ModifiedAtUtc).First());
+
+		foreach (var session in latestByPeer)
+		{
+			// Stays gone unless the user explicitly re-invites/accepts — same policy as everywhere
+			// else RemovedPeersStore is checked (never silently resurrect a chat the user removed).
+			if (RemovedPeersStore.Contains(session.PeerIdentityPublicKey))
+				continue;
+
+			var target = PeerIdentityReconciler.TryResolveMigrationTarget(directory, session.PeerDisplayName, session.PeerIdentityPublicKey);
+			if (target is null) continue;
+
+			try
+			{
+				await SessionRecoveryHelper.ResyncAsync(
+					messagingService, transport, transportSettings, currentUserService, messageRepository, sessionRepository,
+					target.DisplayName, target.PublicKey, target.RelayDeviceId, migratingFromPublicKey: session.PeerIdentityPublicKey);
+				AppLog.Event("peer.identity.migrated", ("peer", target.DisplayName), ("scope", "1:1"));
+			}
+			catch (Exception ex)
+			{
+				AppLog.Error("App.PeerIdentityReconciliation", $"failed to migrate 1:1 peer {target.DisplayName}", ex);
+			}
+		}
+
+		// --- Group members ---
+		IReadOnlyList<GroupChat> groups;
+		try { groups = await groupChatRepository.GetAllAsync(); }
+		catch { groups = []; }
+
+		foreach (var group in groups)
+		{
+			IReadOnlyList<GroupMember> members;
+			try { members = await groupMemberRepository.GetByGroupAsync(group.Id); }
+			catch { continue; }
+
+			var migrations = new List<(GroupMember Old, DirectoryMember New)>();
+			foreach (var member in members)
+			{
+				if (member.PublicKey.AsSpan().SequenceEqual(localPublicKey)) continue; // that's me
+				if (RemovedPeersStore.Contains(member.PublicKey)) continue;
+
+				var target = PeerIdentityReconciler.TryResolveMigrationTarget(directory, member.DisplayName, member.PublicKey);
+				if (target is not null) migrations.Add((member, target));
+			}
+			if (migrations.Count == 0) continue;
+
+			var migratedById = migrations.ToDictionary(m => m.Old.Id, m => m.New);
+			var updatedMembers = members
+				.Select(m => migratedById.TryGetValue(m.Id, out var newTarget)
+					? new GroupMember(group.Id, newTarget.DisplayName, newTarget.PublicKey, newTarget.RelayDeviceId, m.CanInvite)
+					: m)
+				.ToList();
+
+			try
+			{
+				await groupMemberRepository.ReplaceAllAsync(group.Id, updatedMembers);
+				AppLog.Event("group.membership.identity-migrated", ("group", group.Id), ("count", migrations.Count));
+			}
+			catch (Exception ex)
+			{
+				AppLog.Error("App.PeerIdentityReconciliation", $"failed to persist migrated membership for group {group.Id}", ex);
+				continue; // don't re-pair against a roster we failed to actually persist
+			}
+
+			foreach (var (oldMember, target) in migrations)
+			{
+				try
+				{
+					await SessionRecoveryHelper.ResyncAsync(
+						messagingService, transport, transportSettings, currentUserService, messageRepository, sessionRepository,
+						target.DisplayName, target.PublicKey, target.RelayDeviceId, migratingFromPublicKey: oldMember.PublicKey);
+					AppLog.Event("peer.identity.migrated", ("peer", target.DisplayName), ("scope", "group"), ("group", group.Id));
+				}
+				catch (Exception ex)
+				{
+					AppLog.Error("App.PeerIdentityReconciliation", $"failed to re-pair migrated group member {target.DisplayName}", ex);
+				}
 			}
 		}
 	}
@@ -536,6 +663,7 @@ public partial class App : Application
 
 		using var scope = services.CreateScope();
 		var messagingService = scope.ServiceProvider.GetRequiredService<IMessagingService>();
+		var sessionRepository = scope.ServiceProvider.GetRequiredService<IChatSessionRepository>();
 		try
 		{
 			// A fresh handshake invite from a peer we already have a session with (2026-09-07) now
@@ -560,8 +688,39 @@ public partial class App : Application
 			}
 
 			var existingSession = await messagingService.FindExistingSessionAsync(invite.InitiatorPublicKey);
+			byte[]? historySourceKey = null;
 			if (existingSession is not null)
+			{
 				await messagingService.CloseSessionAsync(existingSession.Id);
+				historySourceKey = invite.InitiatorPublicKey;
+			}
+			else
+			{
+				// Identity-migration accept (2026-09-19, see PeerIdentityReconciler's own remarks): this
+				// device has never seen invite.InitiatorPublicKey before, but if it has exactly one OTHER
+				// local session (any state) under the SAME display name and a DIFFERENT key, the peer
+				// most likely just reset their identity and this is really a resync in disguise, not a
+				// first-ever pairing — carry that old session's still-pending outbound history onto the
+				// fresh one below instead of silently stranding it forever (the exact gap that left this
+				// device's own undelivered messages stuck addressed to a peer's dead identity). Ambiguous
+				// (more than one distinct old key sharing that name) deliberately does nothing here — same
+				// "never guess" discipline as PeerIdentityReconciler.TryResolveMigrationTarget.
+				try
+				{
+					var allSessions = await sessionRepository.GetAllAsync();
+					var sameNameOtherKeys = allSessions
+						.Where(s => s.PeerDisplayName == invite.InitiatorDisplayName && !s.PeerIdentityPublicKey.AsSpan().SequenceEqual(invite.InitiatorPublicKey))
+						.Select(s => Convert.ToHexStringLower(s.PeerIdentityPublicKey))
+						.Distinct()
+						.ToList();
+					if (sameNameOtherKeys.Count == 1)
+						historySourceKey = Convert.FromHexString(sameNameOtherKeys[0]);
+				}
+				catch
+				{
+					// Best-effort — a lookup failure here just means no history migration this time.
+				}
+			}
 
 			var acceptedSession = await messagingService.AcceptSessionAsync(invite.InitiatorDisplayName, invite.InitiatorPublicKey, invite.InitiatorRelayDeviceId, invite.HandshakeCipherText);
 			AppLog.Event("pairing.accepted", ("peer", invite.InitiatorDisplayName), ("peerDevice", invite.InitiatorRelayDeviceId));
@@ -574,14 +733,14 @@ public partial class App : Application
 			// migrated onto the new session (so it's visible again) and re-sent over it (so it actually
 			// arrives) — see SessionRecoveryHelper's own remarks for why this is safe to do HERE
 			// (session fully established both ways by this point) but not from the resyncing side itself.
-			if (existingSession is not null)
+			// 2026-09-19: also covers the identity-migration case above, via historySourceKey.
+			if (historySourceKey is not null)
 			{
 				var messageRepositoryForHeal = scope.ServiceProvider.GetRequiredService<IMessageRepository>();
-				var sessionRepositoryForHeal = scope.ServiceProvider.GetRequiredService<IChatSessionRepository>();
 				var messageTransportForHeal = scope.ServiceProvider.GetRequiredService<IMessageTransport>();
 				try
 				{
-					await SessionRecoveryHelper.ReassignAllHistoryAsync(sessionRepositoryForHeal, messageRepositoryForHeal, invite.InitiatorPublicKey, acceptedSession.Id);
+					await SessionRecoveryHelper.ReassignAllHistoryAsync(sessionRepository, messageRepositoryForHeal, historySourceKey, acceptedSession.Id);
 					await SessionRecoveryHelper.ResendUndeliveredAsync(messagingService, messageRepositoryForHeal, messageTransportForHeal, acceptedSession.Id);
 				}
 				catch (Exception reassignEx)
