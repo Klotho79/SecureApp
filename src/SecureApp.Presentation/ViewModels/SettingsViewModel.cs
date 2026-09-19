@@ -75,11 +75,12 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial string RelayEndpointText { get; set; }
 
-    // --- Activation (2026-09-06) — replaces the invite-code paste-in below for a new device
-    // joining the community: instead of typing in a code an admin handed over out-of-band, the new
-    // device sends the admin a request (name + email + this device's own key fingerprint) and just
-    // waits for it to be approved in-app. See IMessageTransport.RequestActivationAsync/PollActivationAsync
-    // and the "Admin: Pending Activations" properties further below for the admin's side of this.
+    // --- Activation (2026-09-06, auto-approve added 2026-09-19) — replaces the invite-code paste-in
+    // below for a new device joining the community: instead of typing in a code an admin handed
+    // over out-of-band, the new device sends name + email + this device's own key fingerprint and
+    // the relay approves it on receipt (2026-09-19, the user's own call — see Program.cs's
+    // /activation/request remarks: the install link is the only real gate now). See
+    // IMessageTransport.RequestActivationAsync/PollActivationAsync.
 
     [ObservableProperty]
     public partial string ActivationEmailText { get; set; }
@@ -180,30 +181,17 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool HasSharedLibraryBroadcastStatus { get; set; }
 
-    // --- Relay admin: approve/reject device activation requests in-app (Admin role only) ---
+    // --- Relay admin (Admin role only) ---
     //
     // AdminSecretInputText (2026-09-07) is deliberately NEVER persisted anywhere — the user's own
     // explicit call after reviewing the original design, which stored it in OS-backed secure
     // storage (Windows DPAPI etc.): that protects against someone without this device's own login,
     // but not against anything already running under it. Re-typed fresh before every single admin
-    // action (list/approve/reject/redeploy) and cleared immediately after each one — see
-    // IRelayAdminService's own remarks for the same reasoning on the service side.
+    // action (list/deregister/generate invite/redeploy) and cleared immediately after each one —
+    // see IRelayAdminService's own remarks for the same reasoning on the service side.
 
     [ObservableProperty]
     public partial string AdminSecretInputText { get; set; }
-
-    /// <summary>Every activation request still awaiting a decision, newest-request-command already baked in as <see cref="PendingActivationItem.ApproveCommand"/>/<see cref="PendingActivationItem.RejectCommand"/> so the CollectionView's DataTemplate needs no <c>x:Reference</c> back to this page — same pattern this codebase already used for chat-attachment/category-chip rows before those were simplified away.</summary>
-    [ObservableProperty]
-    public partial ObservableCollection<PendingActivationItem> PendingActivations { get; set; }
-
-    [ObservableProperty]
-    public partial bool IsLoadingActivations { get; set; }
-
-    [ObservableProperty]
-    public partial bool HasNoPendingActivations { get; set; }
-
-    [ObservableProperty]
-    public partial bool HasPendingActivations { get; set; }
 
     [ObservableProperty]
     public partial string? DeployStatusText { get; set; }
@@ -299,8 +287,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         AdminSecretInputText = string.Empty;
         CanUseAdminControls = true;
         HasNoSharedLibraryKey = true;
-        PendingActivations = [];
-        HasNoPendingActivations = true;
         RegisteredDevices = [];
         HasNoRegisteredDevices = true;
     }
@@ -340,8 +326,6 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnIsBusyWithAdminChanged(bool value) => CanUseAdminControls = !value;
 
     partial void OnDeployStatusTextChanged(string? value) => HasDeployStatus = !string.IsNullOrEmpty(value);
-
-    partial void OnHasNoPendingActivationsChanged(bool value) => HasPendingActivations = !value;
 
     partial void OnHasNoRegisteredDevicesChanged(bool value) => HasRegisteredDevices = !value;
 
@@ -395,13 +379,13 @@ public sealed partial class SettingsViewModel : ObservableObject
         ConnectionStatusText = IsConnected ? "Připojeno" : "Odpojeno";
 
         // Resume polling an activation request that was still pending the last time this device
-        // closed — otherwise a relaunch between "Aktivovat" and the admin's decision would silently
-        // strand the request: nothing would ever check on it again even after the admin approves.
+        // closed — otherwise a relaunch mid-activation would silently strand the request: nothing
+        // would ever check on it again even though the relay auto-approves it almost immediately.
         if (!IsRegistered && configuration?.PendingActivationRequestId is { } pendingRequestId
             && Uri.TryCreate(RelayEndpointText, UriKind.Absolute, out var resumedEndpoint))
         {
             _pendingActivationRequestId = pendingRequestId;
-            ActivationStatusText = "Čeká na schválení administrátorem…";
+            ActivationStatusText = "Aktivace probíhá…";
             StartActivationPolling(resumedEndpoint);
         }
 
@@ -409,15 +393,11 @@ public sealed partial class SettingsViewModel : ObservableObject
 
         HasSharedLibraryKey = await _sharedLibraryService.HasSharedKeyAsync();
 
-        // Diagnostic log auto-loads here (unlike pending activations below) since it needs no
-        // admin secret — LoadDiagnosticLogAsync already catches its own failures into
-        // DiagnosticLogErrorMessage rather than throwing, so a relay that's unreachable right now
-        // doesn't block the rest of this page from loading; "⟳ Obnovit" retries it explicitly.
+        // Diagnostic log auto-loads here since it needs no admin secret — LoadDiagnosticLogAsync
+        // already catches its own failures into DiagnosticLogErrorMessage rather than throwing, so
+        // a relay that's unreachable right now doesn't block the rest of this page from loading;
+        // "⟳ Obnovit" retries it explicitly.
         await LoadDiagnosticLogAsync();
-
-        // No auto-load of pending activations here anymore (2026-09-07) — that would need the
-        // admin secret, which is never held between actions; the admin types it in and presses
-        // "Obnovit" explicitly instead. See AdminSecretInputText's own remarks.
     }
 
     [RelayCommand]
@@ -439,107 +419,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         return true;
     }
 
-    [RelayCommand]
-    private async Task LoadPendingActivationsAsync()
-    {
-        AdminErrorMessage = null;
-        if (!Uri.TryCreate(RelayEndpointText, UriKind.Absolute, out var endpoint))
-        {
-            AdminErrorMessage = "Nejprve zadejte platnou adresu relay serveru výše.";
-            return;
-        }
-        if (!TryTakeAdminSecret(out var adminSecret)) return;
-        await RefreshPendingActivationsAsync(endpoint, adminSecret);
-    }
-
-    /// <summary>
-    /// The actual fetch, factored out so Approve/Reject below can refresh the list immediately
-    /// afterward using the SAME already-typed secret they just used — held only in that command's
-    /// own local variable for the remainder of its one execution, never written back to
-    /// <see cref="AdminSecretInputText"/> or anywhere else. Re-typing it a second time just to see
-    /// the list update would be pure friction with no security benefit over reusing it for the
-    /// rest of this one logical action.
-    /// </summary>
-    private async Task RefreshPendingActivationsAsync(Uri endpoint, string adminSecret)
-    {
-        IsLoadingActivations = true;
-        try
-        {
-            var pending = await _relayAdminService.GetPendingActivationRequestsAsync(endpoint, adminSecret);
-            PendingActivations = new ObservableCollection<PendingActivationItem>(pending.Select(ToPendingActivationItem));
-            HasNoPendingActivations = PendingActivations.Count == 0;
-        }
-        catch (Exception ex)
-        {
-            AdminErrorMessage = $"Nepodařilo se načíst čekající žádosti: {ex.Message}";
-        }
-        finally
-        {
-            IsLoadingActivations = false;
-        }
-    }
-
-    private PendingActivationItem ToPendingActivationItem(PendingActivationRequest request) => new(
-        request.Id,
-        request.DisplayName,
-        request.Email,
-        request.KeyFingerprint,
-        request.CreatedAtUtc.LocalDateTime.ToString("g"),
-        ApproveActivationCommand,
-        RejectActivationCommand);
-
-    /// <summary>
-    /// Note on the flow this implies: the admin types the secret once, then presses Potvrdit on
-    /// the specific row — see <see cref="TryTakeAdminSecret"/>'s own remarks for why it's consumed
-    /// (cleared) right away; approving a *second* request afterward means typing it again. The
-    /// immediate list refresh right below reuses this same call's own local copy rather than
-    /// asking for it twice in a row for what's really one logical action.
-    /// </summary>
-    [RelayCommand]
-    private async Task ApproveActivationAsync(Guid id)
-    {
-        AdminErrorMessage = null;
-        if (!Uri.TryCreate(RelayEndpointText, UriKind.Absolute, out var endpoint))
-        {
-            AdminErrorMessage = "Nejprve zadejte platnou adresu relay serveru výše.";
-            return;
-        }
-        if (!TryTakeAdminSecret(out var adminSecret)) return;
-
-        try
-        {
-            await _relayAdminService.ApproveActivationRequestAsync(endpoint, adminSecret, id);
-            await RefreshPendingActivationsAsync(endpoint, adminSecret);
-        }
-        catch (Exception ex)
-        {
-            AdminErrorMessage = $"Nepodařilo se schválit žádost: {ex.Message}";
-        }
-    }
-
-    [RelayCommand]
-    private async Task RejectActivationAsync(Guid id)
-    {
-        AdminErrorMessage = null;
-        if (!Uri.TryCreate(RelayEndpointText, UriKind.Absolute, out var endpoint))
-        {
-            AdminErrorMessage = "Nejprve zadejte platnou adresu relay serveru výše.";
-            return;
-        }
-        if (!TryTakeAdminSecret(out var adminSecret)) return;
-
-        try
-        {
-            await _relayAdminService.RejectActivationRequestAsync(endpoint, adminSecret, id);
-            await RefreshPendingActivationsAsync(endpoint, adminSecret);
-        }
-        catch (Exception ex)
-        {
-            AdminErrorMessage = $"Nepodařilo se zamítnout žádost: {ex.Message}";
-        }
-    }
-
-    /// <summary>Fetches every registered device's staleness + pending-outbox depth (2.1, 2026-09-17) — same on-demand, admin-secret-per-call pattern as <see cref="LoadPendingActivationsAsync"/>.</summary>
+    /// <summary>Fetches every registered device's staleness + pending-outbox depth (2.1, 2026-09-17) — same on-demand, admin-secret-per-call pattern as <see cref="GenerateInviteAsync"/>.</summary>
     [RelayCommand]
     private async Task LoadRegisteredDevicesAsync()
     {
@@ -809,7 +689,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         try
         {
             _pendingActivationRequestId = await _messageTransport.RequestActivationAsync(endpoint, _currentUserService.Current.DisplayName, ActivationEmailText);
-            ActivationStatusText = "Čeká na schválení administrátorem…";
+            ActivationStatusText = "Aktivace probíhá…";
             StartActivationPolling(endpoint);
         }
         catch (Exception ex)
@@ -1078,13 +958,10 @@ public sealed partial class SettingsViewModel : ObservableObject
     };
 }
 
-/// <summary>One row in the admin's "Čekající aktivace" list — carries the same shared Approve/Reject <see cref="RelayCommand{T}"/> instances (bound per-item as <c>CommandParameter="{Binding Id}"</c> in the DataTemplate) rather than an <c>x:Reference</c> back to the page.</summary>
-public sealed record PendingActivationItem(Guid Id, string DisplayName, string Email, string KeyFingerprint, string CreatedText, ICommand ApproveCommand, ICommand RejectCommand);
-
 /// <summary>One row in the admin's device-management list (2.1, 2026-09-17) — <see cref="StatusText"/>/<see cref="PendingText"/> are pre-formatted here (not in XAML) so the CollectionView's DataTemplate needs no value converters, this codebase's established "no converters" convention.</summary>
 public sealed record RegisteredDeviceItem(Guid Id, string DisplayName, string StatusText, string PendingText, bool HasPendingMessages, bool IsStale, ICommand DeregisterCommand);
 
-/// <summary>One row in the "Diagnostický log" list (2026-09-10) — display-only, no per-row command, unlike <see cref="PendingActivationItem"/>. <see cref="Level"/> stays the English enum name (<c>Error</c>/<c>Warning</c>/<c>Info</c>) — the XAML template colors it, doesn't translate it, same "wire-level concept stays English" call this codebase already made for <c>TransportConnectionState</c>. <see cref="HasContext"/> is precomputed here (not a converter) so the DataTemplate's <c>IsVisible</c> binding stays a plain bool — this codebase's established preference over introducing a new <c>IValueConverter</c> for one spot.</summary>
+/// <summary>One row in the "Diagnostický log" list (2026-09-10) — display-only, no per-row command, unlike <see cref="RegisteredDeviceItem"/>. <see cref="Level"/> stays the English enum name (<c>Error</c>/<c>Warning</c>/<c>Info</c>) — the XAML template colors it, doesn't translate it, same "wire-level concept stays English" call this codebase already made for <c>TransportConnectionState</c>. <see cref="HasContext"/> is precomputed here (not a converter) so the DataTemplate's <c>IsVisible</c> binding stays a plain bool — this codebase's established preference over introducing a new <c>IValueConverter</c> for one spot.</summary>
 public sealed record DiagnosticLogItem(string TimeText, string Level, string DeviceDisplayName, string Message, string? Context)
 {
     public bool HasContext => !string.IsNullOrEmpty(Context);

@@ -288,7 +288,7 @@ public sealed partial class LogbookManageViewModel : ObservableObject
     }
 }
 
-/// <summary>One row in the "Check-listy" management list — carries the shared <see cref="DeleteCommand"/> instance (bound per-item as <c>CommandParameter="{Binding Id}"</c>) rather than an <c>x:Reference</c> back to the page, same pattern <c>PendingActivationItem</c> already established.</summary>
+/// <summary>One row in the "Check-listy" management list — carries the shared <see cref="DeleteCommand"/> instance (bound per-item as <c>CommandParameter="{Binding Id}"</c>) rather than an <c>x:Reference</c> back to the page, same pattern <c>RegisteredDeviceItem</c> already established.</summary>
 public sealed record LogbookManageChecklistItem(Guid Id, string Name, int ItemCount, ICommand DeleteCommand);
 
 /// <summary>Same shape as <see cref="LogbookManageChecklistItem"/>, for the procedure-type catalog.</summary>

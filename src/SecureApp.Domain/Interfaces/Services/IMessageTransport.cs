@@ -30,12 +30,14 @@ public interface IMessageTransport
     Task RegisterAsync(Uri endpoint, string inviteCode, string displayName, CancellationToken ct = default);
 
     /// <summary>
-    /// Sends the admin a request to activate this device — name + email (both just for the admin to
-    /// recognize who's asking; not otherwise used by the protocol) plus a short fingerprint of this
-    /// device's own chat-identity public key (see <see cref="PendingActivationRequest.KeyFingerprint"/>'s
-    /// remarks). Returns the request id to pass into <see cref="PollActivationAsync"/>; the caller is
-    /// responsible for persisting it (<c>TransportEndpointConfiguration.SetPendingActivationRequest</c>)
-    /// so a relaunch before the admin responds can resume polling instead of losing track of it.
+    /// Requests activation of this device — name + email plus a short fingerprint of this device's
+    /// own chat-identity public key. The relay auto-approves on receipt (2026-09-19, the user's own
+    /// call: the install link is the only real gate now — see <c>Program.cs</c>'s <c>/activation/request</c>
+    /// remarks), so this is effectively synchronous in practice, but the caller still needs the
+    /// returned request id to pass into <see cref="PollActivationAsync"/> to actually pick up the
+    /// resulting device credential. The caller is responsible for persisting that id
+    /// (<c>TransportEndpointConfiguration.SetPendingActivationRequest</c>) so a relaunch mid-flight
+    /// can resume polling instead of losing track of it.
     /// </summary>
     Task<Guid> RequestActivationAsync(Uri endpoint, string displayName, string email, CancellationToken ct = default);
 

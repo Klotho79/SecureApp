@@ -41,47 +41,6 @@ public sealed class HttpRelayAdminService : IRelayAdminService
         return (result.Code, result.ExpiresAtUtc);
     }
 
-    public async Task<IReadOnlyList<PendingActivationRequest>> GetPendingActivationRequestsAsync(Uri endpoint, string adminSecret, CancellationToken ct = default)
-    {
-        ArgumentNullException.ThrowIfNull(endpoint);
-        ArgumentException.ThrowIfNullOrWhiteSpace(adminSecret);
-
-        var listUri = new Uri(ToHttpUri(endpoint), "admin/activation-requests");
-        using var request = new HttpRequestMessage(HttpMethod.Get, listUri);
-        request.Headers.Add("X-Admin-Secret", adminSecret);
-
-        using var response = await _httpClient.SendAsync(request, ct);
-        if (response.StatusCode == HttpStatusCode.Unauthorized)
-            throw new InvalidOperationException("Relay odmítl zadané admin heslo.");
-        response.EnsureSuccessStatusCode();
-
-        var results = await response.Content.ReadFromJsonAsync<List<ActivationRequestSummary>>(HttpJsonOptions, ct) ?? [];
-        return results.Select(r => new PendingActivationRequest(r.Id, r.DisplayName, r.Email, r.KeyFingerprint, r.CreatedAtUtc)).ToList();
-    }
-
-    public Task ApproveActivationRequestAsync(Uri endpoint, string adminSecret, Guid requestId, CancellationToken ct = default)
-        => PostActivationDecisionAsync(endpoint, adminSecret, requestId, "approve", ct);
-
-    public Task RejectActivationRequestAsync(Uri endpoint, string adminSecret, Guid requestId, CancellationToken ct = default)
-        => PostActivationDecisionAsync(endpoint, adminSecret, requestId, "reject", ct);
-
-    private async Task PostActivationDecisionAsync(Uri endpoint, string adminSecret, Guid requestId, string action, CancellationToken ct)
-    {
-        ArgumentNullException.ThrowIfNull(endpoint);
-        ArgumentException.ThrowIfNullOrWhiteSpace(adminSecret);
-
-        var decisionUri = new Uri(ToHttpUri(endpoint), $"admin/activation-requests/{requestId}/{action}");
-        using var request = new HttpRequestMessage(HttpMethod.Post, decisionUri);
-        request.Headers.Add("X-Admin-Secret", adminSecret);
-
-        using var response = await _httpClient.SendAsync(request, ct);
-        if (response.StatusCode == HttpStatusCode.Unauthorized)
-            throw new InvalidOperationException("Relay odmítl zadané admin heslo.");
-        if (response.StatusCode == HttpStatusCode.Conflict)
-            throw new InvalidOperationException("Tato žádost už byla schválena nebo zamítnuta — není co dělat.");
-        response.EnsureSuccessStatusCode();
-    }
-
     public async Task RequestDeployAsync(Uri endpoint, string adminSecret, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
@@ -146,9 +105,6 @@ public sealed class HttpRelayAdminService : IRelayAdminService
 
     private sealed record InviteResponse(string Code, DateTimeOffset ExpiresAtUtc);
 
-    /// <summary>Mirrors the relay's own <c>SecureApp.Relay.Contracts.ActivationRequestSummary</c> — duplicated rather than shared, since this Presentation-layer client has no project reference to the Relay's own assembly (same reasoning as <see cref="InviteResponse"/> already established for the invite-code response shape).</summary>
-    private sealed record ActivationRequestSummary(Guid Id, string DisplayName, string Email, string KeyFingerprint, DateTimeOffset CreatedAtUtc);
-
-    /// <summary>Mirrors the relay's own <c>SecureApp.Relay.Contracts.RegisteredDeviceSummary</c> (2.1, 2026-09-17) — same duplication reasoning as <see cref="ActivationRequestSummary"/>.</summary>
+    /// <summary>Mirrors the relay's own <c>SecureApp.Relay.Contracts.RegisteredDeviceSummary</c> (2.1, 2026-09-17) — duplicated rather than shared, since this Presentation-layer client has no project reference to the Relay's own assembly (same reasoning as <see cref="InviteResponse"/> already established for the invite-code response shape).</summary>
     private sealed record RegisteredDeviceSummary(Guid Id, string DisplayName, DateTimeOffset CreatedAtUtc, string? DirectoryDisplayName, DateTimeOffset? LastActiveAtUtc, int PendingOutboxCount);
 }

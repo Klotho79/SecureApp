@@ -276,8 +276,8 @@ public partial class App : Application
 		catch (SecureApp.Presentation.Transport.RelayUnauthorizedException)
 		{
 			// Credentials were explicitly rejected — device registration was deleted or rotated.
-			// Clear stored credentials and silently start a new activation request; the admin will
-			// see a badge in Settings. No user-visible error.
+			// Clear stored credentials and silently self-register a fresh one (SilentReactivateAsync
+			// below already bypasses admin approval entirely). No user-visible error.
 			SecureApp.Presentation.Infrastructure.AppLog.Event("relay.unauthorized.reregistering");
 			try { await transport.ClearCredentialsAsync(); }
 			catch (Exception clearEx) { SecureApp.Presentation.Infrastructure.AppLog.Error("App.TryConnect", "failed to clear stale credentials", clearEx); }
