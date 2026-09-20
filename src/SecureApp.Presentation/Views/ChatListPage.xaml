@@ -30,7 +30,7 @@
             <ColumnDefinition x:Name="DetailColumn" Width="0" />
         </Grid.ColumnDefinitions>
 
-        <Grid Grid.Column="0" RowDefinitions="Auto,*" Padding="20,16" RowSpacing="14">
+        <Grid Grid.Column="0" RowDefinitions="Auto,*" Padding="16" RowSpacing="14">
 
             <VerticalStackLayout Grid.Row="0" Spacing="12">
                 <Label Text="Chaty" Style="{StaticResource PageTitle}" />

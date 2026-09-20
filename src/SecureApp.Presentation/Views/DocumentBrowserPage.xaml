@@ -7,13 +7,20 @@
     xmlns:controls="clr-namespace:SecureApp.Presentation.Controls"
     x:DataType="vm:DocumentBrowserViewModel"
     Title="{Binding CurrentFolderName}"
+    Shell.NavBarIsVisible="False"
     x:Name="PageRoot">
+    <!-- Shell.NavBarIsVisible="False" + own PageTitle Label below (2026-09-20, "sjednot grafiku
+         jako je ta nastenka") — this page relied on the native Shell chrome alone for its title,
+         the one page-level inconsistency left after Nástěnka/Chaty/Kontakty/Knihovna all draw
+         their own in-content title instead. -->
 
-    <Grid RowDefinitions="Auto,Auto,*" Padding="20" RowSpacing="10">
+    <Grid RowDefinitions="Auto,Auto,Auto,*" Padding="16" RowSpacing="10">
+
+        <Label Grid.Row="0" Text="{Binding CurrentFolderName}" Style="{StaticResource PageTitle}" />
 
         <!-- Chats/Library/Settings moved to the app-wide TabBar (AppShell.xaml) — this header
              is now just the actions specific to browsing documents. -->
-        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto">
+        <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto,Auto">
             <Button
                 Grid.Column="0"
                 Text="⬅ Nahoru"
@@ -37,7 +44,7 @@
                 Command="{Binding ImportDocumentsCommand}" />
         </Grid>
 
-        <Grid Grid.Row="1">
+        <Grid Grid.Row="2">
             <controls:DelayedActivityIndicator IsBusy="{Binding IsImporting}" HorizontalOptions="Center" />
             <Label
                 Text="{Binding StatusErrorMessage}"
@@ -46,7 +53,7 @@
                 LineBreakMode="WordWrap" />
         </Grid>
 
-        <RefreshView Grid.Row="2" IsRefreshing="{Binding IsLoading}" Command="{Binding LoadCommand}">
+        <RefreshView Grid.Row="3" IsRefreshing="{Binding IsLoading}" Command="{Binding LoadCommand}">
             <ScrollView>
                 <VerticalStackLayout Spacing="0">
 

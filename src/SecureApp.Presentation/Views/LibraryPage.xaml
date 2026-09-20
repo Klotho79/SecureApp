@@ -5,9 +5,15 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
     x:DataType="vm:LibraryViewModel"
-    Title="Knihovna">
+    Title="Knihovna"
+    Shell.NavBarIsVisible="False">
+    <!-- Shell.NavBarIsVisible="False" (2026-09-20, "sjednot grafiku jako je ta nastenka") — this page
+         already draws its own big title below (the PageTitle Label), so the native Shell chrome was a
+         genuinely redundant second "Knihovna" header stacked above it. Same pattern Nástěnka/Chaty/
+         Kontakty already use for the same reason. -->
 
-    <Grid RowDefinitions="Auto,Auto,*" Padding="20,16" RowSpacing="14">
+
+    <Grid RowDefinitions="Auto,Auto,*" Padding="16" RowSpacing="14">
 
         <!-- Header + search + filters, all in one scroll-independent block so the results list
              below gets its own scroll region (RefreshView needs sole ownership of the ScrollView

@@ -6,10 +6,16 @@
     xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
     xmlns:controls="clr-namespace:SecureApp.Presentation.Controls"
     x:DataType="vm:SettingsViewModel"
-    Title="Nastavení">
+    Title="Nastavení"
+    Shell.NavBarIsVisible="False">
+    <!-- Shell.NavBarIsVisible="False" + own PageTitle Label below (2026-09-20, "sjednot grafiku
+         jako je ta nastenka") — matches Nástěnka/Chaty/Kontakty/Knihovna/Dokumenty, all of which
+         draw their own in-content title instead of relying on native Shell chrome. -->
 
     <ScrollView>
-        <VerticalStackLayout Padding="20" Spacing="16">
+        <VerticalStackLayout Padding="16" Spacing="12">
+
+            <Label Text="Nastavení" Style="{StaticResource PageTitle}" />
 
             <Border Style="{StaticResource CardBorder}">
                 <VerticalStackLayout Spacing="8">
