@@ -12,6 +12,7 @@ using SecureApp.Presentation.Rendering;
 using SecureApp.Presentation.Transport;
 using SecureApp.Presentation.ViewModels;
 using SecureApp.Presentation.Views;
+using SecureApp.Presentation.Workplace;
 using SkiaSharp.Views.Maui.Controls.Hosting;
 using ZXing.Net.Maui.Controls;
 
@@ -138,6 +139,9 @@ public static class MauiProgram
 		// ISharedContactService's own remarks).
 		builder.Services.AddSingleton<ISharedContactService, HttpSharedContactService>();
 
+		// Shared company workplace catalog (2026-09-20, Phase 5 — see IWorkplaceCatalogService's own remarks).
+		builder.Services.AddSingleton<IWorkplaceCatalogService, HttpWorkplaceCatalogService>();
+
 		// --- Milestone 3: Presentation (pages + view models) ---
 		builder.Services.AddTransient<DocumentBrowserViewModel>();
 		builder.Services.AddTransient<DocumentBrowserPage>();
@@ -188,6 +192,12 @@ public static class MauiProgram
 		// Smart Search (2026-09-20, Phase 4 — see NOTIFICATION_HUB_SPEC.md).
 		builder.Services.AddTransient<SmartSearchViewModel>();
 		builder.Services.AddTransient<SmartSearchPage>();
+
+		// Workplace/Calendar (2026-09-20, Phase 5 — see NOTIFICATION_HUB_SPEC.md).
+		builder.Services.AddTransient<WorkplaceViewModel>();
+		builder.Services.AddTransient<WorkplacePage>();
+		builder.Services.AddTransient<AddAssignmentViewModel>();
+		builder.Services.AddTransient<AddAssignmentPage>();
 
 		return builder.Build();
 	}

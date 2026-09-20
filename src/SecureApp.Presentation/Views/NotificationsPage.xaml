@@ -12,9 +12,12 @@
     <ScrollView>
         <VerticalStackLayout Padding="16" Spacing="12">
 
-            <Grid ColumnDefinitions="*,Auto">
+            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
                 <Label Grid.Column="0" Text="Nástěnka" Style="{StaticResource PageTitle}" />
-                <Button Grid.Column="1" Text="🔍" Style="{StaticResource SecondaryButton}" WidthRequest="44" Padding="0" Clicked="OnSearchClicked" />
+                <!-- 📅 Rozpis (2026-09-20, Phase 5 — see NOTIFICATION_HUB_SPEC.md) — same global,
+                     not-tied-to-any-tab entry point as 🔍 Smart Search right next to it. -->
+                <Button Grid.Column="1" Text="📅" Style="{StaticResource SecondaryButton}" WidthRequest="44" Padding="0" Clicked="OnWorkplaceClicked" />
+                <Button Grid.Column="2" Text="🔍" Style="{StaticResource SecondaryButton}" WidthRequest="44" Padding="0" Clicked="OnSearchClicked" />
             </Grid>
 
             <!-- Counters (spec §13 — "what needs attention / what's new" answered before scrolling). -->

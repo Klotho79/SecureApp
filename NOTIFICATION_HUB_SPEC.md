@@ -477,7 +477,29 @@ Status below) and should be reconciled with the existing `Success`/`Danger`/`War
 
 ## Status
 
-**2026-09-20 — Phase 1 (analysis) done, Phase 2 (data model) + Phase 3 (main UI) done, first slice.**
+**2026-09-20 — Phase 1, 2, 3, 4, 5 (first slice), 8 done.**
+
+Phase 4 (Smart Search) and Phase 8 (real Android notifications: reception, categories, priorities,
+`POST_NOTIFICATIONS` permission, deep links on tap, cold/warm start routing) shipped after the
+snapshot below but aren't re-documented in detail here — see git history from this date.
+
+Phase 6 (Contacts) was superseded by the user's own separate ask that same day: a shared, relay-synced
+company phone/extension directory with no chat linking (`ISharedContactService`), not the spec's
+Person/CRM model — see `ContactsViewModel`'s own remarks.
+
+Phase 5 (Workplace + Calendar), first slice — "pokracujem kalendarem": `WorkAssignment` domain entity
++ `AssignmentType` enum (schema v15, local per-device — this is one person's own schedule, not shared
+data) plus a relay-synced `Workplace` name catalog (`IWorkplaceCatalogService`, same shared-reference-
+catalog pattern as `ISharedContactService`/`ILogbookCatalogSyncService`). `WorkplacePage` (reached via
+a new 📅 button next to 🔍 on Nástěnka): a "Dnes" card (spec §6's TODAY block, always accurate
+regardless of which week is browsed) + a navigable Week strip (spec §7 — "Week is primary"), each day
+tappable into `AddAssignmentPage` (create/edit/delete one day's status; free-typing a new workplace
+name auto-publishes it to the shared catalog). Day/Month calendar views, and the
+Notification↔Workplace↔Calendar cross-links spec §26 calls for, are not built yet — next slices.
+
+---
+
+**2026-09-20 (superseded snapshot, kept for history) — Phase 1 (analysis) done, Phase 2 (data model) + Phase 3 (main UI) done, first slice.**
 
 Phase 1 findings: `ContactsPage`/`Kontakty` is a static hospital phone directory (transcribed from a
 reference PDF), not a dynamic `Person`/CRM-style contact — spec's Person model still to build

@@ -79,3 +79,5 @@ public sealed record LogbookProcedureTypeDto(Guid Id, string Name, string Abbrev
 // Logbook catalog sync above.
 
 public sealed record SharedContactDto(Guid Id, string DisplayName, string? Phone, string? Note, int SortOrder, DateTimeOffset CreatedAtUtc);
+
+public sealed record WorkplaceDto(Guid Id, string Name, string? Description, DateTimeOffset CreatedAtUtc);

@@ -20,7 +20,7 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
 {
     private const string DatabaseKeyVaultName = "sqlcipher:database-key";
     private const int DatabaseKeySizeBytes = 32; // 256-bit, used as a raw SQLCipher key (not a passphrase put through PBKDF2)
-    private const int CurrentSchemaVersion = 14;
+    private const int CurrentSchemaVersion = 15;
 
     private readonly DataStorageOptions _options;
     private readonly ISecureVaultKeyStore _vault;
@@ -150,6 +150,9 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
 
         if (schemaVersion < 14)
             await ApplyV14SchemaAsync(connection);
+
+        if (schemaVersion < 15)
+            await ApplyV15SchemaAsync(connection);
 
         await connection.ExecuteAsync($"PRAGMA user_version = {CurrentSchemaVersion}");
     }
@@ -555,6 +558,33 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
             )
             """);
         await connection.ExecuteAsync("CREATE INDEX IF NOT EXISTS ix_contacts_sort_order ON contacts(sort_order)");
+    }
+
+    /// <summary>
+    /// WORKPLACE/CALENDAR (2026-09-20, NOTIFICATION_HUB_SPEC.md Phase 5) — one row per day's status.
+    /// Local per-device, unlike the relay-synced Workplace catalog it optionally references (see
+    /// <c>WorkAssignment</c>'s own remarks for why <c>workplace_name</c> is a snapshot column, not a
+    /// live join). <c>date</c> is stored as an ISO <c>yyyy-MM-dd</c> string — plain, index-usable
+    /// lexicographic range comparisons for the Week-strip/upcoming-list queries, same trick every
+    /// other date-range column in this schema already relies on.
+    /// </summary>
+    private static async Task ApplyV15SchemaAsync(SQLiteAsyncConnection connection)
+    {
+        await connection.ExecuteAsync("""
+            CREATE TABLE IF NOT EXISTS work_assignments (
+                id                TEXT PRIMARY KEY NOT NULL,
+                date              TEXT NOT NULL,
+                type              INTEGER NOT NULL,
+                start_time        TEXT NULL,
+                end_time          TEXT NULL,
+                workplace_id      TEXT NULL,
+                workplace_name    TEXT NULL,
+                note              TEXT NULL,
+                created_at_utc    TEXT NOT NULL,
+                modified_at_utc   TEXT NOT NULL
+            )
+            """);
+        await connection.ExecuteAsync("CREATE INDEX IF NOT EXISTS ix_work_assignments_date ON work_assignments(date)");
     }
 
     /// <summary>

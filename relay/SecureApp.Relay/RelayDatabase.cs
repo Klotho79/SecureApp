@@ -225,6 +225,19 @@ public sealed class RelayDatabase
                 updated_at_utc    TEXT NOT NULL
             )
             """);
+        // Shared company workplace catalog (2026-09-20, NOTIFICATION_HUB_SPEC.md Phase 5) — same
+        // reference-catalog shape as shared_contacts right above; the personal day-by-day schedule
+        // that references these by id/name snapshot stays local per-device (see WorkAssignment's
+        // own remarks), only the list of possible workplace NAMES is shared/company-wide.
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS workplaces (
+                id                TEXT PRIMARY KEY NOT NULL,
+                name              TEXT NOT NULL,
+                description       TEXT NULL,
+                created_at_utc    TEXT NOT NULL,
+                updated_at_utc    TEXT NOT NULL
+            )
+            """);
         // Additive column for a relay data directory that already has this table from before
         // 2026-09-10 — SQLite has no "ADD COLUMN IF NOT EXISTS", so this is guarded by checking
         // pragma_table_info first; a fresh CREATE TABLE above already includes it, so this is a
@@ -800,6 +813,43 @@ public sealed class RelayDatabase
     {
         using var connection = OpenConnection();
         Execute(connection, "DELETE FROM shared_contacts WHERE id = @id", ("@id", id.ToString()));
+    }
+
+    public void UpsertWorkplace(Guid id, string name, string? description, DateTimeOffset createdAtUtc)
+    {
+        using var connection = OpenConnection();
+        Execute(connection,
+            """
+            INSERT INTO workplaces (id, name, description, created_at_utc, updated_at_utc) VALUES (@id, @name, @description, @created, @now)
+            ON CONFLICT(id) DO UPDATE SET name = @name, description = @description, updated_at_utc = @now
+            """,
+            ("@id", id.ToString()), ("@name", name), ("@description", (object?)description ?? DBNull.Value),
+            ("@created", Format(createdAtUtc)), ("@now", Format(DateTimeOffset.UtcNow)));
+    }
+
+    public IReadOnlyList<(Guid Id, string Name, string? Description, DateTimeOffset CreatedAtUtc)> GetWorkplaces()
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id, name, description, created_at_utc FROM workplaces ORDER BY name";
+
+        var results = new List<(Guid, string, string?, DateTimeOffset)>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            results.Add((
+                Guid.Parse((string)reader["id"]),
+                (string)reader["name"],
+                reader["description"] is DBNull ? null : (string)reader["description"],
+                DateTimeOffset.Parse((string)reader["created_at_utc"], CultureInfo.InvariantCulture)));
+        }
+        return results;
+    }
+
+    public void DeleteWorkplace(Guid id)
+    {
+        using var connection = OpenConnection();
+        Execute(connection, "DELETE FROM workplaces WHERE id = @id", ("@id", id.ToString()));
     }
 
     private static LibraryFileRecord ReadLibraryFileRecord(SqliteDataReader reader) => new(

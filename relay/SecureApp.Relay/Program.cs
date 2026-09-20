@@ -510,6 +510,39 @@ app.MapDelete("/contacts/{id:guid}", (Guid id, HttpRequest request, RelayDatabas
     return Results.NoContent();
 });
 
+// --- Shared company workplace catalog (2026-09-20, NOTIFICATION_HUB_SPEC.md Phase 5) — mirrors
+// the /contacts endpoints right above exactly; see Contracts.cs's own remarks.
+
+app.MapPost("/workplaces", (HttpRequest request, WorkplaceDto body, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out _))
+        return Results.Unauthorized();
+
+    if (string.IsNullOrWhiteSpace(body.Name))
+        return Results.BadRequest("Name is required.");
+
+    db.UpsertWorkplace(body.Id, body.Name, body.Description, body.CreatedAtUtc);
+    return Results.Ok();
+});
+
+app.MapGet("/workplaces", (HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out _))
+        return Results.Unauthorized();
+
+    var entries = db.GetWorkplaces();
+    return Results.Ok(entries.Select(e => new WorkplaceDto(e.Id, e.Name, e.Description, e.CreatedAtUtc)).ToList());
+});
+
+app.MapDelete("/workplaces/{id:guid}", (Guid id, HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out _))
+        return Results.Unauthorized();
+
+    db.DeleteWorkplace(id);
+    return Results.NoContent();
+});
+
 app.Map("/ws", async (HttpContext context, RelayDatabase db, ConnectionRegistry registry) =>
 {
     if (!context.WebSockets.IsWebSocketRequest)

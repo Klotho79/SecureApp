@@ -74,6 +74,11 @@ public static class DependencyInjection
         // Notification Hub (2026-09-20, see NOTIFICATION_HUB_SPEC.md).
         services.AddScoped<INotificationRepository, NotificationRepository>();
 
+        // Workplace/Calendar (2026-09-20, NOTIFICATION_HUB_SPEC.md Phase 5) — the personal schedule
+        // itself is local per-device; the shared Workplace catalog it references is relay-synced
+        // (IWorkplaceCatalogService, registered from Presentation like every other Http*Service).
+        services.AddScoped<IWorkAssignmentRepository, WorkAssignmentRepository>();
+
         // NOTE: ISecureVaultKeyStore and IDocumentRenderingService are registered from the
         // Presentation layer instead (MauiProgram.cs) — they need MAUI/platform APIs
         // (SecureStorage, SkiaSharp) that this platform-agnostic class library cannot reference.

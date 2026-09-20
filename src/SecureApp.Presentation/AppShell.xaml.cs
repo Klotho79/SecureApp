@@ -100,6 +100,13 @@ public partial class AppShell : Shell
 
 		// Moje kontakty (2026-09-20) — reached via the ➕ button on ContactsPage.
 		Routing.RegisterRoute(nameof(AddContactPage), typeof(AddContactPage));
+
+		// Workplace/Calendar (2026-09-20, Phase 5 — see NOTIFICATION_HUB_SPEC.md) — reached via the
+		// 📅 button on NotificationsPage; global like Smart Search above, not tied to any one tab.
+		// AddAssignmentPage carries date (+ optional assignmentId) query parameters that
+		// AddAssignmentViewModel.ApplyQueryAttributes picks up.
+		Routing.RegisterRoute(nameof(WorkplacePage), typeof(WorkplacePage));
+		Routing.RegisterRoute(nameof(AddAssignmentPage), typeof(AddAssignmentPage));
 	}
 
 	/// <summary>
