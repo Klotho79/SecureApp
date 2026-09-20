@@ -134,7 +134,13 @@ public sealed partial class NewGroupViewModel : ObservableObject
         try
         {
             var members = await _contactDirectoryService.ListMembersAsync();
-            Members = new ObservableCollection<SelectableMemberItem>(members.Select(m => new SelectableMemberItem(m.RelayDeviceId, m.DisplayName, m.PublicKey)));
+            // 2026-09-19: an unnamed directory entry (never renamed past the "Local User" placeholder)
+            // can't be picked into a new group either — same rule GroupChatViewModel.LoadAddableMembersAsync
+            // enforces for an existing group, applied here at the same source.
+            Members = new ObservableCollection<SelectableMemberItem>(
+                members
+                    .Where(m => !string.IsNullOrWhiteSpace(m.DisplayName) && m.DisplayName != "Local User")
+                    .Select(m => new SelectableMemberItem(m.RelayDeviceId, m.DisplayName, m.PublicKey)));
             HasNoMembers = Members.Count == 0;
         }
         catch (Exception ex)

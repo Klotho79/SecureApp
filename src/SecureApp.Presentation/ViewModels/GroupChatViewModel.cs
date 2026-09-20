@@ -37,6 +37,13 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
     private byte[] _localPublicKey = [];
     private byte[] _founderPublicKey = [];
     private IReadOnlyList<GroupMember> _members = [];
+    // 2026-09-19: the unfiltered roster exactly as persisted — kept separately from _members (the
+    // IsUnnamed-filtered view) because the directory snapshot IsUnnamed resolves against often isn't
+    // fresh yet at initial load (DirectoryNameResolver.LastKnown can still be empty right after an app
+    // restart). Without this, a real member who just hadn't been resolved yet got permanently dropped
+    // from _members at load time, with no way back even once RefreshNamesInBackgroundAsync got a real
+    // directory moments later. Re-filtered from THIS whenever _directoryNames changes.
+    private IReadOnlyList<GroupMember> _rawMembers = [];
     private IReadOnlyDictionary<string, string> _directoryNames = new Dictionary<string, string>();
     private EventHandler<MessageEnvelope>? _envelopeReceivedHandler;
 
@@ -251,8 +258,15 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
             CanManageMembers = isFounder || RoleAccessPolicy.IsAllowed(loaded.Role, RbacAction.InviteGroupMember);
             Title = loaded.Group.Name;
             IsArchived = ArchivedChatsStore.Contains(_groupChatId); // 2.3: read-only if archived
-            _members = loaded.Members;
+            // _directoryNames must be set BEFORE the unnamed-filter below — IsUnnamed resolves against
+            // it (a live peer's real current name, not the possibly-stale raw stored one).
             _directoryNames = loaded.DirectoryNames;
+            _rawMembers = loaded.Members;
+            // 2026-09-19: an unnamed row can never be a real member of the chat — filtered out here so
+            // it never reaches MemberCount, the visible chip list, or any send/resync loop below. See
+            // IsUnnamed's own remarks for why such rows exist at all, and _rawMembers' own remarks for
+            // why this is a re-derivable projection, not a one-time destructive filter.
+            _members = _rawMembers.Where(m => !IsUnnamed(m)).ToList();
             _sessionNameById = loaded.SessionNames;
             _olderLogicalRows.Clear();
             _olderLogicalRows.AddRange(loaded.OlderLogical);
@@ -304,6 +318,38 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
         }
         catch { /* best-effort — self-corrects on the next open via the signature check */ }
     }
+
+    /// <summary>
+    /// A member with no real, currently-resolvable name — checked against the EFFECTIVE name
+    /// (<see cref="DirectoryNameResolver.Resolve"/>: the peer's live relay-directory name if they're
+    /// currently active, else the raw stored <see cref="GroupMember.DisplayName"/>), never the raw
+    /// stored field alone. 2026-09-19 first cut of this check compared the raw field directly and it
+    /// was wrong: every device in real testing paired while still literally "Local User" (see
+    /// <see cref="DirectoryNameResolver"/>'s own remarks) — a currently-active, perfectly real member
+    /// (self included, after PC identity-key drift left multiple stale self-rows behind — the
+    /// long-unconfirmed mystery from <c>project-original-spec</c>'s 2026-09-05 note, now confirmed
+    /// real by this group's own <c>DIAG.group.members.raw</c> log: four raw rows, all literally
+    /// 'Local User') still has that raw field, and got wrongly stripped from the roster entirely —
+    /// "Členové (0)" with a real, still-messaging peer. Resolving first is what tells a live member
+    /// who just never renamed themselves apart from an actually-dead, unresolvable orphan row.
+    /// </summary>
+    private bool IsUnnamed(GroupMember member)
+    {
+        var resolved = DirectoryNameResolver.Resolve(_directoryNames, member.PublicKey, member.DisplayName);
+        return string.IsNullOrWhiteSpace(resolved) || resolved == "Local User";
+    }
+
+    /// <summary>
+    /// Never a valid message/resync/invite target for THIS device: either genuinely <see cref="IsUnnamed"/>,
+    /// or a peer this device's user explicitly removed (<see cref="RemovedPeersStore"/> — per-device,
+    /// doesn't affect other devices' copy of the same group). 2026-09-19: RemovedPeersStore alone used to
+    /// only silence <see cref="ResyncMissingMembersAsync"/>'s auto-resync, never the send/delete fan-out —
+    /// that gap is exactly what produced the recurring "Local User (appka teď není připojená k relay...)"
+    /// ghost error (reported 2026-09-16 and again 2026-09-18). Every per-member fan-out loop in this class
+    /// now checks this first.
+    /// </summary>
+    private bool IsGhostMember(GroupMember member) =>
+        IsUnnamed(member) || RemovedPeersStore.Contains(member.PublicKey);
 
     /// <summary>Projects <see cref="_members"/> into the bound <see cref="Members"/> chips using the current <see cref="_directoryNames"/> snapshot — factored out so the background refresh can rebuild them with fresh names without duplicating the projection.</summary>
     private void RebuildMemberList()
@@ -357,6 +403,10 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
                 return; // same names we already rendered with — no rebuild, no flicker
 
             _directoryNames = names;
+            // Re-derive from _rawMembers, not a no-op on the already-filtered _members — a fresher
+            // directory can resolve a member IsUnnamed wrongly dropped at initial (possibly stale)
+            // load, and this is the only later point that can bring them back. See _rawMembers' own remarks.
+            _members = _rawMembers.Where(m => !IsUnnamed(m)).ToList();
             RebuildMemberList();
             await LoadMessagesAsync();
         }
@@ -506,7 +556,7 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
 
         var groupMessageId = Guid.NewGuid();
         var plaintext = Encoding.UTF8.GetBytes(text);
-        var otherMembers = _members.Where(m => !m.PublicKey.AsSpan().SequenceEqual(_localPublicKey)).ToList();
+        var otherMembers = _members.Where(m => !m.PublicKey.AsSpan().SequenceEqual(_localPublicKey) && !IsGhostMember(m)).ToList();
         // Each entry names WHO and WHY (2026-09-07 — "prosím doplň řádně chybová hlášení... aby
         // bylo jasné kde nastala chyba"), not just a bare name — a per-member reason is what
         // actually lets anyone tell "not paired yet" apart from "the send itself failed" apart from
@@ -627,7 +677,7 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
             _ = UpdateCacheAsync();
 
             var payload = MessageDeletionSync.BuildDeleteCommand(correlationId);
-            var otherMembers = _members.Where(m => !m.PublicKey.AsSpan().SequenceEqual(_localPublicKey)).ToList();
+            var otherMembers = _members.Where(m => !m.PublicKey.AsSpan().SequenceEqual(_localPublicKey) && !IsGhostMember(m)).ToList();
             foreach (var member in otherMembers)
             {
                 try
@@ -697,7 +747,12 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
     /// </summary>
     private async Task ResyncMissingMembersAsync()
     {
-        var others = _members.Where(m => !m.PublicKey.AsSpan().SequenceEqual(_localPublicKey)).ToList();
+        // 2026-09-16 (user: "porad se objevuje chat lokal user zjisti proc a oprav to") — this method
+        // runs on every group screen open, unattended, and used to resync EVERY unpaired member
+        // unconditionally, including one the user explicitly deleted (RemovedPeersStore) or an unnamed
+        // ghost row. 2026-09-19: that same IsGhostMember check now guards every OTHER per-member loop
+        // in this class too (SendAsync/DeleteMessageAsync/BroadcastMembershipAsync), not just this one.
+        var others = _members.Where(m => !m.PublicKey.AsSpan().SequenceEqual(_localPublicKey) && !IsGhostMember(m)).ToList();
         foreach (var member in others)
         {
             ChatSession? existing;
@@ -713,15 +768,6 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
                 _ = SharedLibraryKeySync.OfferKeyAsync(_libraryService, _messagingService, _messageTransport, existing.Id, DiagnosticsReporter);
                 continue;
             }
-
-            // 2026-09-16 (user: "porad se objevuje chat lokal user zjisti proc a oprav to") — same gap
-            // as App.OnGroupInviteReceived's own remarks: this method runs on every group screen open,
-            // unattended, and used to resync EVERY unpaired member unconditionally — including one the
-            // user explicitly deleted (RemovedPeersStore). A removed member who's still in the group's
-            // roster (a stale test/dev entry, still literally "Local User" in real testing) got its 1:1
-            // chat silently recreated on every open. Stays gone here too unless re-invited/accepted.
-            if (RemovedPeersStore.Contains(member.PublicKey))
-                continue;
 
             await TryBackgroundResyncAsync(member);
         }
@@ -909,9 +955,21 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
         StatusErrorMessage = null;
         try
         {
+            // Refresh the directory FIRST — the IsUnnamed filter below resolves against it, and a
+            // stale/empty snapshot would wrongly treat a real, live member as an unnamed ghost (see
+            // _rawMembers' own remarks). Keep whatever's already there on a failed/empty fetch (relay
+            // unreachable, etc.) rather than overwriting it with nothing.
+            var freshNames = await DirectoryNameResolver.BuildAsync(_contactDirectoryService);
+            if (freshNames.Count > 0) _directoryNames = freshNames;
+
+            // 2026-09-19: never (re)persist an unnamed ghost row — self-heals any legacy one still
+            // sitting in this group's roster the next time ANYONE changes membership through this
+            // device (add/remove/leave/founder-transfer all funnel through here). See IsUnnamed.
+            newMembers = newMembers.Where(m => !IsUnnamed(m)).ToList();
+
             await _groupMemberRepository.ReplaceAllAsync(_groupChatId, newMembers);
             _members = newMembers;
-            _directoryNames = await DirectoryNameResolver.BuildAsync(_contactDirectoryService);
+            _rawMembers = newMembers;
 
             var founderIsUnavailable = _directoryNames.Count > 0 && !DirectoryNameResolver.IsActive(_directoryNames, _founderPublicKey);
             var isFounder = _founderPublicKey.AsSpan().SequenceEqual(_localPublicKey);
@@ -933,7 +991,7 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
 
             foreach (var member in newMembers)
             {
-                if (member.PublicKey.AsSpan().SequenceEqual(_localPublicKey))
+                if (member.PublicKey.AsSpan().SequenceEqual(_localPublicKey) || IsGhostMember(member))
                     continue;
 
                 try
@@ -999,6 +1057,10 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
             AddableMembers = new ObservableCollection<SelectableMemberItem>(
                 directoryMembers
                     .Where(m => !alreadyIn.Contains(Convert.ToBase64String(m.PublicKey)))
+                    // 2026-09-19: an unnamed directory entry (never renamed past the "Local User"
+                    // placeholder) can't be picked to add — same rule IsUnnamed enforces everywhere
+                    // else, applied here at the source so a ghost never enters a group in the first place.
+                    .Where(m => !string.IsNullOrWhiteSpace(m.DisplayName) && m.DisplayName != "Local User")
                     .Select(m => new SelectableMemberItem(m.RelayDeviceId, m.DisplayName, m.PublicKey)));
         }
         catch (Exception ex)
@@ -1180,7 +1242,7 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
     }
 }
 
-/// <summary>One message in a group's thread — unlike <see cref="ChatMessageItem"/>, always carries the sender's display name, since "who sent this" isn't implicit the way it is in a 1:1 thread. <see cref="IsInbound"/> is a plain negation kept as its own field (not a XAML converter) — this codebase's established pattern (see <c>SettingsViewModel.HasPendingActivations</c>'s own remarks) so no binding ever needs to negate another.</summary>
+/// <summary>One message in a group's thread — unlike <see cref="ChatMessageItem"/>, always carries the sender's display name, since "who sent this" isn't implicit the way it is in a 1:1 thread. <see cref="IsInbound"/> is a plain negation kept as its own field (not a XAML converter) — this codebase's established pattern (see <c>SettingsViewModel.HasRegisteredDevices</c>'s own remarks) so no binding ever needs to negate another.</summary>
 public sealed record GroupMessageItem(Guid Id, bool IsOutbound, string SenderDisplayName, string Text, DateTimeOffset SentAtUtc, Guid? AttachmentLibraryFileId = null, string? AttachmentFileName = null, bool CanDelete = false, Guid? CorrelationId = null, MessageStatus Status = MessageStatus.Sent)
 {
     public bool HasAttachment => AttachmentLibraryFileId is not null;

@@ -253,6 +253,36 @@ navíc... zpráva která nebyla přeposlána musí být vyhledána a vložena do
       settings, pairing/resync, key distribution) for correctness + edge cases.
 - [ ] Error log review to surface silent failures.
 
+---
+
+## Session 2026-09-17/18 — stav a co zbývá
+
+### Co bylo uděláno (commits na main, pushnuté na GitHub)
+- `3d1a7df` — **Phase 2.1a**: domain+relay — `GroupChat.TransferFounder`, relay `/admin/devices` + `/admin/devices/{id}/deregister`
+- `f4fb535` — **Phase 2.1b**: klient — founder transfer/claim, "nedostupný" badge na 1:1 i skupinách, Admin: Zařízení karta v Settings
+- `d34b606` — plán: 2.1 odškrtnuto, backfill 6 starších commitů do changelogu
+- `2cf9d38` — **silent auto-reregistration v1**: `RelayUnauthorizedException`, `ClearCredentialsAsync`, `SilentReactivateAsync` (původně s aktivačním požadavkem — viz níže)
+- `97a60f9` — **auto-reregistration v2 (finální)**: nový relay endpoint `POST /self-register` (okamžité přidělení credentials bez jakéhokoliv potvrzení), klient volá `/self-register` přímo — žádný admin, žádný uživatel, nic
+
+### Incident: ghost cleanup smazal PC
+Při manuálním čištění relay DB byl smazán device `7e59871b` (40 zaseknutých zpráv, naposledy viděn 2026-09-15) — jenže to bylo **PC**, ne ghost. PC bylo stale protože uživatel 3 dny nebyl u PC (> `DirectoryActiveWindow` = 2 dny). **Poučení pro příště**: před smazáním relay device zkontrolovat `DEVELOPMENT_PLAN.md` sekci 2026-09-01 kde je PC's RelayDeviceId explicitně zapsáno (`7e59871b-5e0b-4eee-80e4-7f2c1479ff3b`). Správný ghost má 40+ zaseknutých zpráv A nikdy nebyl aktivní v directory (NULL `updated_at_utc`), nebo je dead identity po wipnutém telefonu.
+
+### Co NENÍ nasazeno na Pi
+Relay kontejner na Pi běží **STARÝ kód** (před Phase 2.1 a před `/self-register` endpointem). GitHub má aktuální kód (`97a60f9`). Sandbox blokoval všechny SSH/deploy příkazy. Je nutné ručně z Pi SSH session:
+```bash
+cd ~/secureapp-repo.git
+git fetch https://TOKEN@github.com/Klotho79/SecureApp.git main:main
+git --work-tree=/home/dvorakv1/SecureApp checkout -f main
+cd ~/SecureApp/relay/SecureApp.Relay
+sudo docker compose build && sudo docker compose up -d
+```
+
+### Co se stane po deployi
+PC spustí aplikaci → supervisor tick → `ConnectAsync` → relay odmítne (`7e59871b` neexistuje) → `RelayUnauthorizedException` → `ClearCredentialsAsync` vymaže staré credentials → `SelfRegisterAsync` zavolá `POST /self-register` → okamžité nové credentials → další tick → připojeno. Uživatel nevidí nic, vše do AppLog.
+
+### Dále: sandbox permissions
+Příkazy `git push pi`, SSH do Pi a `docker compose` jsou rutinně blokované sandboxem. Přidat jako povolené přes `/update-config` aby příště nevyžadovaly potvrzení.
+
 ## Phase 3 — Nice UI (deliberate visual design)
 - [ ] Design system review (spacing, type scale, color, dark/light), consistent
       components, empty/loading/error states.
