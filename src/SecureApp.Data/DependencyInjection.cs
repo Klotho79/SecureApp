@@ -71,6 +71,9 @@ public static class DependencyInjection
         services.AddScoped<ILogbookProcedureTypeRepository, LogbookProcedureTypeRepository>();
         services.AddScoped<ILogbookProcedureEntryRepository, LogbookProcedureEntryRepository>();
 
+        // Notification Hub (2026-09-20, see NOTIFICATION_HUB_SPEC.md).
+        services.AddScoped<INotificationRepository, NotificationRepository>();
+
         // NOTE: ISecureVaultKeyStore and IDocumentRenderingService are registered from the
         // Presentation layer instead (MauiProgram.cs) — they need MAUI/platform APIs
         // (SecureStorage, SkiaSharp) that this platform-agnostic class library cannot reference.

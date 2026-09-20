@@ -70,6 +70,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsContactsTabVisible { get; set; }
 
+    [ObservableProperty]
+    public partial bool IsNotificationsTabVisible { get; set; }
+
     // --- Relay (Milestone 5) ---
 
     [ObservableProperty]
@@ -293,6 +296,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnIsContactsTabVisibleChanged(bool value) =>
         (Shell.Current as AppShell)?.ApplyTabVisibility(AppShell.ContactsTabVisibilityPreferenceKey, value);
 
+    partial void OnIsNotificationsTabVisibleChanged(bool value) =>
+        (Shell.Current as AppShell)?.ApplyTabVisibility(AppShell.NotificationsTabVisibilityPreferenceKey, value);
+
     [RelayCommand]
     private async Task LoadAsync()
     {
@@ -306,6 +312,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         IsChatsTabVisible = Preferences.Default.Get(AppShell.ChatsTabVisibilityPreferenceKey, true);
         IsFilesTabVisible = Preferences.Default.Get(AppShell.FilesTabVisibilityPreferenceKey, true);
         IsContactsTabVisible = Preferences.Default.Get(AppShell.ContactsTabVisibilityPreferenceKey, true);
+        IsNotificationsTabVisible = Preferences.Default.Get(AppShell.NotificationsTabVisibilityPreferenceKey, true);
 
         var configuration = await _transportSettingsRepository.GetAsync();
         // No saved endpoint yet (first time this device opens Settings) -> pre-fill the

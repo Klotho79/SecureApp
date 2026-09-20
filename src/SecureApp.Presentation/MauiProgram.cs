@@ -167,6 +167,12 @@ public static class MauiProgram
 		builder.Services.AddTransient<ContactsViewModel>();
 		builder.Services.AddTransient<ContactsPage>();
 
+		// Notification Hub (2026-09-20, see NOTIFICATION_HUB_SPEC.md) — its own standalone tab.
+		builder.Services.AddTransient<NotificationsViewModel>();
+		builder.Services.AddTransient<NotificationsPage>();
+		builder.Services.AddTransient<NotificationDetailViewModel>();
+		builder.Services.AddTransient<NotificationDetailPage>();
+
 		return builder.Build();
 	}
 }

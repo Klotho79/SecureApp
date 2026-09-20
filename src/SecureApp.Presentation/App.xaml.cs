@@ -7,6 +7,7 @@ using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Domain.ValueObjects;
 using SecureApp.Presentation.Chat;
 using SecureApp.Presentation.Infrastructure;
+using SecureApp.Presentation.Notifications;
 
 namespace SecureApp.Presentation;
 
@@ -610,6 +611,39 @@ public partial class App : Application
 					// Best-effort — nothing further to do at this level, but logged rather than
 					// silently swallowed (same reasoning as SharedLibraryKeySync's own catch blocks).
 					_ = reporterForImport.ReportAsync(DiagnosticLogLevel.Error, "Přijatý klíč sdílené knihovny se nepodařilo naimportovat.", nameof(OnEnvelopeReceived), importEx);
+				}
+			}
+			else
+			{
+				// Notification Hub (2026-09-20, see NOTIFICATION_HUB_SPEC.md) — a genuine, visible
+				// message, unconditionally turned into a Notification Hub row the same way it's
+				// unconditionally persisted above, regardless of whether any chat page is open.
+				try
+				{
+					var notificationRepository = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
+					var plaintext = await messagingService.DecryptMessageAsync(message.Id);
+					var preview = System.Text.Encoding.UTF8.GetString(plaintext);
+					var sessionRepositoryForNotify = scope.ServiceProvider.GetRequiredService<IChatSessionRepository>();
+					var session = await sessionRepositoryForNotify.GetByIdAsync(message.ChatSessionId);
+					if (session is not null)
+					{
+						if (envelope.GroupChatId is { } groupChatId)
+						{
+							var groupChatRepositoryForNotify = scope.ServiceProvider.GetRequiredService<IGroupChatRepository>();
+							var group = await groupChatRepositoryForNotify.GetByIdAsync(groupChatId);
+							if (group is not null)
+								await NotificationPublisher.PublishGroupMessageAsync(notificationRepository, group.Name, session.PeerDisplayName, preview, message.ChatSessionId, groupChatId);
+						}
+						else
+						{
+							await NotificationPublisher.PublishDirectMessageAsync(notificationRepository, session.PeerDisplayName, preview, message.ChatSessionId);
+						}
+					}
+				}
+				catch
+				{
+					// Best-effort — see NotificationPublisher's own class-level remarks; never let a
+					// notification-row failure affect the real message handling above it.
 				}
 			}
 		}

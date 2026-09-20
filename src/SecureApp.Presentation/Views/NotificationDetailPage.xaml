@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="SecureApp.Presentation.Views.NotificationDetailPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
+    xmlns:controls="clr-namespace:SecureApp.Presentation.Controls"
+    x:DataType="vm:NotificationDetailViewModel"
+    Title="Oznámení">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="20" Spacing="10">
+
+            <controls:DelayedActivityIndicator IsBusy="{Binding IsLoading}" HorizontalOptions="Center" />
+            <Label Text="{Binding ErrorMessage}" IsVisible="{Binding HasErrorMessage}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
+
+            <Label Text="{Binding Title}" Style="{StaticResource PageTitle}" FontSize="21" />
+
+            <HorizontalStackLayout Spacing="8">
+                <Border Style="{StaticResource Chip}" Margin="0" Padding="10,4">
+                    <Label Text="{Binding CategoryText}" Style="{StaticResource ChipLabel}" />
+                </Border>
+                <Border Style="{StaticResource Chip}" Margin="0" Padding="10,4">
+                    <Label Text="{Binding PriorityText}" Style="{StaticResource ChipLabel}" />
+                </Border>
+                <Border Style="{StaticResource Chip}" Margin="0" Padding="10,4">
+                    <Label Text="{Binding StatusText}" Style="{StaticResource ChipLabel}" />
+                </Border>
+            </HorizontalStackLayout>
+
+            <Label Text="{Binding TimeText}" FontSize="12" TextColor="Gray" />
+
+            <Border Style="{StaticResource CardBorder}">
+                <Label Text="{Binding Body}" FontSize="14.5" LineBreakMode="WordWrap" />
+            </Border>
+
+            <Button Text="Otevřít související" Command="{Binding OpenRelatedCommand}" IsVisible="{Binding HasRelated}" />
+
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                <Button Grid.Column="0" Style="{StaticResource SecondaryButton}" Command="{Binding ToggleImportantCommand}">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button" Binding="{Binding IsManuallyImportant}" Value="True">
+                            <Setter Property="Text" Value="Zrušit důležitost" />
+                        </DataTrigger>
+                        <DataTrigger TargetType="Button" Binding="{Binding IsManuallyImportant}" Value="False">
+                            <Setter Property="Text" Value="Označit jako důležité" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+                <Button Grid.Column="1" Style="{StaticResource SecondaryButton}" Command="{Binding ToggleArchivedCommand}">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button" Binding="{Binding IsArchived}" Value="True">
+                            <Setter Property="Text" Value="Zrušit archivaci" />
+                        </DataTrigger>
+                        <DataTrigger TargetType="Button" Binding="{Binding IsArchived}" Value="False">
+                            <Setter Property="Text" Value="Archivovat" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+            </Grid>
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

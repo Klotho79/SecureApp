@@ -15,6 +15,7 @@ public partial class AppShell : Shell
 	public const string ChatsTabVisibilityPreferenceKey = "tab_chaty_visible";
 	public const string FilesTabVisibilityPreferenceKey = "tab_soubory_visible";
 	public const string ContactsTabVisibilityPreferenceKey = "tab_kontakty_visible";
+	public const string NotificationsTabVisibilityPreferenceKey = "tab_oznameni_visible";
 
 	/// <summary>
 	/// Every tab that can be hidden (2026-09-16, user's own ask: "chci mít možnost schovávat
@@ -42,6 +43,7 @@ public partial class AppShell : Shell
 
 		_hideableTabs =
 		[
+			(NotificationsTab, NotificationsTabVisibilityPreferenceKey, true),
 			(ChatsTab, ChatsTabVisibilityPreferenceKey, true),
 			(FilesTab, FilesTabVisibilityPreferenceKey, true),
 			(ContactsTab, ContactsTabVisibilityPreferenceKey, true),
@@ -84,6 +86,12 @@ public partial class AppShell : Shell
 		// screen as admin/modifier catalog edits). Reached via a button on LogbookPage, no query
 		// parameters.
 		Routing.RegisterRoute(nameof(LogbookManagePage), typeof(LogbookManagePage));
+
+		// Notification Hub (2026-09-20, see NOTIFICATION_HUB_SPEC.md) — reached via GoToAsync from
+		// NotificationsPage, carrying a notificationId query parameter that
+		// NotificationDetailViewModel.ApplyQueryAttributes picks up. NotificationsPage itself is the
+		// leading TabBar tab added above, not a registered route.
+		Routing.RegisterRoute(nameof(NotificationDetailPage), typeof(NotificationDetailPage));
 	}
 
 	/// <summary>

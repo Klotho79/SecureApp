@@ -20,7 +20,7 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
 {
     private const string DatabaseKeyVaultName = "sqlcipher:database-key";
     private const int DatabaseKeySizeBytes = 32; // 256-bit, used as a raw SQLCipher key (not a passphrase put through PBKDF2)
-    private const int CurrentSchemaVersion = 12;
+    private const int CurrentSchemaVersion = 13;
 
     private readonly DataStorageOptions _options;
     private readonly ISecureVaultKeyStore _vault;
@@ -144,6 +144,9 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
 
         if (schemaVersion < 12)
             await ApplyV12SchemaAsync(connection);
+
+        if (schemaVersion < 13)
+            await ApplyV13SchemaAsync(connection);
 
         await connection.ExecuteAsync($"PRAGMA user_version = {CurrentSchemaVersion}");
     }
@@ -486,6 +489,39 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
     private static async Task ApplyV12SchemaAsync(SQLiteAsyncConnection connection)
     {
         await connection.ExecuteAsync("ALTER TABLE documents ADD COLUMN source_library_file_id TEXT NULL");
+    }
+
+    /// <summary>
+    /// Notification Hub (2026-09-20, see NOTIFICATION_HUB_SPEC.md) — one row per SecureApp-own event
+    /// (new chat/group message, pairing, library addition, diagnostic-log warning, …) repackaged into
+    /// a unified, archivable feed, on top of (never replacing) the underlying event's own storage.
+    /// No FK constraints on the related_* columns: a Notification deliberately outlives the chat
+    /// session/group/library file it points at (e.g. a since-deleted group's notifications stay in
+    /// the archive, same "audit trail must outlive what it's about" reasoning already established for
+    /// <c>audit_log_entries.document_id</c>) — the related id just goes stale, which the Presentation
+    /// layer's "open related" action already has to handle as a normal not-found case regardless.
+    /// </summary>
+    private static async Task ApplyV13SchemaAsync(SQLiteAsyncConnection connection)
+    {
+        await connection.ExecuteAsync("""
+            CREATE TABLE IF NOT EXISTS notifications (
+                id                          TEXT PRIMARY KEY NOT NULL,
+                title                       TEXT NOT NULL,
+                body                        TEXT NOT NULL,
+                category                    INTEGER NOT NULL,
+                priority                    INTEGER NOT NULL,
+                is_read                     INTEGER NOT NULL,
+                is_archived                 INTEGER NOT NULL,
+                is_manually_important       INTEGER NOT NULL,
+                related_chat_session_id     TEXT NULL,
+                related_group_chat_id       TEXT NULL,
+                related_library_file_id     TEXT NULL,
+                created_at_utc              TEXT NOT NULL,
+                modified_at_utc             TEXT NOT NULL
+            )
+            """);
+        await connection.ExecuteAsync("CREATE INDEX IF NOT EXISTS ix_notifications_created ON notifications(created_at_utc)");
+        await connection.ExecuteAsync("CREATE INDEX IF NOT EXISTS ix_notifications_archived ON notifications(is_archived)");
     }
 
     /// <summary>

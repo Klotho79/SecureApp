@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="SecureApp.Presentation.Views.NotificationsPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
+    xmlns:controls="clr-namespace:SecureApp.Presentation.Controls"
+    x:DataType="vm:NotificationsViewModel"
+    Title="Oznámení"
+    Shell.NavBarIsVisible="False">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="16" Spacing="12">
+
+            <Label Text="Oznámení" Style="{StaticResource PageTitle}" />
+
+            <!-- Counters (spec §13 — "what needs attention / what's new" answered before scrolling). -->
+            <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8">
+                <Border Grid.Column="0" Style="{StaticResource CardBorder}" Margin="0" Padding="10,8" BackgroundColor="{AppThemeBinding Light={StaticResource DangerSoft}, Dark={StaticResource DangerSoftDark}}">
+                    <VerticalStackLayout Spacing="0">
+                        <Label Text="{Binding ImportantCount}" FontSize="22" FontAttributes="Bold" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" HorizontalOptions="Center" />
+                        <Label Text="Důležité" FontSize="11.5" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" HorizontalOptions="Center" />
+                    </VerticalStackLayout>
+                </Border>
+                <Border Grid.Column="1" Style="{StaticResource CardBorder}" Margin="0" Padding="10,8" BackgroundColor="{AppThemeBinding Light={StaticResource InfoSoft}, Dark={StaticResource InfoSoftDark}}">
+                    <VerticalStackLayout Spacing="0">
+                        <Label Text="{Binding UnreadCount}" FontSize="22" FontAttributes="Bold" TextColor="{AppThemeBinding Light={StaticResource Info}, Dark={StaticResource InfoDark}}" HorizontalOptions="Center" />
+                        <Label Text="Nepřečtené" FontSize="11.5" TextColor="{AppThemeBinding Light={StaticResource Info}, Dark={StaticResource InfoDark}}" HorizontalOptions="Center" />
+                    </VerticalStackLayout>
+                </Border>
+                <Border Grid.Column="2" Style="{StaticResource CardBorder}" Margin="0" Padding="10,8" BackgroundColor="{AppThemeBinding Light={StaticResource SuccessSoft}, Dark={StaticResource SuccessSoftDark}}">
+                    <VerticalStackLayout Spacing="0">
+                        <Label Text="{Binding TodayCount}" FontSize="22" FontAttributes="Bold" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" HorizontalOptions="Center" />
+                        <Label Text="Dnes" FontSize="11.5" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" HorizontalOptions="Center" />
+                    </VerticalStackLayout>
+                </Border>
+            </Grid>
+
+            <!-- Filter chips (spec §12) — horizontally scrollable pill row. -->
+            <ScrollView Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
+                <HorizontalStackLayout Spacing="8" BindableLayout.ItemsSource="{Binding FilterChips}">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="vm:NotificationFilterChip">
+                            <Border Style="{StaticResource Chip}" Margin="0">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding SelectCommand}" CommandParameter="{Binding .}" />
+                                </Border.GestureRecognizers>
+                                <Border.Triggers>
+                                    <DataTrigger TargetType="Border" Binding="{Binding IsSelected}" Value="True">
+                                        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
+                                    </DataTrigger>
+                                </Border.Triggers>
+                                <Label Text="{Binding Label}" Style="{StaticResource ChipLabel}">
+                                    <Label.Triggers>
+                                        <DataTrigger TargetType="Label" Binding="{Binding IsSelected}" Value="True">
+                                            <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource OffBlack}}" />
+                                        </DataTrigger>
+                                    </Label.Triggers>
+                                </Label>
+                            </Border>
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </HorizontalStackLayout>
+            </ScrollView>
+
+            <controls:DelayedActivityIndicator IsBusy="{Binding IsLoading}" HorizontalOptions="Center" />
+            <Label Text="Žádná oznámení." FontSize="12" TextColor="Gray" IsVisible="{Binding HasNoNotifications}" HorizontalOptions="Center" Margin="0,20" />
+
+            <!-- Grouped, collapsible sections (spec §5, §16). -->
+            <CollectionView ItemsSource="{Binding Sections}" SelectionMode="None">
+                <CollectionView.ItemsLayout>
+                    <LinearItemsLayout Orientation="Vertical" ItemSpacing="10" />
+                </CollectionView.ItemsLayout>
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="vm:NotificationSectionGroup">
+                        <VerticalStackLayout Spacing="4">
+                            <Grid ColumnDefinitions="*,Auto" Padding="0,2">
+                                <Grid.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding ToggleExpandedCommand}" />
+                                </Grid.GestureRecognizers>
+                                <Label Grid.Column="0" Text="{Binding Name, StringFormat='{0} ▾'}" FontSize="14" FontAttributes="Bold" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}">
+                                    <Label.Triggers>
+                                        <DataTrigger TargetType="Label" Binding="{Binding IsExpanded}" Value="False">
+                                            <Setter Property="Text" Value="{Binding Name, StringFormat='{0} ▸'}" />
+                                        </DataTrigger>
+                                    </Label.Triggers>
+                                </Label>
+                                <Label Grid.Column="1" Text="{Binding Count}" FontSize="12" TextColor="Gray" VerticalOptions="Center" />
+                            </Grid>
+
+                            <VerticalStackLayout Spacing="6" IsVisible="{Binding IsExpanded}" BindableLayout.ItemsSource="{Binding VisibleEntries}">
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:NotificationListItem">
+                                        <Border Style="{StaticResource CardBorder}" Margin="0" Padding="10,8" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
+                                            <Border.GestureRecognizers>
+                                                <TapGestureRecognizer Command="{Binding OpenCommand}" CommandParameter="{Binding .}" />
+                                            </Border.GestureRecognizers>
+                                            <!-- Left priority-color accent bar — thickness-only Border trick (no separate Rectangle
+                                                 needed): a 4px-wide zero-height-content Border pinned to the grid's first column. -->
+                                            <Grid ColumnDefinitions="4,*" ColumnSpacing="10">
+                                                <BoxView Grid.Column="0" CornerRadius="2">
+                                                    <BoxView.Triggers>
+                                                        <DataTrigger TargetType="BoxView" Binding="{Binding PriorityText}" Value="Critical">
+                                                            <Setter Property="Color" Value="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" />
+                                                        </DataTrigger>
+                                                        <DataTrigger TargetType="BoxView" Binding="{Binding PriorityText}" Value="Important">
+                                                            <Setter Property="Color" Value="{AppThemeBinding Light={StaticResource Warn}, Dark={StaticResource WarnDark}}" />
+                                                        </DataTrigger>
+                                                        <DataTrigger TargetType="BoxView" Binding="{Binding PriorityText}" Value="Normal">
+                                                            <Setter Property="Color" Value="{AppThemeBinding Light={StaticResource Info}, Dark={StaticResource InfoDark}}" />
+                                                        </DataTrigger>
+                                                        <DataTrigger TargetType="BoxView" Binding="{Binding PriorityText}" Value="Informational">
+                                                            <Setter Property="Color" Value="{AppThemeBinding Light={StaticResource Gray300}, Dark={StaticResource Gray500}}" />
+                                                        </DataTrigger>
+                                                    </BoxView.Triggers>
+                                                </BoxView>
+                                                <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                                    <Grid ColumnDefinitions="*,Auto">
+                                                        <Label Grid.Column="0" Text="{Binding Title}" FontSize="13.5" FontAttributes="Bold" LineBreakMode="TailTruncation" />
+                                                        <Label Grid.Column="1" Text="{Binding TimeText}" FontSize="11" TextColor="Gray" VerticalOptions="Center" />
+                                                    </Grid>
+                                                    <Label Text="{Binding Preview}" FontSize="12.5" LineBreakMode="TailTruncation" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
+                                                </VerticalStackLayout>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

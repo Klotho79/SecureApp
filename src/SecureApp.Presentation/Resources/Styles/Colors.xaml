@@ -41,10 +41,20 @@
     <Color x:Key="SuccessSoftDark">#173428</Color>
     <Color x:Key="Danger">#C62828</Color>
     <Color x:Key="DangerDark">#EF5350</Color>
+    <Color x:Key="DangerSoft">#FBE4E4</Color>
+    <Color x:Key="DangerSoftDark">#3A1414</Color>
     <Color x:Key="Warn">#B5730C</Color>
     <Color x:Key="WarnDark">#E5A845</Color>
     <Color x:Key="WarnSoft">#FBEFDD</Color>
     <Color x:Key="WarnSoftDark">#3A2C10</Color>
+
+    <!-- Info (2026-09-20, Notification Hub — NOTIFICATION_HUB_SPEC.md) — a true blue, distinct from
+         the teal-leaning AccentStrong, for NotificationPriority.Normal / the "Zprávy" (messages)
+         category, matching the reference design images' color language. -->
+    <Color x:Key="Info">#1565C0</Color>
+    <Color x:Key="InfoDark">#64B5F6</Color>
+    <Color x:Key="InfoSoft">#E1EDFA</Color>
+    <Color x:Key="InfoSoftDark">#122A40</Color>
 
     <!-- Accent tint pair — active nav item / selected chip / role badge backgrounds, with
          AccentStrong as the readable text/icon color to pair with the tint (same role AccentSoft

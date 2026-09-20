@@ -18,6 +18,11 @@
          by reference to insert/remove them from the live TabBar per a per-device Settings toggle,
          the same mechanism Logbook's own show/hide already used, now generalized to every tab. -->
     <TabBar>
+        <!-- Notification Hub (2026-09-20, see NOTIFICATION_HUB_SPEC.md) — leads the TabBar as the
+             app's new "personal work information center" home, ahead of Chaty. -->
+        <Tab x:Name="NotificationsTab" Title="🔔 Oznámení">
+            <ShellContent ContentTemplate="{DataTemplate views:NotificationsPage}" Route="NotificationsTab" />
+        </Tab>
         <Tab x:Name="ChatsTab" Title="💬 Chaty">
             <ShellContent ContentTemplate="{DataTemplate views:ChatListPage}" Route="ChatListTab" />
         </Tab>
