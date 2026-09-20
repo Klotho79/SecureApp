@@ -1,6 +1,7 @@
 using SecureApp.Domain.Entities;
 using SecureApp.Domain.Enums;
 using SecureApp.Domain.Interfaces.Repositories;
+using SecureApp.Domain.Interfaces.Services;
 
 namespace SecureApp.Presentation.Notifications;
 
@@ -13,6 +14,11 @@ namespace SecureApp.Presentation.Notifications;
 /// Notification Hub page happens to be on screen. Best-effort by design (same policy as every other
 /// background-sweep helper in this app) — a failure here must never take down the message/pairing
 /// handling it's attached to.
+///
+/// <paramref name="nativeNotificationService"/> across every method below is optional (2026-09-20,
+/// Phase 8) — passing it also posts a real OS notification (<see cref="INativeNotificationService"/>)
+/// alongside the always-persisted Notification Hub row; omitting it just skips that OS-level
+/// surfacing, for any call site that doesn't have one handy or doesn't want it.
 ///
 /// Known limitation, not fixed here: <c>IMessagingService.ReceiveMessageAsync</c>'s idempotency
 /// guard can return an already-stored row for a genuine wire-level duplicate delivery, and this
@@ -29,6 +35,7 @@ public static class NotificationPublisher
         string peerDisplayName,
         string plaintextPreview,
         Guid chatSessionId,
+        INativeNotificationService? nativeNotificationService = null,
         CancellationToken ct = default)
     {
         var notification = new Notification(
@@ -37,7 +44,7 @@ public static class NotificationPublisher
             category: NotificationCategory.Chat,
             priority: NotificationPriority.Normal,
             relatedChatSessionId: chatSessionId);
-        return TryAddAsync(notificationRepository, notification, ct);
+        return TryAddAsync(notificationRepository, notification, nativeNotificationService, ct);
     }
 
     public static Task PublishGroupMessageAsync(
@@ -47,6 +54,7 @@ public static class NotificationPublisher
         string plaintextPreview,
         Guid chatSessionId,
         Guid groupChatId,
+        INativeNotificationService? nativeNotificationService = null,
         CancellationToken ct = default)
     {
         var notification = new Notification(
@@ -56,7 +64,7 @@ public static class NotificationPublisher
             priority: NotificationPriority.Normal,
             relatedChatSessionId: chatSessionId,
             relatedGroupChatId: groupChatId);
-        return TryAddAsync(notificationRepository, notification, ct);
+        return TryAddAsync(notificationRepository, notification, nativeNotificationService, ct);
     }
 
     /// <summary>A brand new 1:1 pairing/resync completing (spec §25 — "who I need to contact" territory) — informational, not urgent, so <see cref="NotificationPriority.Informational"/> rather than Normal.</summary>
@@ -64,6 +72,7 @@ public static class NotificationPublisher
         INotificationRepository notificationRepository,
         string peerDisplayName,
         Guid chatSessionId,
+        INativeNotificationService? nativeNotificationService = null,
         CancellationToken ct = default)
     {
         var notification = new Notification(
@@ -72,13 +81,14 @@ public static class NotificationPublisher
             category: NotificationCategory.Chat,
             priority: NotificationPriority.Informational,
             relatedChatSessionId: chatSessionId);
-        return TryAddAsync(notificationRepository, notification, ct);
+        return TryAddAsync(notificationRepository, notification, nativeNotificationService, ct);
     }
 
     public static Task PublishGroupInviteAsync(
         INotificationRepository notificationRepository,
         string groupName,
         Guid groupChatId,
+        INativeNotificationService? nativeNotificationService = null,
         CancellationToken ct = default)
     {
         var notification = new Notification(
@@ -87,13 +97,14 @@ public static class NotificationPublisher
             category: NotificationCategory.Group,
             priority: NotificationPriority.Normal,
             relatedGroupChatId: groupChatId);
-        return TryAddAsync(notificationRepository, notification, ct);
+        return TryAddAsync(notificationRepository, notification, nativeNotificationService, ct);
     }
 
     public static Task PublishLibraryFileAddedAsync(
         INotificationRepository notificationRepository,
         string fileName,
         Guid libraryFileId,
+        INativeNotificationService? nativeNotificationService = null,
         CancellationToken ct = default)
     {
         var notification = new Notification(
@@ -102,7 +113,7 @@ public static class NotificationPublisher
             category: NotificationCategory.Library,
             priority: NotificationPriority.Normal,
             relatedLibraryFileId: libraryFileId);
-        return TryAddAsync(notificationRepository, notification, ct);
+        return TryAddAsync(notificationRepository, notification, nativeNotificationService, ct);
     }
 
     /// <summary>A genuine system-level problem (e.g. an auto-heal failure — see <c>App.xaml.cs</c>'s own diagnostics-reporter call sites) surfaced into the same feed the user already checks for everything else, instead of only living in the separate Settings diagnostics log. <see cref="NotificationPriority.Important"/> — system errors belong in the IMPORTANT section, not buried among ordinary chat traffic.</summary>
@@ -110,6 +121,7 @@ public static class NotificationPublisher
         INotificationRepository notificationRepository,
         string title,
         string body,
+        INativeNotificationService? nativeNotificationService = null,
         CancellationToken ct = default)
     {
         var notification = new Notification(
@@ -117,13 +129,29 @@ public static class NotificationPublisher
             body: body,
             category: NotificationCategory.System,
             priority: NotificationPriority.Important);
-        return TryAddAsync(notificationRepository, notification, ct);
+        return TryAddAsync(notificationRepository, notification, nativeNotificationService, ct);
     }
 
-    private static async Task TryAddAsync(INotificationRepository notificationRepository, Notification notification, CancellationToken ct)
+    private static async Task TryAddAsync(INotificationRepository notificationRepository, Notification notification, INativeNotificationService? nativeNotificationService, CancellationToken ct)
     {
-        try { await notificationRepository.AddAsync(notification, ct); }
-        catch { /* best-effort — see class-level remarks */ }
+        try
+        {
+            await notificationRepository.AddAsync(notification, ct);
+        }
+        catch
+        {
+            // Best-effort — see class-level remarks.
+            return;
+        }
+
+        try
+        {
+            nativeNotificationService?.ShowNotification(notification.Id, notification.Title, notification.Body, notification.IsImportant);
+        }
+        catch
+        {
+            // Best-effort — the Notification Hub row above is already safely persisted either way.
+        }
     }
 
     private static string Truncate(string text)

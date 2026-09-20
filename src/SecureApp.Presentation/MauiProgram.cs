@@ -103,6 +103,10 @@ public static class MauiProgram
 		// otherwise avoids referencing outside Presentation. Applied once at startup, see App.xaml.cs.
 		builder.Services.AddSingleton<INativeDlpService, NativeDlpService>();
 
+		// Notification Hub (2026-09-20, see NOTIFICATION_HUB_SPEC.md) — same per-platform-folder
+		// pattern as INativeDlpService right above.
+		builder.Services.AddSingleton<INativeNotificationService, NativeNotificationService>();
+
 		// Milestone 5 (E2EE Chat) transport: relay server + client (see DEVELOPMENT_PLAN.md's note).
 		// Lives here rather than SecureApp.Data for the same reason as everything else in this
 		// block — WebSocketMessageTransport is actually platform-agnostic BCL code, but it's the

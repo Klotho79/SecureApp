@@ -4,6 +4,11 @@
 	<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 	<uses-permission android:name="android.permission.INTERNET" />
 	<uses-permission android:name="android.permission.CAMERA" />
+	<!-- Notification Hub (2026-09-20, see NOTIFICATION_HUB_SPEC.md) — required at runtime on
+	     Android 13+ (API 33+) to post the system notifications NativeNotificationService builds;
+	     requested explicitly in MainActivity.OnCreate. Older Android versions grant it automatically
+	     at install time, this declaration alone is enough for those. -->
+	<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 	<uses-feature android:name="android.hardware.camera" android:required="false" />
 	<uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 </manifest>

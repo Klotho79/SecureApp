@@ -1,7 +1,9 @@
 ﻿using Android.App;
+using Android.Content;
 using Android.Content.PM;
 using Android.OS;
 using Android.Views;
+using AndroidX.Core.App;
 using AndroidX.Core.View;
 
 namespace SecureApp.Presentation;
@@ -34,12 +36,38 @@ public class MainActivity : MauiAppCompatActivity
     {
         base.OnCreate(savedInstanceState);
         ApplyWindowSoftInputMode();
+        RequestNotificationPermissionIfNeeded();
+        HandleNotificationIntent(Intent);
     }
 
     protected override void OnResume()
     {
         base.OnResume();
         ApplyWindowSoftInputMode();
+    }
+
+    // LaunchMode.SingleTop ([Activity] attribute above) means tapping a SecureApp notification
+    // while this Activity already exists reuses this SAME instance via OnNewIntent, rather than
+    // OnCreate running again — both paths must feed NativeNotificationRouter (2026-09-20, Phase 8).
+    protected override void OnNewIntent(Intent? intent)
+    {
+        base.OnNewIntent(intent);
+        HandleNotificationIntent(intent);
+    }
+
+    private static void HandleNotificationIntent(Intent? intent)
+    {
+        var idText = intent?.GetStringExtra("notificationId");
+        if (Guid.TryParse(idText, out var id))
+            Notifications.NativeNotificationRouter.OnNotificationTapped(id);
+    }
+
+    /// <summary>Android 13+ (API 33+) requires this runtime grant before NotificationManagerCompat.Notify actually shows anything — requested once, best-effort (declining just means NativeNotificationService's own Notify call silently no-ops, never a crash).</summary>
+    private void RequestNotificationPermissionIfNeeded()
+    {
+        if (Build.VERSION.SdkInt < BuildVersionCodes.Tiramisu) return;
+        if (ActivityCompat.CheckSelfPermission(this, global::Android.Manifest.Permission.PostNotifications) == Permission.Granted) return;
+        ActivityCompat.RequestPermissions(this, [global::Android.Manifest.Permission.PostNotifications], 0);
     }
 
     private void ApplyWindowSoftInputMode()

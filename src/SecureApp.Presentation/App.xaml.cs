@@ -26,6 +26,13 @@ public partial class App : Application
 		AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
 		TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
 
+		// Notification Hub (2026-09-20, Phase 8, spec §31): a tap on a real OS notification while
+		// the app is already running (MainActivity.OnNewIntent, "warm" case — see
+		// NativeNotificationRouter's own remarks) opens that notification's own detail, not just
+		// the app's home screen. Subscribed here, in the constructor, so it's guaranteed to already
+		// be listening well before any notification could possibly be tapped.
+		Notifications.NativeNotificationRouter.NotificationTapped += OnNativeNotificationTapped;
+
 		// 2026-09-06 pairing simplification: whichever side is online when the other calls
 		// CreateSessionAsync now gets the invite delivered automatically (see
 		// NewChatViewModel.CreateSessionAsync's own remarks) instead of needing a second manual
@@ -621,6 +628,7 @@ public partial class App : Application
 				try
 				{
 					var notificationRepository = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
+					var nativeNotificationService = scope.ServiceProvider.GetRequiredService<INativeNotificationService>();
 					var plaintext = await messagingService.DecryptMessageAsync(message.Id);
 					var preview = System.Text.Encoding.UTF8.GetString(plaintext);
 					var sessionRepositoryForNotify = scope.ServiceProvider.GetRequiredService<IChatSessionRepository>();
@@ -632,11 +640,11 @@ public partial class App : Application
 							var groupChatRepositoryForNotify = scope.ServiceProvider.GetRequiredService<IGroupChatRepository>();
 							var group = await groupChatRepositoryForNotify.GetByIdAsync(groupChatId);
 							if (group is not null)
-								await NotificationPublisher.PublishGroupMessageAsync(notificationRepository, group.Name, session.PeerDisplayName, preview, message.ChatSessionId, groupChatId);
+								await NotificationPublisher.PublishGroupMessageAsync(notificationRepository, group.Name, session.PeerDisplayName, preview, message.ChatSessionId, groupChatId, nativeNotificationService);
 						}
 						else
 						{
-							await NotificationPublisher.PublishDirectMessageAsync(notificationRepository, session.PeerDisplayName, preview, message.ChatSessionId);
+							await NotificationPublisher.PublishDirectMessageAsync(notificationRepository, session.PeerDisplayName, preview, message.ChatSessionId, nativeNotificationService);
 						}
 					}
 				}
@@ -983,8 +991,32 @@ public partial class App : Application
 			// Milestone 5 (E2EE Chat) connect: handled entirely by RunConnectionSupervisorLoopAsync
 			// now, started from the constructor above — its very first tick fires almost immediately,
 			// so launch-time connect behavior is unchanged; nothing further to kick off here.
+
+			// Notification Hub (2026-09-20, Phase 8, spec §31), COLD case: the app was launched
+			// fresh by tapping a notification — MainActivity.OnCreate ran (and stashed the id)
+			// before the constructor's own subscription above ever had a chance to listen. Window.Created
+			// is the earliest point Shell.Current is safe to navigate through, same reasoning the DLP
+			// call right above already relies on.
+			if (Notifications.NativeNotificationRouter.ConsumePendingNotificationId() is { } pendingId)
+				NavigateToNotificationDetail(pendingId);
 		};
 
 		return window;
+	}
+
+	private static void OnNativeNotificationTapped(Guid notificationId) => NavigateToNotificationDetail(notificationId);
+
+	private static void NavigateToNotificationDetail(Guid notificationId)
+	{
+		try
+		{
+			Shell.Current?.GoToAsync($"{nameof(Views.NotificationDetailPage)}?notificationId={notificationId}");
+		}
+		catch
+		{
+			// Best-effort — a navigation failure here (e.g. Shell not fully ready yet on a very
+			// fast cold start) just means the app opens to its normal home screen instead, same as
+			// tapping the app icon would have.
+		}
 	}
 }
