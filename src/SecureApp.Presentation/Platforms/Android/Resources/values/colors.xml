@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="colorPrimary">#512BD4</color>
-    <color name="colorPrimaryDark">#2B0B98</color>
-    <color name="colorAccent">#2B0B98</color>
+    <!-- 2026-09-20: these were still the untouched default MAUI template purple, left over from
+         before the 2026-09-06 teal/blue redesign (see Resources/Styles/Colors.xaml's own remarks) —
+         the XAML Shell style overrides Shell's own chrome, but native Android widgets Shell renders
+         directly from the platform theme (e.g. the Knihovna/Dokumenty sub-tab strip on the Soubory
+         tab, a multi-ShellContent Tab) read colorPrimary/colorAccent instead, so the leftover purple
+         kept showing through there specifically. Matched to Colors.xaml's Primary/AccentStrong. -->
+    <color name="colorPrimary">#14688A</color>
+    <color name="colorPrimaryDark">#0D4E64</color>
+    <color name="colorAccent">#0D4E64</color>
 </resources>
