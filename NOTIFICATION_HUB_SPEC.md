@@ -477,10 +477,33 @@ Status below) and should be reconciled with the existing `Success`/`Danger`/`War
 
 ## Status
 
-**Not started.** This document is the saved prompt + design reference only — no
-Phase 1 analysis has been done yet, no code written. Per the prompt's own Rule 36,
-the next session picking this up should start with Phase 1 (inspect what SecureApp
-already has that overlaps this spec — e.g. the existing `Kontakty` tab/directory,
-`Logbook` module, `Styles.xaml`/`Colors.xaml` token set, `IDiagnosticsReporter`/shared
-diagnostics log, any existing Android notification wiring — before writing any new
-UI) rather than starting Phase 3 (Main UI) or Phase 7 (Widget) cold.
+**2026-09-20 — Phase 1 (analysis) done, Phase 2 (data model) + Phase 3 (main UI) done, first slice.**
+
+Phase 1 findings: `ContactsPage`/`Kontakty` is a static hospital phone directory (transcribed from a
+reference PDF), not a dynamic `Person`/CRM-style contact — spec's Person model still to build
+(Phase 6). `LogbookPage` tracks performed procedures, not shift/workplace assignments — different
+concept from spec's WORKPLACE section (Phase 5). No Android system-notification handling and no
+Android home-screen widget existed at all before this pass. Reusable building blocks found and used:
+`Success`/`Danger`/`Warn`/`AccentStrong` color tokens, `CardBorder`/`SectionHeader`/`Chip`/`ChipLabel`
+styles, and `ContactsViewModel`'s `ContactSectionGroup`/`VisibleEntries` collapsible-section pattern.
+
+Built this pass: `Notification` domain entity + `NotificationPriority`/`NotificationCategory` enums +
+`INotificationRepository` (schema v13); `NotificationsPage` (counters, filter chips, grouped
+collapsible sections) as the new leading "Oznámení" tab; `NotificationDetailPage` (mark
+important/archive, open-related deep link); `NotificationPublisher` wired into `App.xaml.cs`'s
+`OnEnvelopeReceived` so a real incoming chat/group message always becomes a Notification, regardless
+of which screen is open. New `Info`/`DangerSoft` color tokens for the priority accents, applied to
+this new screen only — not an app-wide re-theme.
+
+Deliberately not done yet, per the user's own explicit scoping this pass:
+- **Notification sources stay SecureApp-internal only** (2026-09-20 decision) — no Android
+  `NotificationListenerService` reading other apps' notifications. The model doesn't block adding
+  that later, it's just not built.
+- Group-invite/pairing-completed events aren't wired to `NotificationPublisher` yet (only real
+  messages are) — straightforward to add, cut for scope this pass.
+- Phases 5–9 (Workplace, Calendar, Contacts-as-Person, the Android widget, real system notifications,
+  cross-entity Smart Search, full 10,000-row archive virtualization) are all still open — this list's
+  page size is a fixed 100 rows, not true incremental "load older" yet.
+
+Next natural step: either Phase 4 (Smart Search) building on what exists now, or Phase 5
+(Workplace/Calendar) which needs its own new entities — ask the user which before starting either.
