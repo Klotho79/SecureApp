@@ -74,10 +74,6 @@ public static class DependencyInjection
         // Notification Hub (2026-09-20, see NOTIFICATION_HUB_SPEC.md).
         services.AddScoped<INotificationRepository, NotificationRepository>();
 
-        // Personal contact list (2026-09-20, user's own ask) — distinct from the static
-        // ContactDirectoryData hospital directory.
-        services.AddScoped<IContactRepository, ContactRepository>();
-
         // NOTE: ISecureVaultKeyStore and IDocumentRenderingService are registered from the
         // Presentation layer instead (MauiProgram.cs) — they need MAUI/platform APIs
         // (SecureStorage, SkiaSharp) that this platform-agnostic class library cannot reference.

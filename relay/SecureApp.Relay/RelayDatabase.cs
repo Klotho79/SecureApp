@@ -211,6 +211,20 @@ public sealed class RelayDatabase
                 updated_at_utc    TEXT NOT NULL
             )
             """);
+        // Shared company phone/extension directory (2026-09-20) — same device-authenticated,
+        // not-admin-gated, plaintext-on-purpose shape as the two logbook_* tables right above (see
+        // SharedContact's own remarks): this is reference/contact data, not a clinical document.
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS shared_contacts (
+                id                TEXT PRIMARY KEY NOT NULL,
+                display_name      TEXT NOT NULL,
+                phone             TEXT NULL,
+                note              TEXT NULL,
+                sort_order        INTEGER NOT NULL,
+                created_at_utc    TEXT NOT NULL,
+                updated_at_utc    TEXT NOT NULL
+            )
+            """);
         // Additive column for a relay data directory that already has this table from before
         // 2026-09-10 — SQLite has no "ADD COLUMN IF NOT EXISTS", so this is guarded by checking
         // pragma_table_info first; a fresh CREATE TABLE above already includes it, so this is a
@@ -747,6 +761,45 @@ public sealed class RelayDatabase
     {
         using var connection = OpenConnection();
         Execute(connection, "DELETE FROM logbook_procedure_types WHERE id = @id", ("@id", id.ToString()));
+    }
+
+    public void UpsertSharedContact(Guid id, string displayName, string? phone, string? note, int sortOrder, DateTimeOffset createdAtUtc)
+    {
+        using var connection = OpenConnection();
+        Execute(connection,
+            """
+            INSERT INTO shared_contacts (id, display_name, phone, note, sort_order, created_at_utc, updated_at_utc) VALUES (@id, @name, @phone, @note, @sort, @created, @now)
+            ON CONFLICT(id) DO UPDATE SET display_name = @name, phone = @phone, note = @note, sort_order = @sort, updated_at_utc = @now
+            """,
+            ("@id", id.ToString()), ("@name", displayName), ("@phone", (object?)phone ?? DBNull.Value), ("@note", (object?)note ?? DBNull.Value),
+            ("@sort", sortOrder), ("@created", Format(createdAtUtc)), ("@now", Format(DateTimeOffset.UtcNow)));
+    }
+
+    public IReadOnlyList<(Guid Id, string DisplayName, string? Phone, string? Note, int SortOrder, DateTimeOffset CreatedAtUtc)> GetSharedContacts()
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id, display_name, phone, note, sort_order, created_at_utc FROM shared_contacts ORDER BY sort_order";
+
+        var results = new List<(Guid, string, string?, string?, int, DateTimeOffset)>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            results.Add((
+                Guid.Parse((string)reader["id"]),
+                (string)reader["display_name"],
+                reader["phone"] is DBNull ? null : (string)reader["phone"],
+                reader["note"] is DBNull ? null : (string)reader["note"],
+                Convert.ToInt32(reader["sort_order"]),
+                DateTimeOffset.Parse((string)reader["created_at_utc"], CultureInfo.InvariantCulture)));
+        }
+        return results;
+    }
+
+    public void DeleteSharedContact(Guid id)
+    {
+        using var connection = OpenConnection();
+        Execute(connection, "DELETE FROM shared_contacts WHERE id = @id", ("@id", id.ToString()));
     }
 
     private static LibraryFileRecord ReadLibraryFileRecord(SqliteDataReader reader) => new(

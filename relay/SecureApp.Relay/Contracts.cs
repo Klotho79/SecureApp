@@ -73,3 +73,9 @@ public sealed record DiagnosticLogEntryDto(Guid Id, string DeviceDisplayName, st
 public sealed record LogbookChecklistDto(Guid Id, string Name, IReadOnlyList<string> Items, DateTimeOffset CreatedAtUtc);
 
 public sealed record LogbookProcedureTypeDto(Guid Id, string Name, string Abbreviation, string Category, DateTimeOffset CreatedAtUtc);
+
+// --- Shared company phone/extension directory (2026-09-20) — see RelayDatabase's shared_contacts
+// table and SharedContact's own remarks. Same device-authenticated, not-admin-gated shape as the
+// Logbook catalog sync above.
+
+public sealed record SharedContactDto(Guid Id, string DisplayName, string? Phone, string? Note, int SortOrder, DateTimeOffset CreatedAtUtc);

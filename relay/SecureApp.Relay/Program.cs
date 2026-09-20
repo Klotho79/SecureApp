@@ -478,6 +478,38 @@ app.MapDelete("/logbook/procedure-types/{id:guid}", (Guid id, HttpRequest reques
     return Results.NoContent();
 });
 
+// --- Shared company phone/extension directory (2026-09-20) — see Contracts.cs's own remarks.
+
+app.MapPost("/contacts", (HttpRequest request, SharedContactDto body, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out _))
+        return Results.Unauthorized();
+
+    if (string.IsNullOrWhiteSpace(body.DisplayName))
+        return Results.BadRequest("DisplayName is required.");
+
+    db.UpsertSharedContact(body.Id, body.DisplayName, body.Phone, body.Note, body.SortOrder, body.CreatedAtUtc);
+    return Results.Ok();
+});
+
+app.MapGet("/contacts", (HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out _))
+        return Results.Unauthorized();
+
+    var entries = db.GetSharedContacts();
+    return Results.Ok(entries.Select(e => new SharedContactDto(e.Id, e.DisplayName, e.Phone, e.Note, e.SortOrder, e.CreatedAtUtc)).ToList());
+});
+
+app.MapDelete("/contacts/{id:guid}", (Guid id, HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out _))
+        return Results.Unauthorized();
+
+    db.DeleteSharedContact(id);
+    return Results.NoContent();
+});
+
 app.Map("/ws", async (HttpContext context, RelayDatabase db, ConnectionRegistry registry) =>
 {
     if (!context.WebSockets.IsWebSocketRequest)

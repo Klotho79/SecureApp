@@ -3,6 +3,7 @@ using Microsoft.Maui.Devices;
 using Microsoft.Maui.Storage;
 using SecureApp.Data;
 using SecureApp.Domain.Interfaces.Services;
+using SecureApp.Presentation.Contacts;
 using SecureApp.Presentation.Diagnostics;
 using SecureApp.Presentation.Infrastructure;
 using SecureApp.Presentation.Library;
@@ -132,6 +133,10 @@ public static class MauiProgram
 
 		// Logbook catalog sync (2026-09-10) — same registration shape again.
 		builder.Services.AddSingleton<ILogbookCatalogSyncService, HttpLogbookCatalogSyncService>();
+
+		// Shared company phone/extension directory (2026-09-20, user's own correction — see
+		// ISharedContactService's own remarks).
+		builder.Services.AddSingleton<ISharedContactService, HttpSharedContactService>();
 
 		// --- Milestone 3: Presentation (pages + view models) ---
 		builder.Services.AddTransient<DocumentBrowserViewModel>();

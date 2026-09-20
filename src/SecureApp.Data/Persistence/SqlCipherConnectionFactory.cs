@@ -528,12 +528,15 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
     }
 
     /// <summary>
-    /// The user's own editable contact list (2026-09-20) — distinct from the static, code-embedded
-    /// hospital phone directory. <c>linked_public_key</c> ties a row to a paired SecureApp peer (see
-    /// <c>Contact</c>'s own remarks); no FK/uniqueness constraint on it — <c>ContactsViewModel</c>'s
-    /// own sync logic is what keeps it matching an actual <c>chat_sessions</c>/<c>group_members</c>
-    /// row, the same "outlives what it points at" reasoning already established for
-    /// <c>notifications</c>'s own related_* columns.
+    /// SUPERSEDED, kept only because it already shipped and ran on real devices (2026-09-20, same
+    /// day): first cut of an editable contact list, local-only and linked to chat peers. The user
+    /// corrected the actual requirement moments later — contacts are a shared, company-wide phone/
+    /// extension directory with NO chat linking (see <c>ISharedContactService</c>, relay-synced) —
+    /// so this table is dead schema from here on, never read or written by anything. Left in place
+    /// rather than dropped: a handful of devices already ran this migration and bumped their
+    /// PRAGMA user_version past it, so removing/renumbering it would either need a destructive
+    /// migration for no benefit (the table is empty — this feature was live for minutes) or risk a
+    /// version-number collision with a future real v14+ schema change. Harmless as an empty orphan.
     /// </summary>
     private static async Task ApplyV14SchemaAsync(SQLiteAsyncConnection connection)
     {

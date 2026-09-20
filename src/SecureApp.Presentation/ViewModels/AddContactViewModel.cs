@@ -1,28 +1,25 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using SecureApp.Domain.Interfaces.Repositories;
-using Contact = SecureApp.Domain.Entities.Contact;
+using SecureApp.Domain.Interfaces.Services;
+using SecureApp.Domain.ValueObjects;
 
 namespace SecureApp.Presentation.ViewModels;
 
 /// <summary>
-/// Manual "Add Contact" form (2026-09-20, user's own ask: "možnost přidání kontaktu") — for someone
-/// NOT on SecureApp at all (a plain phone/email entry, see <see cref="Contact"/>'s own remarks on the
-/// linked-vs-unlinked distinction). Paired peers/group members never need this form; they appear in
-/// "Moje kontakty" automatically (see <c>ContactsViewModel.SyncFromChatsAsync</c>).
+/// Manual "Add Contact" form (2026-09-20, user's own ask: "možnost přidání kontaktu") — adds a new
+/// entry to the shared company phone/extension directory (see <see cref="SharedContact"/>'s own
+/// remarks). Published straight to the relay so it's immediately visible to everyone, not just this
+/// device.
 /// </summary>
 public sealed partial class AddContactViewModel : ObservableObject
 {
-    private readonly IContactRepository _contactRepository;
+    private readonly ISharedContactService _sharedContactService;
 
     [ObservableProperty]
     public partial string DisplayName { get; set; }
 
     [ObservableProperty]
     public partial string Phone { get; set; }
-
-    [ObservableProperty]
-    public partial string Email { get; set; }
 
     [ObservableProperty]
     public partial string Note { get; set; }
@@ -42,12 +39,11 @@ public sealed partial class AddContactViewModel : ObservableObject
     /// <summary>Raised once the contact is actually persisted — the Page navigates back on this, not on the command simply completing (an error stays on the form).</summary>
     public event Action? Saved;
 
-    public AddContactViewModel(IContactRepository contactRepository)
+    public AddContactViewModel(ISharedContactService sharedContactService)
     {
-        _contactRepository = contactRepository ?? throw new ArgumentNullException(nameof(contactRepository));
+        _sharedContactService = sharedContactService ?? throw new ArgumentNullException(nameof(sharedContactService));
         DisplayName = string.Empty;
         Phone = string.Empty;
-        Email = string.Empty;
         Note = string.Empty;
         CanSave = true;
     }
@@ -69,15 +65,22 @@ public sealed partial class AddContactViewModel : ObservableObject
         IsSaving = true;
         try
         {
-            var existing = await _contactRepository.GetAllOrderedAsync();
+            var existing = await _sharedContactService.FetchAsync();
             var nextSortOrder = existing.Count == 0 ? 0 : existing.Max(c => c.SortOrder) + 1;
-            var contact = new Contact(
+            var contact = new SharedContact(
+                Guid.NewGuid(),
                 name,
+                string.IsNullOrWhiteSpace(Phone) ? null : Phone.Trim(),
+                string.IsNullOrWhiteSpace(Note) ? null : Note.Trim(),
                 nextSortOrder,
-                phone: string.IsNullOrWhiteSpace(Phone) ? null : Phone.Trim(),
-                email: string.IsNullOrWhiteSpace(Email) ? null : Email.Trim(),
-                note: string.IsNullOrWhiteSpace(Note) ? null : Note.Trim());
-            await _contactRepository.AddAsync(contact);
+                DateTimeOffset.UtcNow);
+
+            var ok = await _sharedContactService.PublishAsync(contact);
+            if (!ok)
+            {
+                ErrorMessage = "Kontakt se nepodařilo uložit — zkuste to prosím znovu.";
+                return;
+            }
             Saved?.Invoke();
         }
         catch (Exception ex)

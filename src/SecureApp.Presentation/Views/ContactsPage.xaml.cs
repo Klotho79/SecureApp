@@ -11,7 +11,6 @@ public partial class ContactsPage : ContentPage
     {
         InitializeComponent();
         BindingContext = _viewModel = viewModel;
-        _viewModel.RequestNavigate += OnRequestNavigate;
         _viewModel.RequestAddContact += OnRequestAddContact;
     }
 
@@ -21,8 +20,6 @@ public partial class ContactsPage : ContentPage
         _viewModel.LoadCommand.Execute(null);
     }
 
-    private async void OnRequestNavigate(string route) => await Shell.Current.GoToAsync(route);
-
     private async void OnRequestAddContact() => await Shell.Current.GoToAsync(nameof(AddContactPage));
 
     // Desktop drag-and-drop reorder (2026-09-20, user's own ask) — MAUI's DragGestureRecognizer/
@@ -31,14 +28,14 @@ public partial class ContactsPage : ContentPage
     // remarks describe) rather than trying to force it through XAML bindings.
     private void OnContactDragStarting(object? sender, DragStartingEventArgs e)
     {
-        if ((sender as Element)?.BindingContext is PersonalContactItem item)
+        if ((sender as Element)?.BindingContext is SharedContactItem item)
             _draggedContactId = item.Id;
     }
 
     private async void OnContactDrop(object? sender, DropEventArgs e)
     {
         if (_draggedContactId is not { } draggedId) return;
-        if ((sender as Element)?.BindingContext is not PersonalContactItem target) return;
+        if ((sender as Element)?.BindingContext is not SharedContactItem target) return;
         _draggedContactId = null;
         await _viewModel.ReorderAsync(draggedId, target.Id);
     }
