@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.Input;
 using SecureApp.Domain.Entities;
 using SecureApp.Domain.Enums;
 using SecureApp.Domain.Interfaces.Repositories;
+using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Domain.ValueObjects;
 
 namespace SecureApp.Presentation.ViewModels;
@@ -27,9 +28,13 @@ public sealed partial class NotificationsViewModel : ObservableObject
 {
     private const int PageSize = 100;
 
+    private const int LibraryQuickAccessLimit = 20;
+
     private readonly INotificationRepository _notificationRepository;
     private readonly IChatSessionRepository _chatSessionRepository;
     private readonly IGroupChatRepository _groupChatRepository;
+    private readonly ISharedLibraryService _sharedLibraryService;
+    private readonly IDocumentRepository _documentRepository;
 
     [ObservableProperty]
     public partial ObservableCollection<NotificationSectionGroup> Sections { get; set; }
@@ -64,23 +69,43 @@ public sealed partial class NotificationsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsChatFilterActive { get; set; }
 
-    /// <summary>Raised so the Page (which alone can push a MAUI navigation) opens the tapped chat/group — same MAUI-free-ViewModel split this codebase already established elsewhere.</summary>
+    [ObservableProperty]
+    public partial ObservableCollection<LibraryQuickAccessItem> LibraryQuickAccess { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasLibraryQuickAccess { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasNoLibraryQuickAccess { get; set; }
+
+    /// <summary>True while the "Knihovna" filter chip is the active one — gates the quick-access file list (both the shared community library and this device's own local Dokumenty — 2026-09-20, user's own ask: "do knihovny pridej co je v knihovne a pridej do knihovny i zalozku dokumenty... to propoj").</summary>
+    [ObservableProperty]
+    public partial bool IsLibraryFilterActive { get; set; }
+
+    /// <summary>Raised so the Page (which alone can push a MAUI navigation) opens the tapped chat/group/file or jumps to a full browsing tab — same MAUI-free-ViewModel split this codebase already established elsewhere.</summary>
     public event Action<string>? RequestNavigate;
 
     partial void OnHasChatQuickAccessChanged(bool value) => HasNoChatQuickAccess = !value;
+    partial void OnHasLibraryQuickAccessChanged(bool value) => HasNoLibraryQuickAccess = !value;
 
     public NotificationsViewModel(
         INotificationRepository notificationRepository,
         IChatSessionRepository chatSessionRepository,
-        IGroupChatRepository groupChatRepository)
+        IGroupChatRepository groupChatRepository,
+        ISharedLibraryService sharedLibraryService,
+        IDocumentRepository documentRepository)
     {
         _notificationRepository = notificationRepository ?? throw new ArgumentNullException(nameof(notificationRepository));
         _chatSessionRepository = chatSessionRepository ?? throw new ArgumentNullException(nameof(chatSessionRepository));
         _groupChatRepository = groupChatRepository ?? throw new ArgumentNullException(nameof(groupChatRepository));
+        _sharedLibraryService = sharedLibraryService ?? throw new ArgumentNullException(nameof(sharedLibraryService));
+        _documentRepository = documentRepository ?? throw new ArgumentNullException(nameof(documentRepository));
         Sections = [];
         HasNoNotifications = true;
         ChatQuickAccess = [];
         HasNoChatQuickAccess = true;
+        LibraryQuickAccess = [];
+        HasNoLibraryQuickAccess = true;
 
         // Built once, with THIS instance's own SelectCommand baked in per chip (same "shared command
         // instance, no x:Reference back to the page" pattern this codebase already uses for
@@ -128,6 +153,20 @@ public sealed partial class NotificationsViewModel : ObservableObject
                 ChatQuickAccess = [];
                 HasChatQuickAccess = false;
             }
+
+            // Same fix, same reasoning, for "Knihovna" (2026-09-20, user's own follow-up ask: "do
+            // knihovny pridej co je v knihovne a pridej do knihovny i zalozku dokumenty zkratka to
+            // propoj") — the chip alone only ever filtered past library-upload ALERTS. This loads
+            // what's actually IN the shared community library, plus (the user's explicit ask) this
+            // device's own local Dokumenty, connected into the same list.
+            IsLibraryFilterActive = activeChip?.Filter.Category == NotificationCategory.Library;
+            if (IsLibraryFilterActive)
+                await LoadLibraryQuickAccessAsync();
+            else
+            {
+                LibraryQuickAccess = [];
+                HasLibraryQuickAccess = false;
+            }
         }
         finally
         {
@@ -167,6 +206,56 @@ public sealed partial class NotificationsViewModel : ObservableObject
         if (item is null) return;
         RequestNavigate?.Invoke(item.Route);
     }
+
+    /// <summary>
+    /// Combines this device's own local Dokumenty (each opens straight into DocumentViewerPage —
+    /// full deep link, since a local Document's id is always locally resolvable) with the shared
+    /// community Knihovna (falls back to the browsing tab itself — no per-file deep-link route exists
+    /// yet, same limitation NotificationDetailViewModel.OpenRelated already has for a library-file
+    /// relation). Capped at <see cref="LibraryQuickAccessLimit"/> combined — this is a quick-access
+    /// jump list, not a replacement for the real Knihovna/Dokumenty browsers (both stay one tap away
+    /// via the two "open the full tab" rows always shown first).
+    /// </summary>
+    private async Task LoadLibraryQuickAccessAsync()
+    {
+        try
+        {
+            var items = new List<LibraryQuickAccessItem>();
+
+            var documents = await _documentRepository.GetAllAsync();
+            items.AddRange(documents
+                .OrderByDescending(d => d.ModifiedAtUtc)
+                .Take(LibraryQuickAccessLimit)
+                .Select(d => new LibraryQuickAccessItem(d.Title, "📄 Dokumenty (toto zařízení)", $"DocumentViewerPage?documentId={d.Id}", OpenLibraryItemCommand)));
+
+            var libraryFiles = await _sharedLibraryService.SearchAsync();
+            items.AddRange(libraryFiles
+                .OrderByDescending(f => f.UploadedAtUtc)
+                .Take(LibraryQuickAccessLimit)
+                .Select(f => new LibraryQuickAccessItem(f.FileName, "📚 Sdílená knihovna", "//LibraryTab", OpenLibraryItemCommand)));
+
+            LibraryQuickAccess = new ObservableCollection<LibraryQuickAccessItem>(items);
+            HasLibraryQuickAccess = LibraryQuickAccess.Count > 0;
+        }
+        catch
+        {
+            LibraryQuickAccess = [];
+            HasLibraryQuickAccess = false;
+        }
+    }
+
+    [RelayCommand]
+    private void OpenLibraryItem(LibraryQuickAccessItem? item)
+    {
+        if (item is null) return;
+        RequestNavigate?.Invoke(item.Route);
+    }
+
+    [RelayCommand]
+    private void OpenLibraryTab() => RequestNavigate?.Invoke("//LibraryTab");
+
+    [RelayCommand]
+    private void OpenDocumentsTab() => RequestNavigate?.Invoke("//DocumentBrowser");
 
     [RelayCommand]
     private async Task SelectFilterAsync(NotificationFilterChip? chip)
@@ -283,6 +372,9 @@ public sealed record NotificationListItem(Guid Id, string Title, string Preview,
 
 /// <summary>One row in the "Chat" chip's quick-access list (2026-09-20) — a live chat/group the user can jump straight into and write, not a notification. <see cref="Glyph"/> distinguishes a 1:1 (💬) from a group (👥) without a converter.</summary>
 public sealed record ChatQuickAccessItem(string DisplayName, string Glyph, string Route, ICommand OpenCommand);
+
+/// <summary>One row in the "Knihovna" chip's quick-access list (2026-09-20) — a real file (local Dokumenty or the shared community Knihovna), not a notification. <see cref="SourceLabel"/> ("📄 Dokumenty (toto zařízení)" / "📚 Sdílená knihovna") is pre-formatted so the two sources are visually told apart with no converter.</summary>
+public sealed record LibraryQuickAccessItem(string DisplayName, string SourceLabel, string Route, ICommand OpenCommand);
 
 /// <summary>One filter chip — carries the shared <see cref="SelectCommand"/> instance, same per-item-shared-command pattern as <see cref="NotificationListItem.OpenCommand"/>.</summary>
 public sealed partial class NotificationFilterChip : ObservableObject
