@@ -28,6 +28,8 @@ public sealed partial class NotificationsViewModel : ObservableObject
     private const int PageSize = 100;
 
     private readonly INotificationRepository _notificationRepository;
+    private readonly IChatSessionRepository _chatSessionRepository;
+    private readonly IGroupChatRepository _groupChatRepository;
 
     [ObservableProperty]
     public partial ObservableCollection<NotificationSectionGroup> Sections { get; set; }
@@ -49,11 +51,36 @@ public sealed partial class NotificationsViewModel : ObservableObject
 
     public ObservableCollection<NotificationFilterChip> FilterChips { get; }
 
-    public NotificationsViewModel(INotificationRepository notificationRepository)
+    [ObservableProperty]
+    public partial ObservableCollection<ChatQuickAccessItem> ChatQuickAccess { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasChatQuickAccess { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasNoChatQuickAccess { get; set; }
+
+    /// <summary>True while the "Chat" filter chip is the active one — gates whether the quick-access chat/group list (below) renders at all, since it only makes sense for that one chip.</summary>
+    [ObservableProperty]
+    public partial bool IsChatFilterActive { get; set; }
+
+    /// <summary>Raised so the Page (which alone can push a MAUI navigation) opens the tapped chat/group — same MAUI-free-ViewModel split this codebase already established elsewhere.</summary>
+    public event Action<string>? RequestNavigate;
+
+    partial void OnHasChatQuickAccessChanged(bool value) => HasNoChatQuickAccess = !value;
+
+    public NotificationsViewModel(
+        INotificationRepository notificationRepository,
+        IChatSessionRepository chatSessionRepository,
+        IGroupChatRepository groupChatRepository)
     {
         _notificationRepository = notificationRepository ?? throw new ArgumentNullException(nameof(notificationRepository));
+        _chatSessionRepository = chatSessionRepository ?? throw new ArgumentNullException(nameof(chatSessionRepository));
+        _groupChatRepository = groupChatRepository ?? throw new ArgumentNullException(nameof(groupChatRepository));
         Sections = [];
         HasNoNotifications = true;
+        ChatQuickAccess = [];
+        HasNoChatQuickAccess = true;
 
         // Built once, with THIS instance's own SelectCommand baked in per chip (same "shared command
         // instance, no x:Reference back to the page" pattern this codebase already uses for
@@ -82,14 +109,63 @@ public sealed partial class NotificationsViewModel : ObservableObject
             UnreadCount = counts.UnreadCount;
             TodayCount = counts.TodayCount;
 
-            var activeFilter = FilterChips.FirstOrDefault(c => c.IsSelected)?.Filter ?? NotificationFilter.Default;
+            var activeChip = FilterChips.FirstOrDefault(c => c.IsSelected);
+            var activeFilter = activeChip?.Filter ?? NotificationFilter.Default;
             var notifications = await _notificationRepository.GetPagedAsync(activeFilter, PageSize);
             BuildSections(notifications);
+
+            // The "Chat" chip only ever filters Notification rows by Category — i.e. past
+            // new-message ALERTS, which is empty until a message has actually arrived since this
+            // feature shipped (2026-09-20, user caught this live: "v záložce chat na nástěnce se
+            // chaty nezobrazují"). What's actually wanted here is quick access to the chats/groups
+            // themselves, so this chip additionally loads a live list of them, same "open + write"
+            // ask from the very first Notification Hub request.
+            IsChatFilterActive = activeChip?.Filter.Category == NotificationCategory.Chat;
+            if (IsChatFilterActive)
+                await LoadChatQuickAccessAsync();
+            else
+            {
+                ChatQuickAccess = [];
+                HasChatQuickAccess = false;
+            }
         }
         finally
         {
             IsLoading = false;
         }
+    }
+
+    private async Task LoadChatQuickAccessAsync()
+    {
+        try
+        {
+            var items = new List<ChatQuickAccessItem>();
+
+            var sessions = await _chatSessionRepository.GetAllAsync();
+            items.AddRange(sessions
+                .Where(s => s.State != ChatSessionState.Closed)
+                .GroupBy(s => Convert.ToHexStringLower(s.PeerIdentityPublicKey))
+                .Select(g => g.OrderByDescending(s => s.ModifiedAtUtc).First())
+                .Select(s => new ChatQuickAccessItem(s.PeerDisplayName, "💬", $"ChatPage?chatSessionId={s.Id}", OpenChatCommand)));
+
+            var groups = await _groupChatRepository.GetAllAsync();
+            items.AddRange(groups.Select(g => new ChatQuickAccessItem(g.Name, "👥", $"GroupChatPage?groupChatId={g.Id}", OpenChatCommand)));
+
+            ChatQuickAccess = new ObservableCollection<ChatQuickAccessItem>(items.OrderBy(i => i.DisplayName, StringComparer.OrdinalIgnoreCase));
+            HasChatQuickAccess = ChatQuickAccess.Count > 0;
+        }
+        catch
+        {
+            ChatQuickAccess = [];
+            HasChatQuickAccess = false;
+        }
+    }
+
+    [RelayCommand]
+    private void OpenChat(ChatQuickAccessItem? item)
+    {
+        if (item is null) return;
+        RequestNavigate?.Invoke(item.Route);
     }
 
     [RelayCommand]
@@ -204,6 +280,9 @@ public sealed partial class NotificationSectionGroup : ObservableObject
 
 /// <summary>One notification row. <see cref="PriorityText"/> stays the English enum name (the XAML template colors it via DataTrigger, doesn't translate it) — same "wire-level concept stays English" convention already established for <c>DiagnosticLogItem.Level</c>/<c>TransportConnectionState</c>.</summary>
 public sealed record NotificationListItem(Guid Id, string Title, string Preview, string TimeText, bool IsRead, string PriorityText, ICommand OpenCommand);
+
+/// <summary>One row in the "Chat" chip's quick-access list (2026-09-20) — a live chat/group the user can jump straight into and write, not a notification. <see cref="Glyph"/> distinguishes a 1:1 (💬) from a group (👥) without a converter.</summary>
+public sealed record ChatQuickAccessItem(string DisplayName, string Glyph, string Route, ICommand OpenCommand);
 
 /// <summary>One filter chip — carries the shared <see cref="SelectCommand"/> instance, same per-item-shared-command pattern as <see cref="NotificationListItem.OpenCommand"/>.</summary>
 public sealed partial class NotificationFilterChip : ObservableObject

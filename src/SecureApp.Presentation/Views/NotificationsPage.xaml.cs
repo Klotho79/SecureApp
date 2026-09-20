@@ -11,6 +11,7 @@ public partial class NotificationsPage : ContentPage
         InitializeComponent();
         BindingContext = _viewModel = viewModel;
         _viewModel.RequestOpenDetail += OnRequestOpenDetail;
+        _viewModel.RequestNavigate += OnRequestNavigate;
     }
 
     protected override void OnAppearing()
@@ -24,4 +25,6 @@ public partial class NotificationsPage : ContentPage
 
     private async void OnSearchClicked(object? sender, EventArgs e)
         => await Shell.Current.GoToAsync(nameof(SmartSearchPage));
+
+    private async void OnRequestNavigate(string route) => await Shell.Current.GoToAsync(route);
 }
