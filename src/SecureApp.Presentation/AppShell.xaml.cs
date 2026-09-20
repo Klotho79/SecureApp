@@ -92,6 +92,11 @@ public partial class AppShell : Shell
 		// NotificationDetailViewModel.ApplyQueryAttributes picks up. NotificationsPage itself is the
 		// leading TabBar tab added above, not a registered route.
 		Routing.RegisterRoute(nameof(NotificationDetailPage), typeof(NotificationDetailPage));
+
+		// Smart Search (2026-09-20, Phase 4 — see NOTIFICATION_HUB_SPEC.md) — reached via the 🔍
+		// button on NotificationsPage; global, not tied to any one tab, so a plain pushed route
+		// rather than a TabBar entry.
+		Routing.RegisterRoute(nameof(SmartSearchPage), typeof(SmartSearchPage));
 	}
 
 	/// <summary>

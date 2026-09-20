@@ -173,6 +173,10 @@ public static class MauiProgram
 		builder.Services.AddTransient<NotificationDetailViewModel>();
 		builder.Services.AddTransient<NotificationDetailPage>();
 
+		// Smart Search (2026-09-20, Phase 4 — see NOTIFICATION_HUB_SPEC.md).
+		builder.Services.AddTransient<SmartSearchViewModel>();
+		builder.Services.AddTransient<SmartSearchPage>();
+
 		return builder.Build();
 	}
 }

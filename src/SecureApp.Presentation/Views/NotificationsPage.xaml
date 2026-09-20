@@ -12,7 +12,10 @@
     <ScrollView>
         <VerticalStackLayout Padding="16" Spacing="12">
 
-            <Label Text="Oznámení" Style="{StaticResource PageTitle}" />
+            <Grid ColumnDefinitions="*,Auto">
+                <Label Grid.Column="0" Text="Oznámení" Style="{StaticResource PageTitle}" />
+                <Button Grid.Column="1" Text="🔍" Style="{StaticResource SecondaryButton}" WidthRequest="44" Padding="0" Clicked="OnSearchClicked" />
+            </Grid>
 
             <!-- Counters (spec §13 — "what needs attention / what's new" answered before scrolling). -->
             <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8">

@@ -21,4 +21,7 @@ public partial class NotificationsPage : ContentPage
 
     private async void OnRequestOpenDetail(Guid notificationId)
         => await Shell.Current.GoToAsync($"{nameof(NotificationDetailPage)}?notificationId={notificationId}");
+
+    private async void OnSearchClicked(object? sender, EventArgs e)
+        => await Shell.Current.GoToAsync(nameof(SmartSearchPage));
 }
