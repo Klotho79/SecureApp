@@ -1,27 +1,35 @@
 using System.Collections.ObjectModel;
+using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using SecureApp.Domain.Interfaces.Repositories;
+using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Presentation.Contacts;
+using Contact = SecureApp.Domain.Entities.Contact;
 
 namespace SecureApp.Presentation.ViewModels;
 
 /// <summary>
 /// Telefonní seznam a rychlé kontakty (2026-09-10) — its own standalone tab, the user's own
 /// explicit ask, separate from the Logbook: "doplň tel. seznam z logbook ale do samostatného menu
-/// tel seznam a rychlé kontakty". Purely a read-only lookup over <see cref="ContactDirectoryData"/>
-/// — no repository, no DI dependency beyond that static data, since nothing here is stored, edited,
-/// or synced.
+/// tel seznam a rychlé kontakty". That part stays a read-only lookup over
+/// <see cref="ContactDirectoryData"/> — no repository, nothing stored/edited/synced.
 ///
-/// The extension directory is grouped by section and collapsed by default (2026-09-10 follow-up —
-/// "je to teda pěkně pomalé... zkus to rozdělit ať se toho tolik nenačítá": with ~130 rows always
-/// live in one flat CollectionView, opening this page had real, noticeable lag). Same
-/// small-ObservableObject-per-group pattern <c>LogbookStatGroupItem</c> already established for the
-/// identical "collapsed header, tap to reveal its own rows" shape — only the tapped section's rows
-/// actually render. Searching auto-expands every section with a match (otherwise a result would be
-/// hidden behind its own collapsed header, defeating the point of searching).
+/// "Moje kontakty" (2026-09-20, user's own ask) is new and different: an editable, user-orderable
+/// personal contact list, backed by <see cref="IContactRepository"/>. Auto-synced on every load from
+/// this device's own paired peers (<see cref="IChatSessionRepository"/>/<see cref="IGroupMemberRepository"/>)
+/// so every 1:1/group chat the user actually participates in shows up here with no manual step — see
+/// <see cref="SyncFromChatsAsync"/> — alongside contacts added by hand (phone/email only, no chat
+/// action, for someone not on SecureApp at all).
 /// </summary>
 public sealed partial class ContactsViewModel : ObservableObject
 {
+    private readonly IContactRepository _contactRepository;
+    private readonly IChatSessionRepository _chatSessionRepository;
+    private readonly IGroupChatRepository _groupChatRepository;
+    private readonly IGroupMemberRepository _groupMemberRepository;
+    private readonly IMessagingService _messagingService;
+
     [ObservableProperty]
     public partial string SearchQuery { get; set; }
 
@@ -31,20 +39,237 @@ public sealed partial class ContactsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool HasNoResults { get; set; }
 
+    [ObservableProperty]
+    public partial ObservableCollection<PersonalContactItem> MyContacts { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsLoadingMyContacts { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasNoMyContacts { get; set; }
+
+    [ObservableProperty]
+    public partial string? MyContactsErrorMessage { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasMyContactsError { get; set; }
+
     public IReadOnlyList<QuickContactEntry> QuickContacts { get; } = ContactDirectoryData.QuickContacts;
 
-    public ContactsViewModel()
+    /// <summary>Raised so the Page (which alone can push a MAUI navigation/modal) opens the add-contact form or a chat route — same MAUI-free-ViewModel split this codebase already established elsewhere.</summary>
+    public event Action<string>? RequestNavigate;
+    public event Action? RequestAddContact;
+
+    public ContactsViewModel(
+        IContactRepository contactRepository,
+        IChatSessionRepository chatSessionRepository,
+        IGroupChatRepository groupChatRepository,
+        IGroupMemberRepository groupMemberRepository,
+        IMessagingService messagingService)
     {
+        _contactRepository = contactRepository ?? throw new ArgumentNullException(nameof(contactRepository));
+        _chatSessionRepository = chatSessionRepository ?? throw new ArgumentNullException(nameof(chatSessionRepository));
+        _groupChatRepository = groupChatRepository ?? throw new ArgumentNullException(nameof(groupChatRepository));
+        _groupMemberRepository = groupMemberRepository ?? throw new ArgumentNullException(nameof(groupMemberRepository));
+        _messagingService = messagingService ?? throw new ArgumentNullException(nameof(messagingService));
+
         SearchQuery = string.Empty;
         PhoneSections = [];
+        MyContacts = [];
+        HasNoMyContacts = true;
         ApplyFilter();
     }
 
     partial void OnSearchQueryChanged(string value) => ApplyFilter();
+    partial void OnMyContactsErrorMessageChanged(string? value) => HasMyContactsError = !string.IsNullOrEmpty(value);
 
-    /// <summary>Called from the page's OnAppearing for the same "refresh on every visit" symmetry every other page in this app has — a no-op in practice since the underlying data never changes at runtime, but keeps this page consistent with the rest rather than a special case.</summary>
+    /// <summary>Called from the page's OnAppearing — refreshes both the static directory filter and (2026-09-20) the personal contact list/sync.</summary>
     [RelayCommand]
-    private void Load() => ApplyFilter();
+    private async Task LoadAsync()
+    {
+        ApplyFilter();
+        await LoadMyContactsAsync();
+    }
+
+    private async Task LoadMyContactsAsync()
+    {
+        IsLoadingMyContacts = true;
+        MyContactsErrorMessage = null;
+        try
+        {
+            await SyncFromChatsAsync();
+            var contacts = await _contactRepository.GetAllOrderedAsync();
+            MyContacts = new ObservableCollection<PersonalContactItem>(contacts.Select(ToItem));
+            HasNoMyContacts = MyContacts.Count == 0;
+        }
+        catch (Exception ex)
+        {
+            MyContactsErrorMessage = $"Kontakty se nepodařilo načíst: {ex.Message}";
+        }
+        finally
+        {
+            IsLoadingMyContacts = false;
+        }
+    }
+
+    /// <summary>
+    /// Auto-creates a <see cref="Contact"/> row for every paired 1:1 peer and every group member this
+    /// device doesn't already have one for (matched by public key, so renaming/re-syncing never
+    /// duplicates), and refreshes <see cref="Contact.LinkedRelayDeviceId"/> on an existing row whose
+    /// peer's routing id has since changed (identity reset — see <c>PeerIdentityReconciler</c>). Never
+    /// removes a Contact — a peer who's no longer paired just stops gaining "open chat" behavior
+    /// implicitly (their row's link goes stale, same "outlives what it points at" reasoning as
+    /// Notification's own related_* columns), the user's manual list is never silently pruned.
+    /// </summary>
+    private async Task SyncFromChatsAsync()
+    {
+        byte[] localPublicKey;
+        try { localPublicKey = await _messagingService.GetLocalIdentityPublicKeyAsync(); }
+        catch { return; }
+
+        var existing = await _contactRepository.GetAllOrderedAsync();
+        var existingByKeyHex = existing
+            .Where(c => c.LinkedPublicKey is not null)
+            .ToDictionary(c => Convert.ToHexStringLower(c.LinkedPublicKey!));
+        var nextSortOrder = existing.Count == 0 ? 0 : existing.Max(c => c.SortOrder) + 1;
+
+        var peers = new List<(string Name, byte[] PublicKey, Guid? RelayDeviceId)>();
+
+        var sessions = await _chatSessionRepository.GetAllAsync();
+        peers.AddRange(sessions
+            .GroupBy(s => Convert.ToHexStringLower(s.PeerIdentityPublicKey))
+            .Select(g => g.OrderByDescending(s => s.ModifiedAtUtc).First())
+            .Select(s => (s.PeerDisplayName, s.PeerIdentityPublicKey, s.PeerRelayDeviceId)));
+
+        var groups = await _groupChatRepository.GetAllAsync();
+        foreach (var group in groups)
+        {
+            var members = await _groupMemberRepository.GetByGroupAsync(group.Id);
+            foreach (var member in members)
+            {
+                if (member.PublicKey.AsSpan().SequenceEqual(localPublicKey)) continue;
+                peers.Add((member.DisplayName, member.PublicKey, member.RelayDeviceId));
+            }
+        }
+
+        foreach (var (name, publicKey, relayDeviceId) in peers.DistinctBy(p => Convert.ToHexStringLower(p.PublicKey)))
+        {
+            var keyHex = Convert.ToHexStringLower(publicKey);
+            if (existingByKeyHex.TryGetValue(keyHex, out var existingContact))
+            {
+                if (relayDeviceId is { } id && existingContact.LinkedRelayDeviceId != id)
+                {
+                    existingContact.UpdateLink(publicKey, id);
+                    await _contactRepository.UpdateAsync(existingContact);
+                }
+                continue;
+            }
+
+            if (relayDeviceId is not { } newRelayDeviceId) continue; // need a routing id to be useful as a chat link
+            var contact = new Contact(name, nextSortOrder++, linkedPublicKey: publicKey, linkedRelayDeviceId: newRelayDeviceId);
+            await _contactRepository.AddAsync(contact);
+        }
+    }
+
+    [RelayCommand]
+    private void AddContact() => RequestAddContact?.Invoke();
+
+    /// <summary>Finds this contact's active 1:1 session first (the more direct thread), falling back to the first group they're a member of — the user's own ask: "chaty ve kterých uživatel participuje s možností je otevřít a psát zprávy".</summary>
+    [RelayCommand]
+    private async Task OpenChatAsync(PersonalContactItem? item)
+    {
+        if (item?.PublicKey is not { } publicKey) return;
+        try
+        {
+            var session = await _chatSessionRepository.GetByPeerPublicKeyAsync(publicKey);
+            if (session is not null)
+            {
+                RequestNavigate?.Invoke($"ChatPage?chatSessionId={session.Id}");
+                return;
+            }
+
+            var groups = await _groupChatRepository.GetAllAsync();
+            foreach (var group in groups)
+            {
+                var members = await _groupMemberRepository.GetByGroupAsync(group.Id);
+                if (members.Any(m => m.PublicKey.AsSpan().SequenceEqual(publicKey)))
+                {
+                    RequestNavigate?.Invoke($"GroupChatPage?groupChatId={group.Id}");
+                    return;
+                }
+            }
+
+            MyContactsErrorMessage = $"S {item.DisplayName} zatím není žádný aktivní chat.";
+        }
+        catch (Exception ex)
+        {
+            MyContactsErrorMessage = $"Chat se nepodařilo otevřít: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private async Task DeleteContactAsync(PersonalContactItem? item)
+    {
+        if (item is null) return;
+        try
+        {
+            await _contactRepository.DeleteAsync(item.Id);
+            MyContacts = new ObservableCollection<PersonalContactItem>(MyContacts.Where(c => c.Id != item.Id));
+            HasNoMyContacts = MyContacts.Count == 0;
+        }
+        catch (Exception ex)
+        {
+            MyContactsErrorMessage = $"Kontakt se nepodařilo smazat: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Desktop drag-and-drop reorder (2026-09-20, user's own ask: "na pc možnost v kontaktech
+    /// přetahováním měnit umístění kontaktu") — called from <c>ContactsPage</c>'s code-behind
+    /// DragGestureRecognizer/DropGestureRecognizer handlers, which is where MAUI's drag/drop API
+    /// itself lives (no plain XAML-bindable command shape for it), same "MAUI-touching glue in the
+    /// Page, everything else here" split this ViewModel already keeps for navigation.
+    /// </summary>
+    public async Task ReorderAsync(Guid draggedId, Guid targetId)
+    {
+        if (draggedId == targetId) return;
+        var list = MyContacts.ToList();
+        var draggedIndex = list.FindIndex(c => c.Id == draggedId);
+        var targetIndex = list.FindIndex(c => c.Id == targetId);
+        if (draggedIndex < 0 || targetIndex < 0) return;
+
+        var dragged = list[draggedIndex];
+        list.RemoveAt(draggedIndex);
+        list.Insert(targetIndex, dragged);
+        MyContacts = new ObservableCollection<PersonalContactItem>(list);
+
+        try
+        {
+            var contacts = (await _contactRepository.GetAllOrderedAsync()).ToDictionary(c => c.Id);
+            for (var i = 0; i < list.Count; i++)
+            {
+                if (!contacts.TryGetValue(list[i].Id, out var contact) || contact.SortOrder == i) continue;
+                contact.SetSortOrder(i);
+                await _contactRepository.UpdateAsync(contact);
+            }
+        }
+        catch (Exception ex)
+        {
+            MyContactsErrorMessage = $"Pořadí se nepodařilo uložit: {ex.Message}";
+        }
+    }
+
+    private PersonalContactItem ToItem(Contact c)
+    {
+        var subtitleParts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(c.Phone)) subtitleParts.Add(c.Phone);
+        if (!string.IsNullOrWhiteSpace(c.Email)) subtitleParts.Add(c.Email);
+        if (c.LinkedPublicKey is not null && subtitleParts.Count == 0) subtitleParts.Add("Kontakt ze SecureApp");
+
+        return new PersonalContactItem(
+            c.Id, c.DisplayName, string.Join(" · ", subtitleParts), c.LinkedPublicKey,
+            c.LinkedPublicKey is not null, OpenChatCommand, DeleteContactCommand);
+    }
 
     private void ApplyFilter()
     {
@@ -114,3 +339,6 @@ public sealed partial class ContactSectionGroup : ObservableObject
     [RelayCommand]
     private void ToggleExpanded() => IsExpanded = !IsExpanded;
 }
+
+/// <summary>One row in "Moje kontakty" (2026-09-20) — <see cref="Subtitle"/> is pre-joined (phone · email, or "Kontakt ze SecureApp" for a linked contact with neither) so the DataTemplate needs no visibility triggers per field, this codebase's established "no converters" convention. <see cref="PublicKey"/> is carried for lookup only (never shown), <see cref="HasChat"/> gates whether the 💬 action renders at all.</summary>
+public sealed record PersonalContactItem(Guid Id, string DisplayName, string Subtitle, byte[]? PublicKey, bool HasChat, ICommand OpenChatCommand, ICommand DeleteCommand);

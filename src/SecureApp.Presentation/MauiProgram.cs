@@ -168,8 +168,11 @@ public static class MauiProgram
 		builder.Services.AddTransient<LogbookManagePage>();
 
 		// Kontakty (2026-09-10) — telefonní seznam + rychlé kontakty, its own standalone tab.
+		// "Moje kontakty" (2026-09-20) added to the same page/ViewModel.
 		builder.Services.AddTransient<ContactsViewModel>();
 		builder.Services.AddTransient<ContactsPage>();
+		builder.Services.AddTransient<AddContactViewModel>();
+		builder.Services.AddTransient<AddContactPage>();
 
 		// Notification Hub (2026-09-20, see NOTIFICATION_HUB_SPEC.md) — its own standalone tab.
 		builder.Services.AddTransient<NotificationsViewModel>();

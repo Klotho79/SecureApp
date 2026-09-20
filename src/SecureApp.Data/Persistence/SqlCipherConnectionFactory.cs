@@ -20,7 +20,7 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
 {
     private const string DatabaseKeyVaultName = "sqlcipher:database-key";
     private const int DatabaseKeySizeBytes = 32; // 256-bit, used as a raw SQLCipher key (not a passphrase put through PBKDF2)
-    private const int CurrentSchemaVersion = 13;
+    private const int CurrentSchemaVersion = 14;
 
     private readonly DataStorageOptions _options;
     private readonly ISecureVaultKeyStore _vault;
@@ -147,6 +147,9 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
 
         if (schemaVersion < 13)
             await ApplyV13SchemaAsync(connection);
+
+        if (schemaVersion < 14)
+            await ApplyV14SchemaAsync(connection);
 
         await connection.ExecuteAsync($"PRAGMA user_version = {CurrentSchemaVersion}");
     }
@@ -522,6 +525,33 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
             """);
         await connection.ExecuteAsync("CREATE INDEX IF NOT EXISTS ix_notifications_created ON notifications(created_at_utc)");
         await connection.ExecuteAsync("CREATE INDEX IF NOT EXISTS ix_notifications_archived ON notifications(is_archived)");
+    }
+
+    /// <summary>
+    /// The user's own editable contact list (2026-09-20) — distinct from the static, code-embedded
+    /// hospital phone directory. <c>linked_public_key</c> ties a row to a paired SecureApp peer (see
+    /// <c>Contact</c>'s own remarks); no FK/uniqueness constraint on it — <c>ContactsViewModel</c>'s
+    /// own sync logic is what keeps it matching an actual <c>chat_sessions</c>/<c>group_members</c>
+    /// row, the same "outlives what it points at" reasoning already established for
+    /// <c>notifications</c>'s own related_* columns.
+    /// </summary>
+    private static async Task ApplyV14SchemaAsync(SQLiteAsyncConnection connection)
+    {
+        await connection.ExecuteAsync("""
+            CREATE TABLE IF NOT EXISTS contacts (
+                id                       TEXT PRIMARY KEY NOT NULL,
+                display_name             TEXT NOT NULL,
+                phone                    TEXT NULL,
+                email                    TEXT NULL,
+                note                     TEXT NULL,
+                sort_order               INTEGER NOT NULL,
+                linked_public_key        BLOB NULL,
+                linked_relay_device_id   TEXT NULL,
+                created_at_utc           TEXT NOT NULL,
+                modified_at_utc          TEXT NOT NULL
+            )
+            """);
+        await connection.ExecuteAsync("CREATE INDEX IF NOT EXISTS ix_contacts_sort_order ON contacts(sort_order)");
     }
 
     /// <summary>

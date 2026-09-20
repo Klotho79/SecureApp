@@ -19,8 +19,11 @@
          the same mechanism Logbook's own show/hide already used, now generalized to every tab. -->
     <TabBar>
         <!-- Notification Hub (2026-09-20, see NOTIFICATION_HUB_SPEC.md) — leads the TabBar as the
-             app's new "personal work information center" home, ahead of Chaty. -->
-        <Tab x:Name="NotificationsTab" Title="🔔 Oznámení">
+             app's new "personal work information center" home, ahead of Chaty. Labeled "Nástěnka"
+             (2026-09-20, user's own rename) rather than "Oznámení" — the tab/board itself is the
+             nástěnka, individual rows on it stay called "oznámení" (see NotificationDetailPage's
+             own title). -->
+        <Tab x:Name="NotificationsTab" Title="📌 Nástěnka">
             <ShellContent ContentTemplate="{DataTemplate views:NotificationsPage}" Route="NotificationsTab" />
         </Tab>
         <Tab x:Name="ChatsTab" Title="💬 Chaty">

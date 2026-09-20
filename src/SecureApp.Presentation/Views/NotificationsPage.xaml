@@ -6,14 +6,14 @@
     xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
     xmlns:controls="clr-namespace:SecureApp.Presentation.Controls"
     x:DataType="vm:NotificationsViewModel"
-    Title="Oznámení"
+    Title="Nástěnka"
     Shell.NavBarIsVisible="False">
 
     <ScrollView>
         <VerticalStackLayout Padding="16" Spacing="12">
 
             <Grid ColumnDefinitions="*,Auto">
-                <Label Grid.Column="0" Text="Oznámení" Style="{StaticResource PageTitle}" />
+                <Label Grid.Column="0" Text="Nástěnka" Style="{StaticResource PageTitle}" />
                 <Button Grid.Column="1" Text="🔍" Style="{StaticResource SecondaryButton}" WidthRequest="44" Padding="0" Clicked="OnSearchClicked" />
             </Grid>
 

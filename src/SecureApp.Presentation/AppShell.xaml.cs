@@ -97,6 +97,9 @@ public partial class AppShell : Shell
 		// button on NotificationsPage; global, not tied to any one tab, so a plain pushed route
 		// rather than a TabBar entry.
 		Routing.RegisterRoute(nameof(SmartSearchPage), typeof(SmartSearchPage));
+
+		// Moje kontakty (2026-09-20) — reached via the ➕ button on ContactsPage.
+		Routing.RegisterRoute(nameof(AddContactPage), typeof(AddContactPage));
 	}
 
 	/// <summary>
