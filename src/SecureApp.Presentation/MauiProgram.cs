@@ -142,6 +142,9 @@ public static class MauiProgram
 		// Shared company workplace catalog (2026-09-20, Phase 5 — see IWorkplaceCatalogService's own remarks).
 		builder.Services.AddSingleton<IWorkplaceCatalogService, HttpWorkplaceCatalogService>();
 
+		// Opicentrum/ARO portal sync (2026-09-21, Phase 5 follow-up — see IOpicentrumSyncService's own remarks).
+		builder.Services.AddSingleton<IOpicentrumSyncService, OpicentrumSyncService>();
+
 		// --- Milestone 3: Presentation (pages + view models) ---
 		builder.Services.AddTransient<DocumentBrowserViewModel>();
 		builder.Services.AddTransient<DocumentBrowserPage>();

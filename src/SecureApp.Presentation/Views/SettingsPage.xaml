@@ -101,6 +101,25 @@
                 </VerticalStackLayout>
             </Border>
 
+            <!-- Opicentrum (2026-09-21) — third-party login for the external ARO staff portal, the
+                 source WorkplaceViewModel syncs the Rozpis from on every open. Entered once here,
+                 stored only in this device's own encrypted vault — the app logs in on the user's
+                 behalf from then on, see SettingsViewModel.Opicentrum.cs's own remarks. -->
+            <Border Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Opicentrum (rozpis)" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Label Text="Přihlašovací údaje k opicentrum.cz/ARO — appka se jimi sama přihlásí při každém otevření Rozpisu a stáhne aktuální směny. Heslo se ukládá jen v šifrovaném úložišti tohoto zařízení." FontSize="12" TextColor="Gray" />
+                    <Label Text="{Binding OpicentrumStatusText}" IsVisible="{Binding HasOpicentrumStatus}" FontSize="12" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" LineBreakMode="WordWrap" />
+
+                    <Label Text="✓ Přihlašovací údaje jsou nastavené." FontSize="12" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding HasOpicentrumCredentials}" />
+
+                    <Entry Text="{Binding OpicentrumUsernameInput}" Placeholder="Uživatelské jméno" />
+                    <Entry Text="{Binding OpicentrumPasswordInput}" Placeholder="Heslo" IsPassword="True" />
+                    <Button Text="Uložit přihlašovací údaje" Command="{Binding SaveOpicentrumCredentialsCommand}" IsEnabled="{Binding CanSaveOpicentrumCredentials}" />
+                    <Button Text="Odstranit přihlašovací údaje" Style="{StaticResource SecondaryButton}" Command="{Binding ClearOpicentrumCredentialsCommand}" IsVisible="{Binding HasOpicentrumCredentials}" />
+                </VerticalStackLayout>
+            </Border>
+
             <!-- Admin heslo (2026-09-07) — sdílené všemi admin akcemi níže (Zařízení, Nasazení relay);
                  nikdy se neukládá, ani v appce, ani na disku, zadává se vždy znovu
                  před KAŽDOU jednotlivou admin akcí a appka ho hned po použití zahodí. Uživatelovo

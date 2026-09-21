@@ -528,7 +528,32 @@ cross-links spec §26 calls for — `Notification` still has no `RelatedWorkplac
 `RelatedCalendarEventId` FK (deliberately deferred, see that entity's own remarks; there's also no
 event source that would populate them yet — nothing currently publishes a Notification about a
 schedule change). Phase 7 (Android home-screen widget) and Phase 9 (performance at scale) haven't
-been started. Next slice: whichever of those the user picks.
+been started.
+
+Phase 5, fourth slice (2026-09-21) — external schedule source: user's own ask, "zdroj by mela byt
+stranka opicentrum.cz/ARO... nevim jak te pustit dovnitr bez abych ti dal login a heslo". A new
+`IOpicentrumSyncService`/`OpicentrumSyncService` regex-scrapes three pages of the hospital's own
+phpRS staff portal (no API exists) on the LOGGED-IN user's behalf: `pracoviste.php` (weekly, which
+room/workplace) → `AssignmentType.Work`; `sluzby7.php` (monthly, 7 on-call slots) → `OnCall`;
+`spravavolna.php` (monthly, per-person leave grid) → confidently-mapped codes (ŘD→Vacation,
+PN→SickLeave) or `Other` with the raw code preserved in the Note (any code not confidently
+recognized — safe/transparent rather than guessing wrong). The portal login itself is a genuine
+third-party credential — entered once in a new "Opicentrum" Settings card, stored only in this
+device's own encrypted vault (`OpicentrumVaultKeys`), never seen by/routed through chat or dev
+tooling; the app logs in on the user's behalf on every sync from then on (their own explicit ask —
+"apka... bude si pamatovat co bylo vloženo, aby se uživatel nemusel pořád přihlašovat").
+`WorkplaceViewModel` triggers a sync automatically on every Rozpis open (Week and Month ranges both,
+the user's own choice over a manual button), best-effort — never blocks the local view rendering.
+Import wins over a manually-entered local record for the same day (the user's own choice), but always
+preserves whatever Note the user wrote, and publishes a System-category Notification recording the
+overwrite (old value → new value) so it's never silent.
+
+Known gaps, not verified live yet (only one real HTML sample of each of the three pages was available
+to build against, no live opicentrum.cz test account in this session) — expect an iteration pass once
+the user has entered real credentials and opened Rozpis for the first time: `pracoviste.php`'s own
+"NEPŘÍTOMNÍ" (absent) row uses a different plain-text-list cell shape and is skipped outright, not
+parsed; several `spravavolna.php` leave codes (SC/PL/VV/NV/--) are genuinely uncertain — see
+`OpicentrumSyncService`'s own remarks for the reasoning behind each one's handling.
 
 ---
 

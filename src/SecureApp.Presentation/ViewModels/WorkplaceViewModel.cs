@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SecureApp.Domain.Entities;
 using SecureApp.Domain.Interfaces.Repositories;
+using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Presentation.Workplace;
 
 namespace SecureApp.Presentation.ViewModels;
@@ -33,6 +34,7 @@ public sealed partial class WorkplaceViewModel : ObservableObject
     ];
 
     private readonly IWorkAssignmentRepository _repository;
+    private readonly IOpicentrumSyncService _opicentrumSyncService;
 
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
@@ -64,9 +66,10 @@ public sealed partial class WorkplaceViewModel : ObservableObject
     /// <summary>Raised so the Page pushes the add/edit form for a given date (+ existing assignment id, if any) — same MAUI-free-ViewModel split this codebase already established elsewhere.</summary>
     public event Action<DateOnly, Guid?>? RequestOpenDay;
 
-    public WorkplaceViewModel(IWorkAssignmentRepository repository)
+    public WorkplaceViewModel(IWorkAssignmentRepository repository, IOpicentrumSyncService opicentrumSyncService)
     {
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+        _opicentrumSyncService = opicentrumSyncService ?? throw new ArgumentNullException(nameof(opicentrumSyncService));
         WeekLabel = string.Empty;
         WeekDays = [];
         MonthLabel = string.Empty;
@@ -100,6 +103,13 @@ public sealed partial class WorkplaceViewModel : ObservableObject
             // of which week is being browsed.
             var rangeStart = today < _weekStart ? today : _weekStart;
             var rangeEnd = today > weekEnd ? today : weekEnd;
+
+            // Opicentrum sync (2026-09-21) — automatic on every open, the user's own explicit choice.
+            // Best-effort: a network/login failure must never prevent the local Rozpis from rendering
+            // (OpicentrumSyncService itself publishes a Notification on failure — see its own remarks).
+            try { await _opicentrumSyncService.SyncAsync(rangeStart, rangeEnd); }
+            catch { /* best-effort — see remarks above */ }
+
             var assignments = await _repository.GetByDateRangeAsync(rangeStart, rangeEnd);
             var byDate = assignments.ToDictionary(a => a.Date);
 
@@ -193,6 +203,10 @@ public sealed partial class WorkplaceViewModel : ObservableObject
         {
             var gridStart = StartOfWeek(_monthAnchor);
             var gridEnd = gridStart.AddDays(41);
+
+            try { await _opicentrumSyncService.SyncAsync(gridStart, gridEnd); }
+            catch { /* best-effort — see LoadAsync's own remarks */ }
+
             var assignments = await _repository.GetByDateRangeAsync(gridStart, gridEnd);
             var byDate = assignments.ToDictionary(a => a.Date);
 

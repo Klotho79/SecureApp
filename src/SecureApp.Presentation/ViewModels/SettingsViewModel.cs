@@ -31,6 +31,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly IContactDirectoryService _contactDirectoryService;
     private readonly IChatSessionRepository _chatSessionRepository;
     private readonly IDiagnosticsReporter _diagnosticsReporter;
+    private readonly IOpicentrumSyncService _opicentrumSyncService;
 
     private EventHandler<TransportConnectionState>? _connectionStateHandler;
     private IDispatcherTimer? _activationPollTimer;
@@ -211,7 +212,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         IRelayAdminService relayAdminService,
         IContactDirectoryService contactDirectoryService,
         IDiagnosticsReporter diagnosticsReporter,
-        IChatSessionRepository chatSessionRepository)
+        IChatSessionRepository chatSessionRepository,
+        IOpicentrumSyncService opicentrumSyncService)
     {
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         _messagingService = messagingService ?? throw new ArgumentNullException(nameof(messagingService));
@@ -222,6 +224,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         _contactDirectoryService = contactDirectoryService ?? throw new ArgumentNullException(nameof(contactDirectoryService));
         _diagnosticsReporter = diagnosticsReporter ?? throw new ArgumentNullException(nameof(diagnosticsReporter));
         _chatSessionRepository = chatSessionRepository ?? throw new ArgumentNullException(nameof(chatSessionRepository));
+        _opicentrumSyncService = opicentrumSyncService ?? throw new ArgumentNullException(nameof(opicentrumSyncService));
 
         DiagnosticLogEntries = [];
         HasNoDiagnosticLogEntries = true;
@@ -321,6 +324,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         IsRegistered = configuration?.AssignedDeviceId is not null;
         IsConnected = _messageTransport.IsConnected;
         ConnectionStatusText = IsConnected ? "Připojeno" : "Odpojeno";
+
+        await LoadOpicentrumStateAsync();
 
         // Resume polling an activation request that was still pending the last time this device
         // closed — otherwise a relaunch mid-activation would silently strand the request: nothing
