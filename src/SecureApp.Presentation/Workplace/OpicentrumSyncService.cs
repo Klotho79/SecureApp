@@ -333,7 +333,7 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
         $@"idlekuprvolna={myId}"">[^<]*</a>(?<cells>.*?)</tr>",
         RegexOptions.Singleline);
 
-    [GeneratedRegex(@"Vítej\s+(?<name>[^<]+?)<br")]
+    [GeneratedRegex(@"Vítej\s+(?<name>[^<]+)")]
     private static partial Regex WelcomeRegex();
 
     [GeneratedRegex(@"<div onmousedown=""datumupravovany=(?<date>\d+); osoba=(?<osoba>\d+); sal1=\d+;?""[^>]*>(?<inner>.*?)</div>", RegexOptions.Singleline)]
