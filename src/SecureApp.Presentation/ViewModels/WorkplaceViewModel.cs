@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.Input;
 using SecureApp.Domain.Entities;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
+using SecureApp.Domain.ValueObjects;
 using SecureApp.Presentation.Workplace;
 
 namespace SecureApp.Presentation.ViewModels;
@@ -57,6 +58,13 @@ public sealed partial class WorkplaceViewModel : ObservableObject
     [ObservableProperty]
     public partial ObservableCollection<MonthDayCell> MonthDays { get; set; }
 
+    /// <summary>Surfaces what the last Opicentrum sync actually did (2026-09-21, user reported "nevidím dovolené" with no way to tell whether that was a real bug or just nothing to import — this is what made the actual bug findable) — null while nothing's been synced yet or credentials aren't configured.</summary>
+    [ObservableProperty]
+    public partial string? SyncStatusText { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasSyncStatus { get; set; }
+
     /// <summary>Mirrors <see cref="IsMonthView"/> so XAML never needs an inverse-boolean converter (this codebase's established convention — see <c>NotificationsViewModel.HasNoX</c>'s own remarks).</summary>
     public bool IsWeekView => !IsMonthView;
 
@@ -80,6 +88,7 @@ public sealed partial class WorkplaceViewModel : ObservableObject
     }
 
     partial void OnIsMonthViewChanged(bool value) => OnPropertyChanged(nameof(IsWeekView));
+    partial void OnSyncStatusTextChanged(string? value) => HasSyncStatus = !string.IsNullOrEmpty(value);
 
     /// <summary>
     /// Called from the Page's own OnAppearing — including every time it re-appears after
@@ -107,8 +116,8 @@ public sealed partial class WorkplaceViewModel : ObservableObject
             // Opicentrum sync (2026-09-21) — automatic on every open, the user's own explicit choice.
             // Best-effort: a network/login failure must never prevent the local Rozpis from rendering
             // (OpicentrumSyncService itself publishes a Notification on failure — see its own remarks).
-            try { await _opicentrumSyncService.SyncAsync(rangeStart, rangeEnd); }
-            catch { /* best-effort — see remarks above */ }
+            try { SyncStatusText = DescribeSyncResult(await _opicentrumSyncService.SyncAsync(rangeStart, rangeEnd)); }
+            catch (Exception ex) { SyncStatusText = $"Synchronizace s Opicentrem selhala: {ex.Message}"; }
 
             var assignments = await _repository.GetByDateRangeAsync(rangeStart, rangeEnd);
             var byDate = assignments.ToDictionary(a => a.Date);
@@ -204,8 +213,8 @@ public sealed partial class WorkplaceViewModel : ObservableObject
             var gridStart = StartOfWeek(_monthAnchor);
             var gridEnd = gridStart.AddDays(41);
 
-            try { await _opicentrumSyncService.SyncAsync(gridStart, gridEnd); }
-            catch { /* best-effort — see LoadAsync's own remarks */ }
+            try { SyncStatusText = DescribeSyncResult(await _opicentrumSyncService.SyncAsync(gridStart, gridEnd)); }
+            catch (Exception ex) { SyncStatusText = $"Synchronizace s Opicentrem selhala: {ex.Message}"; }
 
             var assignments = await _repository.GetByDateRangeAsync(gridStart, gridEnd);
             var byDate = assignments.ToDictionary(a => a.Date);
@@ -265,6 +274,15 @@ public sealed partial class WorkplaceViewModel : ObservableObject
             timeText,
             assignment.Id,
             OpenDayCommand);
+    }
+
+    private static string? DescribeSyncResult(OpicentrumSyncResult result)
+    {
+        if (result == OpicentrumSyncResult.NotConfigured) return null; // not set up yet — nothing to report
+        if (!result.Success) return $"Synchronizace s Opicentrem selhala: {result.ErrorMessage}";
+        return result.CreatedCount == 0 && result.UpdatedCount == 0
+            ? "Synchronizováno s Opicentrem — beze změn."
+            : $"Synchronizováno s Opicentrem — nové: {result.CreatedCount}, aktualizované: {result.UpdatedCount}.";
     }
 
     private static DateOnly StartOfWeek(DateOnly date)
