@@ -25,12 +25,13 @@ namespace SecureApp.Presentation.Workplace;
 /// Three sources, in precedence order (later overwrites earlier for the same date):
 /// 1. pracoviste.php (weekly, per-room) → AssignmentType.Work, WorkplaceName = the room's own label.
 /// 2. sluzby7.php (monthly, 7 on-call slots) → AssignmentType.OnCall, WorkplaceName = the slot's own label.
-/// 3. spravavolna.php (monthly, per-person leave grid) → Vacation/SickLeave (confidently mapped codes:
-///    ŘD/PN, standard Czech labor-law abbreviations) or AssignmentType.Other with the raw code kept in
-///    the Note (any code this class doesn't confidently recognize — safe/transparent/correctable
-///    rather than guessing wrong). "PS" is skipped here on purpose: sluzby7.php already gives the
-///    exact on-call slot for the same day, more precisely than this page's plain "PS" marker. "--" and
-///    empty cells are skipped too — read as "not in the on-call rotation that day", not an absence.
+/// 3. spravavolna.php (monthly, per-person leave grid) → confidently mapped codes (ŘD→Vacation,
+///    PN/PL→SickLeave, SC→BusinessTrip, VV/NV→DayOff — see <see cref="KnownLeaveCodes"/> for the
+///    user-confirmed meaning of each) or AssignmentType.Other with the raw code kept in the Note (any
+///    code this class doesn't confidently recognize — safe/transparent/correctable rather than
+///    guessing wrong). "PS" is skipped here on purpose: sluzby7.php already gives the exact on-call
+///    slot for the same day, more precisely than this page's plain "PS" marker. "--" and empty cells
+///    are skipped too — read as "not in the on-call rotation that day", not an absence.
 ///
 /// Known gap, not handled this first pass: pracoviste.php's own "NEPŘÍTOMNÍ" (absent) row is a plain
 /// semicolon-separated name list per day, not the per-person div shape every other row uses — skipped
@@ -41,10 +42,15 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
 {
     private const string BaseUrl = "https://opicentrum.cz/ARO/";
 
+    /// <summary>User-confirmed meaning of each code, 2026-09-21 (their own hospital's ARO instance — not a generic Czech labor-law standard, don't assume these transfer to another Opicentrum deployment): ŘD = řádná dovolená (regular vacation), PN = pracovní neschopnost (sick leave), SC = služební cesta (business trip), PL = lékař (doctor's appointment during a shift — mapped to SickLeave, the user's own call), VV = volno po službě (mandatory rest day after an on-call shift), NV = náhradní volno (compensatory time off) — VV/NV both map to DayOff, the closest existing type; neither is distinguished from plain DayOff today.</summary>
     private static readonly Dictionary<string, AssignmentType> KnownLeaveCodes = new(StringComparer.OrdinalIgnoreCase)
     {
         ["ŘD"] = AssignmentType.Vacation,
         ["PN"] = AssignmentType.SickLeave,
+        ["SC"] = AssignmentType.BusinessTrip,
+        ["PL"] = AssignmentType.SickLeave,
+        ["VV"] = AssignmentType.DayOff,
+        ["NV"] = AssignmentType.DayOff,
     };
 
     private readonly ISecureVaultKeyStore _vault;
