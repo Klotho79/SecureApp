@@ -41,9 +41,9 @@ public sealed class WorkAssignmentRepository : IWorkAssignmentRepository
         await connection.ExecuteAsync(
             """
             INSERT INTO work_assignments (
-                id, date, type, start_time, end_time, workplace_id, workplace_name, note,
+                id, date, type, start_time, end_time, workplace_id, workplace_name, on_call_workplace_name, note,
                 created_at_utc, modified_at_utc
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             assignment.Id.ToString(),
             FormatDate(assignment.Date),
@@ -52,6 +52,7 @@ public sealed class WorkAssignmentRepository : IWorkAssignmentRepository
             FormatTime(assignment.EndTime),
             assignment.WorkplaceId?.ToString(),
             assignment.WorkplaceName,
+            assignment.OnCallWorkplaceName,
             assignment.Note,
             Format(assignment.CreatedAtUtc),
             Format(assignment.ModifiedAtUtc));
@@ -64,7 +65,7 @@ public sealed class WorkAssignmentRepository : IWorkAssignmentRepository
         await connection.ExecuteAsync(
             """
             UPDATE work_assignments
-            SET date = ?, type = ?, start_time = ?, end_time = ?, workplace_id = ?, workplace_name = ?, note = ?, modified_at_utc = ?
+            SET date = ?, type = ?, start_time = ?, end_time = ?, workplace_id = ?, workplace_name = ?, on_call_workplace_name = ?, note = ?, modified_at_utc = ?
             WHERE id = ?
             """,
             FormatDate(assignment.Date),
@@ -73,6 +74,7 @@ public sealed class WorkAssignmentRepository : IWorkAssignmentRepository
             FormatTime(assignment.EndTime),
             assignment.WorkplaceId?.ToString(),
             assignment.WorkplaceName,
+            assignment.OnCallWorkplaceName,
             assignment.Note,
             Format(assignment.ModifiedAtUtc),
             assignment.Id.ToString());
@@ -96,6 +98,7 @@ public sealed class WorkAssignmentRepository : IWorkAssignmentRepository
         EntityMaterializer.Set(entity, nameof(WorkAssignment.EndTime), ParseTime(row.EndTime));
         EntityMaterializer.Set(entity, nameof(WorkAssignment.WorkplaceId), row.WorkplaceId is null ? null : (Guid?)Guid.Parse(row.WorkplaceId));
         EntityMaterializer.Set(entity, nameof(WorkAssignment.WorkplaceName), row.WorkplaceName);
+        EntityMaterializer.Set(entity, nameof(WorkAssignment.OnCallWorkplaceName), row.OnCallWorkplaceName);
         EntityMaterializer.Set(entity, nameof(WorkAssignment.Note), row.Note);
         return entity;
     }

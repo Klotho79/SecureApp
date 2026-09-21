@@ -20,7 +20,7 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
 {
     private const string DatabaseKeyVaultName = "sqlcipher:database-key";
     private const int DatabaseKeySizeBytes = 32; // 256-bit, used as a raw SQLCipher key (not a passphrase put through PBKDF2)
-    private const int CurrentSchemaVersion = 15;
+    private const int CurrentSchemaVersion = 16;
 
     private readonly DataStorageOptions _options;
     private readonly ISecureVaultKeyStore _vault;
@@ -153,6 +153,9 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
 
         if (schemaVersion < 15)
             await ApplyV15SchemaAsync(connection);
+
+        if (schemaVersion < 16)
+            await ApplyV16SchemaAsync(connection);
 
         await connection.ExecuteAsync($"PRAGMA user_version = {CurrentSchemaVersion}");
     }
@@ -585,6 +588,21 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
             )
             """);
         await connection.ExecuteAsync("CREATE INDEX IF NOT EXISTS ix_work_assignments_date ON work_assignments(date)");
+    }
+
+    /// <summary>
+    /// On-call OVERLAY on top of a day's own primary <c>type</c> (2026-09-21, user's own real-world
+    /// correction: the raw Opicentrum data genuinely has both a regular shift AND a later on-call duty
+    /// for the same weekday — "v jeden den může být i směna a po ní může pokračovat služba" — the old
+    /// single-type-per-day model meant <c>OpicentrumSyncService</c>'s merge (sluzby7.php runs after
+    /// pracoviste.php) silently overwrote the shift with the duty, losing it entirely). NULL means "no
+    /// duty on top of the day's primary type" — most days, and every pure-duty day (weekends, which
+    /// never have a pracoviste.php shift to begin with) still just use <c>type</c> = OnCall directly,
+    /// unchanged from before this column existed.
+    /// </summary>
+    private static async Task ApplyV16SchemaAsync(SQLiteAsyncConnection connection)
+    {
+        await connection.ExecuteAsync("ALTER TABLE work_assignments ADD COLUMN on_call_workplace_name TEXT NULL");
     }
 
     /// <summary>

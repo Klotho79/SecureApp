@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Maui.Graphics;
 using SecureApp.Domain.Entities;
+using SecureApp.Domain.Enums;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Domain.ValueObjects;
@@ -303,6 +304,7 @@ public sealed partial class WorkplaceViewModel : ObservableObject
             assignment is not null,
             assignment?.Type.ToString() ?? string.Empty,
             assignment is not null ? AssignmentColorCatalog.SoftColor(assignment.Type) : AssignmentColorCatalog.NoAssignmentSurfaceColor,
+            !string.IsNullOrEmpty(assignment?.OnCallWorkplaceName),
             assignment?.Id,
             OpenMonthDayCommand);
     }
@@ -321,6 +323,12 @@ public sealed partial class WorkplaceViewModel : ObservableObject
             ? $"{start:HH:mm}–{end:HH:mm}"
             : string.Empty;
 
+        // OnCallText (2026-09-21) — a duty overlaid on top of this day's own primary type; see
+        // WorkAssignment.OnCallWorkplaceName's own remarks for how the sync decides when this is set.
+        var onCallText = string.IsNullOrEmpty(assignment.OnCallWorkplaceName)
+            ? string.Empty
+            : $"{AssignmentTypeCatalog.Glyph(AssignmentType.OnCall)} {AssignmentTypeCatalog.Label(AssignmentType.OnCall)}: {assignment.OnCallWorkplaceName}";
+
         return new AssignmentDayItem(
             date,
             dayLabel,
@@ -334,7 +342,8 @@ public sealed partial class WorkplaceViewModel : ObservableObject
             AssignmentColorCatalog.SoftColor(assignment.Type),
             AssignmentColorCatalog.BaseColor(assignment.Type),
             assignment.Id,
-            OpenDayCommand);
+            OpenDayCommand,
+            onCallText);
     }
 
     private static IEnumerable<AssignmentLegendItem> BuildLegendItems() =>
@@ -394,12 +403,16 @@ public sealed record AssignmentDayItem(
     Color SoftColor,
     Color AccentColor,
     Guid? AssignmentId,
-    ICommand OpenCommand)
+    ICommand OpenCommand,
+    string OnCallText = "")
 {
     public bool HasWorkplace => !string.IsNullOrEmpty(WorkplaceText);
     public bool HasTime => !string.IsNullOrEmpty(TimeText);
     public bool HasNoAssignment => !HasAssignment;
     public string DisplayTypeLabel => HasAssignment ? TypeLabel : "Bez záznamu";
+
+    /// <summary>2026-09-21 — a duty overlaid on top of this day's own primary type (see <c>WorkAssignment.OnCallWorkplaceName</c>'s own remarks); e.g. a normal shift followed later the same day by on-call.</summary>
+    public bool HasOnCall => !string.IsNullOrEmpty(OnCallText);
 }
 
 /// <summary>One cell in the Month grid — deliberately minimal (just a day number + a tinted background) compared to <see cref="AssignmentDayItem"/>'s full row, since a month grid has to fit 42 cells on one screen. <see cref="SoftColor"/> replaces the old per-type DataTrigger, same reasoning as <see cref="AssignmentDayItem"/>'s own remarks.</summary>
@@ -411,6 +424,7 @@ public sealed record MonthDayCell(
     bool HasAssignment,
     string TypeText,
     Color SoftColor,
+    bool HasOnCall,
     Guid? AssignmentId,
     ICommand OpenCommand);
 

@@ -13,6 +13,7 @@ internal sealed class WorkAssignmentRow
     [Column("end_time")] public string? EndTime { get; set; }
     [Column("workplace_id")] public string? WorkplaceId { get; set; }
     [Column("workplace_name")] public string? WorkplaceName { get; set; }
+    [Column("on_call_workplace_name")] public string? OnCallWorkplaceName { get; set; }
     [Column("note")] public string? Note { get; set; }
     [Column("created_at_utc")] public string CreatedAtUtc { get; set; } = string.Empty;
     [Column("modified_at_utc")] public string ModifiedAtUtc { get; set; } = string.Empty;

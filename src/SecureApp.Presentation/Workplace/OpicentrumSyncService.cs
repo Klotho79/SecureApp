@@ -105,8 +105,10 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
 
             var myId = await ResolvePersonIdAsync(http, rangeStart, myName, ct);
 
-            // date -> resolved (Type, WorkplaceName) — merge order matches the class-level precedence.
-            var resolved = new Dictionary<DateOnly, (AssignmentType Type, string? WorkplaceName)>();
+            // date -> resolved (Type, WorkplaceName, OnCallWorkplaceName) — merge order matches the
+            // class-level precedence. OnCallWorkplaceName is an overlay, not a fourth precedence tier —
+            // see MergeSluzbyAsync's own remarks for how a day ends up with one.
+            var resolved = new Dictionary<DateOnly, (AssignmentType Type, string? WorkplaceName, string? OnCallWorkplaceName)>();
 
             if (myId is { } id)
             {
@@ -157,7 +159,7 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
         return null;
     }
 
-    private static async Task MergePracovisteAsync(HttpClient http, DateOnly rangeStart, DateOnly rangeEnd, int myId, Dictionary<DateOnly, (AssignmentType Type, string? WorkplaceName)> resolved, CancellationToken ct)
+    private static async Task MergePracovisteAsync(HttpClient http, DateOnly rangeStart, DateOnly rangeEnd, int myId, Dictionary<DateOnly, (AssignmentType Type, string? WorkplaceName, string? OnCallWorkplaceName)> resolved, CancellationToken ct)
     {
         foreach (var monday in DistinctMondaysInRange(rangeStart, rangeEnd))
         {
@@ -177,13 +179,24 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
                     if (!int.TryParse(personMatch.Groups["osoba"].Value, out var osoba) || osoba != myId) continue;
                     if (!DateOnly.TryParseExact(personMatch.Groups["date"].Value, "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)) continue;
                     if (date < rangeStart || date > rangeEnd) continue;
-                    resolved[date] = (AssignmentType.Work, workplaceName == "NEZAŘAZENÍ" ? "Nezařazeno" : workplaceName);
+                    resolved[date] = (AssignmentType.Work, workplaceName == "NEZAŘAZENÍ" ? "Nezařazeno" : workplaceName, null);
                 }
             }
         }
     }
 
-    private static async Task MergeSluzbyAsync(HttpClient http, DateOnly rangeStart, DateOnly rangeEnd, string myName, Dictionary<DateOnly, (AssignmentType Type, string? WorkplaceName)> resolved, CancellationToken ct)
+    /// <summary>
+    /// 2026-09-21 correction — this used to unconditionally overwrite whatever pracoviste.php had
+    /// already resolved for the same date, which silently destroyed a real, common pattern in the raw
+    /// data: a normal weekday shift followed later the same day by an on-call duty ("v jeden den může
+    /// být i směna a po ní může pokračovat služba", the user's own description, confirmed against the
+    /// actual source data — not a rare edge case). Now: if pracoviste.php already resolved this date
+    /// to a Work shift, the duty becomes an OVERLAY on top of it (<see cref="WorkAssignment.OnCallWorkplaceName"/>,
+    /// <see cref="AssignmentType"/> stays Work) instead of replacing it. Only when there's no shift
+    /// underneath — every weekend, since pracoviste.php never has one to begin with — does the duty
+    /// become the day's own primary Type = OnCall, exactly as before this change.
+    /// </summary>
+    private static async Task MergeSluzbyAsync(HttpClient http, DateOnly rangeStart, DateOnly rangeEnd, string myName, Dictionary<DateOnly, (AssignmentType Type, string? WorkplaceName, string? OnCallWorkplaceName)> resolved, CancellationToken ct)
     {
         foreach (var (year, month) in DistinctMonthsInRange(rangeStart, rangeEnd))
         {
@@ -214,14 +227,18 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
                     if (cellIndex >= columns.Count) break;
                     var name = WebUtility.HtmlDecode(StripTags(cellMatch.Groups["name"].Value)).Trim();
                     if (string.Equals(name, myName, StringComparison.OrdinalIgnoreCase))
-                        resolved[date] = (AssignmentType.OnCall, columns[cellIndex]);
+                    {
+                        resolved[date] = resolved.TryGetValue(date, out var current) && current.Type == AssignmentType.Work
+                            ? (current.Type, current.WorkplaceName, columns[cellIndex]) // overlay on top of the shift already found
+                            : (AssignmentType.OnCall, columns[cellIndex], null); // no shift underneath — duty is the whole day
+                    }
                     cellIndex++;
                 }
             }
         }
     }
 
-    private static async Task MergeSpravavolnaAsync(HttpClient http, DateOnly rangeStart, DateOnly rangeEnd, int myId, Dictionary<DateOnly, (AssignmentType Type, string? WorkplaceName)> resolved, CancellationToken ct)
+    private static async Task MergeSpravavolnaAsync(HttpClient http, DateOnly rangeStart, DateOnly rangeEnd, int myId, Dictionary<DateOnly, (AssignmentType Type, string? WorkplaceName, string? OnCallWorkplaceName)> resolved, CancellationToken ct)
     {
         foreach (var (year, month) in DistinctMonthsInRange(rangeStart, rangeEnd))
         {
@@ -248,14 +265,17 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
                 var code = lettersMatch.Success ? lettersMatch.Value : rawCode;
                 if (code.Equals("PS", StringComparison.OrdinalIgnoreCase)) continue; // sluzby7.php already covers on-call more precisely
 
+                // Full overwrite, not a merge (unlike MergeSluzbyAsync above) — real leave/vacation
+                // always wins outright, including clearing any on-call overlay a stale prior sync
+                // might have left on this date; a confirmed vacation day must never still show a duty.
                 resolved[date] = KnownLeaveCodes.TryGetValue(code, out var type)
-                    ? (type, null)
-                    : (AssignmentType.Other, $"Volno (kód {rawCode}, import z Opicentra)");
+                    ? (type, null, null)
+                    : (AssignmentType.Other, $"Volno (kód {rawCode}, import z Opicentra)", null);
             }
         }
     }
 
-    private async Task<OpicentrumSyncResult> WriteBackAsync(Dictionary<DateOnly, (AssignmentType Type, string? WorkplaceName)> resolved, CancellationToken ct)
+    private async Task<OpicentrumSyncResult> WriteBackAsync(Dictionary<DateOnly, (AssignmentType Type, string? WorkplaceName, string? OnCallWorkplaceName)> resolved, CancellationToken ct)
     {
         if (resolved.Count == 0)
             return new OpicentrumSyncResult(true, 0, 0, null);
@@ -268,21 +288,21 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
         var created = 0;
         var updated = 0;
 
-        foreach (var (date, (type, workplaceName)) in resolved)
+        foreach (var (date, (type, workplaceName, onCallWorkplaceName)) in resolved)
         {
             if (existingByDate.TryGetValue(date, out var current))
             {
-                if (current.Type == type && current.WorkplaceName == workplaceName)
+                if (current.Type == type && current.WorkplaceName == workplaceName && current.OnCallWorkplaceName == onCallWorkplaceName)
                     continue; // already matches — no write, no noise
 
-                var previousLabel = DescribeAssignment(current.Type, current.WorkplaceName);
-                var newLabel = DescribeAssignment(type, workplaceName);
+                var previousLabel = DescribeAssignment(current.Type, current.WorkplaceName, current.OnCallWorkplaceName);
+                var newLabel = DescribeAssignment(type, workplaceName, onCallWorkplaceName);
                 // WorkplaceId intentionally cleared (null) — the imported name is Opicentrum's own
                 // label, which isn't guaranteed to correspond to this device's shared Workplace
                 // catalog entry; Note is deliberately preserved (the user's own instruction: "vytvoří
                 // se poznamka do zalozky system" — the overwrite is recorded as a Notification, not by
                 // clobbering whatever the user wrote here themselves).
-                current.Update(type, current.StartTime, current.EndTime, null, workplaceName, current.Note);
+                current.Update(type, current.StartTime, current.EndTime, null, workplaceName, current.Note, onCallWorkplaceName);
                 await _assignmentRepository.UpdateAsync(current, ct);
                 updated++;
 
@@ -294,7 +314,7 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
             }
             else
             {
-                var assignment = new WorkAssignment(date, type, workplaceName: workplaceName);
+                var assignment = new WorkAssignment(date, type, workplaceName: workplaceName, onCallWorkplaceName: onCallWorkplaceName);
                 await _assignmentRepository.AddAsync(assignment, ct);
                 created++;
             }
@@ -303,8 +323,11 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
         return new OpicentrumSyncResult(true, created, updated, null);
     }
 
-    private static string DescribeAssignment(AssignmentType type, string? workplaceName) =>
-        string.IsNullOrEmpty(workplaceName) ? AssignmentTypeCatalog.Label(type) : $"{AssignmentTypeCatalog.Label(type)} · {workplaceName}";
+    private static string DescribeAssignment(AssignmentType type, string? workplaceName, string? onCallWorkplaceName)
+    {
+        var baseLabel = string.IsNullOrEmpty(workplaceName) ? AssignmentTypeCatalog.Label(type) : $"{AssignmentTypeCatalog.Label(type)} · {workplaceName}";
+        return string.IsNullOrEmpty(onCallWorkplaceName) ? baseLabel : $"{baseLabel} + {AssignmentTypeCatalog.Label(AssignmentType.OnCall)}: {onCallWorkplaceName}";
+    }
 
     private static IEnumerable<DateOnly> DistinctMondaysInRange(DateOnly start, DateOnly end)
     {

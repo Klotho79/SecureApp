@@ -192,7 +192,7 @@ public sealed partial class AddAssignmentViewModel : ObservableObject, IQueryAtt
             if (!CanEditAssignment)
             {
                 if (_existing is null) return; // shouldn't happen — CanSave is false for this case too
-                _existing.Update(_existing.Type, _existing.StartTime, _existing.EndTime, _existing.WorkplaceId, _existing.WorkplaceName, note);
+                _existing.Update(_existing.Type, _existing.StartTime, _existing.EndTime, _existing.WorkplaceId, _existing.WorkplaceName, note, _existing.OnCallWorkplaceName);
                 await _assignmentRepository.UpdateAsync(_existing);
                 Saved?.Invoke();
                 return;
@@ -214,7 +214,10 @@ public sealed partial class AddAssignmentViewModel : ObservableObject, IQueryAtt
                     ErrorMessage = "Směna už neexistuje — mohla být mezitím smazána.";
                     return;
                 }
-                existing.Update(SelectedTypeOption.Type, startTime, endTime, workplaceId, workplaceName, note);
+                // OnCallWorkplaceName is preserved as-is, not editable from this form (2026-09-21,
+                // scope decision — it's Opicentrum-sync-only for now, see WorkAssignment's own
+                // remarks); an Admin/Modifier edit here must not silently wipe a synced duty overlay.
+                existing.Update(SelectedTypeOption.Type, startTime, endTime, workplaceId, workplaceName, note, existing.OnCallWorkplaceName);
                 await _assignmentRepository.UpdateAsync(existing);
             }
             else

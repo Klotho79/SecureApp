@@ -31,6 +31,10 @@
                         </VerticalStackLayout>
                         <Label Grid.Column="2" Text="{Binding Today.TimeText}" FontSize="10.5" TextColor="Gray" VerticalOptions="Center" IsVisible="{Binding Today.HasTime}" />
                     </Grid>
+                    <!-- On-call overlay (2026-09-21) — a duty on top of today's own primary type, e.g.
+                         a normal shift followed later the same day by on-call; see
+                         WorkAssignment.OnCallWorkplaceName's own remarks. -->
+                    <Label Text="{Binding Today.OnCallText}" FontSize="10.5" FontAttributes="Bold" IsVisible="{Binding Today.HasOnCall}" TextColor="{AppThemeBinding Light={StaticResource Warn}, Dark={StaticResource WarnDark}}" />
                 </VerticalStackLayout>
             </Border>
 
@@ -118,6 +122,7 @@
                                 <VerticalStackLayout Grid.Column="2" Spacing="1">
                                     <Label Text="{Binding DisplayTypeLabel}" FontSize="11" FontAttributes="Bold" LineBreakMode="TailTruncation" />
                                     <Label Text="{Binding WorkplaceText}" FontSize="9.5" IsVisible="{Binding HasWorkplace}" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" LineBreakMode="TailTruncation" />
+                                    <Label Text="{Binding OnCallText}" FontSize="9.5" FontAttributes="Bold" IsVisible="{Binding HasOnCall}" TextColor="{AppThemeBinding Light={StaticResource Warn}, Dark={StaticResource WarnDark}}" LineBreakMode="TailTruncation" />
                                 </VerticalStackLayout>
                                 <Label Grid.Column="3" Text="{Binding TimeText}" FontSize="9" TextColor="Gray" VerticalOptions="Center" IsVisible="{Binding HasTime}" />
                             </Grid>
@@ -167,6 +172,11 @@
                             </Border.Triggers>
                             <Grid Padding="2">
                                 <Label Text="{Binding DayNumberText}" FontSize="10.5" FontAttributes="Bold" HorizontalOptions="Center" VerticalOptions="Center" />
+                                <!-- On-call overlay marker (2026-09-21) — the grid cell is too small for
+                                     the workplace name itself (see the Week strip/Dnes card for that),
+                                     just a small corner dot flagging "there's also a duty on top of this
+                                     day's own type"; see WorkAssignment.OnCallWorkplaceName's own remarks. -->
+                                <BoxView CornerRadius="3" WidthRequest="6" HeightRequest="6" IsVisible="{Binding HasOnCall}" HorizontalOptions="End" VerticalOptions="Start" Margin="0,2,2,0" Color="{AppThemeBinding Light={StaticResource Warn}, Dark={StaticResource WarnDark}}" />
                             </Grid>
                         </Border>
                     </DataTemplate>
