@@ -25,7 +25,7 @@
                  already in view stays put instead of the list jumping to the oldest message (the bug
                  the user hit). Scrolling to the newest message on open / send / receive is done
                  explicitly from code-behind (ScrollToLatest), not by the scroll mode. -->
-            <CollectionView x:Name="MessagesView" ItemsSource="{Binding Messages}" ItemsUpdatingScrollMode="KeepItemsInView" Margin="12,12,12,4">
+            <CollectionView x:Name="MessagesView" ItemsSource="{Binding Messages}" ItemsUpdatingScrollMode="KeepItemsInView" Margin="8,8,8,4">
                 <CollectionView.ItemTemplate>
                     <!-- Template selector (2026-09-12): text-only messages (the common case) get a lean
                          bubble that never builds the attachment sub-tree; only messages that actually
@@ -35,9 +35,9 @@
                     <controls:ChatMessageTemplateSelector>
                         <controls:ChatMessageTemplateSelector.TextTemplate>
                             <DataTemplate x:DataType="vm:ChatMessageItem">
-                                <Grid Padding="2,0">
+                                <Grid Padding="1,0">
                                     <Border
-                                        Padding="6,2"
+                                        Padding="5,1"
                                         StrokeShape="RoundRectangle 15,15,4,15"
                                         StrokeThickness="1"
                                         Stroke="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}"
@@ -63,7 +63,7 @@
                                                 <Label
                                                     Grid.Column="0"
                                                     Text="🗑"
-                                                    FontSize="9"
+                                                    FontSize="7"
                                                     VerticalOptions="Center"
                                                     IsVisible="{Binding CanDelete}"
                                                     TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}">
@@ -73,7 +73,7 @@
                                                             CommandParameter="{Binding .}" />
                                                     </Label.GestureRecognizers>
                                                 </Label>
-                                                <HorizontalStackLayout Grid.Column="1" Spacing="4" HorizontalOptions="End">
+                                                <HorizontalStackLayout Grid.Column="1" Spacing="3" HorizontalOptions="End">
                                                     <Label
                                                         Text="{Binding TimeLabel}"
                                                         FontSize="7"
@@ -95,7 +95,7 @@
                                                 </HorizontalStackLayout>
                                             </Grid>
 
-                                            <Label Grid.Row="1" Text="{Binding Text}" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" FontSize="10.5" LineBreakMode="WordWrap">
+                                            <Label Grid.Row="1" Text="{Binding Text}" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" FontSize="9" LineBreakMode="WordWrap">
                                                 <Label.Triggers>
                                                     <DataTrigger TargetType="Label" Binding="{Binding IsOutbound}" Value="True">
                                                         <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource PrimaryDarkText}}" />
@@ -110,9 +110,9 @@
 
                         <controls:ChatMessageTemplateSelector.AttachmentTemplate>
                             <DataTemplate x:DataType="vm:ChatMessageItem">
-                                <Grid Padding="2,0">
+                                <Grid Padding="1,0">
                                     <Border
-                                        Padding="6,2"
+                                        Padding="5,1"
                                         StrokeShape="RoundRectangle 15,15,4,15"
                                         StrokeThickness="1"
                                         Stroke="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}"
@@ -133,7 +133,7 @@
                                                 <Label
                                                     Grid.Column="0"
                                                     Text="🗑"
-                                                    FontSize="9"
+                                                    FontSize="7"
                                                     VerticalOptions="Center"
                                                     IsVisible="{Binding CanDelete}"
                                                     TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}">
@@ -143,7 +143,7 @@
                                                             CommandParameter="{Binding .}" />
                                                     </Label.GestureRecognizers>
                                                 </Label>
-                                                <HorizontalStackLayout Grid.Column="1" Spacing="4" HorizontalOptions="End">
+                                                <HorizontalStackLayout Grid.Column="1" Spacing="3" HorizontalOptions="End">
                                                     <Label
                                                         Text="{Binding TimeLabel}"
                                                         FontSize="7"
@@ -164,7 +164,7 @@
                                                 </HorizontalStackLayout>
                                             </Grid>
 
-                                            <Label Grid.Row="1" Text="{Binding Text}" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" FontSize="10.5" LineBreakMode="WordWrap" IsVisible="{Binding HasText}">
+                                            <Label Grid.Row="1" Text="{Binding Text}" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" FontSize="9" LineBreakMode="WordWrap" IsVisible="{Binding HasText}">
                                                 <Label.Triggers>
                                                     <DataTrigger TargetType="Label" Binding="{Binding IsOutbound}" Value="True">
                                                         <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource PrimaryDarkText}}" />
@@ -172,16 +172,16 @@
                                                 </Label.Triggers>
                                             </Label>
 
-                                            <Border Grid.Row="2" Padding="6,5" StrokeShape="RoundRectangle 8" Stroke="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
+                                            <Border Grid.Row="2" Padding="5,4" StrokeShape="RoundRectangle 7" Stroke="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
                                                 <Border.GestureRecognizers>
                                                     <TapGestureRecognizer
                                                         Command="{Binding Source={x:Reference ChatThreadRoot}, Path=BindingContext.OpenAttachmentCommand}"
                                                         CommandParameter="{Binding .}" />
                                                 </Border.GestureRecognizers>
-                                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9" RowDefinitions="Auto,Auto">
-                                                    <Label Grid.Column="0" Grid.RowSpan="2" Text="📄" FontSize="14.5" VerticalOptions="Center" />
-                                                    <Label Grid.Column="1" Grid.Row="0" Text="{Binding AttachmentFileName}" FontSize="10" FontAttributes="Bold" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" LineBreakMode="TailTruncation" />
-                                                    <Label Grid.Column="1" Grid.Row="1" Text="Ze sdílené knihovny" FontSize="8.5" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
+                                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="7" RowDefinitions="Auto,Auto">
+                                                    <Label Grid.Column="0" Grid.RowSpan="2" Text="📄" FontSize="11.5" VerticalOptions="Center" />
+                                                    <Label Grid.Column="1" Grid.Row="0" Text="{Binding AttachmentFileName}" FontSize="8.5" FontAttributes="Bold" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" LineBreakMode="TailTruncation" />
+                                                    <Label Grid.Column="1" Grid.Row="1" Text="Ze sdílené knihovny" FontSize="7" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
                                                 </Grid>
                                             </Border>
                                         </Grid>
