@@ -477,25 +477,48 @@ Status below) and should be reconciled with the existing `Success`/`Danger`/`War
 
 ## Status
 
-**2026-09-20 — Phase 1, 2, 3, 4, 5 (first slice), 8 done.**
+**2026-09-21 — Phase 1, 2, 3, 4, 5 (first slice), 8 done.**
 
-Phase 4 (Smart Search) and Phase 8 (real Android notifications: reception, categories, priorities,
-`POST_NOTIFICATIONS` permission, deep links on tap, cold/warm start routing) shipped after the
-snapshot below but aren't re-documented in detail here — see git history from this date.
+Phase 4 — Smart Search (`SmartSearchViewModel`/`SmartSearchPage`, reached via 🔍 on Nástěnka): one
+query fanned out across every searchable source that actually exists in the app today —
+Notifications (title/body, via `INotificationRepository.GetPagedAsync`'s own `SearchText` filter),
+1:1 chats and groups (by peer/group display name — "Novák" jumps straight to that thread, matching
+spec §11's own example), and the static hospital phone directory (name/section/extension). Results
+render as four collapsible sections, each row pre-built with the route it navigates to
+(`SearchResultItem`). Person/Workplace/CalendarEvent search isn't wired in — see Phase 5/6 below for
+why. Deliberately Contains-match, not fuzzy/semantic — covers the spec's own examples without the
+extra complexity a real full-text engine would add for this data volume.
+
+Phase 8 — real Android notifications: `INativeNotificationService` (Android implementation uses
+`NotificationCompat`/`NotificationManagerCompat`, a dedicated channel, `PendingIntent`); the
+`POST_NOTIFICATIONS` runtime permission (API 33+) is requested from `MainActivity` on first launch;
+`NotificationPublisher` calls it (when supplied) alongside writing the in-app `Notification` row, so
+every real incoming chat/group message produces both; tapping a system notification deep-links into
+that notification's own detail via `NativeNotificationRouter`'s cold-start (pending-id consumed in
+`CreateWindow`) and warm-start (`MainActivity.OnNewIntent`, `LaunchMode.SingleTop`) paths — spec §31's
+"open that notification's own detail, not just the home screen."
 
 Phase 6 (Contacts) was superseded by the user's own separate ask that same day: a shared, relay-synced
 company phone/extension directory with no chat linking (`ISharedContactService`), not the spec's
 Person/CRM model — see `ContactsViewModel`'s own remarks.
 
-Phase 5 (Workplace + Calendar), first slice — "pokracujem kalendarem": `WorkAssignment` domain entity
-+ `AssignmentType` enum (schema v15, local per-device — this is one person's own schedule, not shared
-data) plus a relay-synced `Workplace` name catalog (`IWorkplaceCatalogService`, same shared-reference-
-catalog pattern as `ISharedContactService`/`ILogbookCatalogSyncService`). `WorkplacePage` (reached via
-a new 📅 button next to 🔍 on Nástěnka): a "Dnes" card (spec §6's TODAY block, always accurate
-regardless of which week is browsed) + a navigable Week strip (spec §7 — "Week is primary"), each day
-tappable into `AddAssignmentPage` (create/edit/delete one day's status; free-typing a new workplace
-name auto-publishes it to the shared catalog). Day/Month calendar views, and the
-Notification↔Workplace↔Calendar cross-links spec §26 calls for, are not built yet — next slices.
+Phase 5 (Workplace + Calendar), first slice (2026-09-20, "pokracujem kalendarem") — `WorkAssignment`
+domain entity + `AssignmentType` enum (schema v15, local per-device — this is one person's own
+schedule, not shared data) plus a relay-synced `Workplace` name catalog (`IWorkplaceCatalogService`,
+same shared-reference-catalog pattern as `ISharedContactService`/`ILogbookCatalogSyncService`).
+`WorkplacePage` (reached via a 📅 button next to 🔍 on Nástěnka): a "Dnes" card (spec §6's TODAY block,
+always accurate regardless of which week is browsed) + a navigable Week strip (spec §7 — "Week is
+primary"), each day tappable into `AddAssignmentPage` (create/edit/delete one day's status;
+free-typing a new workplace name auto-publishes it to the shared catalog). Verified live on-device
+(S23+, via adb/uiautomator) end-to-end: open → Dnes empty state → week strip renders the correct
+7-day range → tap a day → save → returns with the row updated → edit → delete → back to empty state.
+
+Phase 5, second slice (2026-09-21) — Month view added alongside Week (a Week/Month toggle on
+`WorkplacePage`; spec §7 asks for Day/Week/Month — Day is effectively already covered by the
+`AddAssignmentPage` day-detail/editor tapped into from either view, so this slice is just Month).
+Still open: the Notification↔Workplace↔Calendar cross-links spec §26 calls for — `Notification`
+still has no `RelatedWorkplaceId`/`RelatedCalendarEventId` FK (deliberately deferred, see that
+entity's own remarks), and Smart Search still doesn't search assignments/workplaces. Next slice.
 
 ---
 

@@ -33,14 +33,55 @@
                 </VerticalStackLayout>
             </Border>
 
-            <!-- Tento týden (spec §7 CALENDAR — "Week is primary"). -->
-            <Grid ColumnDefinitions="Auto,*,Auto">
+            <!-- Týden/Měsíc přepínač (spec §7 — "Day / Week / Month views") — same selected-chip visual
+                 convention as Nástěnka's own filter chips (Border+Chip style, DataTrigger-driven
+                 AccentStrong fill + white text when selected), reused here rather than inventing a
+                 new toggle control. -->
+            <HorizontalStackLayout Spacing="8">
+                <Border Style="{StaticResource Chip}" Margin="0">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Command="{Binding ShowWeekViewCommand}" />
+                    </Border.GestureRecognizers>
+                    <Border.Triggers>
+                        <DataTrigger TargetType="Border" Binding="{Binding IsMonthView}" Value="False">
+                            <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
+                        </DataTrigger>
+                    </Border.Triggers>
+                    <Label Text="Týden" Style="{StaticResource ChipLabel}">
+                        <Label.Triggers>
+                            <DataTrigger TargetType="Label" Binding="{Binding IsMonthView}" Value="False">
+                                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource OffBlack}}" />
+                            </DataTrigger>
+                        </Label.Triggers>
+                    </Label>
+                </Border>
+                <Border Style="{StaticResource Chip}" Margin="0">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Command="{Binding ShowMonthViewCommand}" />
+                    </Border.GestureRecognizers>
+                    <Border.Triggers>
+                        <DataTrigger TargetType="Border" Binding="{Binding IsMonthView}" Value="True">
+                            <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
+                        </DataTrigger>
+                    </Border.Triggers>
+                    <Label Text="Měsíc" Style="{StaticResource ChipLabel}">
+                        <Label.Triggers>
+                            <DataTrigger TargetType="Label" Binding="{Binding IsMonthView}" Value="True">
+                                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource OffBlack}}" />
+                            </DataTrigger>
+                        </Label.Triggers>
+                    </Label>
+                </Border>
+            </HorizontalStackLayout>
+
+            <!-- Tento týden (spec §7 — "Week is primary"). -->
+            <Grid ColumnDefinitions="Auto,*,Auto" IsVisible="{Binding IsWeekView}">
                 <Button Grid.Column="0" Text="‹" Style="{StaticResource SecondaryButton}" WidthRequest="44" Padding="0" Command="{Binding PreviousWeekCommand}" />
                 <Label Grid.Column="1" Text="{Binding WeekLabel}" FontAttributes="Bold" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
                 <Button Grid.Column="2" Text="›" Style="{StaticResource SecondaryButton}" WidthRequest="44" Padding="0" Command="{Binding NextWeekCommand}" />
             </Grid>
 
-            <VerticalStackLayout Spacing="6" BindableLayout.ItemsSource="{Binding WeekDays}">
+            <VerticalStackLayout Spacing="6" IsVisible="{Binding IsWeekView}" BindableLayout.ItemsSource="{Binding WeekDays}">
                 <BindableLayout.ItemTemplate>
                     <DataTemplate x:DataType="vm:AssignmentDayItem">
                         <Border Style="{StaticResource CardBorder}" Margin="0" Padding="10,8" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
@@ -92,6 +133,73 @@
                     </DataTemplate>
                 </BindableLayout.ItemTemplate>
             </VerticalStackLayout>
+
+            <!-- Měsíc (spec §7). Fixed 6-row/42-cell CollectionView with an explicit HeightRequest —
+                 sized so its own content never exceeds it, which is what keeps it well-behaved inside
+                 the page's outer ScrollView (no internal scroll of its own to conflict with the
+                 page's). GridItemsLayout Span="7" is what guarantees exactly 7 columns regardless of
+                 window width — this app also runs on a wide PC window, where a Wrap-based layout
+                 (the pattern LibraryPage's tag chips use) couldn't guarantee the day-of-week grid
+                 stays 7-wide. -->
+            <Grid ColumnDefinitions="Auto,*,Auto" IsVisible="{Binding IsMonthView}">
+                <Button Grid.Column="0" Text="‹" Style="{StaticResource SecondaryButton}" WidthRequest="44" Padding="0" Command="{Binding PreviousMonthCommand}" />
+                <Label Grid.Column="1" Text="{Binding MonthLabel}" FontAttributes="Bold" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+                <Button Grid.Column="2" Text="›" Style="{StaticResource SecondaryButton}" WidthRequest="44" Padding="0" Command="{Binding NextMonthCommand}" />
+            </Grid>
+
+            <CollectionView ItemsSource="{Binding MonthDays}" SelectionMode="None" IsVisible="{Binding IsMonthView}" HeightRequest="300">
+                <CollectionView.ItemsLayout>
+                    <GridItemsLayout Orientation="Vertical" Span="7" HorizontalItemSpacing="4" VerticalItemSpacing="4" />
+                </CollectionView.ItemsLayout>
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="vm:MonthDayCell">
+                        <Border Style="{StaticResource CardBorder}" Margin="0" Padding="0" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding OpenCommand}" CommandParameter="{Binding .}" />
+                            </Border.GestureRecognizers>
+                            <Border.Triggers>
+                                <DataTrigger TargetType="Border" Binding="{Binding IsToday}" Value="True">
+                                    <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
+                                </DataTrigger>
+                                <DataTrigger TargetType="Border" Binding="{Binding IsCurrentMonth}" Value="False">
+                                    <Setter Property="Opacity" Value="0.35" />
+                                </DataTrigger>
+                            </Border.Triggers>
+                            <Grid RowDefinitions="*,10" Padding="2">
+                                <Label Grid.Row="0" Text="{Binding DayNumberText}" FontSize="12.5" HorizontalOptions="Center" VerticalOptions="Center" />
+                                <BoxView Grid.Row="1" HeightRequest="5" WidthRequest="5" CornerRadius="2.5" HorizontalOptions="Center" IsVisible="{Binding HasAssignment}">
+                                    <BoxView.Triggers>
+                                        <DataTrigger TargetType="BoxView" Binding="{Binding TypeText}" Value="Work">
+                                            <Setter Property="Color" Value="{AppThemeBinding Light={StaticResource Info}, Dark={StaticResource InfoDark}}" />
+                                        </DataTrigger>
+                                        <DataTrigger TargetType="BoxView" Binding="{Binding TypeText}" Value="OnCall">
+                                            <Setter Property="Color" Value="{AppThemeBinding Light={StaticResource Warn}, Dark={StaticResource WarnDark}}" />
+                                        </DataTrigger>
+                                        <DataTrigger TargetType="BoxView" Binding="{Binding TypeText}" Value="BusinessTrip">
+                                            <Setter Property="Color" Value="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
+                                        </DataTrigger>
+                                        <DataTrigger TargetType="BoxView" Binding="{Binding TypeText}" Value="Training">
+                                            <Setter Property="Color" Value="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
+                                        </DataTrigger>
+                                        <DataTrigger TargetType="BoxView" Binding="{Binding TypeText}" Value="Vacation">
+                                            <Setter Property="Color" Value="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" />
+                                        </DataTrigger>
+                                        <DataTrigger TargetType="BoxView" Binding="{Binding TypeText}" Value="DayOff">
+                                            <Setter Property="Color" Value="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
+                                        </DataTrigger>
+                                        <DataTrigger TargetType="BoxView" Binding="{Binding TypeText}" Value="SickLeave">
+                                            <Setter Property="Color" Value="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" />
+                                        </DataTrigger>
+                                        <DataTrigger TargetType="BoxView" Binding="{Binding TypeText}" Value="Other">
+                                            <Setter Property="Color" Value="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
+                                        </DataTrigger>
+                                    </BoxView.Triggers>
+                                </BoxView>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
 
         </VerticalStackLayout>
     </ScrollView>
