@@ -516,9 +516,19 @@ free-typing a new workplace name auto-publishes it to the shared catalog). Verif
 Phase 5, second slice (2026-09-21) — Month view added alongside Week (a Week/Month toggle on
 `WorkplacePage`; spec §7 asks for Day/Week/Month — Day is effectively already covered by the
 `AddAssignmentPage` day-detail/editor tapped into from either view, so this slice is just Month).
-Still open: the Notification↔Workplace↔Calendar cross-links spec §26 calls for — `Notification`
-still has no `RelatedWorkplaceId`/`RelatedCalendarEventId` FK (deliberately deferred, see that
-entity's own remarks), and Smart Search still doesn't search assignments/workplaces. Next slice.
+Verified live on S23+ end-to-end, including a real bug caught in review before it shipped: `LoadAsync`
+(bound to the Page's own `OnAppearing`) only ever refreshed Today+Week, never Month — editing a day
+from Month view would show stale data until manually toggling away and back; fixed before deploy.
+
+Phase 5, third slice (2026-09-21) — `SmartSearchViewModel` now also searches the personal schedule
+(spec §11's own "vacation" example explicitly calls for this): a bounded ±60/180-day window, matched
+against the assignment type's Czech label, workplace name, or note, each result deep-linking straight
+into `AddAssignmentPage` for that exact day. Still open: the Notification↔Workplace↔Calendar
+cross-links spec §26 calls for — `Notification` still has no `RelatedWorkplaceId`/
+`RelatedCalendarEventId` FK (deliberately deferred, see that entity's own remarks; there's also no
+event source that would populate them yet — nothing currently publishes a Notification about a
+schedule change). Phase 7 (Android home-screen widget) and Phase 9 (performance at scale) haven't
+been started. Next slice: whichever of those the user picks.
 
 ---
 

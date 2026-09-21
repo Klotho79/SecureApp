@@ -1,25 +1,28 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.ValueObjects;
 using SecureApp.Presentation.Contacts;
+using SecureApp.Presentation.Workplace;
 
 namespace SecureApp.Presentation.ViewModels;
 
 /// <summary>
 /// Global Smart Search (NOTIFICATION_HUB_SPEC.md §11–§12) — one query fanned out across every
 /// SecureApp data source that's actually searchable today: Notifications (title/body), 1:1 chats and
-/// groups (by peer/group display name, so "Novák" jumps straight to that thread), and the static
-/// hospital phone directory (name/section/extension). Person/Workplace/CalendarEvent search (spec
-/// §11's own "Novak" example also expects a Person match) isn't wired in — those entities don't exist
-/// in this app yet (spec Phases 5/6); adding a source here later is additive; see NOTIFICATION_HUB_SPEC.md's Status.
+/// groups (by peer/group display name, so "Novák" jumps straight to that thread), the static hospital
+/// phone directory (name/section/extension), and (2026-09-21, Phase 5 follow-up) the personal work
+/// schedule — spec §11's own "vacation" example explicitly expects this ("vacation" → calendar
+/// entries, workplace status, related notifications). Person/CalendarEvent-as-its-own-entity search
+/// isn't wired in — those don't exist in this app; see NOTIFICATION_HUB_SPEC.md's Status.
 ///
-/// Deliberately NOT "exact text match only" for chats/groups/contacts — a Contains match already
-/// covers the spec's own examples ("Novak" finding a contact and any chat/group with that name) even
-/// without the fuzzier "conceptually related" matching the spec's fuller wording gestures at (real
-/// full-text/semantic search over notification content is a later refinement, not this first pass).
+/// Deliberately NOT "exact text match only" for chats/groups/contacts/schedule — a Contains match
+/// already covers the spec's own examples without the fuzzier "conceptually related" matching the
+/// spec's fuller wording gestures at (real full-text/semantic search over notification content is a
+/// later refinement, not this first pass).
 /// </summary>
 public sealed partial class SmartSearchViewModel : ObservableObject
 {
@@ -28,6 +31,7 @@ public sealed partial class SmartSearchViewModel : ObservableObject
     private readonly INotificationRepository _notificationRepository;
     private readonly IChatSessionRepository _chatSessionRepository;
     private readonly IGroupChatRepository _groupChatRepository;
+    private readonly IWorkAssignmentRepository _workAssignmentRepository;
 
     [ObservableProperty]
     public partial string SearchQuery { get; set; }
@@ -53,10 +57,14 @@ public sealed partial class SmartSearchViewModel : ObservableObject
     [ObservableProperty]
     public partial ObservableCollection<SearchResultItem> ContactResults { get; set; }
 
+    [ObservableProperty]
+    public partial ObservableCollection<SearchResultItem> WorkplaceResults { get; set; }
+
     public bool HasNotificationResults => NotificationResults.Count > 0;
     public bool HasChatResults => ChatResults.Count > 0;
     public bool HasGroupResults => GroupResults.Count > 0;
     public bool HasContactResults => ContactResults.Count > 0;
+    public bool HasWorkplaceResults => WorkplaceResults.Count > 0;
 
     /// <summary>Raised with a route string ("ChatPage?chatSessionId=…", "NotificationDetailPage?notificationId=…", …) — the Page does the actual <c>GoToAsync</c>, same MAUI-free-ViewModel split this codebase already established.</summary>
     public event Action<string>? RequestNavigate;
@@ -64,16 +72,19 @@ public sealed partial class SmartSearchViewModel : ObservableObject
     public SmartSearchViewModel(
         INotificationRepository notificationRepository,
         IChatSessionRepository chatSessionRepository,
-        IGroupChatRepository groupChatRepository)
+        IGroupChatRepository groupChatRepository,
+        IWorkAssignmentRepository workAssignmentRepository)
     {
         _notificationRepository = notificationRepository ?? throw new ArgumentNullException(nameof(notificationRepository));
         _chatSessionRepository = chatSessionRepository ?? throw new ArgumentNullException(nameof(chatSessionRepository));
         _groupChatRepository = groupChatRepository ?? throw new ArgumentNullException(nameof(groupChatRepository));
+        _workAssignmentRepository = workAssignmentRepository ?? throw new ArgumentNullException(nameof(workAssignmentRepository));
         SearchQuery = string.Empty;
         NotificationResults = [];
         ChatResults = [];
         GroupResults = [];
         ContactResults = [];
+        WorkplaceResults = [];
     }
 
     partial void OnSearchQueryChanged(string value) => _ = SearchAsync();
@@ -89,6 +100,7 @@ public sealed partial class SmartSearchViewModel : ObservableObject
             ChatResults = [];
             GroupResults = [];
             ContactResults = [];
+            WorkplaceResults = [];
             RaiseHasResultsChanged();
             HasNoResults = false;
             return;
@@ -122,8 +134,30 @@ public sealed partial class SmartSearchViewModel : ObservableObject
                 .Take(MaxResultsPerSection)
                 .Select(e => new SearchResultItem(e.Name, $"{e.Section} · kl. {e.Number}", "//ContactsTab", OpenCommand)));
 
+            // A bounded window (60 days back, 180 forward), not the whole table — this is a personal
+            // schedule, not a searchable archive, and the spec's own "vacation" example (§11) is about
+            // finding an upcoming/recent status, not excavating years of history. Filtered client-side
+            // rather than adding a text-search repository method — the row count in that window is
+            // trivially small, same reasoning IWorkAssignmentRepository's own remarks give for why
+            // this table has no such method at all yet.
+            var assignmentRangeStart = DateOnly.FromDateTime(DateTime.Today).AddDays(-60);
+            var assignmentRangeEnd = DateOnly.FromDateTime(DateTime.Today).AddDays(180);
+            var assignments = await _workAssignmentRepository.GetByDateRangeAsync(assignmentRangeStart, assignmentRangeEnd);
+            WorkplaceResults = new ObservableCollection<SearchResultItem>(assignments
+                .Where(a =>
+                    AssignmentTypeCatalog.Label(a.Type).Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                    (a.WorkplaceName?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (a.Note?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false))
+                .OrderBy(a => a.Date)
+                .Take(MaxResultsPerSection)
+                .Select(a => new SearchResultItem(
+                    string.IsNullOrEmpty(a.WorkplaceName) ? AssignmentTypeCatalog.Label(a.Type) : $"{AssignmentTypeCatalog.Label(a.Type)} · {a.WorkplaceName}",
+                    a.Date.ToString("d. M. yyyy", CultureInfo.CurrentCulture),
+                    $"AddAssignmentPage?date={a.Date:yyyy-MM-dd}&assignmentId={a.Id}",
+                    OpenCommand)));
+
             RaiseHasResultsChanged();
-            HasNoResults = !HasNotificationResults && !HasChatResults && !HasGroupResults && !HasContactResults;
+            HasNoResults = !HasNotificationResults && !HasChatResults && !HasGroupResults && !HasContactResults && !HasWorkplaceResults;
         }
         finally
         {
@@ -144,6 +178,7 @@ public sealed partial class SmartSearchViewModel : ObservableObject
         OnPropertyChanged(nameof(HasChatResults));
         OnPropertyChanged(nameof(HasGroupResults));
         OnPropertyChanged(nameof(HasContactResults));
+        OnPropertyChanged(nameof(HasWorkplaceResults));
     }
 
     private sealed class ByteArrayEqualityComparer : IEqualityComparer<byte[]>
