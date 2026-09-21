@@ -572,6 +572,27 @@ absent, a Czech public holiday) as "Dovolená" in the Week strip. The `ŘD`/`PN`
 fix — both prior bugs were blocking deploy/visibility, not data correctness. Committed
 (`e2e42d3`), pushed to both `pi`/`github` remotes, relay redeployed (unrelated to this fix, routine).
 
+Phase 5, sixth slice (2026-09-21, same day) — `SC`/`PL`/`VV`/`NV` spravavolna.php leave codes mapped
+(user-confirmed meaning, specific to this hospital's own ARO instance, see `OpicentrumSyncService`'s
+`KnownLeaveCodes` remarks): SC→BusinessTrip, PL→SickLeave (a doctor's appointment during a shift — the
+user's own call, no dedicated type exists for it), VV/NV→DayOff (rest day after on-call / compensatory
+time off — both collapse onto the same existing type, undistinguished from plain "Volno" today).
+
+Phase 5, seventh slice (2026-09-21, same day) — user's own follow-up ask, "k tomu bude třeba legenda a
+uživ nastavení barev": a collapsible color legend on `WorkplacePage` (ℹ toggle next to Týden/Měsíc,
+collapsed by default) plus a per-device "Barvy typů rozpisu" card on Settings — one full hex color per
+`AssignmentType`, applied immediately, with a Reset back to default. New `AssignmentColorCatalog`
+(`Preferences`-backed, same per-device mechanism the tab-visibility toggles use — never relay-synced).
+Replaced all 24 per-type XAML DataTriggers (8 types × Dnes card/Week strip/Month grid) with colors
+precomputed onto `AssignmentDayItem`/`MonthDayCell` in the ViewModel, since a DataTrigger can't react to
+a user-chosen color without either a converter or doubling every trigger. Known, accepted trade-off: a
+color no longer live-updates on an OS theme flip (light↔dark) until the page next re-renders — every
+other themed element in the app still does, via AppThemeBinding, which a single user-chosen color can't
+cleanly split into without either doubling the settings UI (declined — user chose "fully custom color"
+over "predefined palettes") or losing simplicity elsewhere. Verified live on both phones (S9+, S23+):
+legend expands showing all 8 types, colors persist/round-trip, Reset works. Caught and fixed one real
+bug during that verification — see `AssignmentColorSettingItem`'s own remarks (`_isInitialized` guard).
+
 ---
 
 **2026-09-20 (superseded snapshot, kept for history) — Phase 1 (analysis) done, Phase 2 (data model) + Phase 3 (main UI) done, first slice.**
