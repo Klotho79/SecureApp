@@ -30,5 +30,16 @@ public enum RbacAction
     RecordLogbookProcedure,
 
     /// <summary>Viewing the Logbook's statistics rollup — allowed for every role, Viewer included (2026-09-10 correction: "statistiku by měl vidět i viewer"; briefly Modifier/Admin-only before this).</summary>
-    ViewLogbookStatistics
+    ViewLogbookStatistics,
+
+    /// <summary>
+    /// Changing a <see cref="Entities.WorkAssignment"/>'s actual classification (Type/Workplace/time)
+    /// or deleting it outright — 2026-09-21, the user's own explicit rule: "viewer nemuze menit
+    /// pracovni zarazeni, muze psat poznamku". Not Viewer, same default-deny as every other
+    /// unlisted RbacAction — no special case needed here, unlike RecordLogbookProcedure/
+    /// ViewLogbookStatistics above. Writing/editing the day's Note is deliberately NOT gated by this
+    /// action at all (see <c>AddAssignmentViewModel</c>'s own remarks) — every role, Viewer included,
+    /// may always annotate a day.
+    /// </summary>
+    EditWorkAssignment
 }

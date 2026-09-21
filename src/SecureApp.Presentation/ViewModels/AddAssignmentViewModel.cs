@@ -6,6 +6,7 @@ using SecureApp.Domain.Entities;
 using SecureApp.Domain.Enums;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
+using SecureApp.Domain.Policies;
 using SecureApp.Presentation.Workplace;
 
 namespace SecureApp.Presentation.ViewModels;
@@ -15,14 +16,22 @@ namespace SecureApp.Presentation.ViewModels;
 /// opened from <see cref="WorkplaceViewModel"/>'s Dnes card or a Week-strip day tap, always for one
 /// specific date (route query attribute, never user-editable here — pick a different day on the
 /// calling page to change it). An assignmentId being present means edit (+ Delete), absent means create.
+///
+/// <see cref="CanEditAssignment"/> (2026-09-21, RbacAction.EditWorkAssignment, the user's own rule:
+/// "viewer nemuze menit pracovni zarazeni, muze psat poznamku") gates Type/Workplace/time/Delete —
+/// Viewer sees them read-only but may still always edit <see cref="Note"/> and save that change alone.
+/// Creating a brand-new assignment from an empty day inherently means setting its Type, so a Viewer
+/// can't do that at all (see <see cref="CanSave"/>'s own remarks).
 /// </summary>
 public sealed partial class AddAssignmentViewModel : ObservableObject, IQueryAttributable
 {
     private readonly IWorkAssignmentRepository _assignmentRepository;
     private readonly IWorkplaceCatalogService _workplaceCatalogService;
+    private readonly ICurrentUserService _currentUserService;
 
     private DateOnly _date;
     private Guid? _assignmentId;
+    private WorkAssignment? _existing;
 
     public void ApplyQueryAttributes(IDictionary<string, object> query)
     {
@@ -68,6 +77,13 @@ public sealed partial class AddAssignmentViewModel : ObservableObject, IQueryAtt
     [ObservableProperty]
     public partial bool IsExistingAssignment { get; set; }
 
+    /// <summary>Gates Type/Workplace/time/Delete — see this class's own remarks. Note is never gated by this.</summary>
+    [ObservableProperty]
+    public partial bool CanEditAssignment { get; set; }
+
+    /// <summary>Mirrors <see cref="CanEditAssignment"/> so XAML never needs an inverse-boolean converter (this codebase's established convention — see <c>NotificationsViewModel.HasNoX</c>'s own remarks).</summary>
+    public bool IsReadOnlyForViewer => !CanEditAssignment;
+
     [ObservableProperty]
     public partial bool IsSaving { get; set; }
 
@@ -83,10 +99,11 @@ public sealed partial class AddAssignmentViewModel : ObservableObject, IQueryAtt
     /// <summary>Raised once the assignment is actually saved/deleted — the Page navigates back on this, not on the command simply completing (an error stays on the form).</summary>
     public event Action? Saved;
 
-    public AddAssignmentViewModel(IWorkAssignmentRepository assignmentRepository, IWorkplaceCatalogService workplaceCatalogService)
+    public AddAssignmentViewModel(IWorkAssignmentRepository assignmentRepository, IWorkplaceCatalogService workplaceCatalogService, ICurrentUserService currentUserService)
     {
         _assignmentRepository = assignmentRepository ?? throw new ArgumentNullException(nameof(assignmentRepository));
         _workplaceCatalogService = workplaceCatalogService ?? throw new ArgumentNullException(nameof(workplaceCatalogService));
+        _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         TypeOptions = AssignmentTypeCatalog.All.Select(t => new AssignmentTypeOption(t, AssignmentTypeCatalog.Label(t))).ToList();
         SelectedTypeOption = TypeOptions[0];
         DateText = string.Empty;
@@ -95,16 +112,33 @@ public sealed partial class AddAssignmentViewModel : ObservableObject, IQueryAtt
         Note = string.Empty;
         StartTime = new TimeSpan(7, 0, 0);
         EndTime = new TimeSpan(15, 30, 0);
+        CanEditAssignment = true;
         CanSave = true;
     }
 
     partial void OnErrorMessageChanged(string? value) => HasErrorMessage = !string.IsNullOrEmpty(value);
-    partial void OnIsSavingChanged(bool value) => CanSave = !value;
+    partial void OnIsSavingChanged(bool value) => RecomputeCanSave();
+    partial void OnCanEditAssignmentChanged(bool value)
+    {
+        RecomputeCanSave();
+        OnPropertyChanged(nameof(IsReadOnlyForViewer));
+    }
+    partial void OnIsExistingAssignmentChanged(bool value) => RecomputeCanSave();
+
+    /// <summary>
+    /// A Viewer (see <see cref="CanEditAssignment"/>) may save only when editing an EXISTING
+    /// assignment — that path only ever touches <see cref="Note"/> (see <see cref="SaveAsync"/>).
+    /// Creating a brand-new one from an empty day inherently means picking its Type, which a Viewer
+    /// isn't allowed to do at all, so there's nothing for them to save there.
+    /// </summary>
+    private void RecomputeCanSave() => CanSave = !IsSaving && (CanEditAssignment || IsExistingAssignment);
 
     [RelayCommand]
     private async Task LoadAsync()
     {
         DateText = FormatDate(_date);
+        await _currentUserService.InitializeAsync();
+        CanEditAssignment = RoleAccessPolicy.IsAllowed(_currentUserService.Current.Role, RbacAction.EditWorkAssignment);
 
         try
         {
@@ -124,6 +158,7 @@ public sealed partial class AddAssignmentViewModel : ObservableObject, IQueryAtt
         if (existing is null)
             return;
 
+        _existing = existing;
         IsExistingAssignment = true;
         SelectedTypeOption = TypeOptions.First(o => o.Type == existing.Type);
         HasSpecificTime = existing.StartTime is not null && existing.EndTime is not null;
@@ -143,14 +178,29 @@ public sealed partial class AddAssignmentViewModel : ObservableObject, IQueryAtt
     [RelayCommand]
     private async Task SaveAsync()
     {
+        if (!CanSave) return; // belt-and-braces — IsEnabled already keeps this uncallable, see RecomputeCanSave
         ErrorMessage = null;
         IsSaving = true;
         try
         {
+            var note = string.IsNullOrWhiteSpace(Note) ? null : Note.Trim();
+
+            // Viewer (see CanEditAssignment): note-only edit of an EXISTING assignment — every other
+            // field is left exactly as it already was, never taken from this form's own bound values
+            // (which a Viewer could still technically have stale/mismatched, since those inputs are
+            // merely IsEnabled=false, not unbound).
+            if (!CanEditAssignment)
+            {
+                if (_existing is null) return; // shouldn't happen — CanSave is false for this case too
+                _existing.Update(_existing.Type, _existing.StartTime, _existing.EndTime, _existing.WorkplaceId, _existing.WorkplaceName, note);
+                await _assignmentRepository.UpdateAsync(_existing);
+                Saved?.Invoke();
+                return;
+            }
+
             var workplaceName = string.IsNullOrWhiteSpace(WorkplaceName) ? null : WorkplaceName.Trim();
             var startTime = HasSpecificTime ? TimeOnly.FromTimeSpan(StartTime) : (TimeOnly?)null;
             var endTime = HasSpecificTime ? TimeOnly.FromTimeSpan(EndTime) : (TimeOnly?)null;
-            var note = string.IsNullOrWhiteSpace(Note) ? null : Note.Trim();
 
             Guid? workplaceId = null;
             if (workplaceName is not null)
@@ -188,6 +238,7 @@ public sealed partial class AddAssignmentViewModel : ObservableObject, IQueryAtt
     [RelayCommand]
     private async Task DeleteAsync()
     {
+        if (!CanEditAssignment) return; // belt-and-braces — the button is IsVisible/IsEnabled-gated too
         if (_assignmentId is not { } id) return;
         IsSaving = true;
         try

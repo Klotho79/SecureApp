@@ -14,29 +14,32 @@
             <Label Text="{Binding DateText}" Style="{StaticResource PageTitle}" FontSize="15" />
             <Label Text="{Binding ErrorMessage}" IsVisible="{Binding HasErrorMessage}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
 
+            <!-- Viewer (2026-09-21, user's own rule: "viewer nemuze menit pracovni zarazeni, muze psat
+                 poznamku") sees Type/time/Pracoviště/Smazat read-only — CanEditAssignment gates all of
+                 them; Poznámka below is deliberately never gated, every role may always annotate. -->
             <Label Text="Typ" FontAttributes="Bold" />
-            <Picker ItemsSource="{Binding TypeOptions}" SelectedItem="{Binding SelectedTypeOption}" ItemDisplayBinding="{Binding Label}" />
+            <Picker ItemsSource="{Binding TypeOptions}" SelectedItem="{Binding SelectedTypeOption}" ItemDisplayBinding="{Binding Label}" IsEnabled="{Binding CanEditAssignment}" />
 
             <Grid ColumnDefinitions="*,Auto" Margin="0,8,0,0">
                 <Label Grid.Column="0" Text="Má konkrétní čas" VerticalOptions="Center" FontAttributes="Bold" />
-                <Switch Grid.Column="1" IsToggled="{Binding HasSpecificTime}" />
+                <Switch Grid.Column="1" IsToggled="{Binding HasSpecificTime}" IsEnabled="{Binding CanEditAssignment}" />
             </Grid>
 
             <Grid ColumnDefinitions="*,*" ColumnSpacing="10" IsVisible="{Binding HasSpecificTime}">
                 <VerticalStackLayout Grid.Column="0" Spacing="4">
                     <Label Text="Od" FontSize="9.5" TextColor="Gray" />
-                    <TimePicker Time="{Binding StartTime}" />
+                    <TimePicker Time="{Binding StartTime}" IsEnabled="{Binding CanEditAssignment}" />
                 </VerticalStackLayout>
                 <VerticalStackLayout Grid.Column="1" Spacing="4">
                     <Label Text="Do" FontSize="9.5" TextColor="Gray" />
-                    <TimePicker Time="{Binding EndTime}" />
+                    <TimePicker Time="{Binding EndTime}" IsEnabled="{Binding CanEditAssignment}" />
                 </VerticalStackLayout>
             </Grid>
 
             <Label Text="Pracoviště" FontAttributes="Bold" Margin="0,8,0,0" />
-            <Entry Text="{Binding WorkplaceName}" Placeholder="Nepovinné, např. Operační sál 7" />
+            <Entry Text="{Binding WorkplaceName}" Placeholder="Nepovinné, např. Operační sál 7" IsEnabled="{Binding CanEditAssignment}" />
 
-            <FlexLayout IsVisible="{Binding HasWorkplaceSuggestions}" BindableLayout.ItemsSource="{Binding WorkplaceSuggestions}" Wrap="Wrap" Direction="Row" JustifyContent="Start" AlignItems="Start">
+            <FlexLayout IsVisible="{Binding HasWorkplaceSuggestions}" IsEnabled="{Binding CanEditAssignment}" BindableLayout.ItemsSource="{Binding WorkplaceSuggestions}" Wrap="Wrap" Direction="Row" JustifyContent="Start" AlignItems="Start">
                 <BindableLayout.ItemTemplate>
                     <DataTemplate x:DataType="x:String">
                         <Border Style="{StaticResource Chip}" Margin="0,2,6,0">
@@ -52,8 +55,10 @@
             <Label Text="Poznámka" FontAttributes="Bold" Margin="0,8,0,0" />
             <Editor Text="{Binding Note}" Placeholder="Nepovinné" HeightRequest="70" />
 
+            <Label Text="Jako Viewer můžete jen doplnit poznámku — typ, čas a pracoviště nastavuje ten, kdo je za směnu zodpovědný." FontSize="9.5" TextColor="Gray" IsVisible="{Binding IsReadOnlyForViewer}" />
+
             <Button Text="Uložit" Command="{Binding SaveCommand}" IsEnabled="{Binding CanSave}" Margin="0,12,0,0" />
-            <Button Text="Smazat směnu" Style="{StaticResource SecondaryButton}" Command="{Binding DeleteCommand}" IsVisible="{Binding IsExistingAssignment}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" BorderColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" />
+            <Button Text="Smazat směnu" Style="{StaticResource SecondaryButton}" Command="{Binding DeleteCommand}" IsVisible="{Binding IsExistingAssignment}" IsEnabled="{Binding CanEditAssignment}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" BorderColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" />
 
         </VerticalStackLayout>
     </ScrollView>
