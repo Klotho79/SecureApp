@@ -26,12 +26,19 @@ namespace SecureApp.Presentation.Workplace;
 /// 1. pracoviste.php (weekly, per-room) → AssignmentType.Work, WorkplaceName = the room's own label.
 /// 2. sluzby7.php (monthly, 7 on-call slots) → AssignmentType.OnCall, WorkplaceName = the slot's own label.
 /// 3. spravavolna.php (monthly, per-person leave grid) → confidently mapped codes (ŘD→Vacation,
-///    PN/PL→SickLeave, SC→BusinessTrip, VV/NV→DayOff — see <see cref="KnownLeaveCodes"/> for the
+///    PN/PL→SickLeave, SC→BusinessTrip, VV/NV/PS→DayOff — see <see cref="KnownLeaveCodes"/> for the
 ///    user-confirmed meaning of each) or AssignmentType.Other with the raw code kept in the Note (any
 ///    code this class doesn't confidently recognize — safe/transparent/correctable rather than
-///    guessing wrong). "PS" is skipped here on purpose: sluzby7.php already gives the exact on-call
-///    slot for the same day, more precisely than this page's plain "PS" marker. "--" and empty cells
-///    are skipped too — read as "not in the on-call rotation that day", not an absence.
+///    guessing wrong). "--" and empty cells are skipped — read as "not in the on-call rotation that
+///    day", not an absence.
+///
+/// 2026-09-21 correction: "PS" used to be skipped outright here on the assumption it was just a
+/// same-day on-call-pool marker sluzby7.php already covers more precisely. Live diagnostic logging
+/// against the real account proved that wrong — "PS" actually lands on the day AFTER a duty, not the
+/// duty day itself (confirmed: 2026-09-08 had the real on-call shift per sluzby7.php, but the raw
+/// spravavolna.php code was empty that day and "PS" on 2026-09-09 instead), and the user confirmed it
+/// stands for "po službě" (the mandatory rest day after on-call) — so it's now mapped to DayOff like
+/// VV/NV, not skipped.
 ///
 /// Known gap, not handled this first pass: pracoviste.php's own "NEPŘÍTOMNÍ" (absent) row is a plain
 /// semicolon-separated name list per day, not the per-person div shape every other row uses — skipped
@@ -42,7 +49,7 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
 {
     private const string BaseUrl = "https://opicentrum.cz/ARO/";
 
-    /// <summary>User-confirmed meaning of each code, 2026-09-21 (their own hospital's ARO instance — not a generic Czech labor-law standard, don't assume these transfer to another Opicentrum deployment): ŘD = řádná dovolená (regular vacation), PN = pracovní neschopnost (sick leave), SC = služební cesta (business trip), PL = lékař (doctor's appointment during a shift — mapped to SickLeave, the user's own call), VV = volno po službě (mandatory rest day after an on-call shift), NV = náhradní volno (compensatory time off) — VV/NV both map to DayOff, the closest existing type; neither is distinguished from plain DayOff today.</summary>
+    /// <summary>User-confirmed meaning of each code, 2026-09-21 (their own hospital's ARO instance — not a generic Czech labor-law standard, don't assume these transfer to another Opicentrum deployment): ŘD = řádná dovolená (regular vacation), PN = pracovní neschopnost (sick leave), SC = služební cesta (business trip), PL = lékař (doctor's appointment during a shift — mapped to SickLeave, the user's own call), VV = volno po službě (mandatory rest day after an on-call shift), NV = náhradní volno (compensatory time off), PS = po službě (the rest day the day AFTER an on-call duty — confirmed via live diagnostic logging that it lands on the following day, not the duty day itself; see this class's own remarks) — VV/NV/PS all map to DayOff, the closest existing type; none is distinguished from plain DayOff today.</summary>
     private static readonly Dictionary<string, AssignmentType> KnownLeaveCodes = new(StringComparer.OrdinalIgnoreCase)
     {
         ["ŘD"] = AssignmentType.Vacation,
@@ -51,6 +58,7 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
         ["PL"] = AssignmentType.SickLeave,
         ["VV"] = AssignmentType.DayOff,
         ["NV"] = AssignmentType.DayOff,
+        ["PS"] = AssignmentType.DayOff,
     };
 
     private readonly ISecureVaultKeyStore _vault;
@@ -263,7 +271,6 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
 
                 var lettersMatch = LeadingLettersRegex().Match(rawCode);
                 var code = lettersMatch.Success ? lettersMatch.Value : rawCode;
-                if (code.Equals("PS", StringComparison.OrdinalIgnoreCase)) continue; // sluzby7.php already covers on-call more precisely
 
                 // Full overwrite, not a merge (unlike MergeSluzbyAsync above) — real leave/vacation
                 // always wins outright, including clearing any on-call overlay a stale prior sync
