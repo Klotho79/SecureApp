@@ -40,6 +40,14 @@ public sealed class NotificationRepository : INotificationRepository
         else if (!filter.IncludeArchived)
             sql.Append(" AND is_archived = 0");
 
+        // System notifications (sync results, relay events, ...) never count toward Important/Unread —
+        // the user's own explicit ask (2026-09-21): they're informational, not something that should
+        // inflate the badges or show up when browsing "what's important"/"what's unread". Only applies
+        // when OnlyImportant/OnlyUnread themselves are in play — the dedicated "Systém" category chip
+        // (Category == System, neither flag set) must still show everything, read or not.
+        if ((filter.OnlyImportant || filter.OnlyUnread) && filter.Category is not NotificationCategory.System)
+            sql.Append(" AND category != ?").AsIs(args, (int)NotificationCategory.System);
+
         if (filter.OnlyImportant)
             sql.Append(" AND (priority >= ? OR is_manually_important = 1)").AsIs(args, (int)NotificationPriority.Important);
 
@@ -65,11 +73,13 @@ public sealed class NotificationRepository : INotificationRepository
     public async Task<NotificationCounts> GetCountsAsync(CancellationToken ct = default)
     {
         var connection = await _connectionFactory.GetConnectionAsync(ct);
+        // System notifications excluded from both counts — see GetPagedAsync's own remarks on why.
         var important = await connection.ExecuteScalarAsync<int>(
-            "SELECT COUNT(*) FROM notifications WHERE is_archived = 0 AND (priority >= ? OR is_manually_important = 1)",
-            (int)NotificationPriority.Important);
+            "SELECT COUNT(*) FROM notifications WHERE is_archived = 0 AND category != ? AND (priority >= ? OR is_manually_important = 1)",
+            (int)NotificationCategory.System, (int)NotificationPriority.Important);
         var unread = await connection.ExecuteScalarAsync<int>(
-            "SELECT COUNT(*) FROM notifications WHERE is_archived = 0 AND is_read = 0");
+            "SELECT COUNT(*) FROM notifications WHERE is_archived = 0 AND category != ? AND is_read = 0",
+            (int)NotificationCategory.System);
 
         // "Today" in the device's own local calendar day, not a UTC calendar day — a notification
         // from 23:30 local time must count as today even though its UTC timestamp already rolled

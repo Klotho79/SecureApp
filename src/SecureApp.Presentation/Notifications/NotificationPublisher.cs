@@ -124,11 +124,15 @@ public static class NotificationPublisher
         INativeNotificationService? nativeNotificationService = null,
         CancellationToken ct = default)
     {
+        // Normal, not Important (2026-09-21, user's own ask) — system notifications (sync results,
+        // relay events, ...) are informational and must never count toward the Důležité badge; see
+        // NotificationRepository's own remarks for the matching query-level exclusion (defense in
+        // depth against a future is_manually_important flip still counting one).
         var notification = new Notification(
             title: title,
             body: body,
             category: NotificationCategory.System,
-            priority: NotificationPriority.Important);
+            priority: NotificationPriority.Normal);
         return TryAddAsync(notificationRepository, notification, nativeNotificationService, ct);
     }
 
