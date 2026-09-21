@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Maui.Graphics;
 using SecureApp.Domain.Entities;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
@@ -65,6 +66,14 @@ public sealed partial class WorkplaceViewModel : ObservableObject
     [ObservableProperty]
     public partial bool HasSyncStatus { get; set; }
 
+    /// <summary>Collapsed by default (2026-09-21, user's own ask: "sbalitelná/rozklikávací" over an always-visible row) — toggled by a small ℹ button next to the Týden/Měsíc chips.</summary>
+    [ObservableProperty]
+    public partial bool IsLegendExpanded { get; set; }
+
+    /// <summary>One row per <see cref="AssignmentType"/>, built fresh on every <see cref="LoadAsync"/> so a color changed on the Settings page (per-device, see <c>AssignmentColorCatalog</c>) shows up the next time this page appears — same "just re-render, no extra invalidation wiring" pattern the rest of this ViewModel already uses.</summary>
+    [ObservableProperty]
+    public partial ObservableCollection<AssignmentLegendItem> LegendItems { get; set; }
+
     /// <summary>Mirrors <see cref="IsMonthView"/> so XAML never needs an inverse-boolean converter (this codebase's established convention — see <c>NotificationsViewModel.HasNoX</c>'s own remarks).</summary>
     public bool IsWeekView => !IsMonthView;
 
@@ -82,6 +91,7 @@ public sealed partial class WorkplaceViewModel : ObservableObject
         WeekDays = [];
         MonthLabel = string.Empty;
         MonthDays = [];
+        LegendItems = new ObservableCollection<AssignmentLegendItem>(BuildLegendItems());
         _weekStart = StartOfWeek(DateOnly.FromDateTime(DateTime.Today));
         var today = DateOnly.FromDateTime(DateTime.Today);
         _monthAnchor = new DateOnly(today.Year, today.Month, 1);
@@ -100,6 +110,7 @@ public sealed partial class WorkplaceViewModel : ObservableObject
     [RelayCommand]
     private async Task LoadAsync()
     {
+        LegendItems = new ObservableCollection<AssignmentLegendItem>(BuildLegendItems());
         await RenderWeekLocalAsync();
         if (IsMonthView)
             await RenderMonthLocalAsync();
@@ -130,6 +141,9 @@ public sealed partial class WorkplaceViewModel : ObservableObject
         var range = CurrentWeekSyncRange();
         _ = SyncInBackgroundAsync(range.Start, range.End, RenderWeekLocalAsync);
     }
+
+    [RelayCommand]
+    private void ToggleLegend() => IsLegendExpanded = !IsLegendExpanded;
 
     [RelayCommand]
     private void OpenDay(AssignmentDayItem? item)
@@ -217,12 +231,12 @@ public sealed partial class WorkplaceViewModel : ObservableObject
             var assignments = await _repository.GetByDateRangeAsync(rangeStart, rangeEnd);
             var byDate = assignments.ToDictionary(a => a.Date);
 
-            Today = ToItem(today, byDate.GetValueOrDefault(today));
+            Today = ToItem(today, byDate.GetValueOrDefault(today), AssignmentColorCatalog.NoAssignmentCardColor);
             WeekDays = new ObservableCollection<AssignmentDayItem>(
                 Enumerable.Range(0, 7).Select(offset =>
                 {
                     var date = _weekStart.AddDays(offset);
-                    return ToItem(date, byDate.GetValueOrDefault(date));
+                    return ToItem(date, byDate.GetValueOrDefault(date), AssignmentColorCatalog.NoAssignmentSurfaceColor);
                 }));
             WeekLabel = FormatWeekLabel(_weekStart, _weekStart.AddDays(6));
         }
@@ -288,18 +302,19 @@ public sealed partial class WorkplaceViewModel : ObservableObject
             isToday,
             assignment is not null,
             assignment?.Type.ToString() ?? string.Empty,
+            assignment is not null ? AssignmentColorCatalog.SoftColor(assignment.Type) : AssignmentColorCatalog.NoAssignmentSurfaceColor,
             assignment?.Id,
             OpenMonthDayCommand);
     }
 
-    private AssignmentDayItem ToItem(DateOnly date, WorkAssignment? assignment)
+    private AssignmentDayItem ToItem(DateOnly date, WorkAssignment? assignment, Color noAssignmentColor)
     {
         var isToday = date == DateOnly.FromDateTime(DateTime.Today);
         var dayLabel = $"{CzechDayAbbreviations[(int)date.DayOfWeek == 0 ? 6 : (int)date.DayOfWeek - 1]} {date.Day}. {date.Month}.";
 
         if (assignment is null)
         {
-            return new AssignmentDayItem(date, dayLabel, isToday, false, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, null, OpenDayCommand);
+            return new AssignmentDayItem(date, dayLabel, isToday, false, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, noAssignmentColor, noAssignmentColor, null, OpenDayCommand);
         }
 
         var timeText = assignment.StartTime is { } start && assignment.EndTime is { } end
@@ -316,9 +331,17 @@ public sealed partial class WorkplaceViewModel : ObservableObject
             AssignmentTypeCatalog.Glyph(assignment.Type),
             assignment.WorkplaceName ?? string.Empty,
             timeText,
+            AssignmentColorCatalog.SoftColor(assignment.Type),
+            AssignmentColorCatalog.BaseColor(assignment.Type),
             assignment.Id,
             OpenDayCommand);
     }
+
+    private static IEnumerable<AssignmentLegendItem> BuildLegendItems() =>
+        AssignmentTypeCatalog.All.Select(type => new AssignmentLegendItem(
+            AssignmentColorCatalog.BaseColor(type),
+            AssignmentTypeCatalog.Glyph(type),
+            AssignmentTypeCatalog.Label(type)));
 
     private static string? DescribeSyncResult(OpicentrumSyncResult result)
     {
@@ -348,11 +371,15 @@ public sealed partial class WorkplaceViewModel : ObservableObject
 }
 
 /// <summary>
-/// One day, in either the "Dnes" card or a Week-strip row — <see cref="TypeText"/> is the enum name
-/// (e.g. "Vacation"), bound against XAML DataTrigger Value comparisons for the type accent color,
-/// this codebase's established "no converters" convention (see <c>NotificationsPage.xaml</c>'s own
-/// priority accent bar for the same pattern). <see cref="TypeLabel"/>/<see cref="Glyph"/> are the
-/// precomputed Czech display text.
+/// One day, in either the "Dnes" card or a Week-strip row. <see cref="TypeText"/> is kept only for the
+/// "Dnes" card, which still uses it for icon-independent things elsewhere — the color itself no longer
+/// goes through XAML DataTrigger/StaticResource matching (2026-09-21: replaced by <see cref="SoftColor"/>/
+/// <see cref="AccentColor"/>, precomputed here from the per-device-customizable <c>AssignmentColorCatalog</c>,
+/// bound directly instead — a DataTrigger per type couldn't react to a user-chosen color without either
+/// a converter or 8 more triggers per color, and this codebase already precomputes display text the same
+/// way for <see cref="TypeLabel"/>/<see cref="Glyph"/>). <c>Colors.Transparent</c> when
+/// <see cref="HasAssignment"/> is false, so the binding needs no separate IsVisible/converter to suppress
+/// the tint on an empty day.
 /// </summary>
 public sealed record AssignmentDayItem(
     DateOnly Date,
@@ -364,6 +391,8 @@ public sealed record AssignmentDayItem(
     string Glyph,
     string WorkplaceText,
     string TimeText,
+    Color SoftColor,
+    Color AccentColor,
     Guid? AssignmentId,
     ICommand OpenCommand)
 {
@@ -373,7 +402,7 @@ public sealed record AssignmentDayItem(
     public string DisplayTypeLabel => HasAssignment ? TypeLabel : "Bez záznamu";
 }
 
-/// <summary>One cell in the Month grid — deliberately minimal (just a day number + a color dot) compared to <see cref="AssignmentDayItem"/>'s full row, since a month grid has to fit 42 cells on one screen. <see cref="TypeText"/> follows the same "no converters" DataTrigger convention as everywhere else on this page.</summary>
+/// <summary>One cell in the Month grid — deliberately minimal (just a day number + a tinted background) compared to <see cref="AssignmentDayItem"/>'s full row, since a month grid has to fit 42 cells on one screen. <see cref="SoftColor"/> replaces the old per-type DataTrigger, same reasoning as <see cref="AssignmentDayItem"/>'s own remarks.</summary>
 public sealed record MonthDayCell(
     DateOnly Date,
     string DayNumberText,
@@ -381,5 +410,9 @@ public sealed record MonthDayCell(
     bool IsToday,
     bool HasAssignment,
     string TypeText,
+    Color SoftColor,
     Guid? AssignmentId,
     ICommand OpenCommand);
+
+/// <summary>One row in the collapsible color legend — <see cref="Color"/> is the same <c>AssignmentColorCatalog.BaseColor</c> the Week strip's accent dot uses, so the legend always matches what's actually on screen, including after a user customizes it on the Settings page.</summary>
+public sealed record AssignmentLegendItem(Color Color, string Glyph, string Label);

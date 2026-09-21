@@ -120,6 +120,29 @@
                 </VerticalStackLayout>
             </Border>
 
+            <!-- Barvy typů rozpisu (2026-09-21, uživatelův vlastní požadavek) — jeden plný barevný
+                 vstup na typ, per-zařízení (stejně jako záložky výše), aplikuje se hned při napsání
+                 platného hexu, bez samostatného tlačítka Uložit. -->
+            <Border Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Barvy typů rozpisu" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Label Text="Barva každého typu (Práce, Dovolená, ...) na Rozpisu — jen na tomto zařízení." FontSize="12" TextColor="Gray" />
+
+                    <VerticalStackLayout Spacing="10" BindableLayout.ItemsSource="{Binding WorkplaceColorItems}">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="vm:AssignmentColorSettingItem">
+                                <Grid ColumnDefinitions="28,*,90,Auto" ColumnSpacing="8">
+                                    <BoxView Grid.Column="0" CornerRadius="6" WidthRequest="24" HeightRequest="24" Color="{Binding Preview}" VerticalOptions="Center" />
+                                    <Label Grid.Column="1" Text="{Binding Label}" FontSize="14" VerticalOptions="Center" />
+                                    <Entry Grid.Column="2" Text="{Binding HexInput}" FontSize="13" Placeholder="#RRGGBB" />
+                                    <Button Grid.Column="3" Text="↺" Style="{StaticResource SecondaryButton}" WidthRequest="40" Padding="0" Command="{Binding ResetCommand}" IsEnabled="{Binding IsCustomized}" />
+                                </Grid>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+            </Border>
+
             <!-- Admin heslo (2026-09-07) — sdílené všemi admin akcemi níže (Zařízení, Nasazení relay);
                  nikdy se neukládá, ani v appce, ani na disku, zadává se vždy znovu
                  před KAŽDOU jednotlivou admin akcí a appka ho hned po použití zahodí. Uživatelovo

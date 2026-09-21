@@ -240,6 +240,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         HasNoSharedLibraryKey = true;
         RegisteredDevices = [];
         HasNoRegisteredDevices = true;
+        WorkplaceColorItems = [];
     }
 
     partial void OnErrorMessageChanged(string? value) => HasErrorMessage = !string.IsNullOrEmpty(value);
@@ -326,6 +327,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         ConnectionStatusText = IsConnected ? "Připojeno" : "Odpojeno";
 
         await LoadOpicentrumStateAsync();
+        LoadWorkplaceColorsState();
 
         // Resume polling an activation request that was still pending the last time this device
         // closed — otherwise a relaunch mid-activation would silently strand the request: nothing
