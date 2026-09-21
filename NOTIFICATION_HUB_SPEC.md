@@ -555,6 +555,23 @@ the user has entered real credentials and opened Rozpis for the first time: `pra
 parsed; several `spravavolna.php` leave codes (SC/PL/VV/NV/--) are genuinely uncertain — see
 `OpicentrumSyncService`'s own remarks for the reasoning behind each one's handling.
 
+Phase 5, fifth slice (2026-09-21, same day) — the fourth slice above had actually never been
+deployable: the commit that landed `SyncStatusText` also left `WorkplaceViewModel.cs` mid-refactor
+(`LoadAsync`/`PreviousWeekAsync`/etc. called `RenderWeekLocalAsync`/`SyncInBackgroundAsync`/
+`CurrentWeekSyncRange`/`CurrentMonthSyncRange`, none of which existed yet), so the project hadn't
+compiled since — nothing had reached the phone. Finished the refactor (local render split from a
+background Opicentrum sync that re-renders once the sync completes). Also found and fixed a second,
+independent bug while diagnosing live: `OpicentrumSyncResult.NotConfigured` is a record whose field
+values (`true, 0, 0, null`) are indistinguishable by value from a genuine "synced fine, nothing
+changed" result, so `DescribeSyncResult`'s `==` check silently swallowed `SyncStatusText` on every
+real no-op sync — switched to `ReferenceEquals`. **First real end-to-end verification against the
+user's live opicentrum.cz account, on-device (S9+, adb/uiautomator + SQLite inspection — the local DB
+turned out to be SQLCipher-encrypted, couldn't be opened directly, dropped that approach)**: sync
+correctly found and rendered a real ŘD-coded vacation (26., 27., 29., 30.10.2026 — 28.10. correctly
+absent, a Czech public holiday) as "Dovolená" in the Week strip. The `ŘD`/`PN` code mapping needed no
+fix — both prior bugs were blocking deploy/visibility, not data correctness. Committed
+(`e2e42d3`), pushed to both `pi`/`github` remotes, relay redeployed (unrelated to this fix, routine).
+
 ---
 
 **2026-09-20 (superseded snapshot, kept for history) — Phase 1 (analysis) done, Phase 2 (data model) + Phase 3 (main UI) done, first slice.**
