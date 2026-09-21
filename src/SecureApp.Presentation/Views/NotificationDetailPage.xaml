@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8" ?>
+﻿<?xml version="1.0" encoding="UTF-8" ?>
 <ContentPage
     x:Class="SecureApp.Presentation.Views.NotificationDetailPage"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -14,7 +14,7 @@
             <controls:DelayedActivityIndicator IsBusy="{Binding IsLoading}" HorizontalOptions="Center" />
             <Label Text="{Binding ErrorMessage}" IsVisible="{Binding HasErrorMessage}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
 
-            <Label Text="{Binding Title}" Style="{StaticResource PageTitle}" FontSize="21" />
+            <Label Text="{Binding Title}" Style="{StaticResource PageTitle}" FontSize="17" />
 
             <HorizontalStackLayout Spacing="8">
                 <Border Style="{StaticResource Chip}" Margin="0" Padding="10,4">
@@ -28,10 +28,10 @@
                 </Border>
             </HorizontalStackLayout>
 
-            <Label Text="{Binding TimeText}" FontSize="12" TextColor="Gray" />
+            <Label Text="{Binding TimeText}" FontSize="9.5" TextColor="Gray" />
 
             <Border Style="{StaticResource CardBorder}">
-                <Label Text="{Binding Body}" FontSize="14.5" LineBreakMode="WordWrap" />
+                <Label Text="{Binding Body}" FontSize="11.5" LineBreakMode="WordWrap" />
             </Border>
 
             <Button Text="Otevřít související" Command="{Binding OpenRelatedCommand}" IsVisible="{Binding HasRelated}" />

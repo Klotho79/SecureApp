@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8" ?>
+﻿<?xml version="1.0" encoding="UTF-8" ?>
 <ContentPage
     x:Class="SecureApp.Presentation.Views.LibraryPage"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -21,7 +21,7 @@
         <VerticalStackLayout Grid.Row="0" Spacing="14">
             <VerticalStackLayout Spacing="2">
                 <Label Text="Knihovna postupů" Style="{StaticResource PageTitle}" />
-                <Label Text="Sdílená, šifrovaná příručka pro celý tým — prohledávatelná podle názvu, složky nebo štítku." FontSize="12.5" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
+                <Label Text="Sdílená, šifrovaná příručka pro celý tým — prohledávatelná podle názvu, složky nebo štítku." FontSize="10" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
             </VerticalStackLayout>
 
             <!-- Search + category — reworked 2026-09-06 from a custom search card + horizontal
@@ -34,7 +34,7 @@
             <SearchBar Text="{Binding SearchQuery}" Placeholder="Hledat postupy, např. &quot;sepse&quot;…" SearchCommand="{Binding SearchCommand}" />
 
             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10" VerticalOptions="Center">
-                <Label Grid.Column="0" Text="Kategorie" VerticalOptions="Center" FontSize="13" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
+                <Label Grid.Column="0" Text="Kategorie" VerticalOptions="Center" FontSize="10.5" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
                 <Picker Grid.Column="1" ItemsSource="{Binding Categories}" SelectedItem="{Binding SelectedCategory}" />
             </Grid>
 
@@ -51,7 +51,7 @@
              so "find a procedure" and "add a procedure" read as two clearly separate actions. -->
         <Border Grid.Row="1" Style="{StaticResource CardBorder}" Margin="0" IsVisible="{Binding CanModifyContent}">
             <VerticalStackLayout Spacing="8">
-                <Label Text="Přidat postup" Style="{StaticResource SectionHeader}" Margin="0" FontSize="14" />
+                <Label Text="Přidat postup" Style="{StaticResource SectionHeader}" Margin="0" FontSize="11" />
                 <Grid ColumnDefinitions="*,*,Auto" ColumnSpacing="8">
                     <Entry Grid.Column="0" Text="{Binding UploadFolderPath}" Placeholder="Složka (volitelné)" />
                     <Entry Grid.Column="1" Text="{Binding UploadTags}" Placeholder="Štítky, oddělené čárkou" />
@@ -86,12 +86,12 @@
                                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
 
                                         <Border Grid.Column="0" WidthRequest="38" HeightRequest="38" Padding="0" StrokeShape="RoundRectangle 9" Stroke="Transparent" BackgroundColor="{AppThemeBinding Light={StaticResource AccentSoft}, Dark={StaticResource AccentSoftDark}}" VerticalOptions="Start">
-                                            <Label Text="📄" FontSize="16" HorizontalOptions="Center" VerticalOptions="Center" />
+                                            <Label Text="📄" FontSize="13" HorizontalOptions="Center" VerticalOptions="Center" />
                                         </Border>
 
                                         <VerticalStackLayout Grid.Column="1" Spacing="5">
-                                            <Label Text="{Binding FileName}" FontSize="14.5" FontAttributes="Bold" LineBreakMode="TailTruncation" />
-                                            <Label Text="{Binding FolderPath}" IsVisible="{Binding HasFolder}" FontSize="12" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
+                                            <Label Text="{Binding FileName}" FontSize="11.5" FontAttributes="Bold" LineBreakMode="TailTruncation" />
+                                            <Label Text="{Binding FolderPath}" IsVisible="{Binding HasFolder}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
 
                                             <FlexLayout IsVisible="{Binding HasTags}" BindableLayout.ItemsSource="{Binding Tags}" Wrap="Wrap" Direction="Row" JustifyContent="Start" AlignItems="Start">
                                                 <BindableLayout.ItemTemplate>
@@ -103,7 +103,7 @@
                                                 </BindableLayout.ItemTemplate>
                                             </FlexLayout>
 
-                                            <Label Text="{Binding SizeAndDateText}" FontSize="11.5" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
+                                            <Label Text="{Binding SizeAndDateText}" FontSize="9" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
                                         </VerticalStackLayout>
                                     </Grid>
                                 </Border>

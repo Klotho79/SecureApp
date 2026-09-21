@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8" ?>
+﻿<?xml version="1.0" encoding="UTF-8" ?>
 <ContentPage
     x:Class="SecureApp.Presentation.Views.NotificationsPage"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -24,20 +24,20 @@
             <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8">
                 <Border Grid.Column="0" Style="{StaticResource CardBorder}" Margin="0" Padding="10,8" BackgroundColor="{AppThemeBinding Light={StaticResource DangerSoft}, Dark={StaticResource DangerSoftDark}}">
                     <VerticalStackLayout Spacing="0">
-                        <Label Text="{Binding ImportantCount}" FontSize="22" FontAttributes="Bold" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" HorizontalOptions="Center" />
-                        <Label Text="Důležité" FontSize="11.5" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" HorizontalOptions="Center" />
+                        <Label Text="{Binding ImportantCount}" FontSize="17.5" FontAttributes="Bold" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" HorizontalOptions="Center" />
+                        <Label Text="Důležité" FontSize="9" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" HorizontalOptions="Center" />
                     </VerticalStackLayout>
                 </Border>
                 <Border Grid.Column="1" Style="{StaticResource CardBorder}" Margin="0" Padding="10,8" BackgroundColor="{AppThemeBinding Light={StaticResource InfoSoft}, Dark={StaticResource InfoSoftDark}}">
                     <VerticalStackLayout Spacing="0">
-                        <Label Text="{Binding UnreadCount}" FontSize="22" FontAttributes="Bold" TextColor="{AppThemeBinding Light={StaticResource Info}, Dark={StaticResource InfoDark}}" HorizontalOptions="Center" />
-                        <Label Text="Nepřečtené" FontSize="11.5" TextColor="{AppThemeBinding Light={StaticResource Info}, Dark={StaticResource InfoDark}}" HorizontalOptions="Center" />
+                        <Label Text="{Binding UnreadCount}" FontSize="17.5" FontAttributes="Bold" TextColor="{AppThemeBinding Light={StaticResource Info}, Dark={StaticResource InfoDark}}" HorizontalOptions="Center" />
+                        <Label Text="Nepřečtené" FontSize="9" TextColor="{AppThemeBinding Light={StaticResource Info}, Dark={StaticResource InfoDark}}" HorizontalOptions="Center" />
                     </VerticalStackLayout>
                 </Border>
                 <Border Grid.Column="2" Style="{StaticResource CardBorder}" Margin="0" Padding="10,8" BackgroundColor="{AppThemeBinding Light={StaticResource SuccessSoft}, Dark={StaticResource SuccessSoftDark}}">
                     <VerticalStackLayout Spacing="0">
-                        <Label Text="{Binding TodayCount}" FontSize="22" FontAttributes="Bold" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" HorizontalOptions="Center" />
-                        <Label Text="Dnes" FontSize="11.5" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" HorizontalOptions="Center" />
+                        <Label Text="{Binding TodayCount}" FontSize="17.5" FontAttributes="Bold" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" HorizontalOptions="Center" />
+                        <Label Text="Dnes" FontSize="9" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" HorizontalOptions="Center" />
                     </VerticalStackLayout>
                 </Border>
             </Grid>
@@ -74,7 +74,7 @@
                  the user's own chats/groups to jump into, not a notification history. -->
             <VerticalStackLayout Spacing="6" IsVisible="{Binding IsChatFilterActive}">
                 <Label Text="Vaše chaty" Style="{StaticResource SectionHeader}" Margin="0,4,0,0" />
-                <Label Text="Zatím žádné chaty." FontSize="12" TextColor="Gray" IsVisible="{Binding HasNoChatQuickAccess}" />
+                <Label Text="Zatím žádné chaty." FontSize="9.5" TextColor="Gray" IsVisible="{Binding HasNoChatQuickAccess}" />
                 <VerticalStackLayout Spacing="6" BindableLayout.ItemsSource="{Binding ChatQuickAccess}">
                     <BindableLayout.ItemTemplate>
                         <DataTemplate x:DataType="vm:ChatQuickAccessItem">
@@ -83,8 +83,8 @@
                                     <TapGestureRecognizer Command="{Binding OpenCommand}" CommandParameter="{Binding .}" />
                                 </Border.GestureRecognizers>
                                 <Grid ColumnDefinitions="Auto,*">
-                                    <Label Grid.Column="0" Text="{Binding Glyph}" FontSize="16" VerticalOptions="Center" Margin="0,0,8,0" />
-                                    <Label Grid.Column="1" Text="{Binding DisplayName}" FontSize="13.5" FontAttributes="Bold" VerticalOptions="Center" LineBreakMode="TailTruncation" />
+                                    <Label Grid.Column="0" Text="{Binding Glyph}" FontSize="13" VerticalOptions="Center" Margin="0,0,8,0" />
+                                    <Label Grid.Column="1" Text="{Binding DisplayName}" FontSize="11" FontAttributes="Bold" VerticalOptions="Center" LineBreakMode="TailTruncation" />
                                 </Grid>
                             </Border>
                         </DataTemplate>
@@ -103,8 +103,8 @@
                         <TapGestureRecognizer Command="{Binding OpenLibraryTabCommand}" />
                     </Border.GestureRecognizers>
                     <Grid ColumnDefinitions="Auto,*">
-                        <Label Grid.Column="0" Text="📚" FontSize="16" VerticalOptions="Center" Margin="0,0,8,0" />
-                        <Label Grid.Column="1" Text="Knihovna" FontSize="13.5" FontAttributes="Bold" VerticalOptions="Center" />
+                        <Label Grid.Column="0" Text="📚" FontSize="13" VerticalOptions="Center" Margin="0,0,8,0" />
+                        <Label Grid.Column="1" Text="Knihovna" FontSize="11" FontAttributes="Bold" VerticalOptions="Center" />
                     </Grid>
                 </Border>
                 <Border Style="{StaticResource CardBorder}" Margin="0" Padding="10,8" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
@@ -112,8 +112,8 @@
                         <TapGestureRecognizer Command="{Binding OpenDocumentsTabCommand}" />
                     </Border.GestureRecognizers>
                     <Grid ColumnDefinitions="Auto,*">
-                        <Label Grid.Column="0" Text="📄" FontSize="16" VerticalOptions="Center" Margin="0,0,8,0" />
-                        <Label Grid.Column="1" Text="Dokumenty" FontSize="13.5" FontAttributes="Bold" VerticalOptions="Center" />
+                        <Label Grid.Column="0" Text="📄" FontSize="13" VerticalOptions="Center" Margin="0,0,8,0" />
+                        <Label Grid.Column="1" Text="Dokumenty" FontSize="11" FontAttributes="Bold" VerticalOptions="Center" />
                     </Grid>
                 </Border>
                 <Border Style="{StaticResource CardBorder}" Margin="0" Padding="10,8" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
@@ -121,14 +121,14 @@
                         <TapGestureRecognizer Command="{Binding OpenAddProcedureCommand}" />
                     </Border.GestureRecognizers>
                     <Grid ColumnDefinitions="Auto,*">
-                        <Label Grid.Column="0" Text="➕" FontSize="16" VerticalOptions="Center" Margin="0,0,8,0" />
-                        <Label Grid.Column="1" Text="Přidat postup" FontSize="13.5" FontAttributes="Bold" VerticalOptions="Center" />
+                        <Label Grid.Column="0" Text="➕" FontSize="13" VerticalOptions="Center" Margin="0,0,8,0" />
+                        <Label Grid.Column="1" Text="Přidat postup" FontSize="11" FontAttributes="Bold" VerticalOptions="Center" />
                     </Grid>
                 </Border>
             </VerticalStackLayout>
 
             <controls:DelayedActivityIndicator IsBusy="{Binding IsLoading}" HorizontalOptions="Center" />
-            <Label Text="Žádná oznámení." FontSize="12" TextColor="Gray" IsVisible="{Binding HasNoNotifications}" HorizontalOptions="Center" Margin="0,20" />
+            <Label Text="Žádná oznámení." FontSize="9.5" TextColor="Gray" IsVisible="{Binding HasNoNotifications}" HorizontalOptions="Center" Margin="0,20" />
 
             <!-- Grouped, collapsible sections (spec §5, §16). -->
             <CollectionView ItemsSource="{Binding Sections}" SelectionMode="None">
@@ -142,14 +142,14 @@
                                 <Grid.GestureRecognizers>
                                     <TapGestureRecognizer Command="{Binding ToggleExpandedCommand}" />
                                 </Grid.GestureRecognizers>
-                                <Label Grid.Column="0" Text="{Binding Name, StringFormat='{0} ▾'}" FontSize="14" FontAttributes="Bold" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}">
+                                <Label Grid.Column="0" Text="{Binding Name, StringFormat='{0} ▾'}" FontSize="11" FontAttributes="Bold" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}">
                                     <Label.Triggers>
                                         <DataTrigger TargetType="Label" Binding="{Binding IsExpanded}" Value="False">
                                             <Setter Property="Text" Value="{Binding Name, StringFormat='{0} ▸'}" />
                                         </DataTrigger>
                                     </Label.Triggers>
                                 </Label>
-                                <Label Grid.Column="1" Text="{Binding Count}" FontSize="12" TextColor="Gray" VerticalOptions="Center" />
+                                <Label Grid.Column="1" Text="{Binding Count}" FontSize="9.5" TextColor="Gray" VerticalOptions="Center" />
                             </Grid>
 
                             <VerticalStackLayout Spacing="6" IsVisible="{Binding IsExpanded}" BindableLayout.ItemsSource="{Binding VisibleEntries}">
@@ -180,10 +180,10 @@
                                                 </BoxView>
                                                 <VerticalStackLayout Grid.Column="1" Spacing="2">
                                                     <Grid ColumnDefinitions="*,Auto">
-                                                        <Label Grid.Column="0" Text="{Binding Title}" FontSize="13.5" FontAttributes="Bold" LineBreakMode="TailTruncation" />
-                                                        <Label Grid.Column="1" Text="{Binding TimeText}" FontSize="11" TextColor="Gray" VerticalOptions="Center" />
+                                                        <Label Grid.Column="0" Text="{Binding Title}" FontSize="11" FontAttributes="Bold" LineBreakMode="TailTruncation" />
+                                                        <Label Grid.Column="1" Text="{Binding TimeText}" FontSize="9" TextColor="Gray" VerticalOptions="Center" />
                                                     </Grid>
-                                                    <Label Text="{Binding Preview}" FontSize="12.5" LineBreakMode="TailTruncation" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
+                                                    <Label Text="{Binding Preview}" FontSize="10" LineBreakMode="TailTruncation" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
                                                 </VerticalStackLayout>
                                             </Grid>
                                         </Border>

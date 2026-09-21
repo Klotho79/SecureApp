@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8" ?>
+﻿<?xml version="1.0" encoding="UTF-8" ?>
 <ContentPage
     x:Class="SecureApp.Presentation.Views.AddAssignmentPage"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -11,7 +11,7 @@
     <ScrollView>
         <VerticalStackLayout Padding="20" Spacing="10">
 
-            <Label Text="{Binding DateText}" Style="{StaticResource PageTitle}" FontSize="19" />
+            <Label Text="{Binding DateText}" Style="{StaticResource PageTitle}" FontSize="15" />
             <Label Text="{Binding ErrorMessage}" IsVisible="{Binding HasErrorMessage}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
 
             <Label Text="Typ" FontAttributes="Bold" />
@@ -24,11 +24,11 @@
 
             <Grid ColumnDefinitions="*,*" ColumnSpacing="10" IsVisible="{Binding HasSpecificTime}">
                 <VerticalStackLayout Grid.Column="0" Spacing="4">
-                    <Label Text="Od" FontSize="12" TextColor="Gray" />
+                    <Label Text="Od" FontSize="9.5" TextColor="Gray" />
                     <TimePicker Time="{Binding StartTime}" />
                 </VerticalStackLayout>
                 <VerticalStackLayout Grid.Column="1" Spacing="4">
-                    <Label Text="Do" FontSize="12" TextColor="Gray" />
+                    <Label Text="Do" FontSize="9.5" TextColor="Gray" />
                     <TimePicker Time="{Binding EndTime}" />
                 </VerticalStackLayout>
             </Grid>

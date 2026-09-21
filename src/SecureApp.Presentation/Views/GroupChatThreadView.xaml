@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8" ?>
+﻿<?xml version="1.0" encoding="UTF-8" ?>
 <ContentView
     x:Class="SecureApp.Presentation.Views.GroupChatThreadView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -39,7 +39,7 @@
                     <Grid.GestureRecognizers>
                         <TapGestureRecognizer Command="{Binding ToggleMembersExpandedCommand}" />
                     </Grid.GestureRecognizers>
-                    <Label Grid.Column="0" Text="{Binding MemberCount, StringFormat='Členové ({0}) ▾'}" Style="{StaticResource SectionHeader}" Margin="0" FontSize="14">
+                    <Label Grid.Column="0" Text="{Binding MemberCount, StringFormat='Členové ({0}) ▾'}" Style="{StaticResource SectionHeader}" Margin="0" FontSize="11">
                         <Label.Triggers>
                             <DataTrigger TargetType="Label" Binding="{Binding IsMembersExpanded}" Value="False">
                                 <Setter Property="Text" Value="{Binding MemberCount, StringFormat='Členové ({0}) ▸'}" />
@@ -56,7 +56,7 @@
                 <Button
                     Text="👑 Zakladatel je nedostupný — převzít vedení"
                     Style="{StaticResource SecondaryButton}"
-                    FontSize="12.5"
+                    FontSize="10"
                     IsVisible="{Binding CanClaimFounder}"
                     Command="{Binding ClaimFounderCommand}" />
 
@@ -69,7 +69,7 @@
                                     <Button
                                         Grid.Column="1"
                                         Text="↺"
-                                        FontSize="12"
+                                        FontSize="9.5"
                                         Padding="4,0"
                                         BackgroundColor="Transparent"
                                         TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}"
@@ -79,7 +79,7 @@
                                     <Button
                                         Grid.Column="2"
                                         Text="👑"
-                                        FontSize="12"
+                                        FontSize="9.5"
                                         Padding="4,0"
                                         BackgroundColor="Transparent"
                                         TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}"
@@ -89,7 +89,7 @@
                                     <Button
                                         Grid.Column="3"
                                         Text="✕"
-                                        FontSize="11"
+                                        FontSize="9"
                                         Padding="4,0"
                                         BackgroundColor="Transparent"
                                         TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}"
@@ -126,10 +126,10 @@
                     <controls:GroupMessageTemplateSelector>
                         <controls:GroupMessageTemplateSelector.TextTemplate>
                             <DataTemplate x:DataType="vm:GroupMessageItem">
-                                <Grid Padding="3,0">
+                                <Grid Padding="2,0">
                                     <Border
-                                        Padding="7,3"
-                                        StrokeShape="RoundRectangle 18,18,5,18"
+                                        Padding="6,2"
+                                        StrokeShape="RoundRectangle 15,15,4,15"
                                         StrokeThickness="1"
                                         Stroke="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}"
                                         BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray950}}"
@@ -137,7 +137,7 @@
                                         MaximumWidthRequest="340">
                                         <Border.Triggers>
                                             <DataTrigger TargetType="Border" Binding="{Binding IsOutbound}" Value="True">
-                                                <Setter Property="StrokeShape" Value="RoundRectangle 18,18,18,5" />
+                                                <Setter Property="StrokeShape" Value="RoundRectangle 15,15,15,4" />
                                                 <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
                                                 <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
                                                 <Setter Property="HorizontalOptions" Value="End" />
@@ -147,7 +147,7 @@
                                             <HorizontalStackLayout Grid.Row="0" Spacing="6">
                                                 <Label
                                                     Text="{Binding TimeLabel}"
-                                                    FontSize="9"
+                                                    FontSize="7"
                                                     TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}">
                                                     <Label.Triggers>
                                                         <DataTrigger TargetType="Label" Binding="{Binding IsOutbound}" Value="True">
@@ -159,19 +159,19 @@
                                                 <Label
                                                     Text="{Binding StatusGlyph}"
                                                     IsVisible="{Binding ShowStatusGlyph}"
-                                                    FontSize="9"
+                                                    FontSize="7"
                                                     VerticalOptions="Center"
                                                     TextColor="{AppThemeBinding Light=#CFE7F0, Dark={StaticResource PrimaryDarkText}}" />
                                                 <Label
                                                     Text="{Binding SenderDisplayName}"
-                                                    FontSize="10"
+                                                    FontSize="8"
                                                     FontAttributes="Bold"
                                                     LineBreakMode="TailTruncation"
                                                     IsVisible="{Binding IsInbound}"
                                                     TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
                                                 <Label
                                                     Text="🗑"
-                                                    FontSize="11"
+                                                    FontSize="9"
                                                     VerticalOptions="Center"
                                                     TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}"
                                                     IsVisible="{Binding CanDelete}">
@@ -183,7 +183,7 @@
                                                 </Label>
                                             </HorizontalStackLayout>
 
-                                            <Label Grid.Row="1" Text="{Binding Text}" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" FontSize="13" LineBreakMode="WordWrap">
+                                            <Label Grid.Row="1" Text="{Binding Text}" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" FontSize="10.5" LineBreakMode="WordWrap">
                                                 <Label.Triggers>
                                                     <DataTrigger TargetType="Label" Binding="{Binding IsOutbound}" Value="True">
                                                         <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource PrimaryDarkText}}" />
@@ -198,10 +198,10 @@
 
                         <controls:GroupMessageTemplateSelector.AttachmentTemplate>
                             <DataTemplate x:DataType="vm:GroupMessageItem">
-                                <Grid Padding="3,0">
+                                <Grid Padding="2,0">
                                     <Border
-                                        Padding="7,3"
-                                        StrokeShape="RoundRectangle 18,18,5,18"
+                                        Padding="6,2"
+                                        StrokeShape="RoundRectangle 15,15,4,15"
                                         StrokeThickness="1"
                                         Stroke="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}"
                                         BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray950}}"
@@ -209,7 +209,7 @@
                                         MaximumWidthRequest="340">
                                         <Border.Triggers>
                                             <DataTrigger TargetType="Border" Binding="{Binding IsOutbound}" Value="True">
-                                                <Setter Property="StrokeShape" Value="RoundRectangle 18,18,18,5" />
+                                                <Setter Property="StrokeShape" Value="RoundRectangle 15,15,15,4" />
                                                 <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
                                                 <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
                                                 <Setter Property="HorizontalOptions" Value="End" />
@@ -219,7 +219,7 @@
                                             <HorizontalStackLayout Grid.Row="0" Spacing="6">
                                                 <Label
                                                     Text="{Binding TimeLabel}"
-                                                    FontSize="9"
+                                                    FontSize="7"
                                                     TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}">
                                                     <Label.Triggers>
                                                         <DataTrigger TargetType="Label" Binding="{Binding IsOutbound}" Value="True">
@@ -231,19 +231,19 @@
                                                 <Label
                                                     Text="{Binding StatusGlyph}"
                                                     IsVisible="{Binding ShowStatusGlyph}"
-                                                    FontSize="9"
+                                                    FontSize="7"
                                                     VerticalOptions="Center"
                                                     TextColor="{AppThemeBinding Light=#CFE7F0, Dark={StaticResource PrimaryDarkText}}" />
                                                 <Label
                                                     Text="{Binding SenderDisplayName}"
-                                                    FontSize="10"
+                                                    FontSize="8"
                                                     FontAttributes="Bold"
                                                     LineBreakMode="TailTruncation"
                                                     IsVisible="{Binding IsInbound}"
                                                     TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
                                                 <Label
                                                     Text="🗑"
-                                                    FontSize="11"
+                                                    FontSize="9"
                                                     VerticalOptions="Center"
                                                     TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}"
                                                     IsVisible="{Binding CanDelete}">
@@ -255,7 +255,7 @@
                                                 </Label>
                                             </HorizontalStackLayout>
 
-                                            <Label Grid.Row="1" Text="{Binding Text}" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" FontSize="13" LineBreakMode="WordWrap" IsVisible="{Binding HasText}">
+                                            <Label Grid.Row="1" Text="{Binding Text}" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" FontSize="10.5" LineBreakMode="WordWrap" IsVisible="{Binding HasText}">
                                                 <Label.Triggers>
                                                     <DataTrigger TargetType="Label" Binding="{Binding IsOutbound}" Value="True">
                                                         <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource PrimaryDarkText}}" />
@@ -263,18 +263,18 @@
                                                 </Label.Triggers>
                                             </Label>
 
-                                            <Border Grid.Row="2" Padding="8,6" StrokeShape="RoundRectangle 10" Stroke="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
+                                            <Border Grid.Row="2" Padding="6,5" StrokeShape="RoundRectangle 8" Stroke="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
                                                 <Border.GestureRecognizers>
                                                     <TapGestureRecognizer
                                                         Command="{Binding Source={x:Reference GroupChatRoot}, Path=BindingContext.OpenAttachmentCommand}"
                                                         CommandParameter="{Binding .}" />
                                                 </Border.GestureRecognizers>
                                                 <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9" RowDefinitions="Auto,Auto">
-                                                    <Label Grid.Column="0" Grid.RowSpan="2" Text="📄" FontSize="18" VerticalOptions="Center" />
-                                                    <Label Grid.Column="1" Grid.Row="0" Text="{Binding AttachmentFileName}" FontSize="12.5" FontAttributes="Bold" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" LineBreakMode="TailTruncation" />
-                                                    <Label Grid.Column="1" Grid.Row="1" Text="Ze sdílené knihovny" FontSize="10.5" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
+                                                    <Label Grid.Column="0" Grid.RowSpan="2" Text="📄" FontSize="14.5" VerticalOptions="Center" />
+                                                    <Label Grid.Column="1" Grid.Row="0" Text="{Binding AttachmentFileName}" FontSize="10" FontAttributes="Bold" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" LineBreakMode="TailTruncation" />
+                                                    <Label Grid.Column="1" Grid.Row="1" Text="Ze sdílené knihovny" FontSize="8.5" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
                                                     <!-- Move to global library (2.3) — only shown in an archived thread. -->
-                                                    <Button Grid.Column="2" Grid.RowSpan="2" Text="→📚" FontSize="12" Padding="6,0" VerticalOptions="Center"
+                                                    <Button Grid.Column="2" Grid.RowSpan="2" Text="→📚" FontSize="9.5" Padding="6,0" VerticalOptions="Center"
                                                             IsVisible="{Binding Source={x:Reference GroupChatRoot}, Path=BindingContext.IsArchived}"
                                                             Command="{Binding Source={x:Reference GroupChatRoot}, Path=BindingContext.PublishAttachmentToLibraryCommand}"
                                                             CommandParameter="{Binding .}" />
@@ -307,7 +307,7 @@
 
         <!-- Archived group (2.3): read-only footer instead of the compose bar. -->
         <Label Grid.Row="4" IsVisible="{Binding IsArchived}" Padding="12,12" HorizontalOptions="Center"
-               Text="📦 Archivováno — jen ke čtení" FontSize="12"
+               Text="📦 Archivováno — jen ke čtení" FontSize="9.5"
                TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
     </Grid>
 </ContentView>

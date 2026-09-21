@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8" ?>
+﻿<?xml version="1.0" encoding="UTF-8" ?>
 <ContentPage
     x:Class="SecureApp.Presentation.Views.LogbookChecklistPage"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -22,7 +22,7 @@
                     <DataTemplate x:DataType="vm:LogbookChecklistRowItem">
                         <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10" Padding="0,4">
                             <CheckBox Grid.Column="0" IsChecked="{Binding IsChecked}" />
-                            <Label Grid.Column="1" Text="{Binding Text}" VerticalOptions="Center" FontSize="15" LineBreakMode="WordWrap" />
+                            <Label Grid.Column="1" Text="{Binding Text}" VerticalOptions="Center" FontSize="12" LineBreakMode="WordWrap" />
                         </Grid>
                     </DataTemplate>
                 </CollectionView.ItemTemplate>

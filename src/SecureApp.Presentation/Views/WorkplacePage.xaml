@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8" ?>
+﻿<?xml version="1.0" encoding="UTF-8" ?>
 <ContentPage
     x:Class="SecureApp.Presentation.Views.WorkplacePage"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -12,7 +12,7 @@
         <VerticalStackLayout Padding="16" Spacing="12">
 
             <controls:DelayedActivityIndicator IsBusy="{Binding IsLoading}" HorizontalOptions="Center" />
-            <Label Text="{Binding SyncStatusText}" IsVisible="{Binding HasSyncStatus}" FontSize="11.5" TextColor="Gray" HorizontalOptions="Center" />
+            <Label Text="{Binding SyncStatusText}" IsVisible="{Binding HasSyncStatus}" FontSize="9" TextColor="Gray" HorizontalOptions="Center" />
 
             <!-- Dnes (spec §6 TODAY block) — always today's own status, independent of which week the
                  strip below is currently showing. -->
@@ -22,14 +22,14 @@
                 </Border.GestureRecognizers>
                 <VerticalStackLayout Spacing="6">
                     <Label Text="Dnes" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Label Text="Dnes není naplánovaná žádná směna. Klepnutím přidáte." FontSize="13" TextColor="Gray" IsVisible="{Binding Today.HasNoAssignment}" />
+                    <Label Text="Dnes není naplánovaná žádná směna. Klepnutím přidáte." FontSize="10.5" TextColor="Gray" IsVisible="{Binding Today.HasNoAssignment}" />
                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10" IsVisible="{Binding Today.HasAssignment}">
-                        <Label Grid.Column="0" Text="{Binding Today.Glyph}" FontSize="28" VerticalOptions="Center" />
+                        <Label Grid.Column="0" Text="{Binding Today.Glyph}" FontSize="22.5" VerticalOptions="Center" />
                         <VerticalStackLayout Grid.Column="1" Spacing="1">
-                            <Label Text="{Binding Today.TypeLabel}" FontSize="17" FontAttributes="Bold" />
-                            <Label Text="{Binding Today.WorkplaceText}" FontSize="13.5" IsVisible="{Binding Today.HasWorkplace}" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
+                            <Label Text="{Binding Today.TypeLabel}" FontSize="13.5" FontAttributes="Bold" />
+                            <Label Text="{Binding Today.WorkplaceText}" FontSize="11" IsVisible="{Binding Today.HasWorkplace}" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
                         </VerticalStackLayout>
-                        <Label Grid.Column="2" Text="{Binding Today.TimeText}" FontSize="13" TextColor="Gray" VerticalOptions="Center" IsVisible="{Binding Today.HasTime}" />
+                        <Label Grid.Column="2" Text="{Binding Today.TimeText}" FontSize="10.5" TextColor="Gray" VerticalOptions="Center" IsVisible="{Binding Today.HasTime}" />
                     </Grid>
                 </VerticalStackLayout>
             </Border>
@@ -86,7 +86,7 @@
                         <DataTemplate x:DataType="vm:AssignmentLegendItem">
                             <HorizontalStackLayout Spacing="5" Margin="0,3,14,3">
                                 <BoxView CornerRadius="3" WidthRequest="12" HeightRequest="12" Color="{Binding Color}" VerticalOptions="Center" />
-                                <Label Text="{Binding Label}" FontSize="12" VerticalOptions="Center" />
+                                <Label Text="{Binding Label}" FontSize="9.5" VerticalOptions="Center" />
                             </HorizontalStackLayout>
                         </DataTemplate>
                     </BindableLayout.ItemTemplate>
@@ -96,7 +96,7 @@
             <!-- Tento týden (spec §7 — "Week is primary"). -->
             <Grid ColumnDefinitions="Auto,*,Auto" IsVisible="{Binding IsWeekView}">
                 <Button Grid.Column="0" Text="‹" Style="{StaticResource SecondaryButton}" WidthRequest="44" Padding="0" Command="{Binding PreviousWeekCommand}" />
-                <Label Grid.Column="1" Text="{Binding WeekLabel}" FontAttributes="Bold" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+                <Label Grid.Column="1" Text="{Binding WeekLabel}" FontAttributes="Bold" FontSize="11" HorizontalOptions="Center" VerticalOptions="Center" />
                 <Button Grid.Column="2" Text="›" Style="{StaticResource SecondaryButton}" WidthRequest="44" Padding="0" Command="{Binding NextWeekCommand}" />
             </Grid>
 
@@ -113,13 +113,13 @@
                                 </DataTrigger>
                             </Border.Triggers>
                             <Grid ColumnDefinitions="60,6,*,Auto" ColumnSpacing="8">
-                                <Label Grid.Column="0" Text="{Binding DayLabel}" FontSize="12.5" FontAttributes="Bold" VerticalOptions="Center" />
+                                <Label Grid.Column="0" Text="{Binding DayLabel}" FontSize="10" FontAttributes="Bold" VerticalOptions="Center" />
                                 <BoxView Grid.Column="1" CornerRadius="3" Color="{Binding AccentColor}" IsVisible="{Binding HasAssignment}" />
                                 <VerticalStackLayout Grid.Column="2" Spacing="1">
-                                    <Label Text="{Binding DisplayTypeLabel}" FontSize="13.5" FontAttributes="Bold" LineBreakMode="TailTruncation" />
-                                    <Label Text="{Binding WorkplaceText}" FontSize="12" IsVisible="{Binding HasWorkplace}" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" LineBreakMode="TailTruncation" />
+                                    <Label Text="{Binding DisplayTypeLabel}" FontSize="11" FontAttributes="Bold" LineBreakMode="TailTruncation" />
+                                    <Label Text="{Binding WorkplaceText}" FontSize="9.5" IsVisible="{Binding HasWorkplace}" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" LineBreakMode="TailTruncation" />
                                 </VerticalStackLayout>
-                                <Label Grid.Column="3" Text="{Binding TimeText}" FontSize="11.5" TextColor="Gray" VerticalOptions="Center" IsVisible="{Binding HasTime}" />
+                                <Label Grid.Column="3" Text="{Binding TimeText}" FontSize="9" TextColor="Gray" VerticalOptions="Center" IsVisible="{Binding HasTime}" />
                             </Grid>
                         </Border>
                     </DataTemplate>
@@ -135,7 +135,7 @@
                  stays 7-wide. -->
             <Grid ColumnDefinitions="Auto,*,Auto" IsVisible="{Binding IsMonthView}">
                 <Button Grid.Column="0" Text="‹" Style="{StaticResource SecondaryButton}" WidthRequest="44" Padding="0" Command="{Binding PreviousMonthCommand}" />
-                <Label Grid.Column="1" Text="{Binding MonthLabel}" FontAttributes="Bold" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+                <Label Grid.Column="1" Text="{Binding MonthLabel}" FontAttributes="Bold" FontSize="11" HorizontalOptions="Center" VerticalOptions="Center" />
                 <Button Grid.Column="2" Text="›" Style="{StaticResource SecondaryButton}" WidthRequest="44" Padding="0" Command="{Binding NextMonthCommand}" />
             </Grid>
 
@@ -166,7 +166,7 @@
                                 </DataTrigger>
                             </Border.Triggers>
                             <Grid Padding="2">
-                                <Label Text="{Binding DayNumberText}" FontSize="13" FontAttributes="Bold" HorizontalOptions="Center" VerticalOptions="Center" />
+                                <Label Text="{Binding DayNumberText}" FontSize="10.5" FontAttributes="Bold" HorizontalOptions="Center" VerticalOptions="Center" />
                             </Grid>
                         </Border>
                     </DataTemplate>

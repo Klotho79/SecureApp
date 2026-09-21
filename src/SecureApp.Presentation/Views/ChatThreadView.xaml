@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8" ?>
+﻿<?xml version="1.0" encoding="UTF-8" ?>
 <ContentView
     x:Class="SecureApp.Presentation.Views.ChatThreadView"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -35,10 +35,10 @@
                     <controls:ChatMessageTemplateSelector>
                         <controls:ChatMessageTemplateSelector.TextTemplate>
                             <DataTemplate x:DataType="vm:ChatMessageItem">
-                                <Grid Padding="3,0">
+                                <Grid Padding="2,0">
                                     <Border
-                                        Padding="7,3"
-                                        StrokeShape="RoundRectangle 18,18,5,18"
+                                        Padding="6,2"
+                                        StrokeShape="RoundRectangle 15,15,4,15"
                                         StrokeThickness="1"
                                         Stroke="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}"
                                         BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray950}}"
@@ -46,7 +46,7 @@
                                         MaximumWidthRequest="340">
                                         <Border.Triggers>
                                             <DataTrigger TargetType="Border" Binding="{Binding IsOutbound}" Value="True">
-                                                <Setter Property="StrokeShape" Value="RoundRectangle 18,18,18,5" />
+                                                <Setter Property="StrokeShape" Value="RoundRectangle 15,15,15,4" />
                                                 <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
                                                 <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
                                                 <Setter Property="HorizontalOptions" Value="End" />
@@ -63,7 +63,7 @@
                                                 <Label
                                                     Grid.Column="0"
                                                     Text="🗑"
-                                                    FontSize="11"
+                                                    FontSize="9"
                                                     VerticalOptions="Center"
                                                     IsVisible="{Binding CanDelete}"
                                                     TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}">
@@ -76,7 +76,7 @@
                                                 <HorizontalStackLayout Grid.Column="1" Spacing="4" HorizontalOptions="End">
                                                     <Label
                                                         Text="{Binding TimeLabel}"
-                                                        FontSize="9"
+                                                        FontSize="7"
                                                         VerticalOptions="Center"
                                                         TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}">
                                                         <Label.Triggers>
@@ -89,13 +89,13 @@
                                                     <Label
                                                         Text="{Binding StatusGlyph}"
                                                         IsVisible="{Binding ShowStatusGlyph}"
-                                                        FontSize="9"
+                                                        FontSize="7"
                                                         VerticalOptions="Center"
                                                         TextColor="{AppThemeBinding Light=#CFE7F0, Dark={StaticResource PrimaryDarkText}}" />
                                                 </HorizontalStackLayout>
                                             </Grid>
 
-                                            <Label Grid.Row="1" Text="{Binding Text}" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" FontSize="13" LineBreakMode="WordWrap">
+                                            <Label Grid.Row="1" Text="{Binding Text}" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" FontSize="10.5" LineBreakMode="WordWrap">
                                                 <Label.Triggers>
                                                     <DataTrigger TargetType="Label" Binding="{Binding IsOutbound}" Value="True">
                                                         <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource PrimaryDarkText}}" />
@@ -110,10 +110,10 @@
 
                         <controls:ChatMessageTemplateSelector.AttachmentTemplate>
                             <DataTemplate x:DataType="vm:ChatMessageItem">
-                                <Grid Padding="3,0">
+                                <Grid Padding="2,0">
                                     <Border
-                                        Padding="7,3"
-                                        StrokeShape="RoundRectangle 18,18,5,18"
+                                        Padding="6,2"
+                                        StrokeShape="RoundRectangle 15,15,4,15"
                                         StrokeThickness="1"
                                         Stroke="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}"
                                         BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray950}}"
@@ -121,7 +121,7 @@
                                         MaximumWidthRequest="340">
                                         <Border.Triggers>
                                             <DataTrigger TargetType="Border" Binding="{Binding IsOutbound}" Value="True">
-                                                <Setter Property="StrokeShape" Value="RoundRectangle 18,18,18,5" />
+                                                <Setter Property="StrokeShape" Value="RoundRectangle 15,15,15,4" />
                                                 <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
                                                 <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
                                                 <Setter Property="HorizontalOptions" Value="End" />
@@ -133,7 +133,7 @@
                                                 <Label
                                                     Grid.Column="0"
                                                     Text="🗑"
-                                                    FontSize="11"
+                                                    FontSize="9"
                                                     VerticalOptions="Center"
                                                     IsVisible="{Binding CanDelete}"
                                                     TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}">
@@ -146,7 +146,7 @@
                                                 <HorizontalStackLayout Grid.Column="1" Spacing="4" HorizontalOptions="End">
                                                     <Label
                                                         Text="{Binding TimeLabel}"
-                                                        FontSize="9"
+                                                        FontSize="7"
                                                         VerticalOptions="Center"
                                                         TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}">
                                                         <Label.Triggers>
@@ -158,13 +158,13 @@
                                                     <Label
                                                         Text="{Binding StatusGlyph}"
                                                         IsVisible="{Binding ShowStatusGlyph}"
-                                                        FontSize="9"
+                                                        FontSize="7"
                                                         VerticalOptions="Center"
                                                         TextColor="{AppThemeBinding Light=#CFE7F0, Dark={StaticResource PrimaryDarkText}}" />
                                                 </HorizontalStackLayout>
                                             </Grid>
 
-                                            <Label Grid.Row="1" Text="{Binding Text}" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" FontSize="13" LineBreakMode="WordWrap" IsVisible="{Binding HasText}">
+                                            <Label Grid.Row="1" Text="{Binding Text}" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" FontSize="10.5" LineBreakMode="WordWrap" IsVisible="{Binding HasText}">
                                                 <Label.Triggers>
                                                     <DataTrigger TargetType="Label" Binding="{Binding IsOutbound}" Value="True">
                                                         <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource PrimaryDarkText}}" />
@@ -172,16 +172,16 @@
                                                 </Label.Triggers>
                                             </Label>
 
-                                            <Border Grid.Row="2" Padding="8,6" StrokeShape="RoundRectangle 10" Stroke="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
+                                            <Border Grid.Row="2" Padding="6,5" StrokeShape="RoundRectangle 8" Stroke="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
                                                 <Border.GestureRecognizers>
                                                     <TapGestureRecognizer
                                                         Command="{Binding Source={x:Reference ChatThreadRoot}, Path=BindingContext.OpenAttachmentCommand}"
                                                         CommandParameter="{Binding .}" />
                                                 </Border.GestureRecognizers>
                                                 <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9" RowDefinitions="Auto,Auto">
-                                                    <Label Grid.Column="0" Grid.RowSpan="2" Text="📄" FontSize="18" VerticalOptions="Center" />
-                                                    <Label Grid.Column="1" Grid.Row="0" Text="{Binding AttachmentFileName}" FontSize="12.5" FontAttributes="Bold" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" LineBreakMode="TailTruncation" />
-                                                    <Label Grid.Column="1" Grid.Row="1" Text="Ze sdílené knihovny" FontSize="10.5" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
+                                                    <Label Grid.Column="0" Grid.RowSpan="2" Text="📄" FontSize="14.5" VerticalOptions="Center" />
+                                                    <Label Grid.Column="1" Grid.Row="0" Text="{Binding AttachmentFileName}" FontSize="10" FontAttributes="Bold" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" LineBreakMode="TailTruncation" />
+                                                    <Label Grid.Column="1" Grid.Row="1" Text="Ze sdílené knihovny" FontSize="8.5" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
                                                 </Grid>
                                             </Border>
                                         </Grid>
@@ -211,7 +211,7 @@
 
         <!-- Archived chat (2.3): read-only footer. -->
         <Label Grid.Row="3" IsVisible="{Binding IsArchived}" Padding="12,12" HorizontalOptions="Center"
-               Text="📦 Archivováno — jen ke čtení" FontSize="12"
+               Text="📦 Archivováno — jen ke čtení" FontSize="9.5"
                TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
     </Grid>
 </ContentView>

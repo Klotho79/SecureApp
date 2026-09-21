@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8" ?>
+﻿<?xml version="1.0" encoding="UTF-8" ?>
 <ContentPage
     x:Class="SecureApp.Presentation.Views.ChatListPage"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -48,7 +48,7 @@
                              previously removed — held here for explicit accept/decline instead of
                              silently re-appearing. See RemovedPeersStore / PendingInvitesStore. -->
                         <VerticalStackLayout Spacing="8" IsVisible="{Binding HasPendingInvites}">
-                            <Label Text="Žádosti o opětovné přidání" FontAttributes="Bold" FontSize="13" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
+                            <Label Text="Žádosti o opětovné přidání" FontAttributes="Bold" FontSize="10.5" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
                             <VerticalStackLayout Spacing="6" BindableLayout.ItemsSource="{Binding PendingInvites}">
                                 <BindableLayout.ItemTemplate>
                                     <DataTemplate x:DataType="vm:PendingInviteItem">
@@ -74,7 +74,7 @@
                              list+detail split below — a scope call for this first pass, not a
                              XAML limitation. -->
                         <VerticalStackLayout Spacing="8" IsVisible="{Binding HasGroups}">
-                            <Label Text="Skupiny" FontAttributes="Bold" FontSize="13" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
+                            <Label Text="Skupiny" FontAttributes="Bold" FontSize="10.5" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
                             <CollectionView
                                 x:Name="GroupsView"
                                 ItemsSource="{Binding Groups}"
@@ -88,11 +88,11 @@
                                         <Border Style="{StaticResource CardBorder}" Margin="0" Padding="10,8">
                                             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
                                                 <Border Grid.Column="0" WidthRequest="34" HeightRequest="34" Padding="0" StrokeShape="RoundRectangle 10" Stroke="Transparent" BackgroundColor="{AppThemeBinding Light={StaticResource AccentSoft}, Dark={StaticResource AccentSoftDark}}" VerticalOptions="Center">
-                                                    <Label Text="{Binding Initials}" FontFamily="SpectralSemibold" FontSize="12.5" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" HorizontalOptions="Center" VerticalOptions="Center" />
+                                                    <Label Text="{Binding Initials}" FontFamily="SpectralSemibold" FontSize="10" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" HorizontalOptions="Center" VerticalOptions="Center" />
                                                 </Border>
-                                                <Label Grid.Column="1" Text="{Binding Name}" FontSize="14" FontAttributes="Bold" VerticalOptions="Center" />
+                                                <Label Grid.Column="1" Text="{Binding Name}" FontSize="11" FontAttributes="Bold" VerticalOptions="Center" />
                                                 <!-- Delete from THIS device's list only — see ChatListViewModel.DeleteGroupAsync's own remarks; distinct from "leave" (GroupChatPage's own 🚪 Opustit), which actually notifies the group. -->
-                                                <Button Grid.Column="2" Text="🗑" FontSize="13" Style="{StaticResource SecondaryButton}" WidthRequest="36" Padding="0" VerticalOptions="Center" Clicked="OnDeleteGroupClicked" />
+                                                <Button Grid.Column="2" Text="🗑" FontSize="10.5" Style="{StaticResource SecondaryButton}" WidthRequest="36" Padding="0" VerticalOptions="Center" Clicked="OnDeleteGroupClicked" />
                                             </Grid>
                                         </Border>
                                     </DataTemplate>
@@ -120,21 +120,21 @@
                                     <Border Style="{StaticResource CardBorder}" Margin="0" Padding="10,8">
                                         <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="10">
                                             <Border Grid.Column="0" WidthRequest="34" HeightRequest="34" Padding="0" StrokeShape="RoundRectangle 17" Stroke="Transparent" BackgroundColor="{AppThemeBinding Light={StaticResource AccentSoft}, Dark={StaticResource AccentSoftDark}}" VerticalOptions="Center">
-                                                <Label Text="{Binding Initials}" FontFamily="SpectralSemibold" FontSize="12.5" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" HorizontalOptions="Center" VerticalOptions="Center" />
+                                                <Label Text="{Binding Initials}" FontFamily="SpectralSemibold" FontSize="10" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" HorizontalOptions="Center" VerticalOptions="Center" />
                                             </Border>
                                             <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
-                                                <Label Text="{Binding PeerDisplayName}" FontSize="14" FontAttributes="Bold" />
-                                                <Label Text="{Binding LastActivityText}" FontSize="11.5" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" LineBreakMode="TailTruncation" />
+                                                <Label Text="{Binding PeerDisplayName}" FontSize="11" FontAttributes="Bold" />
+                                                <Label Text="{Binding LastActivityText}" FontSize="9" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" LineBreakMode="TailTruncation" />
                                                 <!-- 2.1 (2026-09-17): peer absent from the relay's ACTIVE directory (stale/dead
                                                      registration) — paired with the same ↺ resync button every row already has. -->
-                                                <Label Text="⚠ nedostupný — zkuste přepárovat" FontSize="10.5" IsVisible="{Binding IsUnavailable}"
+                                                <Label Text="⚠ nedostupný — zkuste přepárovat" FontSize="8.5" IsVisible="{Binding IsUnavailable}"
                                                        TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" />
                                             </VerticalStackLayout>
                                             <!-- Reset/re-pair (2026-09-07) — recovery path for a session whose ratchet state has
                                                  become genuinely undecryptable, see ChatListViewModel.ResetSessionAsync's own remarks. -->
                                             <Button Grid.Column="2" Text="↺" Style="{StaticResource SecondaryButton}" WidthRequest="36" Padding="0" VerticalOptions="Center" Clicked="OnResetSessionClicked" />
                                             <!-- Delete from THIS device's list only (2026-09-10) — see ChatListViewModel.DeleteSessionAsync's own remarks. -->
-                                            <Button Grid.Column="3" Text="🗑" FontSize="13" Style="{StaticResource SecondaryButton}" WidthRequest="36" Padding="0" VerticalOptions="Center" Clicked="OnDeleteSessionClicked" />
+                                            <Button Grid.Column="3" Text="🗑" FontSize="10.5" Style="{StaticResource SecondaryButton}" WidthRequest="36" Padding="0" VerticalOptions="Center" Clicked="OnDeleteSessionClicked" />
                                         </Grid>
                                     </Border>
                                 </DataTemplate>
@@ -148,7 +148,7 @@
                                 <Grid.GestureRecognizers>
                                     <TapGestureRecognizer Command="{Binding ToggleArchiveCommand}" />
                                 </Grid.GestureRecognizers>
-                                <Label Grid.Column="0" Text="{Binding ArchivedCount, StringFormat='📦 Archiv ({0}) ▾'}" FontAttributes="Bold" FontSize="13" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}">
+                                <Label Grid.Column="0" Text="{Binding ArchivedCount, StringFormat='📦 Archiv ({0}) ▾'}" FontAttributes="Bold" FontSize="10.5" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}">
                                     <Label.Triggers>
                                         <DataTrigger TargetType="Label" Binding="{Binding IsArchiveExpanded}" Value="False">
                                             <Setter Property="Text" Value="{Binding ArchivedCount, StringFormat='📦 Archiv ({0}) ▸'}" />
@@ -164,8 +164,8 @@
                                         <DataTemplate x:DataType="vm:GroupChatListItem">
                                             <Border Style="{StaticResource CardBorder}" Margin="0" Padding="10,8" Opacity="0.7">
                                                 <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
-                                                    <Label Grid.Column="0" Text="📦" FontSize="16" VerticalOptions="Center" />
-                                                    <Label Grid.Column="1" Text="{Binding Name}" FontSize="14" FontAttributes="Bold" VerticalOptions="Center" />
+                                                    <Label Grid.Column="0" Text="📦" FontSize="13" VerticalOptions="Center" />
+                                                    <Label Grid.Column="1" Text="{Binding Name}" FontSize="11" FontAttributes="Bold" VerticalOptions="Center" />
                                                 </Grid>
                                             </Border>
                                         </DataTemplate>
@@ -177,8 +177,8 @@
                                         <DataTemplate x:DataType="vm:ChatSessionItem">
                                             <Border Style="{StaticResource CardBorder}" Margin="0" Padding="10,8" Opacity="0.7">
                                                 <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
-                                                    <Label Grid.Column="0" Text="📦" FontSize="16" VerticalOptions="Center" />
-                                                    <Label Grid.Column="1" Text="{Binding PeerDisplayName}" FontSize="14" FontAttributes="Bold" VerticalOptions="Center" />
+                                                    <Label Grid.Column="0" Text="📦" FontSize="13" VerticalOptions="Center" />
+                                                    <Label Grid.Column="1" Text="{Binding PeerDisplayName}" FontSize="11" FontAttributes="Bold" VerticalOptions="Center" />
                                                 </Grid>
                                             </Border>
                                         </DataTemplate>
@@ -197,8 +197,8 @@
         <Grid Grid.Column="1" x:Name="DetailPane" Padding="1,0,0,0" IsVisible="False">
             <ContentView x:Name="ThreadHost" IsVisible="False" />
             <VerticalStackLayout x:Name="EmptyDetailState" HorizontalOptions="Center" VerticalOptions="Center" Spacing="6">
-                <Label Text="Vyberte chat" FontFamily="SpectralSemibold" FontSize="17" HorizontalOptions="Center" />
-                <Label Text="Vyberte konverzaci ze seznamu a začněte číst." FontSize="13" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" HorizontalOptions="Center" />
+                <Label Text="Vyberte chat" FontFamily="SpectralSemibold" FontSize="13.5" HorizontalOptions="Center" />
+                <Label Text="Vyberte konverzaci ze seznamu a začněte číst." FontSize="10.5" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" HorizontalOptions="Center" />
             </VerticalStackLayout>
         </Grid>
     </Grid>
@@ -219,7 +219,7 @@
                      same time (see its SetCompactHeaderHosted) so they show in exactly one place. -->
                 <Grid x:Name="NarrowGroupHeaderExtras" x:DataType="vm:GroupChatViewModel" Grid.Column="1" IsVisible="False"
                       ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
-                    <Label Grid.Column="0" VerticalOptions="Center" HorizontalOptions="End" FontSize="13"
+                    <Label Grid.Column="0" VerticalOptions="Center" HorizontalOptions="End" FontSize="10.5"
                            Text="{Binding MemberCount, StringFormat='Členové ({0}) ▸'}">
                         <Label.GestureRecognizers>
                             <TapGestureRecognizer Command="{Binding ToggleMembersExpandedCommand}" />

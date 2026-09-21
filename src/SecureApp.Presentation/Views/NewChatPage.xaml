@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8" ?>
+﻿<?xml version="1.0" encoding="UTF-8" ?>
 <ContentPage
     x:Class="SecureApp.Presentation.Views.NewChatPage"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -26,9 +26,9 @@
             <Border Style="{StaticResource CardBorder}">
                 <VerticalStackLayout Spacing="8">
                     <Label Text="Chat s někým z komunity" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Label Text="Klepnutím na jméno appka sama založí zabezpečený chat — žádné kartičky ani kódy." FontSize="12" TextColor="Gray" />
+                    <Label Text="Klepnutím na jméno appka sama založí zabezpečený chat — žádné kartičky ani kódy." FontSize="9.5" TextColor="Gray" />
                     <controls:DelayedActivityIndicator IsBusy="{Binding IsLoadingMembers}" HorizontalOptions="Center" />
-                    <Label Text="Zatím tu nikdo není — buď jsi jediný aktivovaný, nebo se ostatní ještě nepřipojili." FontSize="12" TextColor="Gray" IsVisible="{Binding HasNoMembers}" />
+                    <Label Text="Zatím tu nikdo není — buď jsi jediný aktivovaný, nebo se ostatní ještě nepřipojili." FontSize="9.5" TextColor="Gray" IsVisible="{Binding HasNoMembers}" />
                     <CollectionView ItemsSource="{Binding Members}" SelectionMode="None">
                         <CollectionView.ItemsLayout>
                             <LinearItemsLayout Orientation="Vertical" ItemSpacing="6" />
@@ -39,7 +39,7 @@
                                     <Border.GestureRecognizers>
                                         <TapGestureRecognizer Command="{Binding Command}" CommandParameter="{Binding .}" />
                                     </Border.GestureRecognizers>
-                                    <Label Text="{Binding DisplayName}" FontAttributes="Bold" FontSize="14.5" />
+                                    <Label Text="{Binding DisplayName}" FontAttributes="Bold" FontSize="11.5" />
                                 </Border>
                             </DataTemplate>
                         </CollectionView.ItemTemplate>
