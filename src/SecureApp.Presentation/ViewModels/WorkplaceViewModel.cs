@@ -100,58 +100,35 @@ public sealed partial class WorkplaceViewModel : ObservableObject
     [RelayCommand]
     private async Task LoadAsync()
     {
-        IsLoading = true;
-        try
-        {
-            var today = DateOnly.FromDateTime(DateTime.Today);
-            var weekEnd = _weekStart.AddDays(6);
-
-            // One range query covers both the "Dnes" card and the week strip whenever today falls
-            // inside the currently-viewed week; a second, separate query only runs when it doesn't
-            // (the user paged to a different week) — the "Dnes" card must stay accurate regardless
-            // of which week is being browsed.
-            var rangeStart = today < _weekStart ? today : _weekStart;
-            var rangeEnd = today > weekEnd ? today : weekEnd;
-
-            // Opicentrum sync (2026-09-21) — automatic on every open, the user's own explicit choice.
-            // Best-effort: a network/login failure must never prevent the local Rozpis from rendering
-            // (OpicentrumSyncService itself publishes a Notification on failure — see its own remarks).
-            try { SyncStatusText = DescribeSyncResult(await _opicentrumSyncService.SyncAsync(rangeStart, rangeEnd)); }
-            catch (Exception ex) { SyncStatusText = $"Synchronizace s Opicentrem selhala: {ex.Message}"; }
-
-            var assignments = await _repository.GetByDateRangeAsync(rangeStart, rangeEnd);
-            var byDate = assignments.ToDictionary(a => a.Date);
-
-            Today = ToItem(today, byDate.GetValueOrDefault(today));
-            WeekDays = new ObservableCollection<AssignmentDayItem>(
-                Enumerable.Range(0, 7).Select(offset =>
-                {
-                    var date = _weekStart.AddDays(offset);
-                    return ToItem(date, byDate.GetValueOrDefault(date));
-                }));
-            WeekLabel = FormatWeekLabel(_weekStart, weekEnd);
-        }
-        finally
-        {
-            IsLoading = false;
-        }
-
+        await RenderWeekLocalAsync();
         if (IsMonthView)
-            await LoadMonthAsync();
+            await RenderMonthLocalAsync();
+
+        var weekRange = CurrentWeekSyncRange();
+        _ = SyncInBackgroundAsync(weekRange.Start, weekRange.End, RenderWeekLocalAsync);
+        if (IsMonthView)
+        {
+            var monthRange = CurrentMonthSyncRange();
+            _ = SyncInBackgroundAsync(monthRange.Start, monthRange.End, RenderMonthLocalAsync);
+        }
     }
 
     [RelayCommand]
     private async Task PreviousWeekAsync()
     {
         _weekStart = _weekStart.AddDays(-7);
-        await LoadAsync();
+        await RenderWeekLocalAsync();
+        var range = CurrentWeekSyncRange();
+        _ = SyncInBackgroundAsync(range.Start, range.End, RenderWeekLocalAsync);
     }
 
     [RelayCommand]
     private async Task NextWeekAsync()
     {
         _weekStart = _weekStart.AddDays(7);
-        await LoadAsync();
+        await RenderWeekLocalAsync();
+        var range = CurrentWeekSyncRange();
+        _ = SyncInBackgroundAsync(range.Start, range.End, RenderWeekLocalAsync);
     }
 
     [RelayCommand]
@@ -173,7 +150,9 @@ public sealed partial class WorkplaceViewModel : ObservableObject
     {
         if (!IsMonthView) return;
         IsMonthView = false;
-        await LoadAsync();
+        // No fresh sync here on purpose — Month's own sync just covered the overlapping dates
+        // moments ago; switching views is purely a local re-render.
+        await RenderWeekLocalAsync();
     }
 
     [RelayCommand]
@@ -181,40 +160,91 @@ public sealed partial class WorkplaceViewModel : ObservableObject
     {
         if (IsMonthView) return;
         IsMonthView = true;
-        await LoadMonthAsync();
+        await RenderMonthLocalAsync();
+        var range = CurrentMonthSyncRange();
+        _ = SyncInBackgroundAsync(range.Start, range.End, RenderMonthLocalAsync);
     }
 
     [RelayCommand]
     private async Task PreviousMonthAsync()
     {
         _monthAnchor = _monthAnchor.AddMonths(-1);
-        await LoadMonthAsync();
+        await RenderMonthLocalAsync();
+        var range = CurrentMonthSyncRange();
+        _ = SyncInBackgroundAsync(range.Start, range.End, RenderMonthLocalAsync);
     }
 
     [RelayCommand]
     private async Task NextMonthAsync()
     {
         _monthAnchor = _monthAnchor.AddMonths(1);
-        await LoadMonthAsync();
+        await RenderMonthLocalAsync();
+        var range = CurrentMonthSyncRange();
+        _ = SyncInBackgroundAsync(range.Start, range.End, RenderMonthLocalAsync);
     }
 
     /// <summary>
-    /// Always a full 6-row (42-cell) grid starting on the Monday on/before the 1st — a fixed height
-    /// keeps the grid from visually jumping between 4/5/6-row months as the user pages through them.
-    /// Cells outside <see cref="_monthAnchor"/>'s own month are still real, tappable days (spec
-    /// doesn't say otherwise, and <c>AddAssignmentPage</c> always shows its own explicit date, so
-    /// there's no ambiguity) — <see cref="MonthDayCell.IsCurrentMonth"/> just dims them.
+    /// One range query covers both the "Dnes" card and the week strip whenever today falls inside the
+    /// currently-viewed week; a second, separate bound only kicks in when it doesn't (the user paged to
+    /// a different week) — the "Dnes" card must stay accurate regardless of which week is being browsed.
+    /// Local-only (no network) — see <see cref="SyncInBackgroundAsync"/> for the Opicentrum half.
     /// </summary>
-    private async Task LoadMonthAsync()
+    private (DateOnly Start, DateOnly End) CurrentWeekSyncRange()
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var weekEnd = _weekStart.AddDays(6);
+        var rangeStart = today < _weekStart ? today : _weekStart;
+        var rangeEnd = today > weekEnd ? today : weekEnd;
+        return (rangeStart, rangeEnd);
+    }
+
+    /// <summary>Always a full 6-row (42-cell) grid starting on the Monday on/before the 1st — see <see cref="RenderMonthLocalAsync"/>'s own remarks for why.</summary>
+    private (DateOnly Start, DateOnly End) CurrentMonthSyncRange()
+    {
+        var gridStart = StartOfWeek(_monthAnchor);
+        return (gridStart, gridStart.AddDays(41));
+    }
+
+    /// <summary>Renders Dnes + Week strip purely from the local repository — no network. Used both for the initial paint and to re-render once <see cref="SyncInBackgroundAsync"/> has written fresh data.</summary>
+    private async Task RenderWeekLocalAsync()
     {
         IsLoading = true;
         try
         {
-            var gridStart = StartOfWeek(_monthAnchor);
-            var gridEnd = gridStart.AddDays(41);
+            var today = DateOnly.FromDateTime(DateTime.Today);
+            var (rangeStart, rangeEnd) = CurrentWeekSyncRange();
 
-            try { SyncStatusText = DescribeSyncResult(await _opicentrumSyncService.SyncAsync(gridStart, gridEnd)); }
-            catch (Exception ex) { SyncStatusText = $"Synchronizace s Opicentrem selhala: {ex.Message}"; }
+            var assignments = await _repository.GetByDateRangeAsync(rangeStart, rangeEnd);
+            var byDate = assignments.ToDictionary(a => a.Date);
+
+            Today = ToItem(today, byDate.GetValueOrDefault(today));
+            WeekDays = new ObservableCollection<AssignmentDayItem>(
+                Enumerable.Range(0, 7).Select(offset =>
+                {
+                    var date = _weekStart.AddDays(offset);
+                    return ToItem(date, byDate.GetValueOrDefault(date));
+                }));
+            WeekLabel = FormatWeekLabel(_weekStart, _weekStart.AddDays(6));
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    /// <summary>
+    /// Renders the Month grid purely from the local repository — no network. A fixed height keeps the
+    /// grid from visually jumping between 4/5/6-row months as the user pages through them. Cells
+    /// outside <see cref="_monthAnchor"/>'s own month are still real, tappable days (spec doesn't say
+    /// otherwise, and <c>AddAssignmentPage</c> always shows its own explicit date, so there's no
+    /// ambiguity) — <see cref="MonthDayCell.IsCurrentMonth"/> just dims them.
+    /// </summary>
+    private async Task RenderMonthLocalAsync()
+    {
+        IsLoading = true;
+        try
+        {
+            var (gridStart, gridEnd) = CurrentMonthSyncRange();
 
             var assignments = await _repository.GetByDateRangeAsync(gridStart, gridEnd);
             var byDate = assignments.ToDictionary(a => a.Date);
@@ -231,6 +261,20 @@ public sealed partial class WorkplaceViewModel : ObservableObject
         {
             IsLoading = false;
         }
+    }
+
+    /// <summary>
+    /// Opicentrum sync (2026-09-21), run in the background rather than blocking the local render —
+    /// best-effort: a network/login failure must never prevent the already-rendered local Rozpis from
+    /// staying usable (OpicentrumSyncService itself publishes a Notification on failure — see its own
+    /// remarks). <paramref name="onSynced"/> re-renders from the local repository afterwards so newly
+    /// written assignments actually show up without the user having to manually refresh.
+    /// </summary>
+    private async Task SyncInBackgroundAsync(DateOnly rangeStart, DateOnly rangeEnd, Func<Task> onSynced)
+    {
+        try { SyncStatusText = DescribeSyncResult(await _opicentrumSyncService.SyncAsync(rangeStart, rangeEnd)); }
+        catch (Exception ex) { SyncStatusText = $"Synchronizace s Opicentrem selhala: {ex.Message}"; }
+        await onSynced();
     }
 
     private MonthDayCell ToMonthCell(DateOnly date, WorkAssignment? assignment)
@@ -278,7 +322,11 @@ public sealed partial class WorkplaceViewModel : ObservableObject
 
     private static string? DescribeSyncResult(OpicentrumSyncResult result)
     {
-        if (result == OpicentrumSyncResult.NotConfigured) return null; // not set up yet — nothing to report
+        // Reference equality on purpose (2026-09-21 bug fix) — OpicentrumSyncResult is a record, and
+        // NotConfigured's field values (Success=true, 0, 0, null) are indistinguishable by value from a
+        // genuine "synced fine, nothing changed" result, so `==` silently swallowed the status text on
+        // every no-op sync. NotConfigured is only ever returned as this exact static instance.
+        if (ReferenceEquals(result, OpicentrumSyncResult.NotConfigured)) return null; // not set up yet — nothing to report
         if (!result.Success) return $"Synchronizace s Opicentrem selhala: {result.ErrorMessage}";
         return result.CreatedCount == 0 && result.UpdatedCount == 0
             ? "Synchronizováno s Opicentrem — beze změn."
