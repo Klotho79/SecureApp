@@ -7,6 +7,8 @@ using SecureApp.Domain.Enums;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Domain.Policies;
+using SecureApp.Domain.ValueObjects;
+using SecureApp.Presentation.Notifications;
 using SecureApp.Presentation.Workplace;
 
 namespace SecureApp.Presentation.ViewModels;
@@ -28,6 +30,8 @@ public sealed partial class AddAssignmentViewModel : ObservableObject, IQueryAtt
     private readonly IWorkAssignmentRepository _assignmentRepository;
     private readonly IWorkplaceCatalogService _workplaceCatalogService;
     private readonly ICurrentUserService _currentUserService;
+    private readonly IOpicentrumSyncService _opicentrumSyncService;
+    private readonly INotificationRepository _notificationRepository;
 
     private DateOnly _date;
     private Guid? _assignmentId;
@@ -99,11 +103,18 @@ public sealed partial class AddAssignmentViewModel : ObservableObject, IQueryAtt
     /// <summary>Raised once the assignment is actually saved/deleted — the Page navigates back on this, not on the command simply completing (an error stays on the form).</summary>
     public event Action? Saved;
 
-    public AddAssignmentViewModel(IWorkAssignmentRepository assignmentRepository, IWorkplaceCatalogService workplaceCatalogService, ICurrentUserService currentUserService)
+    public AddAssignmentViewModel(
+        IWorkAssignmentRepository assignmentRepository,
+        IWorkplaceCatalogService workplaceCatalogService,
+        ICurrentUserService currentUserService,
+        IOpicentrumSyncService opicentrumSyncService,
+        INotificationRepository notificationRepository)
     {
         _assignmentRepository = assignmentRepository ?? throw new ArgumentNullException(nameof(assignmentRepository));
         _workplaceCatalogService = workplaceCatalogService ?? throw new ArgumentNullException(nameof(workplaceCatalogService));
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
+        _opicentrumSyncService = opicentrumSyncService ?? throw new ArgumentNullException(nameof(opicentrumSyncService));
+        _notificationRepository = notificationRepository ?? throw new ArgumentNullException(nameof(notificationRepository));
         TypeOptions = AssignmentTypeCatalog.All.Select(t => new AssignmentTypeOption(t, AssignmentTypeCatalog.Label(t))).ToList();
         SelectedTypeOption = TypeOptions[0];
         DateText = string.Empty;
@@ -194,6 +205,7 @@ public sealed partial class AddAssignmentViewModel : ObservableObject, IQueryAtt
                 if (_existing is null) return; // shouldn't happen — CanSave is false for this case too
                 _existing.Update(_existing.Type, _existing.StartTime, _existing.EndTime, _existing.WorkplaceId, _existing.WorkplaceName, note, _existing.OnCallWorkplaceName);
                 await _assignmentRepository.UpdateAsync(_existing);
+                _ = PushNoteInBackgroundAsync(_date, note);
                 Saved?.Invoke();
                 return;
             }
@@ -226,6 +238,7 @@ public sealed partial class AddAssignmentViewModel : ObservableObject, IQueryAtt
                 await _assignmentRepository.AddAsync(assignment);
             }
 
+            _ = PushNoteInBackgroundAsync(_date, note);
             Saved?.Invoke();
         }
         catch (Exception ex)
@@ -256,6 +269,39 @@ public sealed partial class AddAssignmentViewModel : ObservableObject, IQueryAtt
         finally
         {
             IsSaving = false;
+        }
+    }
+
+    /// <summary>
+    /// Fire-and-forget after a local save (2026-09-22, user's own ask: "chci aby se poznamka propsala
+    /// do webu") — pushes <paramref name="note"/> to the real Opicentrum "Požadavky" form (a genuine
+    /// write to the user's actual hospital scheduling system, see <c>OpicentrumSyncService.PushNoteAsync</c>'s
+    /// own remarks for how it avoids disturbing anything else on that day's row). Doesn't block the
+    /// local Save/navigate-back — this is a network round-trip to a third-party site, same "never let
+    /// Opicentrum reachability gate the local UI" principle <c>WorkplaceViewModel</c>'s own sync
+    /// already established. Silent on success (matches every other Opicentrum status surfaced only via
+    /// Notification, not a toast); a real failure or a day with no editable web row publishes a
+    /// Notification so the user finds out even after already navigating away — NotConfigured (no
+    /// Opicentrum credentials set up at all) stays silent, same as the read-sync's own
+    /// DescribeSyncResult, since that's an expected "not set up" state, not a failure.
+    /// </summary>
+    private async Task PushNoteInBackgroundAsync(DateOnly date, string? note)
+    {
+        try
+        {
+            var result = await _opicentrumSyncService.PushNoteAsync(date, note);
+            if (result.Status is OpicentrumNotePushStatus.Success or OpicentrumNotePushStatus.NotConfigured)
+                return;
+
+            var reason = result.Status == OpicentrumNotePushStatus.DayNotEditable
+                ? result.ErrorMessage ?? "Tento den nemá na webu editovatelné políčko poznámky."
+                : $"Nepodařilo se zapsat poznámku na web: {result.ErrorMessage}";
+            await NotificationPublisher.PublishSystemWarningAsync(_notificationRepository, "Poznámka se nepropsala do Opicentra", $"{date:d. M. yyyy}: {reason}");
+        }
+        catch
+        {
+            // Best-effort — a failed push must never surface as a crash; the Notification path above
+            // already covers the "user should know" case for every result PushNoteAsync itself returns.
         }
     }
 

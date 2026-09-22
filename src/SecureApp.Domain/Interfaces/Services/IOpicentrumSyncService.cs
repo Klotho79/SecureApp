@@ -23,4 +23,17 @@ public interface IOpicentrumSyncService
     /// see that property's own remarks.
     /// </summary>
     Task<OpicentrumSyncResult> SyncAsync(DateOnly rangeStart, DateOnly rangeEnd, CancellationToken ct = default);
+
+    /// <summary>
+    /// Writes <paramref name="note"/> to the "Poznámka" field on pozadavky.php for <paramref name="date"/>
+    /// — the actual Opicentrum leave-REQUEST form (a different page/concept than the read-only sync
+    /// above), 2026-09-22, the user's own explicit ask: "chci aby se poznamka propsala do webu". This
+    /// is a genuine WRITE to the user's real hospital scheduling system, not a local-only change — see
+    /// <c>OpicentrumSyncService.PushNoteAsync</c>'s own remarks for the care taken to never disturb any
+    /// other field on that day's row (hours/leave-code/checkbox) while doing it. Truncated to the web
+    /// form's own 20-character limit before sending; a day with no editable row on the web at all (a
+    /// non-worked/grayed-out day) returns <see cref="OpicentrumNotePushStatus.DayNotEditable"/> rather
+    /// than attempting anything.
+    /// </summary>
+    Task<OpicentrumNotePushResult> PushNoteAsync(DateOnly date, string? note, CancellationToken ct = default);
 }

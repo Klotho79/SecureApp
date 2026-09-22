@@ -49,6 +49,23 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
 {
     private const string BaseUrl = "https://opicentrum.cz/ARO/";
 
+    /// <summary>
+    /// .NET's default HttpClient User-Agent on Android is "Dalvik/2.1.0 (...)" — the site sniffs this
+    /// and serves a "Stránka vyžaduje Javascript, použijte Chrome" fallback page instead of real content
+    /// (confirmed 2026-09-22 via a live full-response dump on pozadavky.php: it's a plain User-Agent
+    /// substring check, not a real JS check). A normal desktop Chrome UA string sails through. Used on
+    /// EVERY HttpClient this class creates, including <see cref="SyncAsync"/>'s — 2026-09-22 correction:
+    /// this was briefly scoped to <see cref="PushNoteAsync"/> only, on the guess that SyncAsync's three
+    /// read-only pages were fine under the plain Dalvik UA and broke under this one instead. That guess
+    /// was wrong: reverting it made SyncAsync's own <see cref="LoginAsync"/> welcome-check (which GETs
+    /// pracoviste.php looking for "Vítej ...") start failing under the reverted-to-Dalvik UA while
+    /// PushNoteAsync's identical login kept succeeding under the Chrome UA — proving the UA gate isn't
+    /// pozadavky.php-specific, it's site-wide (pracoviste.php included), so every request this class
+    /// makes needs it.
+    /// </summary>
+    private const string BrowserUserAgent =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
     /// <summary>User-confirmed meaning of each code, 2026-09-21 (their own hospital's ARO instance — not a generic Czech labor-law standard, don't assume these transfer to another Opicentrum deployment): ŘD = řádná dovolená (regular vacation), PN = pracovní neschopnost (sick leave), SC = služební cesta (business trip), PL = lékař (doctor's appointment during a shift — mapped to SickLeave, the user's own call), VV = volno po službě (mandatory rest day after an on-call shift), NV = náhradní volno (compensatory time off), PS = po službě (the rest day the day AFTER an on-call duty — confirmed via live diagnostic logging that it lands on the following day, not the duty day itself; see this class's own remarks) — VV/NV/PS all map to DayOff, the closest existing type; none is distinguished from plain DayOff today.</summary>
     private static readonly Dictionary<string, AssignmentType> KnownLeaveCodes = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -60,6 +77,25 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
         ["NV"] = AssignmentType.DayOff,
         ["PS"] = AssignmentType.DayOff,
     };
+
+    /// <summary>
+    /// The site can only handle one active login per account at a time — two near-simultaneous logins
+    /// (confirmed live 2026-09-22, in two different shapes: two concurrent <see cref="SyncAsync"/>
+    /// range-syncs racing each other, AND a <see cref="SyncAsync"/> racing a <see cref="PushNoteAsync"/>)
+    /// collide server-side, silently invalidating whichever login's own follow-up request lands second —
+    /// that call then sees itself logged out and reports "login failed" even though nothing about it was
+    /// actually wrong. A static, class-wide gate (not per-instance — DI lifetime doesn't matter here)
+    /// serializes every login this class ever makes, app-wide, so this can't happen again regardless of
+    /// which two entry points happen to race.
+    /// </summary>
+    private static readonly SemaphoreSlim LoginGate = new(1, 1);
+
+    /// <summary>Nominative Czech month names, matching pozadavky.php's own month dropdown exactly (0-based, so index Month-1) — used to reproduce its submit button's own label text (<c>"Změnit požadavky na {měsíc}"</c>) in <see cref="PushNoteAsync"/>.</summary>
+    private static readonly string[] PozadavkyMonthNames =
+    [
+        "Leden", "Únor", "Březen", "Duben", "Květen", "Červen",
+        "Červenec", "Srpen", "Září", "Říjen", "Listopad", "Prosinec"
+    ];
 
     private readonly ISecureVaultKeyStore _vault;
     private readonly IWorkAssignmentRepository _assignmentRepository;
@@ -100,7 +136,9 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
         var cookies = new CookieContainer();
         using var handler = new HttpClientHandler { CookieContainer = cookies, UseCookies = true };
         using var http = new HttpClient(handler) { BaseAddress = new Uri(BaseUrl) };
+        http.DefaultRequestHeaders.UserAgent.ParseAdd(BrowserUserAgent);
 
+        await LoginGate.WaitAsync(ct);
         try
         {
             var myName = await LoginAsync(http, username, password, ct);
@@ -134,7 +172,123 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
             catch { /* best-effort — the sync failure itself is already the thing being reported */ }
             return new OpicentrumSyncResult(false, 0, 0, error);
         }
+        finally
+        {
+            LoginGate.Release();
+        }
     }
+
+    /// <summary>
+    /// Writes to pozadavky.php — the Opicentrum leave-REQUEST form (2026-09-22, user's own ask: "chci
+    /// aby se poznamka propsala do webu"). A real WRITE to the user's actual hospital scheduling
+    /// system, not local-only — handled with real care:
+    ///
+    /// The form covers the WHOLE month in one POST (one &lt;form&gt;, ~4 fields × every day), so
+    /// pushing a note means re-submitting every other day's fields completely unchanged, not just the
+    /// target day's own. A genuine trap found reading the real page source: <c>volnehod[N]</c> (the
+    /// leave HOURS select) is never marked with a static <c>selected</c> attribute — its real current
+    /// value is set client-side by an inline <c>onload="plnvolhod(N,&lt;hours&gt;,...)"</c> call, which a
+    /// plain HTTP scrape (no JS execution) would otherwise miss entirely, silently submitting an empty
+    /// value and WIPING OUT real already-recorded leave hours for that day. Every field this method
+    /// doesn't intend to change is read from its own true current source (the <c>plnvolhod</c> call for
+    /// hours, the select's own <c>&lt;option selected&gt;</c> for the leave code, the checkbox's own
+    /// <c>checked</c> attribute) and re-submitted byte-for-byte as found — only <c>specsal[date.Day]</c>
+    /// (max 20 chars, the form's own limit) is ever replaced.
+    ///
+    /// A day with no matching "planakci"-class row at all (every non-worked/grayed-out "planakcisns" day
+    /// — confirmed against the real page: those literally have no &lt;input&gt;/&lt;select&gt; for that day,
+    /// nothing to submit) returns <see cref="OpicentrumNotePushStatus.DayNotEditable"/> without attempting
+    /// a write. After posting, the page is re-fetched and the target day's own specsal value is checked
+    /// against what was just sent — real confirmation the write landed, not just that the HTTP call didn't
+    /// throw.
+    /// </summary>
+    public async Task<OpicentrumNotePushResult> PushNoteAsync(DateOnly date, string? note, CancellationToken ct = default)
+    {
+        var usernameBytes = await _vault.RetrieveSecretAsync(OpicentrumVaultKeys.Username, ct);
+        var passwordBytes = await _vault.RetrieveSecretAsync(OpicentrumVaultKeys.Password, ct);
+        if (usernameBytes is null || passwordBytes is null)
+            return new OpicentrumNotePushResult(OpicentrumNotePushStatus.NotConfigured, null);
+
+        var username = Encoding.UTF8.GetString(usernameBytes);
+        var password = Encoding.UTF8.GetString(passwordBytes);
+        var targetNote = Truncate(note ?? string.Empty, 20);
+
+        var cookies = new CookieContainer();
+        using var handler = new HttpClientHandler { CookieContainer = cookies, UseCookies = true };
+        using var http = new HttpClient(handler) { BaseAddress = new Uri(BaseUrl) };
+        http.DefaultRequestHeaders.UserAgent.ParseAdd(BrowserUserAgent);
+
+        await LoginGate.WaitAsync(ct);
+        try
+        {
+            var myName = await LoginAsync(http, username, password, ct);
+            if (myName is null)
+                return new OpicentrumNotePushResult(OpicentrumNotePushStatus.Failed, "Přihlášení do Opicentra se nezdařilo — zkontrolujte uživatelské jméno a heslo v Nastavení.");
+
+            var html = await http.GetStringAsync($"pozadavky.php?akce=ukaz&rok={date.Year}&mesic={date.Month}", ct);
+            var daysInMonth = DateTime.DaysInMonth(date.Year, date.Month);
+            var formValues = new List<KeyValuePair<string, string>>();
+            var targetDayEditable = false;
+
+            for (var day = 1; day <= daysInMonth; day++)
+            {
+                var rowMatch = PozadavkyRowRegex(day, date.Month, date.Year).Match(html);
+                if (!rowMatch.Success) continue; // "planakcisns" (non-worked) day — genuinely no fields to submit
+                var row = rowMatch.Value;
+
+                if (NpCheckedRegex(day).IsMatch(row))
+                    formValues.Add(new($"np[{day}]", "1"));
+
+                // True current hours value comes from the onload plnvolhod(day, hours, ...) call, NOT a
+                // static <option selected> (there isn't one) — see this method's own remarks.
+                var hoursMatch = PlnvolhodRegex(day).Match(row);
+                formValues.Add(new($"volnehod[{day}]", hoursMatch.Success ? hoursMatch.Groups["hours"].Value : string.Empty));
+
+                var codeMatch = KodvolnaSelectedRegex(day).Match(row);
+                formValues.Add(new($"kodvolna[{day}]", codeMatch.Success ? WebUtility.HtmlDecode(codeMatch.Groups["code"].Value) : string.Empty));
+
+                var isTargetDay = day == date.Day;
+                if (isTargetDay) targetDayEditable = true;
+
+                var specsalMatch = SpecsalValueRegex(day).Match(row);
+                var currentNote = isTargetDay
+                    ? targetNote
+                    : specsalMatch.Success ? WebUtility.HtmlDecode(specsalMatch.Groups["value"].Value) : string.Empty;
+                formValues.Add(new($"specsal[{day}]", currentNote));
+            }
+
+            if (!targetDayEditable)
+                return new OpicentrumNotePushResult(OpicentrumNotePushStatus.DayNotEditable, "Tento den nemá na webu žádné políčko (nepracovní den) — poznámku sem nelze zapsat.");
+
+            formValues.Add(new("ulozit", $"Změnit požadavky na {PozadavkyMonthNames[date.Month - 1]}"));
+
+            using var content = new FormUrlEncodedContent(formValues);
+            using var response = await http.PostAsync($"pozadavky.php?akce=uprav&mesic={date.Month:D2}&rok={date.Year}", content, ct);
+            response.EnsureSuccessStatusCode();
+
+            // Real confirmation, not just "the POST didn't throw" — re-fetch and check the target day's
+            // own specsal actually reflects what was just sent (see this method's own remarks). Same
+            // GET query-string form as the initial fetch above (matches the page's own <a href> links).
+            var confirmHtml = await http.GetStringAsync($"pozadavky.php?akce=ukaz&rok={date.Year}&mesic={date.Month}", ct);
+            var confirmRow = PozadavkyRowRegex(date.Day, date.Month, date.Year).Match(confirmHtml);
+            var confirmedNote = confirmRow.Success ? SpecsalValueRegex(date.Day).Match(confirmRow.Value) : Match.Empty;
+            var landed = confirmedNote.Success && WebUtility.HtmlDecode(confirmedNote.Groups["value"].Value) == targetNote;
+
+            return landed
+                ? new OpicentrumNotePushResult(OpicentrumNotePushStatus.Success, null)
+                : new OpicentrumNotePushResult(OpicentrumNotePushStatus.Failed, "Odesláno, ale poznámka se na webu neobjevila — zkontrolujte to prosím ručně.");
+        }
+        catch (Exception ex)
+        {
+            return new OpicentrumNotePushResult(OpicentrumNotePushStatus.Failed, ex.Message);
+        }
+        finally
+        {
+            LoginGate.Release();
+        }
+    }
+
+    private static string Truncate(string value, int maxLength) => value.Length <= maxLength ? value : value[..maxLength];
 
     private static async Task<string?> LoginAsync(HttpClient http, string username, string password, CancellationToken ct)
     {
@@ -368,6 +522,23 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
     private static Regex SpravavolnaRowRegex(int myId) => new(
         $@"idlekuprvolna={myId}"">[^<]*</a>(?<cells>.*?)</tr>",
         RegexOptions.Singleline);
+
+    // --- pozadavky.php (PushNoteAsync) — see that method's own remarks for why each of these reads
+    // what it reads (particularly PlnvolhodRegex, not a static <option selected>, for the true hours value). ---
+
+    private static Regex PozadavkyRowRegex(int day, int month, int year) => new(
+        $@"<tr class=""planakci"" align=""center"">\s*<td>{day:D2}\.{month:D2}\.{year}</td>.*?</tr>",
+        RegexOptions.Singleline);
+
+    private static Regex NpCheckedRegex(int day) => new($@"name=""np\[{day}\]""[^>]*\schecked");
+
+    private static Regex PlnvolhodRegex(int day) => new($@"plnvolhod\({day},(?<hours>[^,]*),");
+
+    private static Regex KodvolnaSelectedRegex(int day) => new(
+        $@"name=""kodvolna\[{day}\]""[^>]*>.*?<option selected>(?<code>[^<]*)</option>",
+        RegexOptions.Singleline);
+
+    private static Regex SpecsalValueRegex(int day) => new($@"name=""specsal\[{day}\]""[^>]*value=""(?<value>[^""]*)""");
 
     [GeneratedRegex(@"Vítej\s+(?<name>[^<]+)")]
     private static partial Regex WelcomeRegex();

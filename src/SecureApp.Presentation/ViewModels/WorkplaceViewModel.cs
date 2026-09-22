@@ -116,12 +116,27 @@ public sealed partial class WorkplaceViewModel : ObservableObject
         if (IsMonthView)
             await RenderMonthLocalAsync();
 
+        // One sync call covering the union of both ranges, not two independent concurrent ones — two
+        // near-simultaneous logins to the same Opicentrum account collide server-side (confirmed
+        // 2026-09-22 live: one login's session silently invalidates the other's, so whichever call's
+        // own welcome-check GET lands second sees itself logged out and reports "login failed", even
+        // though the other one succeeded) — see SyncAsync's own remarks on why every request needs the
+        // browser User-Agent, a related but separate finding from the same debugging session.
         var weekRange = CurrentWeekSyncRange();
-        _ = SyncInBackgroundAsync(weekRange.Start, weekRange.End, RenderWeekLocalAsync);
         if (IsMonthView)
         {
             var monthRange = CurrentMonthSyncRange();
-            _ = SyncInBackgroundAsync(monthRange.Start, monthRange.End, RenderMonthLocalAsync);
+            var rangeStart = weekRange.Start < monthRange.Start ? weekRange.Start : monthRange.Start;
+            var rangeEnd = weekRange.End > monthRange.End ? weekRange.End : monthRange.End;
+            _ = SyncInBackgroundAsync(rangeStart, rangeEnd, async () =>
+            {
+                await RenderWeekLocalAsync();
+                await RenderMonthLocalAsync();
+            });
+        }
+        else
+        {
+            _ = SyncInBackgroundAsync(weekRange.Start, weekRange.End, RenderWeekLocalAsync);
         }
     }
 

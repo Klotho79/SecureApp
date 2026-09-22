@@ -51,6 +51,14 @@ public partial class AppShell : Shell
 		];
 		RebuildTabBar();
 
+		// Android's Shell can restore whatever tab was last active before the app was closed rather
+		// than always opening on the first TabBar item (2026-09-22, user's own ask: the app should
+		// always open on Nástěnka) — force it explicitly on every fresh launch instead of relying on
+		// that default. Guarded: falls back to whatever tab IS visible if the user has hidden Nástěnka
+		// itself via its own toggle.
+		if (Preferences.Default.Get(NotificationsTabVisibilityPreferenceKey, true))
+			CurrentItem = NotificationsTab;
+
 		// DocumentBrowserPage, ChatListPage, LibraryPage, and SettingsPage are the four
 		// TabBar sections declared directly in AppShell.xaml — no RegisterRoute needed for
 		// those, Shell resolves tab ShellContents on its own. Only detail/pushed pages
