@@ -41,9 +41,10 @@ namespace SecureApp.Presentation.Workplace;
 /// VV/NV, not skipped.
 ///
 /// Known gap, not handled this first pass: pracoviste.php's own "NEPŘÍTOMNÍ" (absent) row is a plain
-/// semicolon-separated name list per day, not the per-person div shape every other row uses — skipped
-/// rather than parsed with an unverified second regex shape. spravavolna.php's own leave record is the
-/// actual source of truth for absence anyway.
+/// semicolon-separated name list per day, not the per-person cell shape every other row uses (including
+/// "NEZAŘAZENÍ" — see PersonCellRegex's own remarks for why that one DOES parse despite looking like a
+/// similarly "special" row at first) — skipped rather than parsed with an unverified second regex shape.
+/// spravavolna.php's own leave record is the actual source of truth for absence anyway.
 /// </remarks>
 public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
 {
@@ -543,7 +544,13 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
     [GeneratedRegex(@"Vítej\s+(?<name>[^<]+)")]
     private static partial Regex WelcomeRegex();
 
-    [GeneratedRegex(@"<div onmousedown=""datumupravovany=(?<date>\d+); osoba=(?<osoba>\d+); sal1=\d+;?""[^>]*>(?<inner>.*?)</div>", RegexOptions.Singleline)]
+    // onmousedown normally sits directly on the <div> ("<div onmousedown=...>Name</div>"), but the
+    // NEZAŘAZENÍ row (2026-09-22, user's own ask: show "Nezařazeno" for days the real site lists the
+    // person as unassigned) nests it on an inner <font> instead ("<div><font onmousedown=...>Name
+    // </font></div>") — same data, a different code path on the site's own legacy PHP for that one
+    // special row. Not anchored to which tag onmousedown is actually on, so both shapes match; `.*?`
+    // stops at whichever of </font>/</div> comes first, i.e. right after the name either way.
+    [GeneratedRegex(@"onmousedown=""datumupravovany=(?<date>\d+); osoba=(?<osoba>\d+); sal1=\d+;?""[^>]*>(?<inner>.*?)</(?:font|div)>", RegexOptions.Singleline)]
     private static partial Regex PersonCellRegex();
 
     [GeneratedRegex(@"<tr class=""planakci(?:sns)?""[^>]*>.*?</tr>", RegexOptions.Singleline)]
