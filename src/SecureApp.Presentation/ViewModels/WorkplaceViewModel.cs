@@ -409,7 +409,10 @@ public sealed record AssignmentDayItem(
     public bool HasWorkplace => !string.IsNullOrEmpty(WorkplaceText);
     public bool HasTime => !string.IsNullOrEmpty(TimeText);
     public bool HasNoAssignment => !HasAssignment;
-    public string DisplayTypeLabel => HasAssignment ? TypeLabel : "Bez záznamu";
+
+    /// <summary>2026-09-21, user's own ask: "vyhoď zbytečný nápis Práce v kalendáři... odlišíme to jen barvou" — Práce specifically (the most common type) drops its text label and relies on color/the accent dot alone; every other type keeps its label, since those are less common and worth spelling out. Empty (not "Bez záznamu") for a Work day, so <see cref="HasDisplayTypeLabel"/> can hide the Label outright rather than rendering a blank line.</summary>
+    public string DisplayTypeLabel => HasNoAssignment ? "Bez záznamu" : TypeText == "Work" ? string.Empty : TypeLabel;
+    public bool HasDisplayTypeLabel => !string.IsNullOrEmpty(DisplayTypeLabel);
 
     /// <summary>2026-09-21 — a duty overlaid on top of this day's own primary type (see <c>WorkAssignment.OnCallWorkplaceName</c>'s own remarks); e.g. a normal shift followed later the same day by on-call.</summary>
     public bool HasOnCall => !string.IsNullOrEmpty(OnCallText);

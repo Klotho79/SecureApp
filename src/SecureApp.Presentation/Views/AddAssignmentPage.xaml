@@ -17,7 +17,8 @@
             <!-- Viewer (2026-09-21, user's own rule: "viewer nemuze menit pracovni zarazeni, muze psat
                  poznamku") sees Type/time/Pracoviště/Smazat read-only — CanEditAssignment gates all of
                  them; Poznámka below is deliberately never gated, every role may always annotate. -->
-            <Label Text="Typ" FontAttributes="Bold" />
+            <!-- No "Typ" caption above this Picker on purpose (2026-09-22, user's own ask: "polozka je
+                 tam typ to taky smaz") — the Picker's own selected value already says what it is. -->
             <Picker ItemsSource="{Binding TypeOptions}" SelectedItem="{Binding SelectedTypeOption}" ItemDisplayBinding="{Binding Label}" IsEnabled="{Binding CanEditAssignment}" />
 
             <Grid ColumnDefinitions="*,Auto" Margin="0,8,0,0">

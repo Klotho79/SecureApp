@@ -26,7 +26,7 @@
                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10" IsVisible="{Binding Today.HasAssignment}">
                         <Label Grid.Column="0" Text="{Binding Today.Glyph}" FontSize="22.5" VerticalOptions="Center" />
                         <VerticalStackLayout Grid.Column="1" Spacing="1">
-                            <Label Text="{Binding Today.TypeLabel}" FontSize="13.5" FontAttributes="Bold" />
+                            <Label Text="{Binding Today.DisplayTypeLabel}" FontSize="13.5" FontAttributes="Bold" IsVisible="{Binding Today.HasDisplayTypeLabel}" />
                             <Label Text="{Binding Today.WorkplaceText}" FontSize="11" IsVisible="{Binding Today.HasWorkplace}" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
                         </VerticalStackLayout>
                         <Label Grid.Column="2" Text="{Binding Today.TimeText}" FontSize="10.5" TextColor="Gray" VerticalOptions="Center" IsVisible="{Binding Today.HasTime}" />
@@ -120,7 +120,7 @@
                                 <Label Grid.Column="0" Text="{Binding DayLabel}" FontSize="10" FontAttributes="Bold" VerticalOptions="Center" />
                                 <BoxView Grid.Column="1" CornerRadius="3" Color="{Binding AccentColor}" IsVisible="{Binding HasAssignment}" />
                                 <VerticalStackLayout Grid.Column="2" Spacing="1">
-                                    <Label Text="{Binding DisplayTypeLabel}" FontSize="11" FontAttributes="Bold" LineBreakMode="TailTruncation" />
+                                    <Label Text="{Binding DisplayTypeLabel}" FontSize="11" FontAttributes="Bold" LineBreakMode="TailTruncation" IsVisible="{Binding HasDisplayTypeLabel}" />
                                     <Label Text="{Binding WorkplaceText}" FontSize="9.5" IsVisible="{Binding HasWorkplace}" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" LineBreakMode="TailTruncation" />
                                     <Label Text="{Binding OnCallText}" FontSize="9.5" FontAttributes="Bold" IsVisible="{Binding HasOnCall}" TextColor="{AppThemeBinding Light={StaticResource Warn}, Dark={StaticResource WarnDark}}" LineBreakMode="TailTruncation" />
                                 </VerticalStackLayout>
