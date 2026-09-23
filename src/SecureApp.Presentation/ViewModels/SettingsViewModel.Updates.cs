@@ -133,6 +133,17 @@ public sealed partial class SettingsViewModel
             WireGuardStatusText = "Nejprve zadejte platnou adresu relay serveru výše.";
             return;
         }
+
+        // TryTakeAdminSecret's own "missing secret" error goes to the shared AdminErrorMessage label
+        // near the top of the page (2026-09-07 pattern, shared by every other admin action) — real bug
+        // found live (2026-09-23): a user scrolled down to just this card sees that error land somewhere
+        // completely out of view and reads as "the button did nothing". Checked directly here instead,
+        // so the message shows right next to the button that actually needs it.
+        if (string.IsNullOrWhiteSpace(AdminSecretInputText))
+        {
+            WireGuardStatusText = "Nejprve výše zadejte admin heslo relay serveru (SECUREAPP_RELAY_ADMIN_SECRET).";
+            return;
+        }
         if (!TryTakeAdminSecret(out var adminSecret)) return;
 
         IsCreatingWireGuardAccess = true;

@@ -62,3 +62,39 @@ Progress/errors land in `~/SecureApp/relay/SecureApp.Relay/data/deploy.log`.
 
 Point a systemd timer (or the post-receive hook itself) at the same marker-file trick instead of
 waiting for a button tap — nothing about `/admin/deploy` or `deploy.sh` needs to change.
+
+# Backup — Pi data to the dev PC
+
+`backup-from-pi.ps1` (2026-09-23, user's own ask: don't lose community data or admin access if a
+device/disk/the Pi itself is lost) pulls `relay/SecureApp.Relay/data/` (relay.db3, shared-library
+files, hosted APK), `relay/SecureApp.Relay/.env` (the admin secret + wg-easy credentials), and
+`wireguard/data/` (every paired device's WireGuard config) from the Pi to
+`C:\Users\dvora\SecureApp-Backups\<timestamp>\` on this PC, keeping the last 14 daily runs.
+
+**One-time Pi setup** — the WireGuard data is root-owned by default; the backup user needs read access:
+
+```bash
+sudo chmod -R a+rX ~/wireguard/data
+```
+
+**One-time PC setup** (already done, 2026-09-23) — a daily Windows Scheduled Task, 3:00 AM:
+
+```powershell
+$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument '-NoProfile -ExecutionPolicy Bypass -File "H:\Visual Studio\C#\Aplikace\relay\ops\backup-from-pi.ps1"'
+$trigger = New-ScheduledTaskTrigger -Daily -At "3:00AM"
+$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopOnIdleEnd
+Register-ScheduledTask -TaskName "SecureApp Pi Backup" -Action $action -Trigger $trigger -Settings $settings -Description "Daily backup of SecureApp relay data, shared library, and WireGuard config from the Pi to this PC." -RunLevel Limited
+```
+
+Run it manually any time with `.\relay\ops\backup-from-pi.ps1` from the repo root.
+
+**Restoring**: stop the relay/wg-easy containers, copy the relevant `<timestamp>\relay-data\*` back
+onto the Pi's `~/SecureApp/relay/SecureApp.Relay/data/`, `<timestamp>\relay.env` onto
+`~/SecureApp/relay/SecureApp.Relay/.env`, and `<timestamp>\wireguard-data\*` onto
+`~/wireguard/data/`, then `docker compose up -d` both.
+
+**Still not covered by this backup** (accepted gaps, not yet addressed):
+- The SSH private key this PC uses to reach the Pi at all (`C:\Users\dvora\.ssh\secureapp_pi_ed25519`)
+  — only exists here; losing this PC means losing remote Pi access until physically at the Pi itself.
+- Each individual device's own local encrypted vault (chat history, E2EE keys) — deliberately never
+  backed up anywhere centrally; that's the point of E2EE, not a gap.
