@@ -12,6 +12,7 @@ public sealed class CurrentUserService : ICurrentUserService
 
     private readonly IUserRepository _userRepository;
     private readonly SemaphoreSlim _initLock = new(1, 1);
+    private readonly bool _isTrustedAdminDevice;
     private User _current;
     private bool _initialized;
 
@@ -31,9 +32,19 @@ public sealed class CurrentUserService : ICurrentUserService
     /// so this is supplied, not computed. Falls back to <see cref="FallbackDisplayName"/> only if
     /// that's ever null/blank (e.g. a platform that reports nothing).
     /// </summary>
-    public CurrentUserService(IUserRepository userRepository, string? defaultDisplayName = null)
+    /// <param name="isTrustedAdminDevice">
+    /// 2026-09-23, same-day follow-up to the Modifier-default correction below: the user's own
+    /// explicit ask — "na těchto dvou aplikacích tedy S23+ a PC bude vždy admin" — their own two
+    /// primary devices must always bootstrap as Admin, never Modifier, while every genuinely new
+    /// member's device still gets the safe Modifier floor. Computed by the caller (Presentation,
+    /// matching device model/machine name against a known-trusted list — see MauiProgram's own
+    /// remarks), never hardcoded here: this class stays platform-agnostic (same reasoning
+    /// <paramref name="defaultDisplayName"/> is supplied rather than computed).
+    /// </param>
+    public CurrentUserService(IUserRepository userRepository, string? defaultDisplayName = null, bool isTrustedAdminDevice = false)
     {
         _userRepository = userRepository ?? throw new ArgumentNullException(nameof(userRepository));
+        _isTrustedAdminDevice = isTrustedAdminDevice;
         var displayName = string.IsNullOrWhiteSpace(defaultDisplayName) ? FallbackDisplayName : defaultDisplayName;
         // Sensible in-memory default so Current is never null before InitializeAsync completes.
         //
@@ -46,7 +57,8 @@ public sealed class CurrentUserService : ICurrentUserService
         // new floor: normal day-to-day work (create/edit) without admin-only actions (relay deploy,
         // invite minting, device management) — see SettingsViewModel's own AvailableRoles remarks for
         // the matching guard against a non-Admin device just picking Admin from the Role picker.
-        _current = new User(displayName, Role.Modifier);
+        // isTrustedAdminDevice (same day, see its own param doc) is the one deliberate exception.
+        _current = new User(displayName, isTrustedAdminDevice ? Role.Admin : Role.Modifier);
     }
 
     public async Task InitializeAsync(CancellationToken ct = default)
@@ -60,9 +72,28 @@ public sealed class CurrentUserService : ICurrentUserService
 
             var stored = await _userRepository.GetCurrentUserAsync(ct);
             if (stored is null)
+            {
                 await _userRepository.SaveCurrentUserAsync(_current, ct);
+            }
             else
+            {
                 _current = stored;
+
+                // 2026-09-23, real gap found same day as the trusted-device bootstrap above: Android
+                // Auto Backup (allowBackup=true) can silently RESTORE a stale User row (from before
+                // this device was ever specifically trusted, or from a deliberate earlier RBAC test —
+                // this exact device had briefly been set to Viewer for testing) onto a device that
+                // never actually went through the "stored is null" bootstrap path at all, since
+                // restore happens before this code ever runs. The one-time bootstrap default above
+                // can't fix that; a trusted device's role is enforced HERE, every InitializeAsync, not
+                // just the first ever run — "vždy admin" (always admin), the user's own words, taken
+                // literally rather than "admin only if nothing else got there first."
+                if (_isTrustedAdminDevice && _current.Role != Role.Admin)
+                {
+                    _current.ChangeRole(Role.Admin);
+                    await _userRepository.SaveCurrentUserAsync(_current, ct);
+                }
+            }
 
             _initialized = true;
         }

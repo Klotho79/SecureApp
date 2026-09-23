@@ -82,7 +82,8 @@ public static class MauiProgram
 		// factory for the same WinRT/COM-before-UI-thread-ready reason as DataStorageOptions above.
 		builder.Services.AddDataInfrastructure(
 			() => new DataStorageOptions(string.IsNullOrWhiteSpace(dataDirOverride) ? FileSystem.AppDataDirectory : dataDirOverride),
-			() => DeviceInfo.Current.Name);
+			() => DeviceInfo.Current.Name,
+			() => TrustedAdminDevices.IsThisDevice());
 
 		// ISecureVaultKeyStore lives here rather than in SecureApp.Data because it needs
 		// Microsoft.Maui.Storage.ISecureStorage (Android Keystore / iOS+macOS Keychain /
