@@ -109,6 +109,16 @@ public static class MauiProgram
 		// pattern as INativeDlpService right above.
 		builder.Services.AddSingleton<INativeNotificationService, NativeNotificationService>();
 
+		// Self-update (2026-09-23) — IUpdateService itself is plain cross-platform HTTP (registered
+		// unconditionally below), but actually launching an OS install flow for a downloaded APK is
+		// an Android-only concept, unlike DLP/notifications above which exist on every platform —
+		// this project's first real need for a genuinely platform-CONDITIONAL registration rather
+		// than one-file-per-platform-folder.
+#if ANDROID
+		builder.Services.AddSingleton<INativeAppInstaller, SecureApp.Presentation.Infrastructure.NativeAppInstaller>();
+#endif
+		builder.Services.AddSingleton<IUpdateService, SecureApp.Presentation.Updates.UpdateService>();
+
 		// Milestone 5 (E2EE Chat) transport: relay server + client (see DEVELOPMENT_PLAN.md's note).
 		// Lives here rather than SecureApp.Data for the same reason as everything else in this
 		// block — WebSocketMessageTransport is actually platform-agnostic BCL code, but it's the

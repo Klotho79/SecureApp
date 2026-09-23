@@ -1,9 +1,27 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-	<application android:allowBackup="true" android:icon="@mipmap/appicon" android:roundIcon="@mipmap/appicon_round" android:supportsRtl="true" android:networkSecurityConfig="@xml/network_security_config"></application>
+	<application android:allowBackup="true" android:icon="@mipmap/appicon" android:roundIcon="@mipmap/appicon_round" android:supportsRtl="true" android:networkSecurityConfig="@xml/network_security_config">
+		<!-- Self-update (2026-09-23) — lets NativeAppInstaller hand a downloaded APK (saved to the
+		     app's own cache dir) to the system package installer via a content:// Uri instead of a
+		     raw file:// one, which modern Android refuses (FileUriExposedException) to pass between
+		     apps. Own explicit authority/paths file rather than relying on MAUI Essentials' own
+		     bundled FileProvider, so exactly what's shared is unambiguous. -->
+		<provider
+			android:name="androidx.core.content.FileProvider"
+			android:authorities="com.companyname.secureapp.presentation.updateprovider"
+			android:exported="false"
+			android:grantUriPermissions="true">
+			<meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/update_file_paths" />
+		</provider>
+	</application>
 	<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 	<uses-permission android:name="android.permission.INTERNET" />
 	<uses-permission android:name="android.permission.CAMERA" />
+	<!-- Self-update (2026-09-23) — required on Android 8+ (API 26+) to launch the package installer
+	     for a downloaded APK from within the app itself, rather than only via a browser download.
+	     Android still shows its own "install unknown apps" confirmation prompt to the user regardless
+	     — this permission alone does not silently install anything. -->
+	<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 	<!-- Notification Hub (2026-09-20, see NOTIFICATION_HUB_SPEC.md) — required at runtime on
 	     Android 13+ (API 33+) to post the system notifications NativeNotificationService builds;
 	     requested explicitly in MainActivity.OnCreate. Older Android versions grant it automatically

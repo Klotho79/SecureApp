@@ -32,6 +32,8 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly IChatSessionRepository _chatSessionRepository;
     private readonly IDiagnosticsReporter _diagnosticsReporter;
     private readonly IOpicentrumSyncService _opicentrumSyncService;
+    private readonly IUpdateService _updateService;
+    private readonly INativeAppInstaller? _nativeAppInstaller;
 
     private EventHandler<TransportConnectionState>? _connectionStateHandler;
     private IDispatcherTimer? _activationPollTimer;
@@ -213,7 +215,9 @@ public sealed partial class SettingsViewModel : ObservableObject
         IContactDirectoryService contactDirectoryService,
         IDiagnosticsReporter diagnosticsReporter,
         IChatSessionRepository chatSessionRepository,
-        IOpicentrumSyncService opicentrumSyncService)
+        IOpicentrumSyncService opicentrumSyncService,
+        IUpdateService updateService,
+        INativeAppInstaller? nativeAppInstaller = null)
     {
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         _messagingService = messagingService ?? throw new ArgumentNullException(nameof(messagingService));
@@ -225,6 +229,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         _diagnosticsReporter = diagnosticsReporter ?? throw new ArgumentNullException(nameof(diagnosticsReporter));
         _chatSessionRepository = chatSessionRepository ?? throw new ArgumentNullException(nameof(chatSessionRepository));
         _opicentrumSyncService = opicentrumSyncService ?? throw new ArgumentNullException(nameof(opicentrumSyncService));
+        _updateService = updateService ?? throw new ArgumentNullException(nameof(updateService));
+        _nativeAppInstaller = nativeAppInstaller;
 
         DiagnosticLogEntries = [];
         HasNoDiagnosticLogEntries = true;
@@ -241,6 +247,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         RegisteredDevices = [];
         HasNoRegisteredDevices = true;
         WorkplaceColorItems = [];
+        InitializeUpdatesSection();
     }
 
     partial void OnErrorMessageChanged(string? value) => HasErrorMessage = !string.IsNullOrEmpty(value);
@@ -322,6 +329,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         // No saved endpoint yet (first time this device opens Settings) -> pre-fill the
         // community's one relay address instead of leaving the field blank for the user to guess.
         RelayEndpointText = configuration?.EndpointUri?.ToString() ?? RelayDefaults.DefaultEndpoint;
+        UpdateDownloadShareUrl(RelayEndpointText);
         IsRegistered = configuration?.AssignedDeviceId is not null;
         IsConnected = _messageTransport.IsConnected;
         ConnectionStatusText = IsConnected ? "Připojeno" : "Odpojeno";

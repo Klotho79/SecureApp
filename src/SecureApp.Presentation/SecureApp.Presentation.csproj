@@ -36,8 +36,8 @@
 		<!-- Versions — ApplicationVersion is the Android versionCode; bump it on every release build
 		     that should be offered as an update (the self-update system, 2026-09-23, compares this
 		     number, not ApplicationDisplayVersion, to decide "is there something newer"). -->
-		<ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
-		<ApplicationVersion>1</ApplicationVersion>
+		<ApplicationDisplayVersion>1.1</ApplicationDisplayVersion>
+		<ApplicationVersion>2</ApplicationVersion>
 
 		<!-- To develop, package, and publish an app to the Microsoft Store, see: https://aka.ms/MauiTemplateUnpackaged -->
 		<WindowsPackageType>None</WindowsPackageType>

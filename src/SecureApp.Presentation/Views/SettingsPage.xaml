@@ -209,6 +209,26 @@
                 </VerticalStackLayout>
             </Border>
 
+            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding IsAdmin}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Přidat nového člena" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Label Text="Nechte nového člena naskenovat tenhle QR kód (nebo mu pošlete odkaz níže) — otevře se stránka se stažením appky a návodem k instalaci." FontSize="9.5" TextColor="Gray" />
+                    <Image Source="{Binding DownloadShareQrImage}" HeightRequest="180" WidthRequest="180" HorizontalOptions="Center" />
+                    <Label Text="{Binding DownloadShareUrl}" FontSize="9.5" TextColor="Gray" LineBreakMode="CharacterWrap" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Border Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Aktualizace appky" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Label Text="{Binding CurrentVersionText}" FontSize="9.5" TextColor="Gray" />
+                    <Button Text="Zkontrolovat aktualizaci" Style="{StaticResource SecondaryButton}" Command="{Binding CheckForUpdateCommand}" IsEnabled="{Binding CanCheckForUpdate}" />
+                    <Button Text="Stáhnout a nainstalovat" Style="{StaticResource SecondaryButton}" Command="{Binding DownloadAndInstallUpdateCommand}" IsVisible="{Binding IsUpdateAvailable}" IsEnabled="{Binding CanDownloadUpdate}" />
+                    <ProgressBar Progress="{Binding UpdateDownloadProgress}" IsVisible="{Binding IsDownloadingUpdate}" />
+                    <Label Text="{Binding UpdateStatusText}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding HasUpdateStatus}" />
+                </VerticalStackLayout>
+            </Border>
+
             <Border Style="{StaticResource CardBorder}">
                 <VerticalStackLayout Spacing="8">
                     <Label Text="Klíč sdílené knihovny" Style="{StaticResource SectionHeader}" Margin="0" />
