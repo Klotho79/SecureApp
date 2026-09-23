@@ -103,6 +103,33 @@ public sealed class HttpRelayAdminService : IRelayAdminService
         return new UriBuilder(wsEndpoint) { Scheme = scheme, Port = wsEndpoint.Port }.Uri;
     }
 
+    public async Task<string> CreateWireGuardClientAsync(Uri endpoint, string adminSecret, string memberName, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+        ArgumentException.ThrowIfNullOrWhiteSpace(adminSecret);
+        ArgumentException.ThrowIfNullOrWhiteSpace(memberName);
+
+        var wireguardUri = new Uri(ToHttpUri(endpoint), "admin/wireguard/clients");
+        using var request = new HttpRequestMessage(HttpMethod.Post, wireguardUri)
+        {
+            Content = JsonContent.Create(new { Name = memberName }, options: HttpJsonOptions)
+        };
+        request.Headers.Add("X-Admin-Secret", adminSecret);
+
+        using var response = await _httpClient.SendAsync(request, ct);
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+            throw new InvalidOperationException("Relay odmítl zadané admin heslo.");
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            throw new InvalidOperationException("Přidávání WireGuard přístupu není na tomto relay serveru nastavené.");
+        response.EnsureSuccessStatusCode();
+
+        var result = await response.Content.ReadFromJsonAsync<WireGuardClientResult>(HttpJsonOptions, ct)
+            ?? throw new InvalidOperationException("Relay vrátil prázdnou odpověď na vytvoření WireGuard přístupu.");
+        return result.ConfigurationText;
+    }
+
+    private sealed record WireGuardClientResult(string ConfigurationText);
+
     private sealed record InviteResponse(string Code, DateTimeOffset ExpiresAtUtc);
 
     /// <summary>Mirrors the relay's own <c>SecureApp.Relay.Contracts.RegisteredDeviceSummary</c> (2.1, 2026-09-17) — duplicated rather than shared, since this Presentation-layer client has no project reference to the Relay's own assembly (same reasoning as <see cref="InviteResponse"/> already established for the invite-code response shape).</summary>

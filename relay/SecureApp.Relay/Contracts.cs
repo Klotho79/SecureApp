@@ -9,6 +9,13 @@ public sealed record DeviceCredentialResponse(Guid DeviceId, string Secret);
 /// <summary>Self-update manifest (2026-09-23) — written by /admin/upload/android, read by the app's own update check via /download/android/version. VersionCode is the Android versionCode (ApplicationVersion in the .csproj) — the actual number compared to decide "is there something newer", VersionName is just the human-readable display string.</summary>
 public sealed record UpdateManifest(int VersionCode, string VersionName, DateTimeOffset ReleasedAtUtc);
 
+/// <summary>New-member WireGuard onboarding (2026-09-23) — see /admin/wireguard/clients' own remarks.</summary>
+public sealed record CreateWireGuardClientRequest(string Name);
+public sealed record WireGuardClientResponse(string ConfigurationText);
+
+/// <summary>Shape of wg-easy's own GET /api/wireguard/client response — only the fields this relay actually reads (id, to fetch the configuration afterward; createdAt, to identify the just-created client). Not the full wg-easy client shape.</summary>
+public sealed record WgEasyClient(string Id, string Name, DateTimeOffset CreatedAt);
+
 public sealed record RegisterRequest(string InviteCode, string DisplayName);
 
 // --- Activation requests (2026-09-06) — replaces the invite-code hand-off above for a new device

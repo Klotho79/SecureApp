@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using System.Net.WebSockets;
 using System.Security.Cryptography;
 using System.Text;
@@ -7,6 +8,15 @@ var builder = WebApplication.CreateBuilder(args);
 
 var adminSecret = builder.Configuration["SECUREAPP_RELAY_ADMIN_SECRET"]
     ?? throw new InvalidOperationException("SECUREAPP_RELAY_ADMIN_SECRET must be set (environment variable or configuration) — the relay refuses to start without it, rather than silently allow unauthenticated admin access.");
+
+// New-member WireGuard onboarding (2026-09-23, user's own ask: a brand-new member has no network
+// access at all yet, so SecureApp's own admin secret can gate the CALL to this endpoint, but the
+// actual wg-easy credential stays Pi-internal — never sent to/stored on any phone. Both optional:
+// this endpoint 404s if either is missing, rather than the whole relay refusing to start (unlike
+// adminSecret above) — WireGuard onboarding is a nice-to-have on top of the relay's real job, not
+// something every deployment of this relay necessarily has wg-easy for.
+var wgEasyUrl = builder.Configuration["SECUREAPP_WGEASY_URL"];
+var wgEasyPassword = builder.Configuration["SECUREAPP_WGEASY_PASSWORD"];
 
 var port = builder.Configuration["SECUREAPP_RELAY_PORT"] ?? "8080";
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
@@ -119,6 +129,39 @@ app.MapPost("/admin/invites", (HttpRequest request, CreateInviteRequest body, Re
 
     var code = db.CreateInvite(body.DisplayNameHint, TimeSpan.FromMinutes(body.ValidForMinutes), out var expiresAtUtc);
     return Results.Ok(new CreateInviteResponse(code, expiresAtUtc));
+});
+
+// New-member onboarding (2026-09-23) — creates a WireGuard peer via wg-easy's own API (session-less:
+// wg-easy's own middleware also accepts the password directly as a plain Authorization header, see
+// its Server.js, so no cookie/session juggling needed here) and returns the raw .conf text so the app
+// can render its own QR from it (ZXing, already used for the SecureApp-download QR) — never proxying
+// through wg-easy's own SVG QR endpoint, one fewer format to round-trip.
+app.MapPost("/admin/wireguard/clients", async (HttpRequest request, CreateWireGuardClientRequest body) =>
+{
+    if (!IsAdminAuthorized(request, adminSecret))
+        return Results.Unauthorized();
+    if (string.IsNullOrEmpty(wgEasyUrl) || string.IsNullOrEmpty(wgEasyPassword))
+        return Results.NotFound("WireGuard onboarding not configured on this relay (SECUREAPP_WGEASY_URL/SECUREAPP_WGEASY_PASSWORD).");
+    if (string.IsNullOrWhiteSpace(body.Name))
+        return Results.BadRequest("Missing 'name'.");
+
+    using var wg = new HttpClient { BaseAddress = new Uri(wgEasyUrl) };
+    wg.DefaultRequestHeaders.Add("Authorization", wgEasyPassword);
+
+    var createResponse = await wg.PostAsJsonAsync("api/wireguard/client", new { name = body.Name });
+    if (!createResponse.IsSuccessStatusCode)
+        return Results.Problem($"wg-easy rejected client creation: {createResponse.StatusCode}", statusCode: 502);
+
+    // camelCase JSON from wg-easy (its own JS field names, e.g. "createdAt") needs Web defaults —
+    // same real bug this relay's own client code already hit once before (see MessagingService/
+    // WebSocketMessageTransport's own remarks), not repeating it here.
+    var clients = await wg.GetFromJsonAsync<List<WgEasyClient>>("api/wireguard/client", new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+    var newest = clients?.OrderByDescending(c => c.CreatedAt).FirstOrDefault();
+    if (newest is null)
+        return Results.Problem("wg-easy created the client but it couldn't be found afterward.", statusCode: 502);
+
+    var configText = await wg.GetStringAsync($"api/wireguard/client/{newest.Id}/configuration");
+    return Results.Ok(new WireGuardClientResponse(configText));
 });
 
 app.MapPost("/admin/devices", (HttpRequest request, CreateDeviceRequest body, RelayDatabase db) =>

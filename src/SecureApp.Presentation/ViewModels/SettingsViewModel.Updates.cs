@@ -92,6 +92,68 @@ public sealed partial class SettingsViewModel
         DownloadShareUrl = new UriBuilder(endpoint) { Scheme = scheme, Port = endpoint.Port, Path = "/download" }.Uri.ToString();
     }
 
+    /// <summary>WireGuard onboarding (2026-09-23, user's own ask: a brand-new member has no network access at all, so SecureApp's own /download QR above is unreachable until they're on the VPN) — the admin types the new member's name, this creates a fresh wg-easy peer via the relay's own <c>/admin/wireguard/clients</c> and renders its raw config as a second QR, same <c>QrImageGenerator</c> as <see cref="DownloadShareQrImage"/>.</summary>
+    [ObservableProperty]
+    public partial string NewMemberNameText { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string? WireGuardStatusText { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasWireGuardStatus { get; set; }
+
+    [ObservableProperty]
+    public partial Microsoft.Maui.Controls.ImageSource? WireGuardQrImage { get; set; }
+
+    public bool HasWireGuardQrImage => WireGuardQrImage is not null;
+
+    partial void OnWireGuardQrImageChanged(Microsoft.Maui.Controls.ImageSource? value) => OnPropertyChanged(nameof(HasWireGuardQrImage));
+
+    [ObservableProperty]
+    public partial bool IsCreatingWireGuardAccess { get; set; }
+
+    public bool CanCreateWireGuardAccess => !IsCreatingWireGuardAccess;
+
+    partial void OnWireGuardStatusTextChanged(string? value) => HasWireGuardStatus = !string.IsNullOrEmpty(value);
+    partial void OnIsCreatingWireGuardAccessChanged(bool value) => OnPropertyChanged(nameof(CanCreateWireGuardAccess));
+
+    [RelayCommand]
+    private async Task CreateWireGuardAccessAsync()
+    {
+        WireGuardStatusText = null;
+        WireGuardQrImage = null;
+
+        if (string.IsNullOrWhiteSpace(NewMemberNameText))
+        {
+            WireGuardStatusText = "Nejprve zadejte jméno nového člena.";
+            return;
+        }
+        if (!Uri.TryCreate(RelayEndpointText, UriKind.Absolute, out var endpoint))
+        {
+            WireGuardStatusText = "Nejprve zadejte platnou adresu relay serveru výše.";
+            return;
+        }
+        if (!TryTakeAdminSecret(out var adminSecret)) return;
+
+        IsCreatingWireGuardAccess = true;
+        try
+        {
+            var configText = await _relayAdminService.CreateWireGuardClientAsync(endpoint, adminSecret, NewMemberNameText);
+            var png = QrImageGenerator.GeneratePng(configText);
+            WireGuardQrImage = Microsoft.Maui.Controls.ImageSource.FromStream(() => new MemoryStream(png));
+            WireGuardStatusText = $"Hotovo — ukažte tenhle QR novému členovi ({NewMemberNameText}), naskenuje ho v appce WireGuard.";
+            NewMemberNameText = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            WireGuardStatusText = $"Nepodařilo se vytvořit WireGuard přístup: {ex.Message}";
+        }
+        finally
+        {
+            IsCreatingWireGuardAccess = false;
+        }
+    }
+
     [RelayCommand]
     private async Task CheckForUpdateAsync()
     {

@@ -212,7 +212,15 @@
             <Border Style="{StaticResource CardBorder}" IsVisible="{Binding IsAdmin}">
                 <VerticalStackLayout Spacing="8">
                     <Label Text="Přidat nového člena" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Label Text="Nechte nového člena naskenovat tenhle QR kód (nebo mu pošlete odkaz níže) — otevře se stránka se stažením appky a návodem k instalaci." FontSize="9.5" TextColor="Gray" />
+                    <Label Text="Krok 1: Nový člen zatím nemá přístup do naší sítě. Zadejte jeho jméno a vytvořte mu WireGuard přístup — naskenuje QR v appce WireGuard (jiná appka, z Google Play) a připojí se." FontAttributes="Bold" FontSize="10.5" />
+                    <Entry Placeholder="Jméno nového člena" Text="{Binding NewMemberNameText}" />
+                    <Button Text="Vytvořit WireGuard přístup" Style="{StaticResource SecondaryButton}" Command="{Binding CreateWireGuardAccessCommand}" IsEnabled="{Binding CanCreateWireGuardAccess}" />
+                    <Image Source="{Binding WireGuardQrImage}" HeightRequest="180" WidthRequest="180" HorizontalOptions="Center" IsVisible="{Binding HasWireGuardQrImage}" />
+                    <Label Text="{Binding WireGuardStatusText}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding HasWireGuardStatus}" />
+
+                    <BoxView HeightRequest="1" BackgroundColor="Gray" Opacity="0.3" Margin="0,6" />
+
+                    <Label Text="Krok 2: Až je připojený k WireGuard, naskenuje tenhle QR (nebo mu pošlete odkaz) — otevře se stránka se stažením appky a návodem k instalaci." FontAttributes="Bold" FontSize="10.5" />
                     <Image Source="{Binding DownloadShareQrImage}" HeightRequest="180" WidthRequest="180" HorizontalOptions="Center" />
                     <Label Text="{Binding DownloadShareUrl}" FontSize="9.5" TextColor="Gray" LineBreakMode="CharacterWrap" />
                 </VerticalStackLayout>

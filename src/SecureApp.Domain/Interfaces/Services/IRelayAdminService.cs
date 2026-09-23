@@ -31,4 +31,15 @@ public interface IRelayAdminService
 
     /// <summary>Deregisters a device entirely — deletes its credential, its directory entry, and purges its stuck outbox queue (see <c>RelayDatabase.DeregisterDevice</c>'s own remarks). Idempotent: deregistering an already-gone device is not an error.</summary>
     Task DeregisterDeviceAsync(Uri endpoint, string adminSecret, Guid deviceId, CancellationToken ct = default);
+
+    /// <summary>
+    /// New-member onboarding (2026-09-23, user's own ask: "apka sama... předala kódy" — a brand-new
+    /// member has no network access at all, so someone already inside needs to mint them a WireGuard
+    /// peer before anything else the app does is reachable). Creates a fresh wg-easy client named
+    /// <paramref name="memberName"/> and returns its raw WireGuard <c>.conf</c> text — the caller
+    /// renders its own QR from it (same <c>QrImageGenerator</c> already used for the SecureApp-
+    /// download QR), never round-tripping wg-easy's own SVG QR format. The relay's own wg-easy
+    /// credential never reaches this device at all — only the resulting config text does.
+    /// </summary>
+    Task<string> CreateWireGuardClientAsync(Uri endpoint, string adminSecret, string memberName, CancellationToken ct = default);
 }
