@@ -39,7 +39,16 @@ public sealed partial class SettingsViewModel : ObservableObject
     private IDispatcherTimer? _activationPollTimer;
     private Guid? _pendingActivationRequestId;
 
-    public IReadOnlyList<Role> AvailableRoles { get; } = Enum.GetValues<Role>();
+    /// <summary>
+    /// 2026-09-23, user's own explicit rule: "nový člen nebude nikdy admin a jen admin zatím může
+    /// nastavit pravomoci" — a non-Admin device must never be able to pick Admin for itself from this
+    /// Picker; recomputed in LoadAsync once the device's own CURRENTLY STORED role is known (not
+    /// SelectedRole, which is what's about to be saved — see SaveAsync's own matching guard for why
+    /// both layers check the stored role, not the in-flight selection). An already-Admin device can
+    /// still pick any role, including demoting itself.
+    /// </summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<Role> AvailableRoles { get; set; } = Enum.GetValues<Role>();
 
     [ObservableProperty]
     public partial string DisplayName { get; set; }
@@ -317,6 +326,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         DisplayName = _currentUserService.Current.DisplayName;
         SelectedRole = _currentUserService.Current.Role;
         IsAdmin = SelectedRole == Role.Admin;
+        AvailableRoles = IsAdmin ? Enum.GetValues<Role>() : [Role.Modifier, Role.Viewer];
         IsSaved = false;
         ErrorMessage = null;
         IsLogbookVisible = Preferences.Default.Get(AppShell.LogbookVisibilityPreferenceKey, false);
@@ -507,6 +517,18 @@ public sealed partial class SettingsViewModel : ObservableObject
     private async Task SaveAsync()
     {
         ErrorMessage = null;
+
+        // Defense in depth alongside AvailableRoles' own filtering above (2026-09-23, user's own
+        // rule) — checks the CURRENTLY STORED role, not SelectedRole itself, since the whole point is
+        // rejecting an attempt to move INTO Admin from something else, not blocking an already-Admin
+        // device from keeping/changing its own role.
+        if (SelectedRole == Role.Admin && _currentUserService.Current.Role != Role.Admin)
+        {
+            ErrorMessage = "Roli Admin může nastavit jen existující administrátor.";
+            SelectedRole = _currentUserService.Current.Role;
+            return;
+        }
+
         try
         {
             await _currentUserService.SetCurrentUserAsync(DisplayName, SelectedRole);

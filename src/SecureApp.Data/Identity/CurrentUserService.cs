@@ -35,10 +35,18 @@ public sealed class CurrentUserService : ICurrentUserService
     {
         _userRepository = userRepository ?? throw new ArgumentNullException(nameof(userRepository));
         var displayName = string.IsNullOrWhiteSpace(defaultDisplayName) ? FallbackDisplayName : defaultDisplayName;
-        // Sensible in-memory default so Current is never null before InitializeAsync
-        // completes — Admin so existing single-user functionality isn't suddenly locked
-        // down for anyone upgrading from before RBAC existed.
-        _current = new User(displayName, Role.Admin);
+        // Sensible in-memory default so Current is never null before InitializeAsync completes.
+        //
+        // 2026-09-23 correction: this used to default to Admin ("so existing single-user
+        // functionality isn't suddenly locked down for anyone upgrading from before RBAC existed")
+        // — fine while every install was this dev's own, but the app now has a real onboarding flow
+        // (Settings' QR/link, self-update system) bringing in genuinely new people, and every one of
+        // them silently landed as Admin on first launch. User's own explicit rule (2026-09-23): "nový
+        // člen nebude nikdy admin" — a brand-new device must never default to Admin. Modifier is the
+        // new floor: normal day-to-day work (create/edit) without admin-only actions (relay deploy,
+        // invite minting, device management) — see SettingsViewModel's own AvailableRoles remarks for
+        // the matching guard against a non-Admin device just picking Admin from the Role picker.
+        _current = new User(displayName, Role.Modifier);
     }
 
     public async Task InitializeAsync(CancellationToken ct = default)
