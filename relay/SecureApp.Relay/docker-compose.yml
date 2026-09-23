@@ -6,6 +6,13 @@ services:
     container_name: secureapp-relay
     environment:
       - SECUREAPP_RELAY_ADMIN_SECRET=${SECUREAPP_RELAY_ADMIN_SECRET}
+      # New-member WireGuard onboarding (2026-09-23) — both optional, see Program.cs's own remarks:
+      # this relay works fine without them, /admin/wireguard/clients just 404s until they're set.
+      # Values live only in the Pi's own local .env (untracked — confirmed via `git check-ignore`/
+      # `ls-files` returning nothing for it, so it was always plain-file-on-the-Pi, never committed;
+      # never typed into chat either, see this pass's own history for why), never in this file.
+      - SECUREAPP_WGEASY_URL=${SECUREAPP_WGEASY_URL}
+      - SECUREAPP_WGEASY_PASSWORD=${SECUREAPP_WGEASY_PASSWORD}
       - SECUREAPP_RELAY_PORT=8080
       - SECUREAPP_RELAY_DB_PATH=/data/relay.db3
       - SECUREAPP_RELAY_LIBRARY_DIR=/data/library-files

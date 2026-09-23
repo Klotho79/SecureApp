@@ -1,0 +1,2 @@
+# Local secrets for docker-compose.yml's ${...} substitution — lives only on the Pi, never committed.
+.env
