@@ -32,6 +32,7 @@ public partial class App : Application
 		// the app's home screen. Subscribed here, in the constructor, so it's guaranteed to already
 		// be listening well before any notification could possibly be tapped.
 		Notifications.NativeNotificationRouter.NotificationTapped += OnNativeNotificationTapped;
+		Notifications.PendingWidgetRouteRouter.RouteRequested += OnWidgetRouteRequested;
 
 		// 2026-09-06 pairing simplification: whichever side is online when the other calls
 		// CreateSessionAsync now gets the invite delivered automatically (see
@@ -999,12 +1000,30 @@ public partial class App : Application
 			// call right above already relies on.
 			if (Notifications.NativeNotificationRouter.ConsumePendingNotificationId() is { } pendingId)
 				NavigateToNotificationDetail(pendingId);
+
+			// Phase 7 widget's weekly-rozpis card (2026-09-22) — same cold-start timing reasoning as
+			// the notification-detail consume right above.
+			if (Notifications.PendingWidgetRouteRouter.ConsumePendingRoute() is { } pendingRoute)
+				NavigateToRoute(pendingRoute);
 		};
 
 		return window;
 	}
 
 	private static void OnNativeNotificationTapped(Guid notificationId) => NavigateToNotificationDetail(notificationId);
+	private static void OnWidgetRouteRequested(string route) => NavigateToRoute(route);
+
+	private static void NavigateToRoute(string route)
+	{
+		try
+		{
+			Shell.Current?.GoToAsync(route);
+		}
+		catch
+		{
+			// Best-effort — same reasoning as NavigateToNotificationDetail's own catch right below.
+		}
+	}
 
 	private static void NavigateToNotificationDetail(Guid notificationId)
 	{

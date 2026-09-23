@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Today's row highlight (2026-09-22, user's own ask: "aktuální den nahoru a zvýraznit"). 2026-09-23:
+     the card itself became translucent black (widgetCardBackground, #33000000) — a semi-transparent
+     WHITE overlay here (not the original light-gray solid) is what actually reads as "lighter than its
+     surroundings" against that background, rather than nearly vanishing into it. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#33FFFFFF" />
+    <corners android:radius="10dp" />
+</shape>

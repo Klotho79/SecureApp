@@ -5,6 +5,7 @@ using SecureApp.Data.Persistence.Rows;
 using SecureApp.Domain.Common;
 using SecureApp.Domain.Entities;
 using SecureApp.Domain.Enums;
+using SecureApp.Domain.Events;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.ValueObjects;
 
@@ -119,6 +120,7 @@ public sealed class NotificationRepository : INotificationRepository
             notification.RelatedLibraryFileId?.ToString(),
             Format(notification.CreatedAtUtc),
             Format(notification.ModifiedAtUtc));
+        WidgetRefreshSignal.Raise();
     }
 
     public async Task UpdateAsync(Notification notification, CancellationToken ct = default)
@@ -136,6 +138,7 @@ public sealed class NotificationRepository : INotificationRepository
             notification.IsManuallyImportant,
             Format(notification.ModifiedAtUtc),
             notification.Id.ToString());
+        WidgetRefreshSignal.Raise();
     }
 
     private static Notification ToEntity(NotificationRow row)

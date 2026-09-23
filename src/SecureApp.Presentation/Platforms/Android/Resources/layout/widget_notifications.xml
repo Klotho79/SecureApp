@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Phase 7 home-screen widget (2026-09-22, NOTIFICATION_HUB_SPEC.md §9) — the three counter pills the
+     reference image (design/notification-hub-reference/widget-reference.jpg) originally called for are
+     GONE (2026-09-23, user's own explicit ask: "pilulky vyhoď a nech jen jeden řádek") — replaced by a
+     single one-line "latest notification" ticker at the very top instead. Below it: the 5-day weekly
+     rozpis (2026-09-22, user's own ask). RemoteViews only supports a narrow subset of View classes (no
+     CardView/ConstraintLayout) — the "card" here is a plain LinearLayout with a rounded-rect shape
+     drawable background, not a real elevated Material card. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="10dp">
+
+    <!-- 2026-09-23 — the latest notification, one line, truncated with an ellipsis rather than a true
+         animated marquee: RemoteViews TextView marquee only actually scrolls while the view has real
+         focus, which a home-screen widget can't reliably hold, so a genuinely "probíhající" (running)
+         ticker isn't achievable here — ellipsize="marquee" is left set anyway (harmless) in case a
+         given launcher does grant it focus, but static truncation is the realistic baseline. -->
+    <TextView
+        android:id="@+id/widget_latest_notification"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp"
+        android:text=""
+        android:textColor="@color/widgetCardText"
+        android:textSize="13sp"
+        android:singleLine="true"
+        android:ellipsize="marquee"
+        android:marqueeRepeatLimit="marquee_forever"
+        android:focusable="true"
+        android:focusableInTouchMode="true" />
+
+    <!-- Weekly rozpis: 5 rows starting from TODAY (not Monday) so the most relevant day always leads,
+         each a colored square (the day's own AssignmentType color — same per-device-customizable
+         palette AssignmentColorCatalog already gives the in-app calendar) + the day/date + a one-line
+         summary. Row 1 (always today) gets its own background drawable (widget_row_today_background)
+         set dynamically in code for emphasis — the other 4 rows stay plain/transparent. -->
+    <LinearLayout
+        android:id="@+id/widget_card"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:orientation="vertical"
+        android:background="@drawable/widget_card_background"
+        android:padding="8dp">
+
+        <LinearLayout android:id="@+id/widget_day1" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:padding="5dp">
+            <TextView android:id="@+id/widget_day1_color" android:layout_width="16dp" android:layout_height="16dp" android:text="" android:background="@drawable/widget_dot_accent" />
+            <TextView android:id="@+id/widget_day1_label" android:layout_width="64dp" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:text="" android:textColor="@color/widgetCardText" android:textSize="12sp" android:textStyle="bold" />
+            <TextView android:id="@+id/widget_day1_text" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="" android:textColor="@color/widgetCardTextMuted" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/widget_day2" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:padding="3dp">
+            <TextView android:id="@+id/widget_day2_color" android:layout_width="16dp" android:layout_height="16dp" android:text="" android:background="@drawable/widget_dot_accent" />
+            <TextView android:id="@+id/widget_day2_label" android:layout_width="64dp" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:text="" android:textColor="@color/widgetCardText" android:textSize="12sp" android:textStyle="bold" />
+            <TextView android:id="@+id/widget_day2_text" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="" android:textColor="@color/widgetCardTextMuted" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/widget_day3" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:padding="3dp">
+            <TextView android:id="@+id/widget_day3_color" android:layout_width="16dp" android:layout_height="16dp" android:text="" android:background="@drawable/widget_dot_accent" />
+            <TextView android:id="@+id/widget_day3_label" android:layout_width="64dp" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:text="" android:textColor="@color/widgetCardText" android:textSize="12sp" android:textStyle="bold" />
+            <TextView android:id="@+id/widget_day3_text" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="" android:textColor="@color/widgetCardTextMuted" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/widget_day4" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:padding="3dp">
+            <TextView android:id="@+id/widget_day4_color" android:layout_width="16dp" android:layout_height="16dp" android:text="" android:background="@drawable/widget_dot_accent" />
+            <TextView android:id="@+id/widget_day4_label" android:layout_width="64dp" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:text="" android:textColor="@color/widgetCardText" android:textSize="12sp" android:textStyle="bold" />
+            <TextView android:id="@+id/widget_day4_text" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="" android:textColor="@color/widgetCardTextMuted" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/widget_day5" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:padding="3dp">
+            <TextView android:id="@+id/widget_day5_color" android:layout_width="16dp" android:layout_height="16dp" android:text="" android:background="@drawable/widget_dot_accent" />
+            <TextView android:id="@+id/widget_day5_label" android:layout_width="64dp" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:text="" android:textColor="@color/widgetCardText" android:textSize="12sp" android:textStyle="bold" />
+            <TextView android:id="@+id/widget_day5_text" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="" android:textColor="@color/widgetCardTextMuted" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

@@ -425,8 +425,19 @@ public sealed record AssignmentDayItem(
     public bool HasTime => !string.IsNullOrEmpty(TimeText);
     public bool HasNoAssignment => !HasAssignment;
 
-    /// <summary>2026-09-21, user's own ask: "vyhoď zbytečný nápis Práce v kalendáři... odlišíme to jen barvou" — Práce specifically (the most common type) drops its text label and relies on color/the accent dot alone; every other type keeps its label, since those are less common and worth spelling out. Empty (not "Bez záznamu") for a Work day, so <see cref="HasDisplayTypeLabel"/> can hide the Label outright rather than rendering a blank line.</summary>
-    public string DisplayTypeLabel => HasNoAssignment ? "Bez záznamu" : TypeText == "Work" ? string.Empty : TypeLabel;
+    /// <summary>
+    /// 2026-09-21, user's own ask: "vyhoď zbytečný nápis Práce v kalendáři... odlišíme to jen barvou" —
+    /// Práce specifically (the most common type) drops its text label and relies on color/the accent
+    /// dot alone. 2026-09-22 extended the same suppression to ANY type once <see cref="WorkplaceText"/>
+    /// is set (not just Work) — the user's own ask ("dej to alespoň na jeden řádek") after a PS/VV/NV
+    /// leave day started showing both the generic type label ("Volno") AND the raw code ("PS") on two
+    /// separate lines; a type whose <see cref="WorkplaceText"/> is already self-descriptive (the raw
+    /// leave code, or <c>AssignmentType.Other</c>'s own full sentence — see
+    /// <c>OpicentrumSyncService.MergeSpravavolnaAsync</c>'s own remarks) doesn't need the generic label
+    /// repeated above it. Empty (not "Bez záznamu") for a Work day, so <see cref="HasDisplayTypeLabel"/>
+    /// can hide the Label outright rather than rendering a blank line.
+    /// </summary>
+    public string DisplayTypeLabel => HasNoAssignment ? "Bez záznamu" : (TypeText == "Work" || HasWorkplace) ? string.Empty : TypeLabel;
     public bool HasDisplayTypeLabel => !string.IsNullOrEmpty(DisplayTypeLabel);
 
     /// <summary>2026-09-21 — a duty overlaid on top of this day's own primary type (see <c>WorkAssignment.OnCallWorkplaceName</c>'s own remarks); e.g. a normal shift followed later the same day by on-call.</summary>

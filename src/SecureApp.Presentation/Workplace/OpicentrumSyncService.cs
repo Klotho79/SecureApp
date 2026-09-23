@@ -342,7 +342,7 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
                     if (!int.TryParse(personMatch.Groups["osoba"].Value, out var osoba) || osoba != myId) continue;
                     if (!DateOnly.TryParseExact(personMatch.Groups["date"].Value, "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)) continue;
                     if (date < rangeStart || date > rangeEnd) continue;
-                    resolved[date] = (AssignmentType.Work, workplaceName == "NEZAŘAZENÍ" ? "Nezařazeno" : workplaceName, null);
+                    resolved[date] = (AssignmentType.Work, workplaceName == "NEZAŘAZENÍ" ? "Nezařazen" : workplaceName, null);
                 }
             }
         }
@@ -430,8 +430,13 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
                 // Full overwrite, not a merge (unlike MergeSluzbyAsync above) — real leave/vacation
                 // always wins outright, including clearing any on-call overlay a stale prior sync
                 // might have left on this date; a confirmed vacation day must never still show a duty.
+                //
+                // VV/NV/PS all map to DayOff (see KnownLeaveCodes' own remarks) but the user wants the
+                // raw code visible, not just the generic "Volno" label (2026-09-22: "pokud je na webu
+                // PS dej PS ne volno") — reusing WorkplaceName as free-text label for a non-Work day,
+                // the same trick the AssignmentType.Other fallback right below already relies on.
                 resolved[date] = KnownLeaveCodes.TryGetValue(code, out var type)
-                    ? (type, null, null)
+                    ? (type, type == AssignmentType.DayOff ? code : null, null)
                     : (AssignmentType.Other, $"Volno (kód {rawCode}, import z Opicentra)", null);
             }
         }
@@ -545,7 +550,7 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
     private static partial Regex WelcomeRegex();
 
     // onmousedown normally sits directly on the <div> ("<div onmousedown=...>Name</div>"), but the
-    // NEZAŘAZENÍ row (2026-09-22, user's own ask: show "Nezařazeno" for days the real site lists the
+    // NEZAŘAZENÍ row (2026-09-22, user's own ask: show "Nezařazen" for days the real site lists the
     // person as unassigned) nests it on an inner <font> instead ("<div><font onmousedown=...>Name
     // </font></div>") — same data, a different code path on the site's own legacy PHP for that one
     // special row. Not anchored to which tag onmousedown is actually on, so both shapes match; `.*?`

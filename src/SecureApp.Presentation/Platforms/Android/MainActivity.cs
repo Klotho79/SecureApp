@@ -38,6 +38,7 @@ public class MainActivity : MauiAppCompatActivity
         ApplyWindowSoftInputMode();
         RequestNotificationPermissionIfNeeded();
         HandleNotificationIntent(Intent);
+        HandleWidgetIntent(Intent);
     }
 
     protected override void OnResume()
@@ -53,6 +54,7 @@ public class MainActivity : MauiAppCompatActivity
     {
         base.OnNewIntent(intent);
         HandleNotificationIntent(intent);
+        HandleWidgetIntent(intent);
     }
 
     private static void HandleNotificationIntent(Intent? intent)
@@ -60,6 +62,17 @@ public class MainActivity : MauiAppCompatActivity
         var idText = intent?.GetStringExtra("notificationId");
         if (Guid.TryParse(idText, out var id))
             Notifications.NativeNotificationRouter.OnNotificationTapped(id);
+    }
+
+    // Phase 7 home-screen widget's weekly-rozpis card (NOTIFICATION_HUB_SPEC.md §9/§30, 2026-09-22) —
+    // NotificationsWidgetProvider's card PendingIntent carries this extra to push WorkplacePage;
+    // absent (a plain app-icon launch, or the ticker line's own plain "notificationId" tap — see
+    // HandleNotificationIntent above) just means "nothing widget-specific to route".
+    private static void HandleWidgetIntent(Intent? intent)
+    {
+        var route = intent?.GetStringExtra("widgetRoute");
+        if (route is not null)
+            Notifications.PendingWidgetRouteRouter.OnRouteRequested(route);
     }
 
     /// <summary>Android 13+ (API 33+) requires this runtime grant before NotificationManagerCompat.Notify actually shows anything — requested once, best-effort (declining just means NativeNotificationService's own Notify call silently no-ops, never a crash).</summary>

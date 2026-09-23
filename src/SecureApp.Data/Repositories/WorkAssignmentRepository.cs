@@ -4,6 +4,7 @@ using SecureApp.Data.Persistence.Rows;
 using SecureApp.Domain.Common;
 using SecureApp.Domain.Entities;
 using SecureApp.Domain.Enums;
+using SecureApp.Domain.Events;
 using SecureApp.Domain.Interfaces.Repositories;
 
 namespace SecureApp.Data.Repositories;
@@ -56,6 +57,7 @@ public sealed class WorkAssignmentRepository : IWorkAssignmentRepository
             assignment.Note,
             Format(assignment.CreatedAtUtc),
             Format(assignment.ModifiedAtUtc));
+        WidgetRefreshSignal.Raise();
     }
 
     public async Task UpdateAsync(WorkAssignment assignment, CancellationToken ct = default)
@@ -78,12 +80,14 @@ public sealed class WorkAssignmentRepository : IWorkAssignmentRepository
             assignment.Note,
             Format(assignment.ModifiedAtUtc),
             assignment.Id.ToString());
+        WidgetRefreshSignal.Raise();
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
     {
         var connection = await _connectionFactory.GetConnectionAsync(ct);
         await connection.ExecuteAsync("DELETE FROM work_assignments WHERE id = ?", id.ToString());
+        WidgetRefreshSignal.Raise();
     }
 
     private static WorkAssignment ToEntity(WorkAssignmentRow row)

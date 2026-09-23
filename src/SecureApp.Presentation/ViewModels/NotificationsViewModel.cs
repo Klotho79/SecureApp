@@ -200,6 +200,7 @@ public sealed partial class NotificationsViewModel : ObservableObject
         await LoadAsync();
     }
 
+
     [RelayCommand]
     private async Task OpenNotificationAsync(NotificationListItem? item)
     {
