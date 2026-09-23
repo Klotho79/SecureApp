@@ -33,7 +33,9 @@
 		<!-- App Identifier -->
 		<ApplicationId>com.companyname.secureapp.presentation</ApplicationId>
 
-		<!-- Versions -->
+		<!-- Versions — ApplicationVersion is the Android versionCode; bump it on every release build
+		     that should be offered as an update (the self-update system, 2026-09-23, compares this
+		     number, not ApplicationDisplayVersion, to decide "is there something newer"). -->
 		<ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
 		<ApplicationVersion>1</ApplicationVersion>
 
@@ -113,5 +115,10 @@
 	  <ProjectReference Include="..\SecureApp.Domain\SecureApp.Domain.csproj" />
 	  <ProjectReference Include="..\SecureApp.Data\SecureApp.Data.csproj" />
 	</ItemGroup>
+
+	<!-- Android release signing (2026-09-23) — see keystore/README.md for the full story. The props
+	     file itself is git-ignored (keystore/ is excluded wholesale) so the real password never
+	     reaches git; this Import is the only trace of it in tracked source. -->
+	<Import Project="..\..\keystore\signing.local.props" Condition="Exists('..\..\keystore\signing.local.props')" />
 
 </Project>
