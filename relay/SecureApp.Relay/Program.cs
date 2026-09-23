@@ -67,6 +67,51 @@ app.MapGet("/download/android", async () =>
     return Results.File(bytes, "application/vnd.android.package-archive", "SecureApp.apk");
 });
 
+// Self-update (2026-09-23) — the in-app update check reads this; unauthenticated, same reasoning
+// as /download itself (a device that's already this far along already has the app, but checking
+// "is there something newer" shouldn't need a device credential either — it's the same "anyone
+// already on the network" exposure /health and /download already accept).
+app.MapGet("/download/android/version", () =>
+{
+    var versionPath = Path.Combine(downloadsDir, "secureapp-android.version.json");
+    if (!File.Exists(versionPath))
+        return Results.NotFound();
+
+    return Results.Content(File.ReadAllText(versionPath), "application/json");
+});
+
+// Lets a future release be published with one authenticated POST from the dev machine instead of
+// manually scp-ing the APK onto the Pi — same admin-secret gate as /admin/deploy right above.
+app.MapPost("/admin/upload/android", async (HttpRequest request) =>
+{
+    if (!IsAdminAuthorized(request, adminSecret))
+        return Results.Unauthorized();
+
+    if (!request.HasFormContentType)
+        return Results.BadRequest("Expected multipart/form-data.");
+
+    var form = await request.ReadFormAsync();
+    var file = form.Files["apk"];
+    if (file is null || file.Length == 0)
+        return Results.BadRequest("Missing 'apk' file.");
+    if (!int.TryParse(form["versionCode"].ToString(), out var versionCode))
+        return Results.BadRequest("Missing/invalid 'versionCode'.");
+
+    var versionName = form["versionName"].ToString();
+    if (string.IsNullOrEmpty(versionName))
+        versionName = versionCode.ToString();
+
+    var apkPath = Path.Combine(downloadsDir, "secureapp-android.apk");
+    await using (var stream = File.Create(apkPath))
+        await file.CopyToAsync(stream);
+
+    var versionPath = Path.Combine(downloadsDir, "secureapp-android.version.json");
+    var manifest = new UpdateManifest(versionCode, versionName, DateTimeOffset.UtcNow);
+    await File.WriteAllTextAsync(versionPath, System.Text.Json.JsonSerializer.Serialize(manifest));
+
+    return Results.Ok(new { uploaded = true, sizeBytes = file.Length, versionCode, versionName });
+});
+
 app.MapPost("/admin/invites", (HttpRequest request, CreateInviteRequest body, RelayDatabase db) =>
 {
     if (!IsAdminAuthorized(request, adminSecret))

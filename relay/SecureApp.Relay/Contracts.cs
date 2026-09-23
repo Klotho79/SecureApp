@@ -6,6 +6,9 @@ public sealed record CreateInviteResponse(string Code, DateTimeOffset ExpiresAtU
 public sealed record CreateDeviceRequest(string DisplayName);
 public sealed record DeviceCredentialResponse(Guid DeviceId, string Secret);
 
+/// <summary>Self-update manifest (2026-09-23) — written by /admin/upload/android, read by the app's own update check via /download/android/version. VersionCode is the Android versionCode (ApplicationVersion in the .csproj) — the actual number compared to decide "is there something newer", VersionName is just the human-readable display string.</summary>
+public sealed record UpdateManifest(int VersionCode, string VersionName, DateTimeOffset ReleasedAtUtc);
+
 public sealed record RegisterRequest(string InviteCode, string DisplayName);
 
 // --- Activation requests (2026-09-06) — replaces the invite-code hand-off above for a new device
