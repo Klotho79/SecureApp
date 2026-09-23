@@ -22,10 +22,28 @@ param(
     [string]$BackupRoot = "C:\Users\dvora\SecureApp-Backups",
     [int]$RetentionCount = 14,
     [string]$SshConfig = "C:\Users\dvora\.ssh\config",
-    [string]$PiHost = "secureapp-pi"
+    [string]$PiHost = "secureapp-pi",
+    [int]$MinHoursBetweenRuns = 20
 )
 
 $ErrorActionPreference = "Stop"
+
+# This PC isn't reliably on at the scheduled 3 AM time (2026-09-23, user's own real observation) -
+# the task is ALSO registered to fire at every logon as a second trigger, so a missed 3 AM run still
+# gets covered the next time this PC is actually used. That alone would mean multiple redundant runs
+# on any day with several logons, so skip if the newest existing backup is still fresh enough.
+if (Test-Path $BackupRoot) {
+    $newest = Get-ChildItem -Path $BackupRoot -Directory | Sort-Object Name -Descending | Select-Object -First 1
+    if ($newest -and $newest.Name -match '^\d{4}-\d{2}-\d{2}_\d{6}$') {
+        $newestTime = [DateTime]::ParseExact($newest.Name, "yyyy-MM-dd_HHmmss", $null)
+        $hoursSince = (Get-Date) - $newestTime
+        if ($hoursSince.TotalHours -lt $MinHoursBetweenRuns) {
+            Write-Output "Skipping - last backup ($($newest.Name)) is only $([Math]::Round($hoursSince.TotalHours,1))h old (< $MinHoursBetweenRuns h)."
+            exit 0
+        }
+    }
+}
+
 $timestamp = Get-Date -Format "yyyy-MM-dd_HHmmss"
 $dest = Join-Path $BackupRoot $timestamp
 New-Item -ItemType Directory -Force -Path $dest | Out-Null

@@ -77,16 +77,27 @@ files, hosted APK), `relay/SecureApp.Relay/.env` (the admin secret + wg-easy cre
 sudo chmod -R a+rX ~/wireguard/data
 ```
 
-**One-time PC setup** (already done, 2026-09-23) — a daily Windows Scheduled Task, 3:00 AM:
+**One-time PC setup** (updated 2026-09-23 — this PC isn't reliably on at 3 AM, so the task now has a
+second trigger firing at every logon too; a script-level `$MinHoursBetweenRuns` guard in
+`backup-from-pi.ps1` skips the run if the newest backup is under 20h old, so a logon shortly after the
+3 AM run — or several logons in one day — doesn't produce redundant runs). Registered via an XML task
+definition (`schtasks /Create /XML ...`) rather than `Register-ScheduledTask`, because the
+`ScheduledTasks` PowerShell module's CIM provider was refusing all registrations with "Přístup byl
+odepřen" on this machine that day (`schtasks.exe` itself worked fine — root cause not tracked down,
+suspected related to the pending-reboot state from a concurrent .NET SDK auto-update):
 
 ```powershell
-$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument '-NoProfile -ExecutionPolicy Bypass -File "H:\Visual Studio\C#\Aplikace\relay\ops\backup-from-pi.ps1"'
-$trigger = New-ScheduledTaskTrigger -Daily -At "3:00AM"
-$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopOnIdleEnd
-Register-ScheduledTask -TaskName "SecureApp Pi Backup" -Action $action -Trigger $trigger -Settings $settings -Description "Daily backup of SecureApp relay data, shared library, and WireGuard config from the Pi to this PC." -RunLevel Limited
+schtasks /Create /TN "SecureApp Pi Backup" /XML "relay\ops\backup-task.xml.sample" /F
 ```
 
-Run it manually any time with `.\relay\ops\backup-from-pi.ps1` from the repo root.
+`relay/ops/backup-task.xml.sample` is the exact definition in use on this PC (hardcodes this machine's
+username and repo path — adjust both if setting this up elsewhere). Rebuild it with
+`New-ScheduledTaskTrigger`/`Register-ScheduledTask` directly instead if that cmdlet is working normally
+on your machine — the XML/`schtasks.exe` route was only needed as a workaround here.
+
+Run it manually any time with `.\relay\ops\backup-from-pi.ps1` from the repo root — the 20h freshness
+check applies to manual runs too (it just compares against the newest existing backup, regardless of
+what triggered the run), so pass `-MinHoursBetweenRuns 0` to force one on demand right after another.
 
 **Restoring**: stop the relay/wg-easy containers, copy the relevant `<timestamp>\relay-data\*` back
 onto the Pi's `~/SecureApp/relay/SecureApp.Relay/data/`, `<timestamp>\relay.env` onto
