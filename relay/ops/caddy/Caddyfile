@@ -1,0 +1,67 @@
+# Public HTTPS front door for the relay (2026-09-24).
+#
+# Why this exists: distribution was VPN-only, so every new member first needed their own
+# WireGuard config — which does not scale past a handful of people, and cannot be handed
+# out as one shared link at all. On top of that, the download page was served over plain
+# http://, and Android blocks cleartext traffic for apps that have not opted in — so a QR
+# scanner's built-in browser silently rendered a BLANK PAGE and never even sent the request
+# (confirmed 2026-09-24: the member's tunnel was up and handshaking, yet the relay's own log
+# recorded zero /download hits from them). Real HTTPS fixes both at once.
+#
+# Replace RELAY_HOSTNAME below with the real hostname before deploying, and put a real
+# address in `email` so Let's Encrypt can warn about expiry. Everything else works as-is.
+{
+	email ADMIN_EMAIL_HERE
+}
+
+RELAY_HOSTNAME {
+	# --- Trust boundary ---------------------------------------------------------------
+	# Until this change the relay sat entirely behind WireGuard, and several endpoints were
+	# written to rely on that: their own comments say so in Program.cs ("No admin approval
+	# required — WireGuard is the trust boundary"). Publishing the relay removes that
+	# assumption, so those endpoints are re-fenced here, at the edge, instead.
+	#
+	# /self-register hands out valid device credentials to ANY caller with no approval, no
+	# invite code and no proof of identity whatsoever. Public, it would let a stranger join
+	# the community, enumerate the member directory (real names + public keys) and write to
+	# the shared catalogs. Chat content itself stays safe — that is end-to-end encrypted and
+	# the relay only ever holds ciphertext — but the rest is a real hole.
+	#
+	# Fencing it by source address is deliberately an INTERIM measure: it keeps the silent
+	# self-heal path working for devices on the VPN/LAN while closing it to the internet,
+	# without needing any app change. The durable fix is to make the caller sign the request
+	# with its own chat-identity key (ML-DSA is already implemented and every device already
+	# holds such a key) and have the relay verify it against directory_entries — that needs a
+	# client-side change, so it lands once the app can be built again.
+	#
+	# /admin/* is protected by X-Admin-Secret already; this is defence in depth, so a leaked
+	# or brute-forced secret still is not enough on its own from outside.
+	@privileged {
+		path /admin/* /self-register
+		not remote_ip 192.168.50.0/24 10.8.0.0/24 127.0.0.1/32 ::1
+	}
+	respond @privileged "Not available from this network." 403
+
+	# --- Everything else --------------------------------------------------------------
+	# Public on purpose: /download + /download/android (the whole point — one link anyone can
+	# open), /download/android/version (the self-update check), /activation/request and
+	# /activation/status/{id} (a brand-new device has no credential yet; an admin still has to
+	# approve it in the app before it becomes a real member), /health, and every
+	# device-authenticated route, which enforces X-Device-Id/X-Device-Secret itself.
+	#
+	# reverse_proxy upgrades WebSocket connections (/ws) on its own — no extra config needed —
+	# and streams request bodies, so the relay's own 200 MB library-upload cap stays the only
+	# limit that applies.
+	# (X-Forwarded-For/-Proto are passed upstream by default — setting them explicitly makes
+	# Caddy warn that it is redundant, so they are deliberately left out.)
+	reverse_proxy 192.168.50.8:8080
+
+	encode gzip
+
+	log {
+		output file /var/log/caddy/relay.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+	}
+}

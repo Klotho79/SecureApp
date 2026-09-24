@@ -63,6 +63,52 @@ Progress/errors land in `~/SecureApp/relay/SecureApp.Relay/data/deploy.log`.
 Point a systemd timer (or the post-receive hook itself) at the same marker-file trick instead of
 waiting for a button tap — nothing about `/admin/deploy` or `deploy.sh` needs to change.
 
+# Public HTTPS front door (`caddy/`)
+
+Added 2026-09-24. Lets any number of new members install and activate the app from **one link**,
+with no WireGuard config handed out per person.
+
+**What it fixes.** Distribution used to require WireGuard first, because the relay only ever
+listened on `192.168.50.8:8080`. That does not scale — a WireGuard config is per-device by
+definition and cannot be one shared link. Worse, the download page was plain `http://`, and
+Android blocks cleartext for apps that have not opted in, so a QR scanner's built-in browser
+rendered a **blank page and never sent the request at all** (confirmed against the relay's own
+log: the new member's tunnel was up and handshaking, yet `/download` recorded zero hits from
+them). Real HTTPS removes both problems.
+
+**Trust boundary.** Several endpoints were written assuming "only the VPN can reach me" — their
+own comments in `Program.cs` say so. `Caddyfile` re-fences the two that matter (`/admin/*` and
+`/self-register`) to the LAN/VPN source ranges. `/self-register` is the important one: it issues
+valid device credentials to any caller with no approval at all. Source-address fencing is an
+interim measure — the durable fix is to have the caller sign the request with its own
+chat-identity key (ML-DSA, already implemented) and verify it against `directory_entries`, which
+needs a client-side change too.
+
+New devices still go through `/activation/request` → **an admin approves them in the app**, so
+being able to reach the relay is not the same as being let into the community.
+
+## One-time setup
+
+1. **Hostname.** Either a real domain, or a free DuckDNS subdomain. Point its A record at the
+   Pi's public address (`212.111.15.246` at time of writing).
+2. **Router.** Forward TCP 80 and 443 to `192.168.50.8`. Port 80 is required for the ACME
+   challenge and the http→https redirect.
+3. **Fill in `caddy/Caddyfile`** — replace `RELAY_HOSTNAME` and `ADMIN_EMAIL_HERE`.
+4. **Start it** (the relay's own compose project is left untouched and keeps its
+   `192.168.50.8:8080` binding, so already-paired devices keep working — no flag day):
+   ```bash
+   cd ~/SecureApp/relay/ops/caddy
+   sudo docker compose up -d
+   curl -i https://<hostname>/health          # expect 200
+   curl -i https://<hostname>/self-register   # expect 403 from outside the LAN/VPN
+   ```
+5. **Point the app at it** — `RelayDefaults.DefaultEndpoint` becomes `wss://<hostname>`, and
+   the Android cleartext exception in `network_security_config.xml` can then be dropped.
+
+Certificates live in `caddy/data/` (git-ignored) and renew themselves. Worth adding that
+directory to `backup-from-pi.ps1` only if re-issuing a certificate is ever inconvenient — Caddy
+obtains a fresh one automatically on a new machine, so it is not critical data.
+
 # Backup — Pi data to the dev PC
 
 `backup-from-pi.ps1` (2026-09-23, user's own ask: don't lose community data or admin access if a
