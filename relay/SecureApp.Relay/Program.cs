@@ -74,14 +74,18 @@ app.MapGet("/download", () =>
     return Results.Content(DownloadPageHtml(androidAvailable, androidSize), "text/html; charset=utf-8");
 });
 
-app.MapGet("/download/android", async () =>
+app.MapGet("/download/android", () =>
 {
     var path = Path.Combine(downloadsDir, "secureapp-android.apk");
     if (!File.Exists(path))
         return Results.NotFound("Android verze zatím není nahraná.");
 
-    var bytes = await File.ReadAllBytesAsync(path);
-    return Results.File(bytes, "application/vnd.android.package-archive", "SecureApp.apk");
+    // enableRangeProcessing: the client's foreground-service downloader resumes an interrupted
+    // download with a `Range: bytes=<already-have>-` request (2026-09-24, user's own ask: a failed
+    // update must not re-download from scratch and waste mobile data). The physical-file overload
+    // both honours that (206 Partial Content) and streams from disk instead of loading the whole
+    // ~64 MB APK into memory per request, which the old byte[] overload did.
+    return Results.File(path, "application/vnd.android.package-archive", "SecureApp.apk", enableRangeProcessing: true);
 });
 
 // Self-update (2026-09-23) — the in-app update check reads this; unauthenticated, same reasoning
