@@ -90,6 +90,29 @@ public sealed partial class SettingsViewModel
 
     partial void OnAccentStatusTextChanged(string? value) => HasAccentStatus = !string.IsNullOrEmpty(value);
 
+    // --- Font size (Phase 4) — rescales the app's base text live via App.ApplyFontScale.
+
+    public IReadOnlyList<string> FontScaleChoices { get; } = ["Menší", "Normální", "Větší", "Největší"];
+
+    [ObservableProperty]
+    public partial int FontScaleIndex { get; set; }
+
+    private bool _fontScaleLoaded;
+
+    private void LoadFontScale()
+    {
+        _fontScaleLoaded = false;
+        FontScaleIndex = Microsoft.Maui.Storage.Preferences.Default.Get(App.FontScalePreferenceKey, 1);
+        _fontScaleLoaded = true;
+    }
+
+    partial void OnFontScaleIndexChanged(int value)
+    {
+        if (!_fontScaleLoaded) return;
+        Microsoft.Maui.Storage.Preferences.Default.Set(App.FontScalePreferenceKey, value);
+        App.ApplyFontScale(value);
+    }
+
     private void LoadAccent()
     {
         var stored = Microsoft.Maui.Storage.Preferences.Default.Get(Infrastructure.AccentPalette.PreferenceKey, string.Empty);

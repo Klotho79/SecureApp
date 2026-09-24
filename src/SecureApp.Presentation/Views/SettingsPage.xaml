@@ -76,6 +76,10 @@
                         <Picker ItemsSource="{Binding ThemeModeChoices}" SelectedIndex="{Binding ThemeModeIndex}" />
                         <Label Text="Přepne světlý/tmavý režim — projeví se hned. Platí jen pro toto zařízení." FontSize="9.5" TextColor="Gray" />
 
+                        <Label Text="Velikost písma" FontAttributes="Bold" Margin="0,10,0,0" />
+                        <Picker ItemsSource="{Binding FontScaleChoices}" SelectedIndex="{Binding FontScaleIndex}" />
+                        <Label Text="Zvětší/zmenší základní text, pole a tlačítka — projeví se hned. Platí jen pro toto zařízení." FontSize="9.5" TextColor="Gray" />
+
                         <Label Text="Barva aplikace" FontAttributes="Bold" Margin="0,10,0,0" />
                         <!-- Preset swatches — tapping one applies + stores it. Tap handled via the VM's
                              SelectAccentCommand (ancestor-bound, same pattern as the member Save button). -->

@@ -334,6 +334,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         AvailableRoles = IsAdmin ? Enum.GetValues<Role>() : [Role.Modifier, Role.Viewer];
         RefreshCanPostToBoard();
         LoadThemeMode();
+        LoadFontScale();
         LoadAccent();
         IsSaved = false;
         ErrorMessage = null;
