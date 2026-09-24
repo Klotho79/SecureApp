@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="UTF-8" ?>
+<?xml version="1.0" encoding="UTF-8" ?>
 <ContentPage
     x:Class="SecureApp.Presentation.Views.SettingsPage"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -8,358 +8,375 @@
     x:DataType="vm:SettingsViewModel"
     Title="Nastavení"
     Shell.NavBarIsVisible="False">
-    <!-- Shell.NavBarIsVisible="False" + own PageTitle Label below (2026-09-20, "sjednot grafiku
-         jako je ta nastenka") — matches Nástěnka/Chaty/Kontakty/Knihovna/Dokumenty, all of which
-         draw their own in-content title instead of relying on native Shell chrome. -->
 
     <ScrollView>
         <VerticalStackLayout Padding="16" Spacing="12">
 
             <Label Text="Nastavení" Style="{StaticResource PageTitle}" />
 
-            <Border Style="{StaticResource CardBorder}">
-                <VerticalStackLayout Spacing="8">
-                    <Label Text="Účet" Style="{StaticResource SectionHeader}" Margin="0" />
+            <!-- Sub-tabs (2026-09-24) — the page had grown to ~15 stacked cards in one scroll, which
+                 the user found cluttered. Grouped into Uživatel / Systém / Admin, one shown at a time
+                 (SettingsTab). The selected tab's button is highlighted via a DataTrigger on the
+                 matching derived bool — converter-free. The Admin tab button only shows for admins. -->
+            <Grid ColumnDefinitions="*,*,*" ColumnSpacing="6">
+                <Button Grid.Column="0" Text="Uživatel" Style="{StaticResource SecondaryButton}" Command="{Binding SelectSettingsTabCommand}" CommandParameter="0">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button" Binding="{Binding IsUserSettingsTab}" Value="True">
+                            <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                            <Setter Property="TextColor" Value="{StaticResource White}" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+                <Button Grid.Column="1" Text="Systém" Style="{StaticResource SecondaryButton}" Command="{Binding SelectSettingsTabCommand}" CommandParameter="1">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button" Binding="{Binding IsSystemSettingsTab}" Value="True">
+                            <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                            <Setter Property="TextColor" Value="{StaticResource White}" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+                <Button Grid.Column="2" Text="Admin" IsVisible="{Binding IsAdmin}" Style="{StaticResource SecondaryButton}" Command="{Binding SelectSettingsTabCommand}" CommandParameter="2">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button" Binding="{Binding IsAdminSettingsTab}" Value="True">
+                            <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                            <Setter Property="TextColor" Value="{StaticResource White}" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+            </Grid>
 
-                    <Label Text="Zobrazované jméno" FontAttributes="Bold" />
-                    <Entry Text="{Binding DisplayName}" Placeholder="Vaše jméno" />
+            <!-- ============================ UŽIVATEL ============================ -->
+            <VerticalStackLayout Spacing="12" IsVisible="{Binding IsUserSettingsTab}">
 
-                    <Label Text="Role" FontAttributes="Bold" Margin="0,8,0,0" />
-                    <Label Text="{Binding SelectedRole}" FontSize="13" />
-                    <Label
-                        Text="Roli přiděluje správce komunity — na tomto zařízení ji měnit nelze. Viewer může procházet a otevírat, ale ne vytvářet/mazat/importovat; Modifier a Admin mohou upravovat a psát na nástěnku."
-                        FontSize="9.5"
-                        TextColor="Gray" />
+                <Border Style="{StaticResource CardBorder}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Účet" Style="{StaticResource SectionHeader}" Margin="0" />
 
-                    <Button Text="Uložit" Command="{Binding SaveCommand}" />
-                    <Label Text="Uloženo." IsVisible="{Binding IsSaved}" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" />
-                    <Label Text="{Binding ErrorMessage}" IsVisible="{Binding HasErrorMessage}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
-                </VerticalStackLayout>
-            </Border>
+                        <Label Text="Zobrazované jméno" FontAttributes="Bold" />
+                        <Entry Text="{Binding DisplayName}" Placeholder="Vaše jméno" />
 
-            <!-- Vzhled (2026-09-24, Phase 4 — easy customization) — světlý/tmavý/systém, projeví se
-                 hned (UserAppTheme přepne všechny AppThemeBinding), uloží se per zařízení. -->
-            <Border Style="{StaticResource CardBorder}">
-                <VerticalStackLayout Spacing="8">
-                    <Label Text="Vzhled aplikace" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Label Text="Motiv" FontAttributes="Bold" />
-                    <Picker ItemsSource="{Binding ThemeModeChoices}" SelectedIndex="{Binding ThemeModeIndex}" />
-                    <Label Text="Přepne světlý/tmavý režim — projeví se hned. Platí jen pro toto zařízení." FontSize="9.5" TextColor="Gray" />
-                </VerticalStackLayout>
-            </Border>
+                        <Label Text="Role" FontAttributes="Bold" Margin="0,8,0,0" />
+                        <Label Text="{Binding SelectedRole}" FontSize="13" />
+                        <Label
+                            Text="Roli přiděluje správce komunity — na tomto zařízení ji měnit nelze. Viewer může procházet a otevírat, ale ne vytvářet/mazat/importovat; Modifier a Admin mohou upravovat a psát na nástěnku."
+                            FontSize="9.5"
+                            TextColor="Gray" />
 
-            <!-- Chaty/Soubory/Kontakty toggles added 2026-09-16 (user's own ask: "chci mít možnost
-                 schovávat jednotlivé menu kromě settings samozřejmě") — same Grid+Switch+description
-                 pattern as the pre-existing Logbook row, one per hideable tab. Nastavení itself has no
-                 row here on purpose: it can never be hidden (see AppShell's own remarks). -->
-            <Border Style="{StaticResource CardBorder}">
-                <VerticalStackLayout Spacing="8">
-                    <Label Text="Zobrazení" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Grid ColumnDefinitions="*,Auto">
-                        <Label Grid.Column="0" Text="Nástěnka" VerticalOptions="Center" FontAttributes="Bold" />
-                        <Switch Grid.Column="1" IsToggled="{Binding IsNotificationsTabVisible}" />
-                    </Grid>
-                    <Label Text="Přidá/skryje záložku Nástěnka — projeví se hned. Platí jen pro toto zařízení." FontSize="9.5" TextColor="Gray" />
-
-                    <Grid ColumnDefinitions="*,Auto">
-                        <Label Grid.Column="0" Text="Chaty" VerticalOptions="Center" FontAttributes="Bold" />
-                        <Switch Grid.Column="1" IsToggled="{Binding IsChatsTabVisible}" />
-                    </Grid>
-                    <Label Text="Přidá/skryje záložku Chaty — projeví se hned. Platí jen pro toto zařízení." FontSize="9.5" TextColor="Gray" />
-
-                    <Grid ColumnDefinitions="*,Auto">
-                        <Label Grid.Column="0" Text="Soubory" VerticalOptions="Center" FontAttributes="Bold" />
-                        <Switch Grid.Column="1" IsToggled="{Binding IsFilesTabVisible}" />
-                    </Grid>
-                    <Label Text="Přidá/skryje záložku Soubory (Knihovna a Dokumenty) — projeví se hned. Platí jen pro toto zařízení." FontSize="9.5" TextColor="Gray" />
-
-                    <Grid ColumnDefinitions="*,Auto">
-                        <Label Grid.Column="0" Text="Kontakty" VerticalOptions="Center" FontAttributes="Bold" />
-                        <Switch Grid.Column="1" IsToggled="{Binding IsContactsTabVisible}" />
-                    </Grid>
-                    <Label Text="Přidá/skryje záložku Kontakty — projeví se hned. Platí jen pro toto zařízení." FontSize="9.5" TextColor="Gray" />
-
-                    <Grid ColumnDefinitions="*,Auto">
-                        <Label Grid.Column="0" Text="Logbook" VerticalOptions="Center" FontAttributes="Bold" />
-                        <Switch Grid.Column="1" IsToggled="{Binding IsLogbookVisible}" />
-                    </Grid>
-                    <Label Text="Přidá/skryje záložku Logbook (check-listy a záznam výkonů) — projeví se hned. Platí jen pro toto zařízení." FontSize="9.5" TextColor="Gray" />
-                </VerticalStackLayout>
-            </Border>
-
-            <Border Style="{StaticResource CardBorder}">
-                <VerticalStackLayout Spacing="8">
-                    <Label Text="Relay" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Label Text="{Binding ConnectionStatusText}" FontSize="9.5" TextColor="Gray" />
-                    <Label Text="{Binding RelayErrorMessage}" IsVisible="{Binding HasRelayError}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
-
-                    <Entry Text="{Binding RelayEndpointText}" Placeholder="Adresa relay serveru, např. ws://10.8.0.1:8080" />
-
-                    <!-- Activation (2026-09-06, auto-approve 2026-09-19) — this device sends its
-                         name + email + own key fingerprint and the relay approves it on receipt, no
-                         waiting, no code needed. See SettingsViewModel.RequestActivationAsync's own
-                         remarks. The old separate "Mám kód pozvánky" path (and the admin-side "Kódy
-                         pozvánky" card that minted them) is gone — auto-approve made it strictly
-                         redundant with this single button. -->
-                    <VerticalStackLayout Spacing="8" IsVisible="{Binding IsNotRegistered}">
-                        <Entry Text="{Binding ActivationEmailText}" Placeholder="Váš e-mail (ideálně pracovní)" Keyboard="Email" />
-                        <Button Text="Aktivovat" Command="{Binding RequestActivationCommand}" IsEnabled="{Binding CanUseRelayControls}" />
-                        <Label Text="{Binding ActivationStatusText}" IsVisible="{Binding HasActivationStatus}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
+                        <Button Text="Uložit" Command="{Binding SaveCommand}" />
+                        <Label Text="Uloženo." IsVisible="{Binding IsSaved}" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" />
+                        <Label Text="{Binding ErrorMessage}" IsVisible="{Binding HasErrorMessage}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
                     </VerticalStackLayout>
+                </Border>
 
-                    <Button Text="Připojit" Command="{Binding ConnectToRelayCommand}" IsVisible="{Binding IsNotConnected}" IsEnabled="{Binding CanUseRelayControls}" />
-                    <Button Text="Odpojit" Style="{StaticResource SecondaryButton}" Command="{Binding DisconnectFromRelayCommand}" IsVisible="{Binding IsConnected}" />
-                </VerticalStackLayout>
-            </Border>
-
-            <!-- Opicentrum (2026-09-21) — third-party login for the external ARO staff portal, the
-                 source WorkplaceViewModel syncs the Rozpis from on every open. Entered once here,
-                 stored only in this device's own encrypted vault — the app logs in on the user's
-                 behalf from then on, see SettingsViewModel.Opicentrum.cs's own remarks. -->
-            <Border Style="{StaticResource CardBorder}">
-                <VerticalStackLayout Spacing="8">
-                    <Label Text="Opicentrum (rozpis)" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Label Text="Přihlašovací údaje k opicentrum.cz/ARO — appka se jimi sama přihlásí při každém otevření Rozpisu a stáhne aktuální směny. Heslo se ukládá jen v šifrovaném úložišti tohoto zařízení." FontSize="9.5" TextColor="Gray" />
-                    <Label Text="{Binding OpicentrumStatusText}" IsVisible="{Binding HasOpicentrumStatus}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" LineBreakMode="WordWrap" />
-
-                    <Label Text="✓ Přihlašovací údaje jsou nastavené." FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding HasOpicentrumCredentials}" />
-
-                    <Entry Text="{Binding OpicentrumUsernameInput}" Placeholder="Uživatelské jméno" />
-                    <Entry Text="{Binding OpicentrumPasswordInput}" Placeholder="Heslo" IsPassword="True" />
-                    <Button Text="Uložit přihlašovací údaje" Command="{Binding SaveOpicentrumCredentialsCommand}" IsEnabled="{Binding CanSaveOpicentrumCredentials}" />
-                    <Button Text="Odstranit přihlašovací údaje" Style="{StaticResource SecondaryButton}" Command="{Binding ClearOpicentrumCredentialsCommand}" IsVisible="{Binding HasOpicentrumCredentials}" />
-                </VerticalStackLayout>
-            </Border>
-
-            <!-- Barvy typů rozpisu (2026-09-21, uživatelův vlastní požadavek) — jeden plný barevný
-                 vstup na typ, per-zařízení (stejně jako záložky výše), aplikuje se hned při napsání
-                 platného hexu, bez samostatného tlačítka Uložit. -->
-            <Border Style="{StaticResource CardBorder}">
-                <VerticalStackLayout Spacing="8">
-                    <Label Text="Barvy typů rozpisu" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Label Text="Barva každého typu (Práce, Dovolená, ...) na Rozpisu — jen na tomto zařízení." FontSize="9.5" TextColor="Gray" />
-
-                    <VerticalStackLayout Spacing="10" BindableLayout.ItemsSource="{Binding WorkplaceColorItems}">
-                        <BindableLayout.ItemTemplate>
-                            <DataTemplate x:DataType="vm:AssignmentColorSettingItem">
-                                <Grid ColumnDefinitions="28,*,90,Auto" ColumnSpacing="8">
-                                    <BoxView Grid.Column="0" CornerRadius="6" WidthRequest="24" HeightRequest="24" Color="{Binding Preview}" VerticalOptions="Center" />
-                                    <Label Grid.Column="1" Text="{Binding Label}" FontSize="11" VerticalOptions="Center" />
-                                    <Entry Grid.Column="2" Text="{Binding HexInput}" FontSize="10.5" Placeholder="#RRGGBB" />
-                                    <Button Grid.Column="3" Text="↺" Style="{StaticResource SecondaryButton}" WidthRequest="40" Padding="0" Command="{Binding ResetCommand}" IsEnabled="{Binding IsCustomized}" />
-                                </Grid>
-                            </DataTemplate>
-                        </BindableLayout.ItemTemplate>
+                <!-- Vzhled (2026-09-24, Phase 4) — světlý/tmavý/systém, projeví se hned. -->
+                <Border Style="{StaticResource CardBorder}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Vzhled aplikace" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Label Text="Motiv" FontAttributes="Bold" />
+                        <Picker ItemsSource="{Binding ThemeModeChoices}" SelectedIndex="{Binding ThemeModeIndex}" />
+                        <Label Text="Přepne světlý/tmavý režim — projeví se hned. Platí jen pro toto zařízení." FontSize="9.5" TextColor="Gray" />
                     </VerticalStackLayout>
-                </VerticalStackLayout>
-            </Border>
+                </Border>
 
-            <!-- Admin heslo (2026-09-07) — sdílené všemi admin akcemi níže (Zařízení, Nasazení relay);
-                 nikdy se neukládá, ani v appce, ani na disku, zadává se vždy znovu
-                 před KAŽDOU jednotlivou admin akcí a appka ho hned po použití zahodí. Uživatelovo
-                 vlastní rozhodnutí po posouzení, že i zašifrované úložiště (Windows DPAPI) chrání jen
-                 proti někomu bez přihlášení k tomuto zařízení, ne proti něčemu, co už pod ním běží. -->
-            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding IsAdmin}">
-                <VerticalStackLayout Spacing="8">
-                    <Label Text="Admin heslo relay serveru (SECUREAPP_RELAY_ADMIN_SECRET) — zadej před každou akcí, nikam se neukládá" FontSize="9.5" TextColor="Gray" />
-                    <Entry Text="{Binding AdminSecretInputText}" Placeholder="Admin heslo" IsPassword="True" />
-                    <Label Text="{Binding AdminErrorMessage}" IsVisible="{Binding HasAdminError}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
-                </VerticalStackLayout>
-            </Border>
+                <!-- Zobrazení — per-tab show/hide, per-device. -->
+                <Border Style="{StaticResource CardBorder}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Zobrazení" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Grid ColumnDefinitions="*,Auto">
+                            <Label Grid.Column="0" Text="Nástěnka" VerticalOptions="Center" FontAttributes="Bold" />
+                            <Switch Grid.Column="1" IsToggled="{Binding IsNotificationsTabVisible}" />
+                        </Grid>
+                        <Label Text="Přidá/skryje záložku Nástěnka — projeví se hned. Platí jen pro toto zařízení." FontSize="9.5" TextColor="Gray" />
 
-            <!-- Nástěnka (2026-09-24) — Admin/Modifier napíší zprávu, která se všem objeví na
-                 záložce Nástěnka (jako oznámení). Šifruje se sdíleným klíčem komunity, relay text nevidí. -->
-            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanPostToBoard}">
-                <VerticalStackLayout Spacing="8">
-                    <Label Text="Nástěnka" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Label Text="Zpráva se objeví všem členům na jejich Nástěnce. Vyžaduje nastavený klíč sdílené knihovny." FontSize="9.5" TextColor="Gray" />
-                    <Editor Text="{Binding BoardMessageText}" Placeholder="Co chcete oznámit…" AutoSize="TextChanges" HeightRequest="80" />
-                    <Button Text="Odeslat na nástěnku" Command="{Binding PostToBoardCommand}" />
-                    <Label Text="{Binding BoardStatusText}" IsVisible="{Binding HasBoardStatus}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" LineBreakMode="WordWrap" />
-                </VerticalStackLayout>
-            </Border>
+                        <Grid ColumnDefinitions="*,Auto">
+                            <Label Grid.Column="0" Text="Chaty" VerticalOptions="Center" FontAttributes="Bold" />
+                            <Switch Grid.Column="1" IsToggled="{Binding IsChatsTabVisible}" />
+                        </Grid>
+                        <Label Text="Přidá/skryje záložku Chaty — projeví se hned. Platí jen pro toto zařízení." FontSize="9.5" TextColor="Gray" />
 
-            <!-- Správa členů (2026-09-24) — Admin přiděluje každému členovi roli a určuje, které
-                 záložky uvidí (skryje ještě nehotové funkce). Používá admin heslo zadané výše;
-                 to se drží po dobu práce s tímto seznamem, aby se nemuselo psát u každého uložení. -->
-            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding IsAdmin}">
-                <VerticalStackLayout Spacing="8">
-                    <Label Text="Admin: Správa členů" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Label Text="Přidělte roli a vyberte, které záložky člen uvidí. Zadejte admin heslo výše a načtěte členy." FontSize="9.5" TextColor="Gray" />
-                    <Button Text="⟳ Načíst členy" Style="{StaticResource SecondaryButton}" Command="{Binding LoadManagedMembersCommand}" />
-                    <Label Text="{Binding MemberManagementStatusText}" IsVisible="{Binding HasMemberManagementStatus}" FontSize="9.5" TextColor="Gray" LineBreakMode="WordWrap" />
+                        <Grid ColumnDefinitions="*,Auto">
+                            <Label Grid.Column="0" Text="Soubory" VerticalOptions="Center" FontAttributes="Bold" />
+                            <Switch Grid.Column="1" IsToggled="{Binding IsFilesTabVisible}" />
+                        </Grid>
+                        <Label Text="Přidá/skryje záložku Soubory (Knihovna a Dokumenty) — projeví se hned. Platí jen pro toto zařízení." FontSize="9.5" TextColor="Gray" />
 
-                    <CollectionView ItemsSource="{Binding ManagedMembers}">
-                        <CollectionView.ItemsLayout>
-                            <LinearItemsLayout Orientation="Vertical" ItemSpacing="8" />
-                        </CollectionView.ItemsLayout>
-                        <CollectionView.ItemTemplate>
-                            <DataTemplate x:DataType="vm:MemberPolicyItem">
-                                <Border Style="{StaticResource CardBorder}" Margin="0" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
-                                    <VerticalStackLayout Spacing="4">
-                                        <Label Text="{Binding DisplayName}" FontAttributes="Bold" FontSize="11.5" />
-                                        <Label Text="{Binding LastSeenText}" FontSize="9" TextColor="Gray" />
-                                        <Label Text="Role" FontSize="9" TextColor="Gray" Margin="0,4,0,0" />
-                                        <Picker ItemsSource="{Binding RoleChoices}" SelectedIndex="{Binding SelectedRoleIndex}" />
-                                        <Grid ColumnDefinitions="*,Auto"><Label Grid.Column="0" Text="Chaty" VerticalOptions="Center" /><Switch Grid.Column="1" IsToggled="{Binding ShowChaty}" /></Grid>
-                                        <Grid ColumnDefinitions="*,Auto"><Label Grid.Column="0" Text="Soubory" VerticalOptions="Center" /><Switch Grid.Column="1" IsToggled="{Binding ShowSoubory}" /></Grid>
-                                        <Grid ColumnDefinitions="*,Auto"><Label Grid.Column="0" Text="Kontakty" VerticalOptions="Center" /><Switch Grid.Column="1" IsToggled="{Binding ShowKontakty}" /></Grid>
-                                        <Grid ColumnDefinitions="*,Auto"><Label Grid.Column="0" Text="Nástěnka" VerticalOptions="Center" /><Switch Grid.Column="1" IsToggled="{Binding ShowNastenka}" /></Grid>
-                                        <Grid ColumnDefinitions="*,Auto"><Label Grid.Column="0" Text="Logbook" VerticalOptions="Center" /><Switch Grid.Column="1" IsToggled="{Binding ShowLogbook}" /></Grid>
-                                        <Button Text="Uložit"
-                                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:SettingsViewModel}}, Path=SaveMemberPolicyCommand}"
-                                                CommandParameter="{Binding .}" />
-                                        <Label Text="{Binding StatusText}" FontSize="9" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" />
-                                    </VerticalStackLayout>
-                                </Border>
-                            </DataTemplate>
-                        </CollectionView.ItemTemplate>
-                    </CollectionView>
-                </VerticalStackLayout>
-            </Border>
+                        <Grid ColumnDefinitions="*,Auto">
+                            <Label Grid.Column="0" Text="Kontakty" VerticalOptions="Center" FontAttributes="Bold" />
+                            <Switch Grid.Column="1" IsToggled="{Binding IsContactsTabVisible}" />
+                        </Grid>
+                        <Label Text="Přidá/skryje záložku Kontakty — projeví se hned. Platí jen pro toto zařízení." FontSize="9.5" TextColor="Gray" />
 
-            <!-- Zařízení (2.1, 2026-09-17) — vidí staleness (kdy naposledy zařízení publikovalo do
-                 adresáře) a kolik zpráv na něj čeká ve frontě; umožňuje odregistrovat mrtvé zařízení
-                 přímo v appce (dřív jen ruční SSH + SQLite dotazy na relay). -->
-            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding IsAdmin}">
-                <VerticalStackLayout Spacing="8">
-                    <Label Text="Admin: Zařízení" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Label Text="Seznam registrovaných zařízení — kdy naposledy zařízení bylo aktivní v adresáři a kolik zpráv na něj čeká. Nedostupné zařízení lze odsud rovnou odregistrovat." FontSize="9.5" TextColor="Gray" />
+                        <Grid ColumnDefinitions="*,Auto">
+                            <Label Grid.Column="0" Text="Logbook" VerticalOptions="Center" FontAttributes="Bold" />
+                            <Switch Grid.Column="1" IsToggled="{Binding IsLogbookVisible}" />
+                        </Grid>
+                        <Label Text="Přidá/skryje záložku Logbook (check-listy a záznam výkonů) — projeví se hned. Platí jen pro toto zařízení." FontSize="9.5" TextColor="Gray" />
+                    </VerticalStackLayout>
+                </Border>
 
-                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                        <Button Grid.Column="1" Text="⟳ Obnovit" Style="{StaticResource SecondaryButton}" Command="{Binding LoadRegisteredDevicesCommand}" />
-                    </Grid>
-                    <controls:DelayedActivityIndicator IsBusy="{Binding IsLoadingDevices}" HorizontalOptions="Center" />
+                <!-- Nástěnka (2026-09-24) — Admin/Modifier napíší zprávu, která se všem objeví na
+                     záložce Nástěnka. Šifruje se sdíleným klíčem komunity, relay text nevidí. Ve
+                     Uživatel tabu (ne Admin), aby na ni dosáhl i Modifier, který není admin. -->
+                <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanPostToBoard}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Nástěnka" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Label Text="Zpráva se objeví všem členům na jejich Nástěnce. Vyžaduje nastavený klíč sdílené knihovny." FontSize="9.5" TextColor="Gray" />
+                        <Editor Text="{Binding BoardMessageText}" Placeholder="Co chcete oznámit…" AutoSize="TextChanges" HeightRequest="80" />
+                        <Button Text="Odeslat na nástěnku" Command="{Binding PostToBoardCommand}" />
+                        <Label Text="{Binding BoardStatusText}" IsVisible="{Binding HasBoardStatus}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" LineBreakMode="WordWrap" />
+                    </VerticalStackLayout>
+                </Border>
 
-                    <Label Text="Žádná zařízení nenalezena." FontSize="9.5" TextColor="Gray" IsVisible="{Binding HasNoRegisteredDevices}" />
+            </VerticalStackLayout>
 
-                    <CollectionView ItemsSource="{Binding RegisteredDevices}" IsVisible="{Binding HasRegisteredDevices}">
-                        <CollectionView.ItemsLayout>
-                            <LinearItemsLayout Orientation="Vertical" ItemSpacing="8" />
-                        </CollectionView.ItemsLayout>
-                        <CollectionView.ItemTemplate>
-                            <DataTemplate x:DataType="vm:RegisteredDeviceItem">
-                                <Border Style="{StaticResource CardBorder}" Margin="0" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
-                                    <VerticalStackLayout Spacing="4">
-                                        <Label Text="{Binding DisplayName}" FontAttributes="Bold" FontSize="11.5" />
-                                        <Label Text="{Binding StatusText}" FontSize="9" TextColor="Gray" />
-                                        <Label Text="{Binding PendingText}" FontSize="9"
-                                               TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}">
-                                            <Label.Triggers>
-                                                <DataTrigger TargetType="Label" Binding="{Binding HasPendingMessages}" Value="False">
-                                                    <Setter Property="TextColor" Value="Gray" />
-                                                </DataTrigger>
-                                            </Label.Triggers>
-                                        </Label>
-                                        <Label Text="Zadej admin heslo výše, pak:" FontSize="8.5" TextColor="Gray" Margin="0,4,0,0" />
-                                        <Button Text="🗑 Odregistrovat" Style="{StaticResource SecondaryButton}" Command="{Binding DeregisterCommand}" CommandParameter="{Binding Id}" />
-                                    </VerticalStackLayout>
-                                </Border>
-                            </DataTemplate>
-                        </CollectionView.ItemTemplate>
-                    </CollectionView>
-                </VerticalStackLayout>
-            </Border>
+            <!-- ============================ SYSTÉM ============================ -->
+            <VerticalStackLayout Spacing="12" IsVisible="{Binding IsSystemSettingsTab}">
 
-            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding IsAdmin}">
-                <VerticalStackLayout Spacing="8">
-                    <Label Text="Admin: Nasazení relay serveru" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Label Text="Znovu sestaví a restartuje relay server z posledního kódu nahraného na Pi (git push). Pro tento krok není potřeba SSH — jednorázové nastavení Pi najdete v relay/ops/README.md. Použije stejné admin heslo zadané výše." FontSize="9.5" TextColor="Gray" />
+                <Border Style="{StaticResource CardBorder}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Relay" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Label Text="{Binding ConnectionStatusText}" FontSize="9.5" TextColor="Gray" />
+                        <Label Text="{Binding RelayErrorMessage}" IsVisible="{Binding HasRelayError}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
 
-                    <Button Text="Znovu nasadit relay" Style="{StaticResource SecondaryButton}" Command="{Binding RedeployRelayCommand}" IsEnabled="{Binding CanUseAdminControls}" />
-                    <Label Text="{Binding DeployStatusText}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding HasDeployStatus}" />
-                </VerticalStackLayout>
-            </Border>
+                        <Entry Text="{Binding RelayEndpointText}" Placeholder="Adresa relay serveru, např. ws://10.8.0.1:8080" />
 
-            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding IsAdmin}">
-                <VerticalStackLayout Spacing="8">
-                    <Label Text="Přidat nového člena" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Label Text="Krok 1: Nový člen zatím nemá přístup do naší sítě. Zadejte jeho jméno a vytvořte mu WireGuard přístup — naskenuje QR v appce WireGuard (jiná appka, z Google Play) a připojí se." FontAttributes="Bold" FontSize="10.5" />
-                    <Entry Placeholder="Jméno nového člena" Text="{Binding NewMemberNameText}" />
-                    <Button Text="Vytvořit WireGuard přístup" Style="{StaticResource SecondaryButton}" Command="{Binding CreateWireGuardAccessCommand}" IsEnabled="{Binding CanCreateWireGuardAccess}" />
-                    <Image Source="{Binding WireGuardQrImage}" HeightRequest="180" WidthRequest="180" HorizontalOptions="Center" IsVisible="{Binding HasWireGuardQrImage}" />
-                    <Label Text="{Binding WireGuardStatusText}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding HasWireGuardStatus}" />
+                        <VerticalStackLayout Spacing="8" IsVisible="{Binding IsNotRegistered}">
+                            <Entry Text="{Binding ActivationEmailText}" Placeholder="Váš e-mail (ideálně pracovní)" Keyboard="Email" />
+                            <Button Text="Aktivovat" Command="{Binding RequestActivationCommand}" IsEnabled="{Binding CanUseRelayControls}" />
+                            <Label Text="{Binding ActivationStatusText}" IsVisible="{Binding HasActivationStatus}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
+                        </VerticalStackLayout>
 
-                    <BoxView HeightRequest="1" BackgroundColor="Gray" Opacity="0.3" Margin="0,6" />
+                        <Button Text="Připojit" Command="{Binding ConnectToRelayCommand}" IsVisible="{Binding IsNotConnected}" IsEnabled="{Binding CanUseRelayControls}" />
+                        <Button Text="Odpojit" Style="{StaticResource SecondaryButton}" Command="{Binding DisconnectFromRelayCommand}" IsVisible="{Binding IsConnected}" />
+                    </VerticalStackLayout>
+                </Border>
 
-                    <Label Text="Krok 2: Až je připojený k WireGuard, naskenuje tenhle QR (nebo mu pošlete odkaz) — otevře se stránka se stažením appky a návodem k instalaci." FontAttributes="Bold" FontSize="10.5" />
-                    <Image Source="{Binding DownloadShareQrImage}" HeightRequest="180" WidthRequest="180" HorizontalOptions="Center" />
-                    <Label Text="{Binding DownloadShareUrl}" FontSize="9.5" TextColor="Gray" LineBreakMode="CharacterWrap" />
-                </VerticalStackLayout>
-            </Border>
+                <!-- Opicentrum — third-party login for the ARO staff portal the Rozpis syncs from. -->
+                <Border Style="{StaticResource CardBorder}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Opicentrum (rozpis)" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Label Text="Přihlašovací údaje k opicentrum.cz/ARO — appka se jimi sama přihlásí při každém otevření Rozpisu a stáhne aktuální směny. Heslo se ukládá jen v šifrovaném úložišti tohoto zařízení." FontSize="9.5" TextColor="Gray" />
+                        <Label Text="{Binding OpicentrumStatusText}" IsVisible="{Binding HasOpicentrumStatus}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" LineBreakMode="WordWrap" />
 
-            <Border Style="{StaticResource CardBorder}">
-                <VerticalStackLayout Spacing="8">
-                    <Label Text="Aktualizace appky" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Label Text="{Binding CurrentVersionText}" FontSize="9.5" TextColor="Gray" />
-                    <Button Text="Zkontrolovat aktualizaci" Style="{StaticResource SecondaryButton}" Command="{Binding CheckForUpdateCommand}" IsEnabled="{Binding CanCheckForUpdate}" />
-                    <Button Text="Stáhnout a nainstalovat" Style="{StaticResource SecondaryButton}" Command="{Binding DownloadAndInstallUpdateCommand}" IsVisible="{Binding IsUpdateAvailable}" IsEnabled="{Binding CanDownloadUpdate}" />
-                    <ProgressBar Progress="{Binding UpdateDownloadProgress}" IsVisible="{Binding IsDownloadingUpdate}" />
-                    <Label Text="{Binding UpdateStatusText}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding HasUpdateStatus}" />
-                </VerticalStackLayout>
-            </Border>
+                        <Label Text="✓ Přihlašovací údaje jsou nastavené." FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding HasOpicentrumCredentials}" />
 
-            <Border Style="{StaticResource CardBorder}">
-                <VerticalStackLayout Spacing="8">
-                    <Label Text="Klíč sdílené knihovny" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Label Text="Jeden klíč, sdílený všemi v komunitě, chrání každý soubor ve sdílené knihovně. Appka si ho sama vyžádá z relay/od ostatních zařízení na pozadí — nic se nezadává ručně." FontSize="9.5" TextColor="Gray" />
-                    <Label Text="✓ Toto zařízení má klíč sdílené knihovny." FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding HasSharedLibraryKey}" />
-                    <Label Text="Klíč se získává na pozadí…" FontSize="9.5" TextColor="Gray" IsVisible="{Binding HasNoSharedLibraryKey}" />
-                </VerticalStackLayout>
-            </Border>
+                        <Entry Text="{Binding OpicentrumUsernameInput}" Placeholder="Uživatelské jméno" />
+                        <Entry Text="{Binding OpicentrumPasswordInput}" Placeholder="Heslo" IsPassword="True" />
+                        <Button Text="Uložit přihlašovací údaje" Command="{Binding SaveOpicentrumCredentialsCommand}" IsEnabled="{Binding CanSaveOpicentrumCredentials}" />
+                        <Button Text="Odstranit přihlašovací údaje" Style="{StaticResource SecondaryButton}" Command="{Binding ClearOpicentrumCredentialsCommand}" IsVisible="{Binding HasOpicentrumCredentials}" />
+                    </VerticalStackLayout>
+                </Border>
 
-            <!-- Shared diagnostics log (2026-09-10) — deliberately NOT gated behind IsAdmin/the admin
-                 secret, unlike the two Admin cards above: any device can report to it and any device
-                 can read it, no admin password needed each time (same reasoning /directory/members
-                 and /library/files already apply). The whole point is being able to see what's going
-                 wrong across every device in the community from just this one screen. -->
-            <Border Style="{StaticResource CardBorder}">
-                <VerticalStackLayout Spacing="8">
-                    <Label Text="Diagnostický log" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Label Text="Sdílené chybové/varovné hlášení ze všech zařízení v komunitě." FontSize="9.5" TextColor="Gray" />
-                    <Label Text="{Binding DiagnosticLogErrorMessage}" IsVisible="{Binding HasDiagnosticLogError}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
+                <!-- Barvy typů rozpisu — per-device, applies on valid hex, no separate save. -->
+                <Border Style="{StaticResource CardBorder}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Barvy typů rozpisu" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Label Text="Barva každého typu (Práce, Dovolená, ...) na Rozpisu — jen na tomto zařízení." FontSize="9.5" TextColor="Gray" />
 
-                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                        <Button Grid.Column="1" Text="⟳ Obnovit" Style="{StaticResource SecondaryButton}" Command="{Binding LoadDiagnosticLogCommand}" />
-                    </Grid>
-                    <controls:DelayedActivityIndicator IsBusy="{Binding IsLoadingDiagnosticLog}" HorizontalOptions="Center" />
+                        <VerticalStackLayout Spacing="10" BindableLayout.ItemsSource="{Binding WorkplaceColorItems}">
+                            <BindableLayout.ItemTemplate>
+                                <DataTemplate x:DataType="vm:AssignmentColorSettingItem">
+                                    <Grid ColumnDefinitions="28,*,90,Auto" ColumnSpacing="8">
+                                        <BoxView Grid.Column="0" CornerRadius="6" WidthRequest="24" HeightRequest="24" Color="{Binding Preview}" VerticalOptions="Center" />
+                                        <Label Grid.Column="1" Text="{Binding Label}" FontSize="11" VerticalOptions="Center" />
+                                        <Entry Grid.Column="2" Text="{Binding HexInput}" FontSize="10.5" Placeholder="#RRGGBB" />
+                                        <Button Grid.Column="3" Text="↺" Style="{StaticResource SecondaryButton}" WidthRequest="40" Padding="0" Command="{Binding ResetCommand}" IsEnabled="{Binding IsCustomized}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </BindableLayout.ItemTemplate>
+                        </VerticalStackLayout>
+                    </VerticalStackLayout>
+                </Border>
 
-                    <Label Text="Žádné záznamy." FontSize="9.5" TextColor="Gray" IsVisible="{Binding HasNoDiagnosticLogEntries}" />
+                <Border Style="{StaticResource CardBorder}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Aktualizace appky" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Label Text="{Binding CurrentVersionText}" FontSize="9.5" TextColor="Gray" />
+                        <Button Text="Zkontrolovat aktualizaci" Style="{StaticResource SecondaryButton}" Command="{Binding CheckForUpdateCommand}" IsEnabled="{Binding CanCheckForUpdate}" />
+                        <Button Text="Stáhnout a nainstalovat" Style="{StaticResource SecondaryButton}" Command="{Binding DownloadAndInstallUpdateCommand}" IsVisible="{Binding IsUpdateAvailable}" IsEnabled="{Binding CanDownloadUpdate}" />
+                        <ProgressBar Progress="{Binding UpdateDownloadProgress}" IsVisible="{Binding IsDownloadingUpdate}" />
+                        <Label Text="{Binding UpdateStatusText}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding HasUpdateStatus}" />
+                    </VerticalStackLayout>
+                </Border>
 
-                    <CollectionView ItemsSource="{Binding DiagnosticLogEntries}" IsVisible="{Binding HasDiagnosticLogEntries}">
-                        <CollectionView.ItemsLayout>
-                            <LinearItemsLayout Orientation="Vertical" ItemSpacing="6" />
-                        </CollectionView.ItemsLayout>
-                        <CollectionView.ItemTemplate>
-                            <DataTemplate x:DataType="vm:DiagnosticLogItem">
-                                <Border Style="{StaticResource CardBorder}" Margin="0" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
-                                    <VerticalStackLayout Spacing="2">
-                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
-                                            <Label Grid.Column="0" Text="{Binding Level}" FontAttributes="Bold" FontSize="9">
+                <Border Style="{StaticResource CardBorder}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Klíč sdílené knihovny" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Label Text="Jeden klíč, sdílený všemi v komunitě, chrání každý soubor ve sdílené knihovně. Appka si ho sama vyžádá z relay/od ostatních zařízení na pozadí — nic se nezadává ručně." FontSize="9.5" TextColor="Gray" />
+                        <Label Text="✓ Toto zařízení má klíč sdílené knihovny." FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding HasSharedLibraryKey}" />
+                        <Label Text="Klíč se získává na pozadí…" FontSize="9.5" TextColor="Gray" IsVisible="{Binding HasNoSharedLibraryKey}" />
+                    </VerticalStackLayout>
+                </Border>
+
+                <!-- Diagnostický log — not admin-gated by design (any device reports and reads). -->
+                <Border Style="{StaticResource CardBorder}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Diagnostický log" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Label Text="Sdílené chybové/varovné hlášení ze všech zařízení v komunitě." FontSize="9.5" TextColor="Gray" />
+                        <Label Text="{Binding DiagnosticLogErrorMessage}" IsVisible="{Binding HasDiagnosticLogError}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
+
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <Button Grid.Column="1" Text="⟳ Obnovit" Style="{StaticResource SecondaryButton}" Command="{Binding LoadDiagnosticLogCommand}" />
+                        </Grid>
+                        <controls:DelayedActivityIndicator IsBusy="{Binding IsLoadingDiagnosticLog}" HorizontalOptions="Center" />
+
+                        <Label Text="Žádné záznamy." FontSize="9.5" TextColor="Gray" IsVisible="{Binding HasNoDiagnosticLogEntries}" />
+
+                        <CollectionView ItemsSource="{Binding DiagnosticLogEntries}" IsVisible="{Binding HasDiagnosticLogEntries}">
+                            <CollectionView.ItemsLayout>
+                                <LinearItemsLayout Orientation="Vertical" ItemSpacing="6" />
+                            </CollectionView.ItemsLayout>
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="vm:DiagnosticLogItem">
+                                    <Border Style="{StaticResource CardBorder}" Margin="0" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
+                                        <VerticalStackLayout Spacing="2">
+                                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                                                <Label Grid.Column="0" Text="{Binding Level}" FontAttributes="Bold" FontSize="9">
+                                                    <Label.Triggers>
+                                                        <DataTrigger TargetType="Label" Binding="{Binding Level}" Value="Error">
+                                                            <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" />
+                                                        </DataTrigger>
+                                                        <DataTrigger TargetType="Label" Binding="{Binding Level}" Value="Warning">
+                                                            <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Warn}, Dark={StaticResource WarnDark}}" />
+                                                        </DataTrigger>
+                                                        <DataTrigger TargetType="Label" Binding="{Binding Level}" Value="Info">
+                                                            <Setter Property="TextColor" Value="Gray" />
+                                                        </DataTrigger>
+                                                    </Label.Triggers>
+                                                </Label>
+                                                <Label Grid.Column="1" Text="{Binding DeviceDisplayName}" FontAttributes="Bold" FontSize="10" />
+                                                <Label Grid.Column="2" Text="{Binding TimeText}" FontSize="9" TextColor="Gray" />
+                                            </Grid>
+                                            <Label Text="{Binding Message}" FontSize="10" LineBreakMode="WordWrap" />
+                                            <Label Text="{Binding Context}" FontSize="8.5" FontFamily="Courier" TextColor="Gray" IsVisible="{Binding HasContext}" />
+                                        </VerticalStackLayout>
+                                    </Border>
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
+                    </VerticalStackLayout>
+                </Border>
+
+            </VerticalStackLayout>
+
+            <!-- ============================ ADMIN ============================ -->
+            <VerticalStackLayout Spacing="12" IsVisible="{Binding IsAdminSettingsTab}">
+
+                <!-- Admin heslo — shared by every admin action below; never stored. -->
+                <Border Style="{StaticResource CardBorder}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Admin heslo relay serveru (SECUREAPP_RELAY_ADMIN_SECRET) — zadej před každou akcí, nikam se neukládá" FontSize="9.5" TextColor="Gray" />
+                        <Entry Text="{Binding AdminSecretInputText}" Placeholder="Admin heslo" IsPassword="True" />
+                        <Label Text="{Binding AdminErrorMessage}" IsVisible="{Binding HasAdminError}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
+                    </VerticalStackLayout>
+                </Border>
+
+                <!-- Správa členů — role + per-tab visibility per member. -->
+                <Border Style="{StaticResource CardBorder}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Admin: Správa členů" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Label Text="Přidělte roli a vyberte, které záložky člen uvidí. Zadejte admin heslo výše a načtěte členy." FontSize="9.5" TextColor="Gray" />
+                        <Button Text="⟳ Načíst členy" Style="{StaticResource SecondaryButton}" Command="{Binding LoadManagedMembersCommand}" />
+                        <Label Text="{Binding MemberManagementStatusText}" IsVisible="{Binding HasMemberManagementStatus}" FontSize="9.5" TextColor="Gray" LineBreakMode="WordWrap" />
+
+                        <CollectionView ItemsSource="{Binding ManagedMembers}">
+                            <CollectionView.ItemsLayout>
+                                <LinearItemsLayout Orientation="Vertical" ItemSpacing="8" />
+                            </CollectionView.ItemsLayout>
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="vm:MemberPolicyItem">
+                                    <Border Style="{StaticResource CardBorder}" Margin="0" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
+                                        <VerticalStackLayout Spacing="4">
+                                            <Label Text="{Binding DisplayName}" FontAttributes="Bold" FontSize="11.5" />
+                                            <Label Text="{Binding LastSeenText}" FontSize="9" TextColor="Gray" />
+                                            <Label Text="Role" FontSize="9" TextColor="Gray" Margin="0,4,0,0" />
+                                            <Picker ItemsSource="{Binding RoleChoices}" SelectedIndex="{Binding SelectedRoleIndex}" />
+                                            <Grid ColumnDefinitions="*,Auto"><Label Grid.Column="0" Text="Chaty" VerticalOptions="Center" /><Switch Grid.Column="1" IsToggled="{Binding ShowChaty}" /></Grid>
+                                            <Grid ColumnDefinitions="*,Auto"><Label Grid.Column="0" Text="Soubory" VerticalOptions="Center" /><Switch Grid.Column="1" IsToggled="{Binding ShowSoubory}" /></Grid>
+                                            <Grid ColumnDefinitions="*,Auto"><Label Grid.Column="0" Text="Kontakty" VerticalOptions="Center" /><Switch Grid.Column="1" IsToggled="{Binding ShowKontakty}" /></Grid>
+                                            <Grid ColumnDefinitions="*,Auto"><Label Grid.Column="0" Text="Nástěnka" VerticalOptions="Center" /><Switch Grid.Column="1" IsToggled="{Binding ShowNastenka}" /></Grid>
+                                            <Grid ColumnDefinitions="*,Auto"><Label Grid.Column="0" Text="Logbook" VerticalOptions="Center" /><Switch Grid.Column="1" IsToggled="{Binding ShowLogbook}" /></Grid>
+                                            <Button Text="Uložit"
+                                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:SettingsViewModel}}, Path=SaveMemberPolicyCommand}"
+                                                    CommandParameter="{Binding .}" />
+                                            <Label Text="{Binding StatusText}" FontSize="9" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" />
+                                        </VerticalStackLayout>
+                                    </Border>
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
+                    </VerticalStackLayout>
+                </Border>
+
+                <!-- Zařízení — staleness + pending outbox, deregister a dead device. -->
+                <Border Style="{StaticResource CardBorder}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Admin: Zařízení" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Label Text="Seznam registrovaných zařízení — kdy naposledy zařízení bylo aktivní v adresáři a kolik zpráv na něj čeká. Nedostupné zařízení lze odsud rovnou odregistrovat." FontSize="9.5" TextColor="Gray" />
+
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <Button Grid.Column="1" Text="⟳ Obnovit" Style="{StaticResource SecondaryButton}" Command="{Binding LoadRegisteredDevicesCommand}" />
+                        </Grid>
+                        <controls:DelayedActivityIndicator IsBusy="{Binding IsLoadingDevices}" HorizontalOptions="Center" />
+
+                        <Label Text="Žádná zařízení nenalezena." FontSize="9.5" TextColor="Gray" IsVisible="{Binding HasNoRegisteredDevices}" />
+
+                        <CollectionView ItemsSource="{Binding RegisteredDevices}" IsVisible="{Binding HasRegisteredDevices}">
+                            <CollectionView.ItemsLayout>
+                                <LinearItemsLayout Orientation="Vertical" ItemSpacing="8" />
+                            </CollectionView.ItemsLayout>
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="vm:RegisteredDeviceItem">
+                                    <Border Style="{StaticResource CardBorder}" Margin="0" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
+                                        <VerticalStackLayout Spacing="4">
+                                            <Label Text="{Binding DisplayName}" FontAttributes="Bold" FontSize="11.5" />
+                                            <Label Text="{Binding StatusText}" FontSize="9" TextColor="Gray" />
+                                            <Label Text="{Binding PendingText}" FontSize="9"
+                                                   TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}">
                                                 <Label.Triggers>
-                                                    <DataTrigger TargetType="Label" Binding="{Binding Level}" Value="Error">
-                                                        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" />
-                                                    </DataTrigger>
-                                                    <DataTrigger TargetType="Label" Binding="{Binding Level}" Value="Warning">
-                                                        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Warn}, Dark={StaticResource WarnDark}}" />
-                                                    </DataTrigger>
-                                                    <DataTrigger TargetType="Label" Binding="{Binding Level}" Value="Info">
+                                                    <DataTrigger TargetType="Label" Binding="{Binding HasPendingMessages}" Value="False">
                                                         <Setter Property="TextColor" Value="Gray" />
                                                     </DataTrigger>
                                                 </Label.Triggers>
                                             </Label>
-                                            <Label Grid.Column="1" Text="{Binding DeviceDisplayName}" FontAttributes="Bold" FontSize="10" />
-                                            <Label Grid.Column="2" Text="{Binding TimeText}" FontSize="9" TextColor="Gray" />
-                                        </Grid>
-                                        <Label Text="{Binding Message}" FontSize="10" LineBreakMode="WordWrap" />
-                                        <Label Text="{Binding Context}" FontSize="8.5" FontFamily="Courier" TextColor="Gray" IsVisible="{Binding HasContext}" />
-                                    </VerticalStackLayout>
-                                </Border>
-                            </DataTemplate>
-                        </CollectionView.ItemTemplate>
-                    </CollectionView>
-                </VerticalStackLayout>
-            </Border>
+                                            <Label Text="Zadej admin heslo výše, pak:" FontSize="8.5" TextColor="Gray" Margin="0,4,0,0" />
+                                            <Button Text="🗑 Odregistrovat" Style="{StaticResource SecondaryButton}" Command="{Binding DeregisterCommand}" CommandParameter="{Binding Id}" />
+                                        </VerticalStackLayout>
+                                    </Border>
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
+                    </VerticalStackLayout>
+                </Border>
+
+                <Border Style="{StaticResource CardBorder}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Admin: Nasazení relay serveru" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Label Text="Znovu sestaví a restartuje relay server z posledního kódu nahraného na Pi (git push). Pro tento krok není potřeba SSH — jednorázové nastavení Pi najdete v relay/ops/README.md. Použije stejné admin heslo zadané výše." FontSize="9.5" TextColor="Gray" />
+
+                        <Button Text="Znovu nasadit relay" Style="{StaticResource SecondaryButton}" Command="{Binding RedeployRelayCommand}" IsEnabled="{Binding CanUseAdminControls}" />
+                        <Label Text="{Binding DeployStatusText}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding HasDeployStatus}" />
+                    </VerticalStackLayout>
+                </Border>
+
+                <Border Style="{StaticResource CardBorder}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Přidat nového člena" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Label Text="Krok 1: Nový člen zatím nemá přístup do naší sítě. Zadejte jeho jméno a vytvořte mu WireGuard přístup — naskenuje QR v appce WireGuard (jiná appka, z Google Play) a připojí se." FontAttributes="Bold" FontSize="10.5" />
+                        <Entry Placeholder="Jméno nového člena" Text="{Binding NewMemberNameText}" />
+                        <Button Text="Vytvořit WireGuard přístup" Style="{StaticResource SecondaryButton}" Command="{Binding CreateWireGuardAccessCommand}" IsEnabled="{Binding CanCreateWireGuardAccess}" />
+                        <Image Source="{Binding WireGuardQrImage}" HeightRequest="180" WidthRequest="180" HorizontalOptions="Center" IsVisible="{Binding HasWireGuardQrImage}" />
+                        <Label Text="{Binding WireGuardStatusText}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding HasWireGuardStatus}" />
+
+                        <BoxView HeightRequest="1" BackgroundColor="Gray" Opacity="0.3" Margin="0,6" />
+
+                        <Label Text="Krok 2: Až je připojený k WireGuard, naskenuje tenhle QR (nebo mu pošlete odkaz) — otevře se stránka se stažením appky a návodem k instalaci." FontAttributes="Bold" FontSize="10.5" />
+                        <Image Source="{Binding DownloadShareQrImage}" HeightRequest="180" WidthRequest="180" HorizontalOptions="Center" />
+                        <Label Text="{Binding DownloadShareUrl}" FontSize="9.5" TextColor="Gray" LineBreakMode="CharacterWrap" />
+                    </VerticalStackLayout>
+                </Border>
+
+            </VerticalStackLayout>
 
         </VerticalStackLayout>
     </ScrollView>

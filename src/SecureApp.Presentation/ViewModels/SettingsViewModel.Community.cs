@@ -17,6 +17,32 @@ public sealed partial class SettingsViewModel
 {
     private readonly ICommunityBoardService _communityBoardService;
 
+    // --- Settings sub-tabs (2026-09-24) — the page had grown to ~15 stacked cards in one scroll,
+    // which the user found cluttered ("nepřehledné"). Grouped into Uživatel / Systém / Admin, one
+    // shown at a time. Plain int + derived bools + a select command, converter-free (the tab
+    // buttons reflect selection via DataTriggers on these bools).
+
+    [ObservableProperty]
+    public partial int SettingsTab { get; set; }
+
+    public bool IsUserSettingsTab => SettingsTab == 0;
+    public bool IsSystemSettingsTab => SettingsTab == 1;
+    public bool IsAdminSettingsTab => SettingsTab == 2;
+
+    partial void OnSettingsTabChanged(int value)
+    {
+        OnPropertyChanged(nameof(IsUserSettingsTab));
+        OnPropertyChanged(nameof(IsSystemSettingsTab));
+        OnPropertyChanged(nameof(IsAdminSettingsTab));
+    }
+
+    [RelayCommand]
+    private void SelectSettingsTab(string index)
+    {
+        if (int.TryParse(index, out var i))
+            SettingsTab = i;
+    }
+
     // --- Appearance (Phase 4, easy customization) ------------------------------------------------
     // Light/dark/system, per device, applied live via App.ApplyThemeMode (which flips every
     // AppThemeBinding immediately) and persisted so it also holds across restarts.
