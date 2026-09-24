@@ -527,8 +527,15 @@ into `AddAssignmentPage` for that exact day. Still open: the Notification↔Work
 cross-links spec §26 calls for — `Notification` still has no `RelatedWorkplaceId`/
 `RelatedCalendarEventId` FK (deliberately deferred, see that entity's own remarks; there's also no
 event source that would populate them yet — nothing currently publishes a Notification about a
-schedule change). Phase 7 (Android home-screen widget) and Phase 9 (performance at scale) haven't
-been started.
+schedule change). Phase 9 (performance at scale) hasn't been started.
+
+**Correction (2026-09-24):** the sentence above originally also said Phase 7 (the Android
+home-screen widget) hadn't been started — that is stale. Phase 7 **is done** (built 2026-09-22/23):
+see `Platforms/Android/NotificationsWidgetProvider.cs` — a one-line latest-notification ticker
+(the reference image's counter pills were dropped at the user's request) plus a compact 5-day
+rozpis reusing the in-app Rozpis's own data/colors, with deep links into the matching screens.
+Still genuinely not started: Phase 9, and the §26 Notification↔Workplace↔Calendar cross-links
+noted above.
 
 Phase 5, fourth slice (2026-09-21) — external schedule source: user's own ask, "zdroj by mela byt
 stranka opicentrum.cz/ARO... nevim jak te pustit dovnitr bez abych ti dal login a heslo". A new
