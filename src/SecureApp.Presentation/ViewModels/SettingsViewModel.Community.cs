@@ -99,6 +99,14 @@ public sealed partial class SettingsViewModel
             foreach (var m in members)
                 ManagedMembers.Add(new MemberPolicyItem(m.DeviceId, m.DisplayName, m.Role, m.HiddenTabs, m.LastSeenUtc));
             MemberManagementStatusText = members.Count == 0 ? "Zatím žádní členové." : $"Načteno členů: {members.Count}.";
+
+            // The admin opening this screen is, by definition, online right now and (almost always)
+            // holds the shared library key — so this is the ideal moment to make sure every listed
+            // member has their key escrowed, instead of waiting for a key-holder's periodic sweep to
+            // happen by. Fire-and-forget, best-effort: a no-op on a device that doesn't hold the key,
+            // and it never blocks the list from showing. This is what shortens a brand-new member's
+            // "no library key yet" window to "as soon as the admin looks at them".
+            _ = _sharedLibraryService.PublishWrappedKeyForMembersAsync();
         }
         catch (Exception ex)
         {
