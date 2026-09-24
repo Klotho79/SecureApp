@@ -58,6 +58,39 @@ This only updates the working copy — it does **not** rebuild the container. Re
 
 Progress/errors land in `~/SecureApp/relay/SecureApp.Relay/data/deploy.log`.
 
+## If a redeploy silently does nothing (2026-09-24)
+
+`POST /admin/deploy` answering **202 does not mean the relay was rebuilt** — it only means the
+marker file was written. On 2026-09-24 the marker was being written correctly and nothing ever
+consumed it: `systemctl is-active secureapp-deploy.path` reported **failed** (still `enabled`, so
+it looked fine at a glance), no `data/deploy.log` was ever created, and the running container
+turned out to be a build from the previous day. This is the same class of failure that has bitten
+this project repeatedly — the relay and every client share `SecureApp.Domain`, so a stale relay
+silently drops fields it does not know about.
+
+Check, in this order:
+
+```bash
+systemctl is-active secureapp-deploy.path     # "failed" => nothing is watching the marker
+ls -la ~/SecureApp/relay/SecureApp.Relay/data/deploy.log
+docker inspect -f '{{.State.StartedAt}}' secureapp-relay
+```
+
+Rebuilding by hand needs no root — `dvorakv1` is in the `docker` group:
+
+```bash
+cd ~/SecureApp/relay/SecureApp.Relay && docker compose build && docker compose up -d
+```
+
+Repairing the watcher itself does need root (`sudo systemctl status secureapp-deploy.path` for the
+reason, then `daemon-reload` / `restart`). **Always verify the running build afterwards** rather
+than trusting the 202 — e.g. `curl -s -o /dev/null -w '%{http_code}' http://192.168.50.8:8080/`
+should be `302` now that the root redirect exists.
+
+Note also that `data/` is root-owned, so the marker file cannot be created or removed over plain
+SSH as `dvorakv1` — going through `/admin/deploy` (the relay container runs as root) is the only
+way to set it without `sudo`.
+
 ## Future: fully automatic
 
 Point a systemd timer (or the post-receive hook itself) at the same marker-file trick instead of
