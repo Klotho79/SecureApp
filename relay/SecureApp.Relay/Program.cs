@@ -58,6 +58,13 @@ app.UseWebSockets();
 
 app.MapGet("/health", () => Results.Ok());
 
+// A new member is walked through this in person, out loud, while their WireGuard tunnel is being
+// handed over — so the address has to be short enough to dictate and type without a QR code in the
+// loop. Bare "192.168.50.8:8080" is about as short as this gets; without this redirect it returns
+// a bare 404 and looks broken. Permanent (301) would be cached by the browser forever, which would
+// make a future root page impossible to introduce, so this is a plain 302.
+app.MapGet("/", () => Results.Redirect("/download", permanent: false));
+
 app.MapGet("/download", () =>
 {
     var androidPath = Path.Combine(downloadsDir, "secureapp-android.apk");
