@@ -21,12 +21,6 @@ relay/SecureApp.Relay/*.db3
 # every device). Keep a backup of this directory somewhere safe outside the repo.
 keystore/
 
-# Caddy's own state — TLS private keys and issued certificates live here. Never commit them;
-# Caddy re-obtains everything by itself on a fresh machine, so there is nothing to preserve.
-relay/ops/caddy/data/
-relay/ops/caddy/config/
-relay/ops/caddy/logs/
-
 # OS cruft
 Thumbs.db
 .DS_Store
