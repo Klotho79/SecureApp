@@ -87,6 +87,29 @@ reason, then `daemon-reload` / `restart`). **Always verify the running build aft
 than trusting the 202 — e.g. `curl -s -o /dev/null -w '%{http_code}' http://192.168.50.8:8080/`
 should be `302` now that the root redirect exists.
 
+### The specific failure found 2026-09-24, and its fix
+
+`secureapp-deploy.service` shipped with `User=dvorakv1`, but the marker file it reacts to is written
+by the relay **container** (root) into the root-owned `./data` volume. So `deploy.sh`'s `rm -f` of
+the marker failed with "Permission denied", the service exited 1, and after a few fast retries the
+`.path` unit hit its start limit and stayed `failed` from 2026-09-04 on — the in-app "Redeploy relay"
+button silently did nothing the whole time. Fixed by dropping `User=dvorakv1` so the service runs as
+root (root can delete the root-owned marker and run docker compose; docker is root-equivalent
+anyway). To apply the fix on the Pi (needs root, one time):
+
+```bash
+sudo cp ~/SecureApp/relay/ops/secureapp-deploy.service /etc/systemd/system/
+sudo cp ~/SecureApp/relay/ops/secureapp-deploy.path    /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl reset-failed secureapp-deploy.path secureapp-deploy.service
+sudo systemctl enable --now secureapp-deploy.path
+systemctl is-active secureapp-deploy.path        # expect: active
+```
+
+Then test end to end: tap "Redeploy relay" in the app (or `curl -X POST -H "X-Admin-Secret: …"
+http://192.168.50.8:8080/admin/deploy`), and watch `~/SecureApp/relay/SecureApp.Relay/data/deploy.log`
+fill in — the marker should be gone within a second or two and the log should show a build.
+
 Note also that `data/` is root-owned, so the marker file cannot be created or removed over plain
 SSH as `dvorakv1` — going through `/admin/deploy` (the relay container runs as root) is the only
 way to set it without `sudo`.

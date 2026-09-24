@@ -4,4 +4,10 @@ Description=Rebuild and restart the SecureApp relay container
 [Service]
 Type=oneshot
 ExecStart=/home/dvorakv1/SecureApp/relay/ops/deploy.sh
-User=dvorakv1
+# Runs as root, NOT dvorakv1 (2026-09-24 fix). The marker file this reacts to is written by the
+# relay CONTAINER, which runs as root, into the root-owned ./data volume — so dvorakv1 cannot delete
+# it ("rm: Permission denied"), deploy.sh exits 1, and after a few fast retries the .path unit hits
+# its start limit and goes to `failed` for good (which is exactly what happened, 2026-09-04 → -09-24:
+# the in-app "Redeploy relay" button silently did nothing). Root can remove the root-owned marker and
+# run docker compose (docker is root-equivalent regardless of the user here), so root is both correct
+# and simpler than chown-ing the data volume.
