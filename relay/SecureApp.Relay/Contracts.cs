@@ -91,3 +91,22 @@ public sealed record LogbookProcedureTypeDto(Guid Id, string Name, string Abbrev
 public sealed record SharedContactDto(Guid Id, string DisplayName, string? Phone, string? Note, int SortOrder, DateTimeOffset CreatedAtUtc);
 
 public sealed record WorkplaceDto(Guid Id, string Name, string? Description, DateTimeOffset CreatedAtUtc);
+
+// --- Admin-assigned device policy + notice board (2026-09-24) — see RelayDatabase's device_policy
+// and board_posts tables for the full reasoning. Roles and tab visibility used to be decided purely
+// on-device (anyone could make themselves Admin), so an admin had no way to govern anyone else.
+
+/// <summary>What the CALLING device is allowed to be. <c>Role</c> null means no admin has managed this device yet — the client then keeps its own local role rather than being demoted. <c>HiddenTabs</c> holds AppShell preference keys (e.g. <c>tab_chaty_visible</c>) the device must not show.</summary>
+public sealed record DevicePolicyResponse(int? Role, IReadOnlyList<string> HiddenTabs);
+
+/// <summary>One member as the admin's management screen sees them. <c>LastSeenUtc</c> is the directory's own last-published timestamp (null = never connected since the directory existed).</summary>
+public sealed record ManagedDeviceDto(Guid DeviceId, string DisplayName, int? Role, IReadOnlyList<string> HiddenTabs, DateTimeOffset? LastSeenUtc);
+
+/// <summary>Admin sets one member's role and which tabs they may not see. A null <c>Role</c> clears the assignment and hands the role decision back to the device.</summary>
+public sealed record SetDevicePolicyRequest(int? Role, IReadOnlyList<string>? HiddenTabs);
+
+/// <summary><c>ContentBlob</c> is opaque to the relay — the client encrypts the message with the shared community library key before posting, so the board is ciphertext at rest exactly like a library file.</summary>
+public sealed record CreateBoardPostRequest(string ContentBlob);
+
+/// <summary>One notice-board post. <c>AuthorDisplayName</c> is resolved against the live directory at read time, so a rename applies retroactively.</summary>
+public sealed record BoardPostDto(Guid Id, Guid AuthorDeviceId, string AuthorDisplayName, string ContentBlob, DateTimeOffset CreatedAtUtc);

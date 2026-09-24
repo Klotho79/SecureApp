@@ -150,6 +150,47 @@ public sealed class RelayDatabase
             )
             """);
 
+        // Admin-assigned per-device policy (2026-09-24). Until now a device's Role was chosen by
+        // whoever held the device — ICurrentUserService defaults to Admin and Settings let anyone
+        // switch freely — so "admin" meant nothing across the community. Tab visibility had the same
+        // shape: a per-device Preferences toggle each user set for themselves only. Both now have a
+        // single source of truth here, which a device fetches for ITSELF on connect (GET /me/policy)
+        // and an admin sets for anyone (POST /admin/users/{id}/policy).
+        //
+        // A device with NO row here keeps whatever it decides locally — deliberately NOT a silent
+        // demotion to Viewer, which would lock every already-running install (including the admin's
+        // own phone) out of its admin UI the moment this deploys. The admin opts each member in by
+        // assigning them once; absence means "not managed yet", not "untrusted".
+        //
+        // hidden_tabs is a JSON array of AppShell's own preference keys (tab_chaty_visible etc.), so
+        // the client needs no key mapping and a tab added later needs no schema change here.
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS device_policy (
+                device_id         TEXT PRIMARY KEY NOT NULL,
+                role              INTEGER NULL,
+                hidden_tabs       TEXT NOT NULL,
+                updated_at_utc    TEXT NOT NULL
+            )
+            """);
+
+        // Notice board (2026-09-24) — Admin/Modifier post a message that every member sees on the
+        // Nastenka tab. content_blob is OPAQUE to the relay: the client encrypts it with the shared
+        // community library key (which every member already holds via the wrapped-key escrow above),
+        // so the board gets the same "relay stores ciphertext it cannot read" treatment as library
+        // files, rather than becoming the one plaintext channel in an otherwise encrypted app.
+        //
+        // The author's display name is deliberately NOT stored here — it is resolved against the
+        // CURRENT directory at read time, same as GetRecentDiagnosticLogs already does, so a rename
+        // applies retroactively instead of freezing whatever the name was when posting.
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS board_posts (
+                id                 TEXT PRIMARY KEY NOT NULL,
+                author_device_id   TEXT NOT NULL,
+                content_blob       TEXT NOT NULL,
+                created_at_utc     TEXT NOT NULL
+            )
+            """);
+
         // Shared-library-key escrow (2026-09-11) — the robust, fully-automatic way a device gets the
         // community's shared library key with zero user action, replacing the fragile peer-to-peer-
         // over-the-chat-ratchet delivery that kept failing on broken sessions / both-devices-online
@@ -603,6 +644,147 @@ public sealed class RelayDatabase
             ON CONFLICT(device_id) DO UPDATE SET display_name = @name, public_key = @key, updated_at_utc = @now
             """,
             ("@id", deviceId.ToString()), ("@name", displayName), ("@key", publicKey), ("@now", Format(DateTimeOffset.UtcNow)));
+    }
+
+    // --- Admin-assigned device policy (2026-09-24) — see the device_policy table's own remarks.
+
+    /// <summary>This device's admin-assigned policy, or null when no admin has managed it yet (in which case the client keeps deciding locally, rather than being silently demoted).</summary>
+    public (int? Role, IReadOnlyList<string> HiddenTabs, DateTimeOffset UpdatedAtUtc)? GetDevicePolicy(Guid deviceId)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT role, hidden_tabs, updated_at_utc FROM device_policy WHERE device_id = @id";
+        command.Parameters.AddWithValue("@id", deviceId.ToString());
+
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+            return null;
+
+        var role = reader["role"] is DBNull ? (int?)null : Convert.ToInt32(reader["role"]);
+        return (role, DeserializeTabs((string)reader["hidden_tabs"]), DateTimeOffset.Parse((string)reader["updated_at_utc"]));
+    }
+
+    /// <summary>Creates or replaces one device's policy. A null <paramref name="role"/> means "leave the role to the device itself" while still applying any tab restrictions.</summary>
+    public void SetDevicePolicy(Guid deviceId, int? role, IReadOnlyList<string> hiddenTabs)
+    {
+        using var connection = OpenConnection();
+        Execute(connection,
+            """
+            INSERT INTO device_policy (device_id, role, hidden_tabs, updated_at_utc) VALUES (@id, @role, @tabs, @now)
+            ON CONFLICT(device_id) DO UPDATE SET role = @role, hidden_tabs = @tabs, updated_at_utc = @now
+            """,
+            ("@id", deviceId.ToString()),
+            ("@role", role is null ? DBNull.Value : role.Value),
+            ("@tabs", System.Text.Json.JsonSerializer.Serialize(hiddenTabs)),
+            ("@now", Format(DateTimeOffset.UtcNow)));
+    }
+
+    /// <summary>Every registered device with whatever policy it currently has, for the admin's own management screen. Names come from the live directory (a device that has never published shows its registration-time name instead).</summary>
+    public IReadOnlyList<(Guid DeviceId, string DisplayName, int? Role, IReadOnlyList<string> HiddenTabs, DateTimeOffset? LastSeenUtc)> GetManagedDevices()
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT d.id,
+                   COALESCE(e.display_name, d.display_name) AS display_name,
+                   p.role              AS role,
+                   p.hidden_tabs       AS hidden_tabs,
+                   e.updated_at_utc    AS last_seen
+            FROM devices d
+            LEFT JOIN directory_entries e ON e.device_id = d.id
+            LEFT JOIN device_policy    p ON p.device_id = d.id
+            ORDER BY display_name COLLATE NOCASE
+            """;
+
+        var results = new List<(Guid, string, int?, IReadOnlyList<string>, DateTimeOffset?)>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            results.Add((
+                Guid.Parse((string)reader["id"]),
+                (string)reader["display_name"],
+                reader["role"] is DBNull ? null : Convert.ToInt32(reader["role"]),
+                reader["hidden_tabs"] is DBNull ? Array.Empty<string>() : DeserializeTabs((string)reader["hidden_tabs"]),
+                reader["last_seen"] is DBNull ? null : DateTimeOffset.Parse((string)reader["last_seen"])));
+        }
+
+        return results;
+    }
+
+    /// <summary>Tolerates a malformed/legacy value rather than throwing — a broken policy row must never be able to stop a device from starting up.</summary>
+    private static IReadOnlyList<string> DeserializeTabs(string json)
+    {
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<List<string>>(json) ?? new List<string>();
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return Array.Empty<string>();
+        }
+    }
+
+    // --- Notice board (2026-09-24) — see the board_posts table's own remarks.
+
+    public Guid InsertBoardPost(Guid authorDeviceId, string contentBlob)
+    {
+        var id = Guid.NewGuid();
+        using var connection = OpenConnection();
+        Execute(connection,
+            "INSERT INTO board_posts (id, author_device_id, content_blob, created_at_utc) VALUES (@id, @author, @blob, @now)",
+            ("@id", id.ToString()), ("@author", authorDeviceId.ToString()), ("@blob", contentBlob), ("@now", Format(DateTimeOffset.UtcNow)));
+        return id;
+    }
+
+    /// <summary>Newest first. The author's name is resolved against the CURRENT directory, so a later rename applies retroactively.</summary>
+    public IReadOnlyList<(Guid Id, Guid AuthorDeviceId, string AuthorDisplayName, string ContentBlob, DateTimeOffset CreatedAtUtc)> GetBoardPosts(int limit)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT b.id, b.author_device_id, b.content_blob, b.created_at_utc,
+                   COALESCE(e.display_name, d.display_name, 'Neznámý') AS author_name
+            FROM board_posts b
+            LEFT JOIN directory_entries e ON e.device_id = b.author_device_id
+            LEFT JOIN devices           d ON d.id        = b.author_device_id
+            ORDER BY b.created_at_utc DESC
+            LIMIT @limit
+            """;
+        command.Parameters.AddWithValue("@limit", limit);
+
+        var results = new List<(Guid, Guid, string, string, DateTimeOffset)>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            results.Add((
+                Guid.Parse((string)reader["id"]),
+                Guid.Parse((string)reader["author_device_id"]),
+                (string)reader["author_name"],
+                (string)reader["content_blob"],
+                DateTimeOffset.Parse((string)reader["created_at_utc"])));
+        }
+
+        return results;
+    }
+
+    /// <summary>Deletes one post. <paramref name="requesterDeviceId"/> null means the caller authenticated as the relay admin and may delete anyone's; otherwise only the author's own post is removed.</summary>
+    public bool DeleteBoardPost(Guid id, Guid? requesterDeviceId)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        if (requesterDeviceId is null)
+        {
+            command.CommandText = "DELETE FROM board_posts WHERE id = @id";
+            command.Parameters.AddWithValue("@id", id.ToString());
+        }
+        else
+        {
+            command.CommandText = "DELETE FROM board_posts WHERE id = @id AND author_device_id = @author";
+            command.Parameters.AddWithValue("@id", id.ToString());
+            command.Parameters.AddWithValue("@author", requesterDeviceId.Value.ToString());
+        }
+
+        return command.ExecuteNonQuery() > 0;
     }
 
     /// <summary>How long since a device last refreshed its directory entry before it's treated as INACTIVE and hidden from the member listing (2026-09-14, the user's ask: "server hlásí jen aktivní uživatele"). A live device republishes on every relay (re)connect — the client forces a reconnect every ~5 min — so an active device is always fresh; only a wiped/abandoned identity (like the ghost founder that caused the black-hole incident) ever goes stale. Generous enough (2 days) that a device merely offline over a weekend reappears the moment it reconnects and republishes.</summary>

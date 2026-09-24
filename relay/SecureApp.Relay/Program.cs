@@ -460,6 +460,81 @@ app.MapGet("/directory/members", (HttpRequest request, RelayDatabase db) =>
     return Results.Ok(members.Select(m => new DirectoryMemberSummary(m.DeviceId, m.DisplayName, Convert.ToBase64String(m.PublicKey))).ToList());
 });
 
+// --- Admin-assigned device policy + notice board (2026-09-24) — see the device_policy/board_posts
+// tables' own remarks. Roles and tab visibility used to be decided purely on-device; these make the
+// relay the source of truth, with the admin (X-Admin-Secret) setting policy for anyone.
+
+// This device's own policy — device-authenticated, so a member's app can fetch its own role/hidden
+// tabs on connect and apply them. Absent row => Unmanaged (role null, no tabs hidden).
+app.MapGet("/me/policy", (HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+
+    var policy = db.GetDevicePolicy(deviceId);
+    return Results.Ok(new DevicePolicyResponse(policy?.Role, policy?.HiddenTabs ?? Array.Empty<string>()));
+});
+
+app.MapGet("/admin/users", (HttpRequest request, RelayDatabase db) =>
+{
+    if (!IsAdminAuthorized(request, adminSecret))
+        return Results.Unauthorized();
+
+    var devices = db.GetManagedDevices()
+        .Select(d => new ManagedDeviceDto(d.DeviceId, d.DisplayName, d.Role, d.HiddenTabs, d.LastSeenUtc))
+        .ToList();
+    return Results.Ok(devices);
+});
+
+app.MapPost("/admin/users/{id:guid}/policy", (HttpRequest request, Guid id, SetDevicePolicyRequest body, RelayDatabase db) =>
+{
+    if (!IsAdminAuthorized(request, adminSecret))
+        return Results.Unauthorized();
+
+    db.SetDevicePolicy(id, body.Role, body.HiddenTabs ?? new List<string>());
+    return Results.NoContent();
+});
+
+// Notice board. Posting is gated on the caller's assigned role (Admin=0/Modifier=1) — reading is
+// open to any member. content_blob is opaque ciphertext (encrypted client-side with the shared
+// community key), so the relay never sees the message text.
+app.MapPost("/board", (HttpRequest request, CreateBoardPostRequest body, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+
+    var role = db.GetDevicePolicy(deviceId)?.Role;
+    if (role is not (0 or 1)) // Admin or Modifier only
+        return Results.Forbid();
+    if (string.IsNullOrWhiteSpace(body.ContentBlob))
+        return Results.BadRequest("Empty post.");
+
+    var postId = db.InsertBoardPost(deviceId, body.ContentBlob);
+    return Results.Ok(new { id = postId });
+});
+
+app.MapGet("/board", (HttpRequest request, RelayDatabase db, int? limit) =>
+{
+    if (!TryGetDeviceAuth(request, db, out _))
+        return Results.Unauthorized();
+
+    var posts = db.GetBoardPosts(Math.Clamp(limit ?? 50, 1, 200))
+        .Select(p => new BoardPostDto(p.Id, p.AuthorDeviceId, p.AuthorDisplayName, p.ContentBlob, p.CreatedAtUtc))
+        .ToList();
+    return Results.Ok(posts);
+});
+
+app.MapDelete("/board/{id:guid}", (HttpRequest request, Guid id, RelayDatabase db) =>
+{
+    // Admin-secret holder may delete anyone's; a plain device may delete only its own.
+    if (IsAdminAuthorized(request, adminSecret))
+        return db.DeleteBoardPost(id, null) ? Results.NoContent() : Results.NotFound();
+
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+    return db.DeleteBoardPost(id, deviceId) ? Results.NoContent() : Results.NotFound();
+});
+
 // --- Shared-library-key escrow (2026-09-11) — see the wrapped_library_keys table's own remarks.
 // Device-authenticated, not admin-gated: the same "any already-approved device" trust as the
 // directory and library. The relay only stores/serves opaque ML-KEM ciphertext it cannot read.
