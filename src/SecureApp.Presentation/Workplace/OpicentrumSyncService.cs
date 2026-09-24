@@ -150,19 +150,34 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
                 return new OpicentrumSyncResult(false, 0, 0, error);
             }
 
-            var myId = await ResolvePersonIdAsync(http, rangeStart, myName, ct);
+            // Resolving WHICH person we are is the single point everything else hangs off — without an
+            // id, pracoviste/sluzby/spravavolna all produce nothing. Two sources, because either can
+            // legitimately miss someone: pracoviste.php only lists people ROSTERED in the week being
+            // viewed (a new colleague, or anyone off that week, simply is not on it), while
+            // spravavolna.php's monthly grid carries a row per person regardless of duty.
+            var myId = await ResolvePersonIdAsync(http, rangeStart, myName, ct)
+                       ?? await ResolvePersonIdFromLeavePageAsync(http, rangeStart, myName, ct);
+
+            if (myId is not { } id)
+            {
+                // Previously this fell through to an empty write-back, which reports itself as a
+                // perfectly successful "synced, nothing changed" — so a user whose name simply did not
+                // match saw a blank Rozpis with no error anywhere, forever (reported live 2026-09-24 by
+                // a new member who WAS on the real roster). A failure to identify the user is a real
+                // failure and has to say so, naming what it searched for so the mismatch is obvious.
+                var error = $"V Opicentru se nepodařilo najít osobu „{myName}“ — rozpis proto zůstal prázdný. Zkontrolujte, zda jste na webu uveden pod stejným jménem.";
+                await NotificationPublisher.PublishSystemWarningAsync(_notificationRepository, "Synchronizace rozpisu selhala", error, ct: ct);
+                return new OpicentrumSyncResult(false, 0, 0, error);
+            }
 
             // date -> resolved (Type, WorkplaceName, OnCallWorkplaceName) — merge order matches the
             // class-level precedence. OnCallWorkplaceName is an overlay, not a fourth precedence tier —
             // see MergeSluzbyAsync's own remarks for how a day ends up with one.
             var resolved = new Dictionary<DateOnly, (AssignmentType Type, string? WorkplaceName, string? OnCallWorkplaceName)>();
 
-            if (myId is { } id)
-            {
-                await MergePracovisteAsync(http, rangeStart, rangeEnd, id, resolved, ct);
-                await MergeSluzbyAsync(http, rangeStart, rangeEnd, myName, resolved, ct);
-                await MergeSpravavolnaAsync(http, rangeStart, rangeEnd, id, resolved, ct);
-            }
+            await MergePracovisteAsync(http, rangeStart, rangeEnd, id, resolved, ct);
+            await MergeSluzbyAsync(http, rangeStart, rangeEnd, myName, resolved, ct);
+            await MergeSpravavolnaAsync(http, rangeStart, rangeEnd, id, resolved, ct);
 
             return await WriteBackAsync(resolved, ct);
         }
@@ -315,11 +330,74 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
         var html = await http.GetStringAsync($"pracoviste.php?akce=ukazpracoviste&datum={monday:yyyyMMdd}", ct);
         foreach (Match m in PersonCellRegex().Matches(html))
         {
-            var name = WebUtility.HtmlDecode(StripTags(m.Groups["inner"].Value)).Trim();
-            if (string.Equals(name, myName, StringComparison.OrdinalIgnoreCase))
+            var name = WebUtility.HtmlDecode(StripTags(m.Groups["inner"].Value));
+            if (NamesMatch(name, myName))
                 return int.Parse(m.Groups["osoba"].Value, CultureInfo.InvariantCulture);
         }
         return null;
+    }
+
+    /// <summary>
+    /// Fallback identification against spravavolna.php's monthly grid, which carries one row per
+    /// person whether or not they are on duty — unlike pracoviste.php, which only lists that week's
+    /// roster. The anchor this reads (<c>idlekuprvolna=&lt;id&gt;"&gt;Name&lt;/a&gt;</c>) is the exact
+    /// shape <see cref="SpravavolnaRowRegex"/> already relies on to find the leave row itself, so this
+    /// introduces no new assumption about the page.
+    /// </summary>
+    private static async Task<int?> ResolvePersonIdFromLeavePageAsync(HttpClient http, DateOnly anyDateInRange, string myName, CancellationToken ct)
+    {
+        string html;
+        try { html = await http.GetStringAsync($"spravavolna.php?akce=ukazvolno&rok={anyDateInRange.Year}&mesic={anyDateInRange.Month}", ct); }
+        catch { return null; }
+
+        foreach (Match m in LeavePersonLinkRegex().Matches(html))
+        {
+            var name = WebUtility.HtmlDecode(m.Groups["name"].Value);
+            if (NamesMatch(name, myName))
+                return int.Parse(m.Groups["osoba"].Value, CultureInfo.InvariantCulture);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Compares two names the way a human would, instead of by exact string equality. The portal is
+    /// hand-maintained HTML: the same person can come back as "Petr Faltus" from the sidebar greeting
+    /// and with a non-breaking space, a doubled space, a leading academic title or reversed order from
+    /// a table cell. An exact <c>string.Equals</c> (what this used to do) fails on every one of those
+    /// and then silently yields an empty schedule.
+    /// </summary>
+    private static bool NamesMatch(string a, string b)
+    {
+        var left = NormalizeName(a);
+        var right = NormalizeName(b);
+        if (left.Length == 0 || right.Length == 0) return false;
+        if (left == right) return true;
+
+        // "Faltus Petr" vs "Petr Faltus" — the portal is not consistent about order between pages.
+        var leftParts = left.Split(' ');
+        var rightParts = right.Split(' ');
+        return leftParts.Length > 1
+            && leftParts.Length == rightParts.Length
+            && leftParts.OrderBy(p => p, StringComparer.Ordinal).SequenceEqual(rightParts.OrderBy(p => p, StringComparer.Ordinal));
+    }
+
+    /// <summary>Lowercases, drops academic titles, strips diacritics, and collapses every run of any Unicode whitespace (incl. the U+00A0 a decoded <c>&amp;nbsp;</c> leaves behind) to one plain space.</summary>
+    private static string NormalizeName(string value)
+    {
+        var withoutTitles = AcademicTitleRegex().Replace(value, " ");
+        var decomposed = withoutTitles.Normalize(NormalizationForm.FormD);
+
+        var builder = new StringBuilder(decomposed.Length);
+        var pendingSpace = false;
+        foreach (var ch in decomposed)
+        {
+            if (char.IsWhiteSpace(ch)) { pendingSpace = builder.Length > 0; continue; }
+            if (CharUnicodeInfo.GetUnicodeCategory(ch) == UnicodeCategory.NonSpacingMark) continue; // the accent half of a decomposed letter
+            if (pendingSpace) { builder.Append(' '); pendingSpace = false; }
+            builder.Append(char.ToLowerInvariant(ch));
+        }
+
+        return builder.ToString();
     }
 
     private static async Task MergePracovisteAsync(HttpClient http, DateOnly rangeStart, DateOnly rangeEnd, int myId, Dictionary<DateOnly, (AssignmentType Type, string? WorkplaceName, string? OnCallWorkplaceName)> resolved, CancellationToken ct)
@@ -578,6 +656,14 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
 
     [GeneratedRegex(@"^\p{L}+")]
     private static partial Regex LeadingLettersRegex();
+
+    /// <summary>Same anchor <see cref="SpravavolnaRowRegex"/> keys off, but capturing the id and name of EVERY person on the monthly leave grid so an unknown name can be resolved to an id.</summary>
+    [GeneratedRegex(@"idlekuprvolna=(?<osoba>\d+)"">(?<name>[^<]*)</a>")]
+    private static partial Regex LeavePersonLinkRegex();
+
+    /// <summary>Czech academic titles that appear inconsistently between the sidebar greeting and the roster tables. Matched as whole words only, so a surname like "Mudra" is untouched.</summary>
+    [GeneratedRegex(@"(?i)\b(MUDr|MVDr|MDDr|PharmDr|RNDr|PhDr|JUDr|Ing|Bc|Mgr|PhD|CSc|DrSc|prim|doc|prof)\b\.?", RegexOptions.CultureInvariant)]
+    private static partial Regex AcademicTitleRegex();
 
     [GeneratedRegex("<[^>]+>")]
     private static partial Regex TagRegex();
