@@ -96,6 +96,51 @@ way to set it without `sudo`.
 Point a systemd timer (or the post-receive hook itself) at the same marker-file trick instead of
 waiting for a button tap — nothing about `/admin/deploy` or `deploy.sh` needs to change.
 
+# WireGuard (wg-easy) — two things that bite (2026-09-24)
+
+## 1. An idle tunnel dies silently, and the app looks "connected" the whole time
+
+Symptom: one phone can open `http://192.168.50.8:8080` and another cannot, both showing an
+active tunnel. What actually distinguishes them is traffic volume, visible on the Pi:
+
+```bash
+docker exec wg-easy sh -c 'wg show wg0 dump'
+```
+
+WireGuard re-handshakes roughly every 2 minutes **while traffic flows**. A handshake column
+reading tens of minutes old means nothing has gone through that tunnel since — it is dead, even
+though the phone's WireGuard app still shows it as up. On 2026-09-24 the working phone had
+846 MiB sent and a handshake seconds old; the failing one had 2 MiB and a handshake 73 minutes
+old. The browser was posting requests into a tunnel whose carrier-NAT mapping had long expired,
+so nothing came back and the page rendered blank.
+
+Root cause: wg-easy generates every client config with **`PersistentKeepalive = 0`**. For a phone
+behind carrier-grade NAT that is wrong — nothing refreshes the mapping, so any tunnel that goes
+quiet stops working until it is toggled off and on by hand. A busy phone never notices, which is
+exactly why this looks like a per-device mystery.
+
+Fix on one device, no server change, takes 30 seconds: WireGuard app → the tunnel → edit →
+**Persistent keepalive = 25** → save → toggle off/on. Confirmed live on 2026-09-24: the phone
+immediately loaded the page and pulled the 61 MB APK (the peer's sent counter jumped 2 MiB → 60 MiB).
+
+Fix for everyone: add `WG_PERSISTENT_KEEPALIVE=25` to `~/wireguard/docker-compose.yml` and restart
+wg-easy. **This briefly drops every tunnel**, so pick the moment. Note it only changes the config
+text wg-easy *generates* — phones that already imported a config still carry
+`PersistentKeepalive = 0` locally and must either re-import or set the value by hand.
+
+## 2. `WG_DEFAULT_ADDRESS` in the compose file is currently corrupt
+
+`~/wireguard/docker-compose.yml` contains:
+
+```yaml
+- WG_DEFAULT_ADDRESS=192.168.50.8:8080:8080
+```
+
+That is the relay's port-mapping string pasted into the wrong variable; it should be `10.8.0.x`.
+The **running** container still has the correct value (it predates the edit), so nothing is broken
+right now — but any restart, planned or not, would apply the corrupt one and break address
+assignment for new clients. Fix the line before restarting wg-easy for any reason.
+
 # Backup — Pi data to the dev PC
 
 `backup-from-pi.ps1` (2026-09-23, user's own ask: don't lose community data or admin access if a
