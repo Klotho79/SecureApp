@@ -70,6 +70,12 @@ public sealed class UpdateService : IUpdateService
         return destinationPath;
     }
 
+    public async Task<string> GetDownloadUrlAsync(CancellationToken ct = default)
+    {
+        var baseUri = await ResolveHttpBaseAsync(ct);
+        return new Uri(baseUri, "download/android").ToString();
+    }
+
     private async Task<Uri> ResolveHttpBaseAsync(CancellationToken ct)
     {
         var configuration = await _transportSettingsRepository.GetAsync(ct);

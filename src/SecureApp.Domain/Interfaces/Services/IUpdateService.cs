@@ -15,4 +15,7 @@ public interface IUpdateService
 
     /// <summary>Downloads the currently-hosted APK to local app storage and returns its path — best-effort progress reporting via <paramref name="onProgress"/> (0.0–1.0), since this can be a large file on a slow connection.</summary>
     Task<string> DownloadUpdateAsync(IProgress<double>? onProgress = null, CancellationToken ct = default);
+
+    /// <summary>The absolute <c>http(s)://…/download/android</c> URL for the currently-configured relay — needed by <see cref="INativeUpdateDownloader"/>, whose OS service downloads directly rather than going back through this cross-platform type.</summary>
+    Task<string> GetDownloadUrlAsync(CancellationToken ct = default);
 }

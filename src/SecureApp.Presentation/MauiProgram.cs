@@ -117,6 +117,8 @@ public static class MauiProgram
 		// than one-file-per-platform-folder.
 #if ANDROID
 		builder.Services.AddSingleton<INativeAppInstaller, SecureApp.Presentation.Infrastructure.NativeAppInstaller>();
+		// Background (foreground-service) update download — Android only; see INativeUpdateDownloader.
+		builder.Services.AddSingleton<INativeUpdateDownloader, SecureApp.Presentation.Infrastructure.AndroidUpdateDownloader>();
 #endif
 		builder.Services.AddSingleton<IUpdateService, SecureApp.Presentation.Updates.UpdateService>();
 

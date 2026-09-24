@@ -34,6 +34,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly IOpicentrumSyncService _opicentrumSyncService;
     private readonly IUpdateService _updateService;
     private readonly INativeAppInstaller? _nativeAppInstaller;
+    private readonly INativeUpdateDownloader? _nativeUpdateDownloader;
 
     private EventHandler<TransportConnectionState>? _connectionStateHandler;
     private IDispatcherTimer? _activationPollTimer;
@@ -226,7 +227,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         IChatSessionRepository chatSessionRepository,
         IOpicentrumSyncService opicentrumSyncService,
         IUpdateService updateService,
-        INativeAppInstaller? nativeAppInstaller = null)
+        INativeAppInstaller? nativeAppInstaller = null,
+        INativeUpdateDownloader? nativeUpdateDownloader = null)
     {
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         _messagingService = messagingService ?? throw new ArgumentNullException(nameof(messagingService));
@@ -240,6 +242,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         _opicentrumSyncService = opicentrumSyncService ?? throw new ArgumentNullException(nameof(opicentrumSyncService));
         _updateService = updateService ?? throw new ArgumentNullException(nameof(updateService));
         _nativeAppInstaller = nativeAppInstaller;
+        _nativeUpdateDownloader = nativeUpdateDownloader;
 
         DiagnosticLogEntries = [];
         HasNoDiagnosticLogEntries = true;

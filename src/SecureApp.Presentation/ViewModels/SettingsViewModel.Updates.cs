@@ -39,13 +39,18 @@ public sealed partial class SettingsViewModel
 
     /// <summary>Derived, not a value converter — same established pattern this app already uses throughout instead of IValueConverter classes.</summary>
     public bool CanCheckForUpdate => !IsCheckingForUpdate;
-    public bool CanDownloadUpdate => !IsDownloadingUpdate;
+
+    /// <summary>Downloading is only possible when a check actually found a NEWER version (user's own ask: if you already have the latest, no download should be offered) and one isn't already in flight.</summary>
+    public bool CanDownloadUpdate => IsUpdateAvailable && !IsDownloadingUpdate;
 
     private string? _pendingUpdateLocalPath;
+    private int _latestVersionCode;
+    private string _latestVersionName = string.Empty;
 
     partial void OnUpdateStatusTextChanged(string? value) => HasUpdateStatus = !string.IsNullOrEmpty(value);
     partial void OnIsCheckingForUpdateChanged(bool value) => OnPropertyChanged(nameof(CanCheckForUpdate));
     partial void OnIsDownloadingUpdateChanged(bool value) => OnPropertyChanged(nameof(CanDownloadUpdate));
+    partial void OnIsUpdateAvailableChanged(bool value) => OnPropertyChanged(nameof(CanDownloadUpdate));
 
     private void InitializeUpdatesSection()
     {
@@ -181,10 +186,16 @@ public sealed partial class SettingsViewModel
             else if (result.IsUpdateAvailable)
             {
                 IsUpdateAvailable = true;
+                _latestVersionCode = result.LatestVersionCode ?? 0;
+                _latestVersionName = result.LatestVersionName ?? string.Empty;
                 UpdateStatusText = $"K dispozici je nová verze {result.LatestVersionName} (build {result.LatestVersionCode}).";
             }
             else
             {
+                // Explicitly clear any stale "available" state — if a previous check found an update
+                // that has since been installed, the download button must go away, not linger.
+                IsUpdateAvailable = false;
+                _latestVersionCode = 0;
                 UpdateStatusText = "Máte nejnovější verzi.";
             }
         }
@@ -197,6 +208,41 @@ public sealed partial class SettingsViewModel
     [RelayCommand]
     private async Task DownloadAndInstallUpdateAsync()
     {
+        // Guard 1 (the user's own ask): never download when there is nothing newer to get. The
+        // button is already disabled via CanDownloadUpdate, but re-verify against the relay here in
+        // case the hosted version changed since the last check, so a stale "available" flag can't
+        // pull down an APK the device already runs.
+        var recheck = await _updateService.CheckForUpdateAsync();
+        if (!recheck.IsUpdateAvailable)
+        {
+            IsUpdateAvailable = false;
+            UpdateStatusText = recheck.ErrorMessage ?? "Máte nejnovější verzi — není co stahovat.";
+            return;
+        }
+        _latestVersionCode = recheck.LatestVersionCode ?? _latestVersionCode;
+        _latestVersionName = recheck.LatestVersionName ?? _latestVersionName;
+
+        // Preferred path (Android): hand the download to a foreground Service so it keeps running
+        // when the user leaves Settings, switches apps or locks the screen, and leaves the phone
+        // usable meanwhile. Progress and the install prompt appear as a system notification — this
+        // command returns right away rather than holding the ViewModel open for the whole transfer.
+        if (_nativeUpdateDownloader is not null)
+        {
+            try
+            {
+                var url = await _updateService.GetDownloadUrlAsync();
+                _nativeUpdateDownloader.StartBackgroundDownload(url, _latestVersionCode, _latestVersionName);
+                UpdateStatusText = "Stahování běží na pozadí — průběh uvidíte v oznámení. Telefon můžete běžně používat.";
+            }
+            catch (Exception ex)
+            {
+                UpdateStatusText = $"Stahování na pozadí se nepodařilo spustit: {ex.Message}";
+            }
+            return;
+        }
+
+        // Fallback (non-Android, or no installer): the original in-process download. Tied to this
+        // screen's lifetime, but it's all these platforms can do.
         if (_nativeAppInstaller is null)
         {
             UpdateStatusText = "Instalace aktualizace přímo z appky není na této platformě podporovaná — stáhněte si APK ručně z odkazu ke stažení.";

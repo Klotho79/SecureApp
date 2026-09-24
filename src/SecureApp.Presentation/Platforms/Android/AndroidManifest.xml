@@ -27,6 +27,12 @@
 	     requested explicitly in MainActivity.OnCreate. Older Android versions grant it automatically
 	     at install time, this declaration alone is enough for those. -->
 	<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+	<!-- Background update download (2026-09-24) — the update APK downloads in a foreground Service
+	     so it survives leaving Settings / switching apps / locking the screen. FOREGROUND_SERVICE is
+	     required from Android 9 (API 28); the typed FOREGROUND_SERVICE_DATA_SYNC additionally from
+	     Android 14 (API 34), matching the service's own foregroundServiceType="dataSync". -->
+	<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 	<uses-feature android:name="android.hardware.camera" android:required="false" />
 	<uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 </manifest>
