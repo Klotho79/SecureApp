@@ -69,6 +69,55 @@ public sealed partial class SettingsViewModel
         App.ApplyThemeMode(value);
     }
 
+    // --- Accent colour (Phase 4) — presets + custom hex. Colours are StaticResource, so this stores
+    // + applies the accent (overwriting the accent-family resources) but only fully takes effect on
+    // the next launch; the preview swatch below shows the chosen colour immediately regardless.
+
+    public IReadOnlyList<AccentSwatchItem> AccentPresets { get; } =
+        Infrastructure.AccentPalette.Presets.Select(p => new AccentSwatchItem(p.Name, p.Hex)).ToList();
+
+    [ObservableProperty]
+    public partial string AccentHexInput { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial Color AccentPreviewColor { get; set; } = Colors.Transparent;
+
+    [ObservableProperty]
+    public partial string? AccentStatusText { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasAccentStatus { get; set; }
+
+    partial void OnAccentStatusTextChanged(string? value) => HasAccentStatus = !string.IsNullOrEmpty(value);
+
+    private void LoadAccent()
+    {
+        var stored = Microsoft.Maui.Storage.Preferences.Default.Get(Infrastructure.AccentPalette.PreferenceKey, string.Empty);
+        AccentHexInput = string.IsNullOrEmpty(stored) ? Infrastructure.AccentPalette.Presets[0].Hex : stored;
+        AccentPreviewColor = SafeColor(AccentHexInput);
+    }
+
+    [RelayCommand]
+    private void SelectAccent(string hex)
+    {
+        if (!Infrastructure.AccentPalette.IsValidHex(hex))
+        {
+            AccentStatusText = "Neplatná barva (použijte #RRGGBB).";
+            return;
+        }
+        AccentHexInput = hex;
+        AccentPreviewColor = SafeColor(hex);
+        Microsoft.Maui.Storage.Preferences.Default.Set(Infrastructure.AccentPalette.PreferenceKey, hex);
+        Infrastructure.AccentPalette.Apply(hex);
+        AccentStatusText = "Barva uložena — plně se projeví po restartu aplikace.";
+    }
+
+    private static Color SafeColor(string hex)
+    {
+        try { return Color.FromArgb(hex.StartsWith('#') ? hex : "#" + hex); }
+        catch { return Colors.Transparent; }
+    }
+
     // Held for the duration of a member-management session so the admin types the secret once (at
     // "Nacist cleny") rather than again for every per-member save — the same "reuse within one
     // logical action" exception the activation-approval flow already makes, just spanning the whole
@@ -201,6 +250,21 @@ public sealed partial class SettingsViewModel
         ManagedMembers.Clear();
         MemberManagementStatusText = null;
     }
+}
+
+/// <summary>One accent-colour preset swatch in Settings — name + hex + a Color for the preview square.</summary>
+public sealed class AccentSwatchItem
+{
+    public AccentSwatchItem(string name, string hex)
+    {
+        Name = name;
+        Hex = hex;
+        try { SwatchColor = Color.FromArgb(hex); } catch { SwatchColor = Colors.Gray; }
+    }
+
+    public string Name { get; }
+    public string Hex { get; }
+    public Color SwatchColor { get; }
 }
 
 /// <summary>One member row in the admin's "Správa členů" screen — editable role + per-tab visibility.</summary>

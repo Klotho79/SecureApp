@@ -34,9 +34,11 @@ public partial class App : Application
 	{
 		InitializeComponent();
 
-		// Phase 4 (easy customization) — apply the user's saved light/dark/system choice before any
-		// window is built, so the app opens in the chosen theme rather than flashing the default first.
+		// Phase 4 (easy customization) — apply the user's saved light/dark/system choice AND their
+		// chosen accent colour before any window is built, so the app opens already themed rather
+		// than flashing the default first.
 		ApplySavedThemeMode();
+		Infrastructure.AccentPalette.ApplySaved();
 
 		// Shared diagnostics log (2026-09-10) — a genuine crash is exactly the class of failure
 		// this log exists for (see IDiagnosticsReporter's own remarks): the one thing worse than an

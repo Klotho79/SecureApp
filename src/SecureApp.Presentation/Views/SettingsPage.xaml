@@ -75,6 +75,31 @@
                         <Label Text="Motiv" FontAttributes="Bold" />
                         <Picker ItemsSource="{Binding ThemeModeChoices}" SelectedIndex="{Binding ThemeModeIndex}" />
                         <Label Text="Přepne světlý/tmavý režim — projeví se hned. Platí jen pro toto zařízení." FontSize="9.5" TextColor="Gray" />
+
+                        <Label Text="Barva aplikace" FontAttributes="Bold" Margin="0,10,0,0" />
+                        <!-- Preset swatches — tapping one applies + stores it. Tap handled via the VM's
+                             SelectAccentCommand (ancestor-bound, same pattern as the member Save button). -->
+                        <FlexLayout Wrap="Wrap" BindableLayout.ItemsSource="{Binding AccentPresets}">
+                            <BindableLayout.ItemTemplate>
+                                <DataTemplate x:DataType="vm:AccentSwatchItem">
+                                    <Border StrokeThickness="0" BackgroundColor="{Binding SwatchColor}" WidthRequest="44" HeightRequest="44" Margin="4" StrokeShape="RoundRectangle 10">
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer
+                                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:SettingsViewModel}}, Path=SelectAccentCommand}"
+                                                CommandParameter="{Binding Hex}" />
+                                        </Border.GestureRecognizers>
+                                    </Border>
+                                </DataTemplate>
+                            </BindableLayout.ItemTemplate>
+                        </FlexLayout>
+
+                        <!-- Custom colour: hex + a preview square + apply. -->
+                        <Grid ColumnDefinitions="36,*,Auto" ColumnSpacing="8">
+                            <Border Grid.Column="0" BackgroundColor="{Binding AccentPreviewColor}" WidthRequest="32" HeightRequest="32" StrokeThickness="0" StrokeShape="RoundRectangle 8" VerticalOptions="Center" />
+                            <Entry Grid.Column="1" Text="{Binding AccentHexInput}" Placeholder="#RRGGBB" FontSize="11" VerticalOptions="Center" />
+                            <Button Grid.Column="2" Text="Použít" Style="{StaticResource SecondaryButton}" Command="{Binding SelectAccentCommand}" CommandParameter="{Binding AccentHexInput}" />
+                        </Grid>
+                        <Label Text="{Binding AccentStatusText}" IsVisible="{Binding HasAccentStatus}" FontSize="9.5" TextColor="Gray" LineBreakMode="WordWrap" />
                     </VerticalStackLayout>
                 </Border>
 
