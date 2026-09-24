@@ -89,6 +89,47 @@ public sealed class HttpRelayAdminService : IRelayAdminService
         response.EnsureSuccessStatusCode();
     }
 
+    public async Task<IReadOnlyList<ManagedDevice>> GetManagedDevicesAsync(Uri endpoint, string adminSecret, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+        ArgumentException.ThrowIfNullOrWhiteSpace(adminSecret);
+
+        var uri = new Uri(ToHttpUri(endpoint), "admin/users");
+        using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+        request.Headers.Add("X-Admin-Secret", adminSecret);
+
+        using var response = await _httpClient.SendAsync(request, ct);
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+            throw new InvalidOperationException("Relay odmítl zadané admin heslo.");
+        response.EnsureSuccessStatusCode();
+
+        var results = await response.Content.ReadFromJsonAsync<List<ManagedDeviceSummary>>(HttpJsonOptions, ct) ?? [];
+        return results.Select(d => new ManagedDevice(
+            d.DeviceId, d.DisplayName,
+            d.Role is null ? null : (SecureApp.Domain.Enums.Role)d.Role.Value,
+            d.HiddenTabs ?? [], d.LastSeenUtc)).ToList();
+    }
+
+    public async Task SetDevicePolicyAsync(Uri endpoint, string adminSecret, Guid deviceId, SecureApp.Domain.Enums.Role? role, IReadOnlyList<string> hiddenTabs, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+        ArgumentException.ThrowIfNullOrWhiteSpace(adminSecret);
+
+        var uri = new Uri(ToHttpUri(endpoint), $"admin/users/{deviceId}/policy");
+        using var request = new HttpRequestMessage(HttpMethod.Post, uri)
+        {
+            Content = JsonContent.Create(new { Role = role is null ? (int?)null : (int)role.Value, HiddenTabs = hiddenTabs }, options: HttpJsonOptions)
+        };
+        request.Headers.Add("X-Admin-Secret", adminSecret);
+
+        using var response = await _httpClient.SendAsync(request, ct);
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+            throw new InvalidOperationException("Relay odmítl zadané admin heslo.");
+        response.EnsureSuccessStatusCode();
+    }
+
+    private sealed record ManagedDeviceSummary(Guid DeviceId, string DisplayName, int? Role, List<string>? HiddenTabs, DateTimeOffset? LastSeenUtc);
+
     // Mirrors WebSocketMessageTransport.ToHttpUri — the Settings UI stores/edits one ws:// address
     // for both the WebSocket connection and every HTTP admin/device call, so this needs the same
     // ws->http / wss->https rewrite.

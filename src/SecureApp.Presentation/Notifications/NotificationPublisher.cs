@@ -136,6 +136,22 @@ public static class NotificationPublisher
         return TryAddAsync(notificationRepository, notification, nativeNotificationService, ct);
     }
 
+    /// <summary>A notice-board message from an Admin/Modifier (2026-09-24) — surfaced on the Nástěnka like everything else. Important priority: a board post is a deliberate broadcast to the whole team and is meant to stand out, unlike routine System notifications.</summary>
+    public static Task PublishBoardMessageAsync(
+        INotificationRepository notificationRepository,
+        string author,
+        string text,
+        INativeNotificationService? nativeNotificationService = null,
+        CancellationToken ct = default)
+    {
+        var notification = new Notification(
+            title: string.IsNullOrWhiteSpace(author) ? "Nástěnka" : $"Nástěnka — {author}",
+            body: Truncate(text),
+            category: NotificationCategory.System,
+            priority: NotificationPriority.Important);
+        return TryAddAsync(notificationRepository, notification, nativeNotificationService, ct);
+    }
+
     private static async Task TryAddAsync(INotificationRepository notificationRepository, Notification notification, INativeNotificationService? nativeNotificationService, CancellationToken ct)
     {
         try

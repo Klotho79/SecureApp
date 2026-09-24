@@ -122,6 +122,10 @@ public static class MauiProgram
 #endif
 		builder.Services.AddSingleton<IUpdateService, SecureApp.Presentation.Updates.UpdateService>();
 
+		// Admin-assigned roles + tab visibility, and the community notice board (2026-09-24).
+		builder.Services.AddSingleton<IDevicePolicyService, SecureApp.Presentation.Transport.HttpDevicePolicyService>();
+		builder.Services.AddSingleton<ICommunityBoardService, SecureApp.Presentation.Transport.HttpCommunityBoardService>();
+
 		// Milestone 5 (E2EE Chat) transport: relay server + client (see DEVELOPMENT_PLAN.md's note).
 		// Lives here rather than SecureApp.Data for the same reason as everything else in this
 		// block — WebSocketMessageTransport is actually platform-agnostic BCL code, but it's the

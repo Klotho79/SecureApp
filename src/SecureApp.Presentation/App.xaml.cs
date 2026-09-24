@@ -248,6 +248,8 @@ public partial class App : Application
 					{
 						await RunStaleSessionSweepAsync(services, transport);
 						await RunPeerIdentityReconciliationAsync(services, transport);
+						await ApplyDevicePolicyAsync(services);
+						await SyncBoardToNotificationsAsync(services);
 						lastStaleSweep = DateTimeOffset.UtcNow;
 					}
 				}
@@ -408,6 +410,103 @@ public partial class App : Application
 	/// now-dead identity (an admin/ops concern, not a runtime one) — only this device's own locally-held
 	/// copy of what it tried to send.
 	/// </summary>
+	/// <summary>
+	/// Applies the admin-assigned policy this device just fetched from the relay (2026-09-24): its
+	/// role and which tabs it may not show. Runs on every reconnect/sweep so a change an admin makes
+	/// takes effect on the member's next connection with no action on their part. Best-effort — a
+	/// null role (unmanaged) or any failure leaves the device's existing role/tabs untouched, so a
+	/// network blip can never lock a member out.
+	/// </summary>
+	private static async Task ApplyDevicePolicyAsync(IServiceProvider services)
+	{
+		try
+		{
+			var policyService = services.GetService<IDevicePolicyService>();
+			if (policyService is null) return;
+			var policy = await policyService.GetMyPolicyAsync();
+
+			// Role: only overwrite when the admin actually assigned one.
+			if (policy.Role is { } assignedRole)
+			{
+				var currentUser = services.GetService<ICurrentUserService>();
+				if (currentUser is not null)
+				{
+					await currentUser.InitializeAsync();
+					if (currentUser.Current.Role != assignedRole)
+						await currentUser.SetCurrentUserAsync(currentUser.Current.DisplayName, assignedRole);
+				}
+			}
+
+			// Tab visibility: a tab is visible unless the policy lists its key as hidden. Applied on
+			// the UI thread because ApplyTabVisibility rebuilds the live TabBar.
+			var hideable = new[]
+			{
+				AppShell.ChatsTabVisibilityPreferenceKey,
+				AppShell.FilesTabVisibilityPreferenceKey,
+				AppShell.ContactsTabVisibilityPreferenceKey,
+				AppShell.NotificationsTabVisibilityPreferenceKey,
+				AppShell.LogbookVisibilityPreferenceKey,
+			};
+			MainThread.BeginInvokeOnMainThread(() =>
+			{
+				foreach (var key in hideable)
+				{
+					var visible = !policy.HiddenTabs.Contains(key);
+					Microsoft.Maui.Storage.Preferences.Default.Set(key, visible);
+					(Shell.Current as AppShell)?.ApplyTabVisibility(key, visible);
+				}
+			});
+		}
+		catch
+		{
+			// Best-effort — see this method's own remarks; keep whatever the device already had.
+		}
+	}
+
+	// A device's first-ever board sync establishes a baseline of already-seen posts WITHOUT
+	// notifying, so the whole history doesn't arrive as a burst of notifications; only posts that
+	// appear after this point raise one. Stored as a CSV of post GUIDs in Preferences.
+	private const string SeenBoardPostsPreferenceKey = "board_seen_ids";
+
+	/// <summary>Turns any not-yet-seen notice-board post into a Nástěnka notification (2026-09-24). Runs on the same reconnect/sweep cadence as everything else, so a member sees board messages without opening any special screen.</summary>
+	private static async Task SyncBoardToNotificationsAsync(IServiceProvider services)
+	{
+		try
+		{
+			var board = services.GetService<ICommunityBoardService>();
+			if (board is null) return;
+
+			var posts = await board.ListAsync(50);
+			if (posts.Count == 0) return;
+
+			var prefs = Microsoft.Maui.Storage.Preferences.Default;
+			var seenRaw = prefs.Get(SeenBoardPostsPreferenceKey, string.Empty);
+			var firstRun = string.IsNullOrEmpty(seenRaw);
+			var seen = new HashSet<string>(seenRaw.Split(',', StringSplitOptions.RemoveEmptyEntries));
+
+			using var scope = services.CreateScope();
+			var notifications = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
+			var native = services.GetService<INativeNotificationService>();
+
+			foreach (var post in posts)
+			{
+				var id = post.Id.ToString();
+				if (!seen.Add(id)) continue;                 // already known
+				if (firstRun) continue;                      // baseline only — don't notify for history
+				await NotificationPublisher.PublishBoardMessageAsync(notifications, post.AuthorDisplayName, post.Text, native);
+			}
+
+			// Cap the stored set so it can't grow without bound; the newest 200 ids is plenty to
+			// dedupe against given the board only ever serves the most recent posts.
+			var trimmed = seen.Count > 200 ? seen.Skip(seen.Count - 200) : seen;
+			prefs.Set(SeenBoardPostsPreferenceKey, string.Join(',', trimmed));
+		}
+		catch
+		{
+			// Best-effort — a failed board sync must never disturb the connection supervisor.
+		}
+	}
+
 	private static async Task RunPeerIdentityReconciliationAsync(IServiceProvider services, IMessageTransport transport)
 	{
 		using var scope = services.CreateScope();

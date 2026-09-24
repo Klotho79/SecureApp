@@ -42,4 +42,10 @@ public interface IRelayAdminService
     /// credential never reaches this device at all — only the resulting config text does.
     /// </summary>
     Task<string> CreateWireGuardClientAsync(Uri endpoint, string adminSecret, string memberName, CancellationToken ct = default);
+
+    /// <summary>Every member with their admin-assigned role + hidden tabs (2026-09-24) — the data behind the "Správa členů" screen.</summary>
+    Task<IReadOnlyList<ManagedDevice>> GetManagedDevicesAsync(Uri endpoint, string adminSecret, CancellationToken ct = default);
+
+    /// <summary>Sets one member's role and which tabs they may not see. A null <paramref name="role"/> hands the role decision back to that device; <paramref name="hiddenTabs"/> is the full set of AppShell preference keys to hide.</summary>
+    Task SetDevicePolicyAsync(Uri endpoint, string adminSecret, Guid deviceId, Enums.Role? role, IReadOnlyList<string> hiddenTabs, CancellationToken ct = default);
 }

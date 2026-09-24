@@ -227,6 +227,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         IChatSessionRepository chatSessionRepository,
         IOpicentrumSyncService opicentrumSyncService,
         IUpdateService updateService,
+        ICommunityBoardService communityBoardService,
         INativeAppInstaller? nativeAppInstaller = null,
         INativeUpdateDownloader? nativeUpdateDownloader = null)
     {
@@ -241,6 +242,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         _chatSessionRepository = chatSessionRepository ?? throw new ArgumentNullException(nameof(chatSessionRepository));
         _opicentrumSyncService = opicentrumSyncService ?? throw new ArgumentNullException(nameof(opicentrumSyncService));
         _updateService = updateService ?? throw new ArgumentNullException(nameof(updateService));
+        _communityBoardService = communityBoardService ?? throw new ArgumentNullException(nameof(communityBoardService));
         _nativeAppInstaller = nativeAppInstaller;
         _nativeUpdateDownloader = nativeUpdateDownloader;
 
@@ -330,6 +332,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         SelectedRole = _currentUserService.Current.Role;
         IsAdmin = SelectedRole == Role.Admin;
         AvailableRoles = IsAdmin ? Enum.GetValues<Role>() : [Role.Modifier, Role.Viewer];
+        RefreshCanPostToBoard();
         IsSaved = false;
         ErrorMessage = null;
         IsLogbookVisible = Preferences.Default.Get(AppShell.LogbookVisibilityPreferenceKey, false);

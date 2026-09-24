@@ -25,9 +25,9 @@
                     <Entry Text="{Binding DisplayName}" Placeholder="Vaše jméno" />
 
                     <Label Text="Role" FontAttributes="Bold" Margin="0,8,0,0" />
-                    <Picker ItemsSource="{Binding AvailableRoles}" SelectedItem="{Binding SelectedRole}" />
+                    <Label Text="{Binding SelectedRole}" FontSize="13" />
                     <Label
-                        Text="Viewer může procházet a otevírat dokumenty, ale nemůže vytvářet, přejmenovávat, přesouvat, mazat ani importovat."
+                        Text="Roli přiděluje správce komunity — na tomto zařízení ji měnit nelze. Viewer může procházet a otevírat, ale ne vytvářet/mazat/importovat; Modifier a Admin mohou upravovat a psát na nástěnku."
                         FontSize="9.5"
                         TextColor="Gray" />
 
@@ -153,6 +153,57 @@
                     <Label Text="Admin heslo relay serveru (SECUREAPP_RELAY_ADMIN_SECRET) — zadej před každou akcí, nikam se neukládá" FontSize="9.5" TextColor="Gray" />
                     <Entry Text="{Binding AdminSecretInputText}" Placeholder="Admin heslo" IsPassword="True" />
                     <Label Text="{Binding AdminErrorMessage}" IsVisible="{Binding HasAdminError}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Nástěnka (2026-09-24) — Admin/Modifier napíší zprávu, která se všem objeví na
+                 záložce Nástěnka (jako oznámení). Šifruje se sdíleným klíčem komunity, relay text nevidí. -->
+            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanPostToBoard}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Nástěnka" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Label Text="Zpráva se objeví všem členům na jejich Nástěnce. Vyžaduje nastavený klíč sdílené knihovny." FontSize="9.5" TextColor="Gray" />
+                    <Editor Text="{Binding BoardMessageText}" Placeholder="Co chcete oznámit…" AutoSize="TextChanges" HeightRequest="80" />
+                    <Button Text="Odeslat na nástěnku" Command="{Binding PostToBoardCommand}" />
+                    <Label Text="{Binding BoardStatusText}" IsVisible="{Binding HasBoardStatus}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" LineBreakMode="WordWrap" />
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Správa členů (2026-09-24) — Admin přiděluje každému členovi roli a určuje, které
+                 záložky uvidí (skryje ještě nehotové funkce). Používá admin heslo zadané výše;
+                 to se drží po dobu práce s tímto seznamem, aby se nemuselo psát u každého uložení. -->
+            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding IsAdmin}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Admin: Správa členů" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Label Text="Přidělte roli a vyberte, které záložky člen uvidí. Zadejte admin heslo výše a načtěte členy." FontSize="9.5" TextColor="Gray" />
+                    <Button Text="⟳ Načíst členy" Style="{StaticResource SecondaryButton}" Command="{Binding LoadManagedMembersCommand}" />
+                    <Label Text="{Binding MemberManagementStatusText}" IsVisible="{Binding HasMemberManagementStatus}" FontSize="9.5" TextColor="Gray" LineBreakMode="WordWrap" />
+
+                    <CollectionView ItemsSource="{Binding ManagedMembers}">
+                        <CollectionView.ItemsLayout>
+                            <LinearItemsLayout Orientation="Vertical" ItemSpacing="8" />
+                        </CollectionView.ItemsLayout>
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:MemberPolicyItem">
+                                <Border Style="{StaticResource CardBorder}" Margin="0" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
+                                    <VerticalStackLayout Spacing="4">
+                                        <Label Text="{Binding DisplayName}" FontAttributes="Bold" FontSize="11.5" />
+                                        <Label Text="{Binding LastSeenText}" FontSize="9" TextColor="Gray" />
+                                        <Label Text="Role" FontSize="9" TextColor="Gray" Margin="0,4,0,0" />
+                                        <Picker ItemsSource="{Binding RoleChoices}" SelectedIndex="{Binding SelectedRoleIndex}" />
+                                        <Grid ColumnDefinitions="*,Auto"><Label Grid.Column="0" Text="Chaty" VerticalOptions="Center" /><Switch Grid.Column="1" IsToggled="{Binding ShowChaty}" /></Grid>
+                                        <Grid ColumnDefinitions="*,Auto"><Label Grid.Column="0" Text="Soubory" VerticalOptions="Center" /><Switch Grid.Column="1" IsToggled="{Binding ShowSoubory}" /></Grid>
+                                        <Grid ColumnDefinitions="*,Auto"><Label Grid.Column="0" Text="Kontakty" VerticalOptions="Center" /><Switch Grid.Column="1" IsToggled="{Binding ShowKontakty}" /></Grid>
+                                        <Grid ColumnDefinitions="*,Auto"><Label Grid.Column="0" Text="Nástěnka" VerticalOptions="Center" /><Switch Grid.Column="1" IsToggled="{Binding ShowNastenka}" /></Grid>
+                                        <Grid ColumnDefinitions="*,Auto"><Label Grid.Column="0" Text="Logbook" VerticalOptions="Center" /><Switch Grid.Column="1" IsToggled="{Binding ShowLogbook}" /></Grid>
+                                        <Button Text="Uložit"
+                                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:SettingsViewModel}}, Path=SaveMemberPolicyCommand}"
+                                                CommandParameter="{Binding .}" />
+                                        <Label Text="{Binding StatusText}" FontSize="9" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" />
+                                    </VerticalStackLayout>
+                                </Border>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
                 </VerticalStackLayout>
             </Border>
 
