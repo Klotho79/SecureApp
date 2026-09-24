@@ -333,6 +333,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         IsAdmin = SelectedRole == Role.Admin;
         AvailableRoles = IsAdmin ? Enum.GetValues<Role>() : [Role.Modifier, Role.Viewer];
         RefreshCanPostToBoard();
+        LoadThemeMode();
         IsSaved = false;
         ErrorMessage = null;
         IsLogbookVisible = Preferences.Default.Get(AppShell.LogbookVisibilityPreferenceKey, false);

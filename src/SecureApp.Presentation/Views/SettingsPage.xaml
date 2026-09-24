@@ -37,6 +37,17 @@
                 </VerticalStackLayout>
             </Border>
 
+            <!-- Vzhled (2026-09-24, Phase 4 — easy customization) — světlý/tmavý/systém, projeví se
+                 hned (UserAppTheme přepne všechny AppThemeBinding), uloží se per zařízení. -->
+            <Border Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Vzhled aplikace" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Label Text="Motiv" FontAttributes="Bold" />
+                    <Picker ItemsSource="{Binding ThemeModeChoices}" SelectedIndex="{Binding ThemeModeIndex}" />
+                    <Label Text="Přepne světlý/tmavý režim — projeví se hned. Platí jen pro toto zařízení." FontSize="9.5" TextColor="Gray" />
+                </VerticalStackLayout>
+            </Border>
+
             <!-- Chaty/Soubory/Kontakty toggles added 2026-09-16 (user's own ask: "chci mít možnost
                  schovávat jednotlivé menu kromě settings samozřejmě") — same Grid+Switch+description
                  pattern as the pre-existing Logbook row, one per hideable tab. Nastavení itself has no

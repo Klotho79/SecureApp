@@ -13,9 +13,30 @@ namespace SecureApp.Presentation;
 
 public partial class App : Application
 {
+	/// <summary>Preference key for the user-chosen theme mode (2026-09-24, Phase 4 — easy customization). 0 = follow system, 1 = light, 2 = dark. Applied via <see cref="ApplySavedThemeMode"/> at startup and live from Settings.</summary>
+	public const string ThemeModePreferenceKey = "app_theme_mode";
+
+	/// <summary>Maps the stored theme-mode preference onto MAUI's <see cref="Application.UserAppTheme"/>, which re-evaluates every AppThemeBinding live. Safe to call anytime (startup and on change).</summary>
+	public static void ApplyThemeMode(int mode)
+	{
+		var theme = mode switch { 1 => AppTheme.Light, 2 => AppTheme.Dark, _ => AppTheme.Unspecified };
+		if (Application.Current is { } app)
+			app.UserAppTheme = theme;
+	}
+
+	private static void ApplySavedThemeMode()
+	{
+		try { ApplyThemeMode(Microsoft.Maui.Storage.Preferences.Default.Get(ThemeModePreferenceKey, 0)); }
+		catch { /* best-effort — a bad/absent preference must never block startup */ }
+	}
+
 	public App()
 	{
 		InitializeComponent();
+
+		// Phase 4 (easy customization) — apply the user's saved light/dark/system choice before any
+		// window is built, so the app opens in the chosen theme rather than flashing the default first.
+		ApplySavedThemeMode();
 
 		// Shared diagnostics log (2026-09-10) — a genuine crash is exactly the class of failure
 		// this log exists for (see IDiagnosticsReporter's own remarks): the one thing worse than an

@@ -17,6 +17,32 @@ public sealed partial class SettingsViewModel
 {
     private readonly ICommunityBoardService _communityBoardService;
 
+    // --- Appearance (Phase 4, easy customization) ------------------------------------------------
+    // Light/dark/system, per device, applied live via App.ApplyThemeMode (which flips every
+    // AppThemeBinding immediately) and persisted so it also holds across restarts.
+
+    public IReadOnlyList<string> ThemeModeChoices { get; } = ["Podle systému", "Světlý", "Tmavý"];
+
+    [ObservableProperty]
+    public partial int ThemeModeIndex { get; set; }
+
+    private bool _themeModeLoaded;
+
+    private void LoadThemeMode()
+    {
+        // Set the backing value without letting the change handler re-persist during load.
+        _themeModeLoaded = false;
+        ThemeModeIndex = Microsoft.Maui.Storage.Preferences.Default.Get(App.ThemeModePreferenceKey, 0);
+        _themeModeLoaded = true;
+    }
+
+    partial void OnThemeModeIndexChanged(int value)
+    {
+        if (!_themeModeLoaded) return; // ignore the initial load-time assignment
+        Microsoft.Maui.Storage.Preferences.Default.Set(App.ThemeModePreferenceKey, value);
+        App.ApplyThemeMode(value);
+    }
+
     // Held for the duration of a member-management session so the admin types the secret once (at
     // "Nacist cleny") rather than again for every per-member save — the same "reuse within one
     // logical action" exception the activation-approval flow already makes, just spanning the whole
