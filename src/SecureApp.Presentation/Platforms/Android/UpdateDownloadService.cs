@@ -65,18 +65,38 @@ public sealed class UpdateDownloadService : Service
     private async Task DownloadAsync(string url, string versionName)
     {
         var destination = Path.Combine(CacheDir!.AbsolutePath, "secureapp-update.apk");
+        // Bytes accumulate in a .partial file that deliberately SURVIVES a failure, so the next
+        // attempt resumes instead of re-downloading from scratch (user's own ask: a crashed update
+        // must not waste data). Only a fully-verified download is renamed to the final .apk.
+        var partial = destination + ".partial";
         try
         {
-            using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
-            using var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
+            var have = File.Exists(partial) ? new FileInfo(partial).Length : 0;
+
+            using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(20) };
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            if (have > 0)
+                request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(have, null);
+
+            using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
             response.EnsureSuccessStatusCode();
 
-            var total = response.Content.Headers.ContentLength;
+            // 206 => server honoured the Range and is sending only the remainder (append).
+            // 200 => server ignored it (or we had nothing) and is sending the whole file (restart).
+            var resuming = response.StatusCode == System.Net.HttpStatusCode.PartialContent;
+            if (!resuming)
+                have = 0;
+
+            // Total size of the COMPLETE file, for a correct percentage across a resumed transfer.
+            long? total = resuming && response.Content.Headers.ContentRange?.Length is { } full
+                ? full
+                : response.Content.Headers.ContentLength is { } len ? have + len : null;
+
             await using (var source = await response.Content.ReadAsStreamAsync())
-            await using (var file = File.Create(destination))
+            await using (var file = new FileStream(partial, resuming ? FileMode.Append : FileMode.Create, FileAccess.Write))
             {
                 var buffer = new byte[81920];
-                long soFar = 0;
+                long soFar = have;
                 var lastShownPercent = -1;
                 int read;
                 while ((read = await source.ReadAsync(buffer)) > 0)
@@ -86,8 +106,8 @@ public sealed class UpdateDownloadService : Service
                     if (total is > 0)
                     {
                         var percent = (int)(soFar * 100 / total.Value);
-                        // Re-posting the notification on every 80 KB chunk would thrash the
-                        // status bar; only when the whole-number percent actually advances.
+                        // Re-posting on every 80 KB chunk would thrash the status bar; only when
+                        // the whole-number percent actually advances.
                         if (percent != lastShownPercent)
                         {
                             lastShownPercent = percent;
@@ -98,12 +118,21 @@ public sealed class UpdateDownloadService : Service
                 }
             }
 
+            // Guard against a truncated "success": if the server told us the full size and the file
+            // on disk is short, treat it as a failure so the partial is kept and resumed, rather
+            // than handing a corrupt APK to the installer.
+            if (total is > 0 && new FileInfo(partial).Length < total.Value)
+                throw new IOException($"Neúplné stažení: {new FileInfo(partial).Length}/{total.Value} B.");
+
+            if (File.Exists(destination)) File.Delete(destination);
+            File.Move(partial, destination);
             ShowInstallReady(destination, versionName);
         }
         catch (Exception ex)
         {
+            // Deliberately DO NOT delete `partial` — that's the whole point; the next attempt
+            // resumes from it. Only the final destination is cleared if a stale one is around.
             Debug.WriteLine($"UpdateDownloadService failed: {ex}");
-            try { File.Delete(destination); } catch { /* best-effort cleanup */ }
             ShowFailed();
         }
         finally
@@ -143,8 +172,8 @@ public sealed class UpdateDownloadService : Service
     private void ShowFailed()
     {
         var failed = new NotificationCompat.Builder(this, ChannelId)
-            .SetContentTitle("Stažení aktualizace se nezdařilo")
-            .SetContentText("Zkuste to prosím znovu v Nastavení.")
+            .SetContentTitle("Stažení aktualizace se přerušilo")
+            .SetContentText("Zkuste to znovu v Nastavení — naváže se tam, kde skončilo.")
             .SetSmallIcon(ApplicationInfo!.Icon)
             .SetPriority(NotificationCompat.PriorityDefault)
             .SetAutoCancel(true)
