@@ -776,7 +776,8 @@ public partial class App : Application
 					var preview = System.Text.Encoding.UTF8.GetString(plaintext);
 					var sessionRepositoryForNotify = scope.ServiceProvider.GetRequiredService<IChatSessionRepository>();
 					var session = await sessionRepositoryForNotify.GetByIdAsync(message.ChatSessionId);
-					if (session is not null)
+					// The user is looking at this exact thread right now — nothing to notify about.
+					if (session is not null && !Notifications.ActiveChatThread.IsOpen(envelope.GroupChatId, session.PeerIdentityPublicKey))
 					{
 						if (envelope.GroupChatId is { } groupChatId)
 						{
@@ -1122,6 +1123,10 @@ public partial class App : Application
 	protected override Window CreateWindow(IActivationState? activationState)
 	{
 		var window = new Window(new AppShell());
+
+		// Backgrounded with a chat still open must still notify; returning to it clears what's now seen.
+		window.Stopped += (_, _) => Notifications.ActiveChatThread.OnAppStopped();
+		window.Resumed += (_, _) => Notifications.ActiveChatThread.OnAppResumed();
 
 		// Milestone 4 (DLP): applied once, app-wide, as soon as the native platform window
 		// actually exists — CreateWindow itself returns before that's true (Handler/PlatformView

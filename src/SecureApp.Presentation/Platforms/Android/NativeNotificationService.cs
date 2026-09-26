@@ -58,6 +58,20 @@ public sealed class NativeNotificationService : INativeNotificationService
         }
     }
 
+    public void CancelNotification(Guid notificationId)
+    {
+        try
+        {
+            var context = Microsoft.Maui.ApplicationModel.Platform.AppContext;
+            if (context is null) return;
+            NotificationManagerCompat.From(context).Cancel(notificationId.GetHashCode());
+        }
+        catch
+        {
+            // Best-effort.
+        }
+    }
+
     private static void EnsureChannels(Context context)
     {
         if (_channelsEnsured) return;

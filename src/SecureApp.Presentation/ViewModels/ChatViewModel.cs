@@ -549,6 +549,7 @@ public sealed partial class ChatViewModel : ChatThreadViewModelBase<ChatMessageI
         _envelopeReceivedHandler = (_, envelope) =>
             MainThread.BeginInvokeOnMainThread(() => _ = HandleEnvelopeReceivedAsync(envelope));
         _messageTransport.EnvelopeReceived += _envelopeReceivedHandler;
+        Notifications.ActiveChatThread.EnterDirect(_chatSessionId);
     }
 
     public void StopListening()
@@ -556,6 +557,7 @@ public sealed partial class ChatViewModel : ChatThreadViewModelBase<ChatMessageI
         if (_envelopeReceivedHandler is null) return;
         _messageTransport.EnvelopeReceived -= _envelopeReceivedHandler;
         _envelopeReceivedHandler = null;
+        Notifications.ActiveChatThread.LeaveDirect();
     }
 
     /// <summary>Downloads + decrypts + imports the attachment via the shared library (same "become a normal local Document, open in the existing viewer" path as <c>LibraryViewModel.OpenFileAsync</c>), then opens it.</summary>

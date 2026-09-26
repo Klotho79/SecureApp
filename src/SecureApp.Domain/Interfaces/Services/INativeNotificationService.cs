@@ -12,4 +12,7 @@ public interface INativeNotificationService
 {
     /// <summary>Best-effort — never throws. A platform with no meaningful notification mechanism, or missing runtime permission, silently no-ops.</summary>
     void ShowNotification(Guid notificationId, string title, string body, bool isImportant);
+
+    /// <summary>Removes a previously shown OS notification. Best-effort — never throws.</summary>
+    void CancelNotification(Guid notificationId);
 }

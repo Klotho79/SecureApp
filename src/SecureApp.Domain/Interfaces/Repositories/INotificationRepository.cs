@@ -20,4 +20,11 @@ public interface INotificationRepository
 
     Task AddAsync(Notification notification, CancellationToken ct = default);
     Task UpdateAsync(Notification notification, CancellationToken ct = default);
+
+    /// <summary>
+    /// Marks every unread notification of one chat thread as read and returns their ids. A group
+    /// thread matches by <paramref name="groupChatId"/>; a 1:1 thread (group id null) matches any of
+    /// <paramref name="chatSessionIds"/> — all of the peer's sessions, since resync replaces them.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> MarkThreadReadAsync(IReadOnlyCollection<Guid> chatSessionIds, Guid? groupChatId, CancellationToken ct = default);
 }

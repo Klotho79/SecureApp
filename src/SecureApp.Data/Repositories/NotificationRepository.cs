@@ -141,6 +141,37 @@ public sealed class NotificationRepository : INotificationRepository
         WidgetRefreshSignal.Raise();
     }
 
+    public async Task<IReadOnlyList<Guid>> MarkThreadReadAsync(IReadOnlyCollection<Guid> chatSessionIds, Guid? groupChatId, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(chatSessionIds);
+        var connection = await _connectionFactory.GetConnectionAsync(ct);
+
+        List<NotificationRow> rows;
+        if (groupChatId is { } groupId)
+        {
+            rows = await connection.QueryAsync<NotificationRow>(
+                "SELECT * FROM notifications WHERE is_read = 0 AND related_group_chat_id = ?",
+                groupId.ToString());
+        }
+        else
+        {
+            if (chatSessionIds.Count == 0) return [];
+            var placeholders = string.Join(", ", chatSessionIds.Select(_ => "?"));
+            rows = await connection.QueryAsync<NotificationRow>(
+                $"SELECT * FROM notifications WHERE is_read = 0 AND related_group_chat_id IS NULL AND related_chat_session_id IN ({placeholders})",
+                chatSessionIds.Select(id => (object)id.ToString()).ToArray());
+        }
+
+        if (rows.Count == 0) return [];
+
+        var now = Format(DateTimeOffset.UtcNow);
+        foreach (var row in rows)
+            await connection.ExecuteAsync("UPDATE notifications SET is_read = 1, modified_at_utc = ? WHERE id = ?", now, row.Id);
+
+        WidgetRefreshSignal.Raise();
+        return rows.Select(r => Guid.Parse(r.Id)).ToList();
+    }
+
     private static Notification ToEntity(NotificationRow row)
     {
         var entity = EntityMaterializer.Create<Notification>();

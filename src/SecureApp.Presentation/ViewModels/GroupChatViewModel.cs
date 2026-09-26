@@ -1153,6 +1153,7 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
         _envelopeReceivedHandler = (_, envelope) =>
             MainThread.BeginInvokeOnMainThread(() => _ = HandleEnvelopeReceivedAsync(envelope));
         _messageTransport.EnvelopeReceived += _envelopeReceivedHandler;
+        Notifications.ActiveChatThread.EnterGroup(_groupChatId);
     }
 
     public void StopListening()
@@ -1160,6 +1161,7 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
         if (_envelopeReceivedHandler is null) return;
         _messageTransport.EnvelopeReceived -= _envelopeReceivedHandler;
         _envelopeReceivedHandler = null;
+        Notifications.ActiveChatThread.LeaveGroup(_groupChatId);
     }
 
     private async Task HandleEnvelopeReceivedAsync(MessageEnvelope envelope)

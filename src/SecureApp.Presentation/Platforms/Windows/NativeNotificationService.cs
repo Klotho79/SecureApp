@@ -16,4 +16,8 @@ public sealed class NativeNotificationService : INativeNotificationService
     {
         // No-op — see this class's own remarks.
     }
+
+    public void CancelNotification(Guid notificationId)
+    {
+    }
 }
