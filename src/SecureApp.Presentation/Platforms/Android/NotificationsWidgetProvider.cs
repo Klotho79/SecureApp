@@ -68,6 +68,27 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
         }
     }
 
+    private const string ActionToggleMode = "com.companyname.secureapp.presentation.WIDGET_TOGGLE_MODE";
+    private const string ShowDutyPreferenceKey = "widget_show_duty";
+
+    /// <summary>The Rozpis ⇄ Služby switch — flips the stored mode and redraws in place, never opening the app.</summary>
+    public override void OnReceive(Context? context, Intent? intent)
+    {
+        if (context is null || intent?.Action != ActionToggleMode)
+        {
+            base.OnReceive(context, intent);
+            return;
+        }
+
+        var showDuty = !Microsoft.Maui.Storage.Preferences.Default.Get(ShowDutyPreferenceKey, false);
+        Microsoft.Maui.Storage.Preferences.Default.Set(ShowDutyPreferenceKey, showDuty);
+
+        var manager = AppWidgetManager.GetInstance(context);
+        var ids = manager?.GetAppWidgetIds(new ComponentName(context, Java.Lang.Class.FromType(typeof(NotificationsWidgetProvider))));
+        if (manager is null || ids is null || ids.Length == 0) return;
+        _ = RefreshAsync(context, manager, ids, GoAsync());
+    }
+
     public override void OnUpdate(Context? context, AppWidgetManager? appWidgetManager, int[]? appWidgetIds)
     {
         if (context is null || appWidgetManager is null || appWidgetIds is null || appWidgetIds.Length == 0) return;
@@ -143,7 +164,7 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
             views.SetOnClickPendingIntent(Resource.Id.widget_card, PendingIntent.GetActivity(
                 context, "widgetRozpis".GetHashCode(), openRozpisIntent, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable));
 
-            ApplyDutyToday(views, today);
+            ApplyMode(context, views, today);
 
             for (var i = 0; i < DayCount; i++)
                 ApplyDay(context, views, DayRowIds[i], DayColorIds[i], DayLabelIds[i], DayTextIds[i], today.AddDays(i), byDate.GetValueOrDefault(today.AddDays(i)), isToday: i == 0);
@@ -162,24 +183,32 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
         }
     }
 
-    /// <summary>"Slouží: Graus, Kula, … · Posunutá: Trněná" above the rozpis (2026-09-26, user's ask) — from the last Opicentrum sync, see DutyRosterStore.</summary>
-    private static void ApplyDutyToday(RemoteViews views, DateOnly today)
+    /// <summary>
+    /// Rozpis ⇄ Služby (2026-09-26, user's ask): the card shows either the 5-day rozpis or today's full
+    /// duty list ("Pozice: Jméno", from the last Opicentrum sync — see DutyRosterStore). The toggle
+    /// label names the other view and fires a broadcast back to this provider, not an app launch.
+    /// </summary>
+    private static void ApplyMode(Context context, RemoteViews views, DateOnly today)
     {
-        var day = DutyRosterStore.Get(today);
-        if (day is null)
-        {
-            views.SetViewVisibility(Resource.Id.widget_duty_today, global::Android.Views.ViewStates.Gone);
-            return;
-        }
+        var showDuty = Microsoft.Maui.Storage.Preferences.Default.Get(ShowDutyPreferenceKey, false);
 
-        var parts = new List<string>();
-        if (day.OnDuty.Count > 0)
-            parts.Add("Slouží: " + string.Join(", ", day.OnDuty.Select(DutyRosterStore.Surname)));
-        if (day.Shifted.Count > 0)
-            parts.Add("Posunutá: " + string.Join(", ", day.Shifted.Select(DutyRosterStore.Surname)));
+        var toggleIntent = new Intent(context, typeof(NotificationsWidgetProvider));
+        toggleIntent.SetAction(ActionToggleMode);
+        views.SetOnClickPendingIntent(Resource.Id.widget_mode_toggle, PendingIntent.GetBroadcast(
+            context, "widgetToggleMode".GetHashCode(), toggleIntent, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable));
+        views.SetTextViewText(Resource.Id.widget_mode_toggle, showDuty ? "Rozpis ›" : "Služby ›");
 
-        views.SetTextViewText(Resource.Id.widget_duty_today, string.Join("  ·  ", parts));
-        views.SetViewVisibility(Resource.Id.widget_duty_today, global::Android.Views.ViewStates.Visible);
+        var rowsVisibility = showDuty ? global::Android.Views.ViewStates.Gone : global::Android.Views.ViewStates.Visible;
+        foreach (var rowId in DayRowIds)
+            views.SetViewVisibility(rowId, rowsVisibility);
+        views.SetViewVisibility(Resource.Id.widget_duty_list, showDuty ? global::Android.Views.ViewStates.Visible : global::Android.Views.ViewStates.Gone);
+        if (!showDuty) return;
+
+        var entries = DutyRosterStore.Get(today);
+        var text = entries.Count == 0
+            ? "Služby na dnešek zatím nejsou načtené — otevřete Rozpis v aplikaci."
+            : string.Join("\n", entries.Select(e => $"{e.Position}: {e.Name}"));
+        views.SetTextViewText(Resource.Id.widget_duty_list, text);
     }
 
     private static void ApplyDay(Context context, RemoteViews views, int rowId, int colorId, int labelId, int textId, DateOnly date, WorkAssignment? assignment, bool isToday)

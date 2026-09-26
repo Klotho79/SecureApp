@@ -45,18 +45,31 @@
         android:background="@drawable/widget_card_background"
         android:padding="8dp">
 
-        <!-- Who is on duty today (2026-09-26): sluzby7.php slots + the posunutá služba. Hidden when unknown. -->
+        <!-- Rozpis ⇄ Služby switch (2026-09-26): tapping only swaps the card's content in place
+             (a broadcast back to the provider), it never opens the app. Label names the OTHER view. -->
         <TextView
-            android:id="@+id/widget_duty_today"
+            android:id="@+id/widget_mode_toggle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="4dp"
+            android:padding="5dp"
+            android:text="Služby ›"
+            android:textColor="@color/widgetOnCallHighlight"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <!-- Today's full duty list, "Pozice: Jméno" per line; shown instead of the day rows. -->
+        <TextView
+            android:id="@+id/widget_duty_list"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
             android:paddingStart="5dp"
             android:paddingEnd="5dp"
             android:text=""
             android:textColor="@color/widgetCardText"
-            android:textSize="11sp"
-            android:maxLines="3"
+            android:textSize="12sp"
+            android:lineSpacingExtra="2dp"
+            android:maxLines="10"
             android:ellipsize="end"
             android:visibility="gone" />
 
