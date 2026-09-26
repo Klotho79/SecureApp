@@ -145,21 +145,26 @@ public partial class AppShell : Shell
 	{
 		if (Items.Count == 0 || Items[0] is not TabBar tabBar) return;
 
-		// Save the active Tab before the rebuild: removing it while Settings is the only
-		// remaining item causes Shell to switch to Settings; we restore it afterwards.
-		// tabBar.CurrentItem is ShellSection; Tab : ShellSection, so the cast is safe.
-		var previousSection = tabBar.CurrentItem;
+		// Diff, never remove-all/re-add: the device policy re-applies every few minutes, and
+		// removing the active tab (even briefly) desyncs Android's bottom nav from Shell — the
+		// screen jumps to Nastavení while Shell still thinks it's on Nástěnka.
+		var desired = _hideableTabs
+			.Where(t => Preferences.Default.Get(t.PreferenceKey, t.DefaultVisible))
+			.Select(t => (ShellSection)t.Tab)
+			.ToList();
+		var current = tabBar.Items.Where(i => _hideableTabs.Any(h => h.Tab == i)).ToList();
+		if (desired.SequenceEqual(current)) return;
 
 		foreach (var (tab, _, _) in _hideableTabs)
-			tabBar.Items.Remove(tab);
-
-		foreach (var (tab, preferenceKey, defaultVisible) in _hideableTabs)
 		{
-			if (Preferences.Default.Get(preferenceKey, defaultVisible))
-				tabBar.Items.Insert(Math.Max(0, tabBar.Items.Count - 1), tab);
+			if (!desired.Contains(tab))
+				tabBar.Items.Remove(tab);
 		}
 
-		if (previousSection is Tab prevTab && tabBar.Items.Contains(prevTab))
-			CurrentItem = prevTab;
+		for (var i = 0; i < desired.Count; i++)
+		{
+			if (!tabBar.Items.Contains(desired[i]))
+				tabBar.Items.Insert(i, desired[i]);
+		}
 	}
 }
