@@ -40,11 +40,9 @@ namespace SecureApp.Presentation.Workplace;
 /// stands for "po službě" (the mandatory rest day after on-call) — so it's now mapped to DayOff like
 /// VV/NV, not skipped.
 ///
-/// Known gap, not handled this first pass: pracoviste.php's own "NEPŘÍTOMNÍ" (absent) row is a plain
-/// semicolon-separated name list per day, not the per-person cell shape every other row uses (including
-/// "NEZAŘAZENÍ" — see PersonCellRegex's own remarks for why that one DOES parse despite looking like a
-/// similarly "special" row at first) — skipped rather than parsed with an unverified second regex shape.
-/// spravavolna.php's own leave record is the actual source of truth for absence anyway.
+/// pracoviste.php is parsed by <see cref="OpicentrumParsing.ParsePracovisteWeek"/>, matching people by
+/// name (see its remarks for why not by the roster editor's person-id attributes). Its "NEPŘÍTOMNÍ"
+/// (absent) row is skipped — spravavolna.php's own leave record is the source of truth for absence.
 /// </remarks>
 public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
 {
@@ -155,10 +153,22 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
             // legitimately miss someone: pracoviste.php only lists people ROSTERED in the week being
             // viewed (a new colleague, or anyone off that week, simply is not on it), while
             // spravavolna.php's monthly grid carries a row per person regardless of duty.
+            // The id is only needed for spravavolna.php (its rows are keyed by id); pracoviste.php and
+            // sluzby7.php are matched by name, so a missing id no longer blanks the whole schedule.
             var myId = await ResolvePersonIdAsync(http, rangeStart, myName, ct)
                        ?? await ResolvePersonIdFromLeavePageAsync(http, rangeStart, myName, ct);
 
-            if (myId is not { } id)
+            // date -> resolved (Type, WorkplaceName, OnCallWorkplaceName) — merge order matches the
+            // class-level precedence. OnCallWorkplaceName is an overlay, not a fourth precedence tier —
+            // see MergeSluzbyAsync's own remarks for how a day ends up with one.
+            var resolved = new Dictionary<DateOnly, (AssignmentType Type, string? WorkplaceName, string? OnCallWorkplaceName)>();
+
+            await MergePracovisteAsync(http, rangeStart, rangeEnd, myName, myId, resolved, ct);
+            await MergeSluzbyAsync(http, rangeStart, rangeEnd, myName, resolved, ct);
+            if (myId is { } id)
+                await MergeSpravavolnaAsync(http, rangeStart, rangeEnd, id, resolved, ct);
+
+            if (myId is null && resolved.Count == 0)
             {
                 // Previously this fell through to an empty write-back, which reports itself as a
                 // perfectly successful "synced, nothing changed" — so a user whose name simply did not
@@ -169,15 +179,6 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
                 await NotificationPublisher.PublishSystemWarningAsync(_notificationRepository, "Synchronizace rozpisu selhala", error, ct: ct);
                 return new OpicentrumSyncResult(false, 0, 0, error);
             }
-
-            // date -> resolved (Type, WorkplaceName, OnCallWorkplaceName) — merge order matches the
-            // class-level precedence. OnCallWorkplaceName is an overlay, not a fourth precedence tier —
-            // see MergeSluzbyAsync's own remarks for how a day ends up with one.
-            var resolved = new Dictionary<DateOnly, (AssignmentType Type, string? WorkplaceName, string? OnCallWorkplaceName)>();
-
-            await MergePracovisteAsync(http, rangeStart, rangeEnd, id, resolved, ct);
-            await MergeSluzbyAsync(http, rangeStart, rangeEnd, myName, resolved, ct);
-            await MergeSpravavolnaAsync(http, rangeStart, rangeEnd, id, resolved, ct);
 
             return await WriteBackAsync(resolved, ct);
         }
@@ -324,17 +325,14 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
         return match.Success ? WebUtility.HtmlDecode(match.Groups["name"].Value).Trim() : null;
     }
 
+    /// <summary>Only yields an id for accounts that see the roster editor's attributes — see <see cref="OpicentrumParsing"/>'s remarks; everyone else is identified via <see cref="ResolvePersonIdFromLeavePageAsync"/>.</summary>
     private static async Task<int?> ResolvePersonIdAsync(HttpClient http, DateOnly anyDateInRange, string myName, CancellationToken ct)
     {
         var monday = StartOfWeek(anyDateInRange);
         var html = await http.GetStringAsync($"pracoviste.php?akce=ukazpracoviste&datum={monday:yyyyMMdd}", ct);
-        foreach (Match m in PersonCellRegex().Matches(html))
-        {
-            var name = WebUtility.HtmlDecode(StripTags(m.Groups["inner"].Value));
-            if (NamesMatch(name, myName))
-                return int.Parse(m.Groups["osoba"].Value, CultureInfo.InvariantCulture);
-        }
-        return null;
+        return OpicentrumParsing.ParsePracovisteWeek(html)
+            .FirstOrDefault(e => e.PersonId is not null && NamesMatch(e.PersonName, myName))
+            ?.PersonId;
     }
 
     /// <summary>
@@ -359,48 +357,14 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
         return null;
     }
 
+    private static bool NamesMatch(string a, string b) => OpicentrumParsing.NamesMatch(a, b);
+
     /// <summary>
-    /// Compares two names the way a human would, instead of by exact string equality. The portal is
-    /// hand-maintained HTML: the same person can come back as "Petr Faltus" from the sidebar greeting
-    /// and with a non-breaking space, a doubled space, a leading academic title or reversed order from
-    /// a table cell. An exact <c>string.Equals</c> (what this used to do) fails on every one of those
-    /// and then silently yields an empty schedule.
+    /// Matches by name, and additionally by person id when both are known — see
+    /// <see cref="OpicentrumParsing"/>'s remarks for why the id alone (what this used to rely on) left
+    /// every non-editor account without workplaces.
     /// </summary>
-    private static bool NamesMatch(string a, string b)
-    {
-        var left = NormalizeName(a);
-        var right = NormalizeName(b);
-        if (left.Length == 0 || right.Length == 0) return false;
-        if (left == right) return true;
-
-        // "Faltus Petr" vs "Petr Faltus" — the portal is not consistent about order between pages.
-        var leftParts = left.Split(' ');
-        var rightParts = right.Split(' ');
-        return leftParts.Length > 1
-            && leftParts.Length == rightParts.Length
-            && leftParts.OrderBy(p => p, StringComparer.Ordinal).SequenceEqual(rightParts.OrderBy(p => p, StringComparer.Ordinal));
-    }
-
-    /// <summary>Lowercases, drops academic titles, strips diacritics, and collapses every run of any Unicode whitespace (incl. the U+00A0 a decoded <c>&amp;nbsp;</c> leaves behind) to one plain space.</summary>
-    private static string NormalizeName(string value)
-    {
-        var withoutTitles = AcademicTitleRegex().Replace(value, " ");
-        var decomposed = withoutTitles.Normalize(NormalizationForm.FormD);
-
-        var builder = new StringBuilder(decomposed.Length);
-        var pendingSpace = false;
-        foreach (var ch in decomposed)
-        {
-            if (char.IsWhiteSpace(ch)) { pendingSpace = builder.Length > 0; continue; }
-            if (CharUnicodeInfo.GetUnicodeCategory(ch) == UnicodeCategory.NonSpacingMark) continue; // the accent half of a decomposed letter
-            if (pendingSpace) { builder.Append(' '); pendingSpace = false; }
-            builder.Append(char.ToLowerInvariant(ch));
-        }
-
-        return builder.ToString();
-    }
-
-    private static async Task MergePracovisteAsync(HttpClient http, DateOnly rangeStart, DateOnly rangeEnd, int myId, Dictionary<DateOnly, (AssignmentType Type, string? WorkplaceName, string? OnCallWorkplaceName)> resolved, CancellationToken ct)
+    private static async Task MergePracovisteAsync(HttpClient http, DateOnly rangeStart, DateOnly rangeEnd, string myName, int? myId, Dictionary<DateOnly, (AssignmentType Type, string? WorkplaceName, string? OnCallWorkplaceName)> resolved, CancellationToken ct)
     {
         foreach (var monday in DistinctMondaysInRange(rangeStart, rangeEnd))
         {
@@ -408,20 +372,12 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
             try { html = await http.GetStringAsync($"pracoviste.php?akce=ukazpracoviste&datum={monday:yyyyMMdd}", ct); }
             catch { continue; } // best-effort per week — one bad week must not abort the whole sync
 
-            foreach (Match rowMatch in TableRowRegex().Matches(html))
+            foreach (var entry in OpicentrumParsing.ParsePracovisteWeek(html))
             {
-                var rowLabelMatch = RowLabelRegex().Match(rowMatch.Value);
-                if (!rowLabelMatch.Success) continue;
-                var workplaceName = WebUtility.HtmlDecode(rowLabelMatch.Groups["label"].Value).Trim();
-                if (workplaceName is "NEPŘÍTOMNÍ" or "Plánované AKCE") continue; // different cell shape — see class remarks
-
-                foreach (Match personMatch in PersonCellRegex().Matches(rowMatch.Value))
-                {
-                    if (!int.TryParse(personMatch.Groups["osoba"].Value, out var osoba) || osoba != myId) continue;
-                    if (!DateOnly.TryParseExact(personMatch.Groups["date"].Value, "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)) continue;
-                    if (date < rangeStart || date > rangeEnd) continue;
-                    resolved[date] = (AssignmentType.Work, workplaceName == "NEZAŘAZENÍ" ? "Nezařazen" : workplaceName, null);
-                }
+                if (entry.Date < rangeStart || entry.Date > rangeEnd) continue;
+                var isMe = (myId is not null && entry.PersonId == myId) || NamesMatch(entry.PersonName, myName);
+                if (isMe)
+                    resolved[entry.Date] = (AssignmentType.Work, entry.WorkplaceName, null);
             }
         }
     }
@@ -467,7 +423,7 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
                 {
                     if (cellIndex >= columns.Count) break;
                     var name = WebUtility.HtmlDecode(StripTags(cellMatch.Groups["name"].Value)).Trim();
-                    if (string.Equals(name, myName, StringComparison.OrdinalIgnoreCase))
+                    if (NamesMatch(name, myName))
                     {
                         resolved[date] = resolved.TryGetValue(date, out var current) && current.Type == AssignmentType.Work
                             ? (current.Type, current.WorkplaceName, columns[cellIndex]) // overlay on top of the shift already found
@@ -601,7 +557,7 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
         return date.AddDays(-diff);
     }
 
-    private static string StripTags(string html) => TagRegex().Replace(html, string.Empty);
+    private static string StripTags(string html) => OpicentrumParsing.StripTags(html);
 
     private static Regex SpravavolnaRowRegex(int myId) => new(
         $@"idlekuprvolna={myId}"">[^<]*</a>(?<cells>.*?)</tr>",
@@ -627,21 +583,6 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
     [GeneratedRegex(@"Vítej\s+(?<name>[^<]+)")]
     private static partial Regex WelcomeRegex();
 
-    // onmousedown normally sits directly on the <div> ("<div onmousedown=...>Name</div>"), but the
-    // NEZAŘAZENÍ row (2026-09-22, user's own ask: show "Nezařazen" for days the real site lists the
-    // person as unassigned) nests it on an inner <font> instead ("<div><font onmousedown=...>Name
-    // </font></div>") — same data, a different code path on the site's own legacy PHP for that one
-    // special row. Not anchored to which tag onmousedown is actually on, so both shapes match; `.*?`
-    // stops at whichever of </font>/</div> comes first, i.e. right after the name either way.
-    [GeneratedRegex(@"onmousedown=""datumupravovany=(?<date>\d+); osoba=(?<osoba>\d+); sal1=\d+;?""[^>]*>(?<inner>.*?)</(?:font|div)>", RegexOptions.Singleline)]
-    private static partial Regex PersonCellRegex();
-
-    [GeneratedRegex(@"<tr class=""planakci(?:sns)?""[^>]*>.*?</tr>", RegexOptions.Singleline)]
-    private static partial Regex TableRowRegex();
-
-    [GeneratedRegex(@"<td[^>]*><b>(?<label>[^<]+)</b></td>")]
-    private static partial Regex RowLabelRegex();
-
     [GeneratedRegex(@"<td align=""center"" width=120><b>(?<name>[^<]+)</b></td>")]
     private static partial Regex SluzbyColumnRegex();
 
@@ -661,10 +602,4 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
     [GeneratedRegex(@"idlekuprvolna=(?<osoba>\d+)"">(?<name>[^<]*)</a>")]
     private static partial Regex LeavePersonLinkRegex();
 
-    /// <summary>Czech academic titles that appear inconsistently between the sidebar greeting and the roster tables. Matched as whole words only, so a surname like "Mudra" is untouched.</summary>
-    [GeneratedRegex(@"(?i)\b(MUDr|MVDr|MDDr|PharmDr|RNDr|PhDr|JUDr|Ing|Bc|Mgr|PhD|CSc|DrSc|prim|doc|prof)\b\.?", RegexOptions.CultureInvariant)]
-    private static partial Regex AcademicTitleRegex();
-
-    [GeneratedRegex("<[^>]+>")]
-    private static partial Regex TagRegex();
 }
