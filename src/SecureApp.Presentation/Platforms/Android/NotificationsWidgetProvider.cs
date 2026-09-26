@@ -171,9 +171,13 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
         var dayAbbreviation = isToday ? "Dnes" : CzechDayAbbreviations[(int)date.DayOfWeek == 0 ? 6 : (int)date.DayOfWeek - 1];
         views.SetTextViewText(labelId, $"{dayAbbreviation} {date.Day}.{date.Month}.");
 
+        // "Víkend" / a holiday's name (2026-09-26, same rule as the in-app Rozpis — see
+        // AssignmentDayItem.DisplayTypeLabel): "Bez záznamu" only for an ordinary day with nothing yet.
+        var dayKind = CzechCalendar.DayKindLabel(date);
+
         if (assignment is null)
         {
-            views.SetTextViewText(textId, "Bez záznamu");
+            views.SetTextViewText(textId, dayKind.Length > 0 ? dayKind : "Bez záznamu");
             views.SetInt(colorId, "setBackgroundColor", ToAndroidColorInt(AssignmentColorCatalog.NoAssignmentSurfaceColor));
             return;
         }
@@ -188,6 +192,10 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
             : AssignmentTypeCatalog.Label(assignment.Type);
 
         var isOnCallDuty = assignment.Type == AssignmentType.OnCall || !string.IsNullOrEmpty(assignment.OnCallWorkplaceName);
+        if (dayKind.Length > 0 && assignment.Type == AssignmentType.OnCall && string.IsNullOrEmpty(assignment.OnCallWorkplaceName))
+            text = $"{dayKind} + {AssignmentTypeCatalog.Label(AssignmentType.OnCall)}: {text}";
+        else if (dayKind.Length > 0)
+            text = $"{dayKind} · {text}";
         if (!string.IsNullOrEmpty(assignment.OnCallWorkplaceName))
             text += $" + {AssignmentTypeCatalog.Label(AssignmentType.OnCall)}: {assignment.OnCallWorkplaceName}";
 

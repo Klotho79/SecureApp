@@ -22,7 +22,7 @@
                 </Border.GestureRecognizers>
                 <VerticalStackLayout Spacing="6">
                     <Label Text="Dnes" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Label Text="Dnes není naplánovaná žádná směna. Klepnutím přidáte." FontSize="10.5" TextColor="Gray" IsVisible="{Binding Today.HasNoAssignment}" />
+                    <Label Text="{Binding Today.EmptyTodayText}" FontSize="10.5" TextColor="Gray" IsVisible="{Binding Today.HasNoAssignment}" />
                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10" IsVisible="{Binding Today.HasAssignment}">
                         <Label Grid.Column="0" Text="{Binding Today.Glyph}" FontSize="22.5" VerticalOptions="Center" />
                         <VerticalStackLayout Grid.Column="1" Spacing="1">

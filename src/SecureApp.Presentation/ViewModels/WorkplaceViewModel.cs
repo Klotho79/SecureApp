@@ -328,10 +328,11 @@ public sealed partial class WorkplaceViewModel : ObservableObject
     {
         var isToday = date == DateOnly.FromDateTime(DateTime.Today);
         var dayLabel = $"{CzechDayAbbreviations[(int)date.DayOfWeek == 0 ? 6 : (int)date.DayOfWeek - 1]} {date.Day}. {date.Month}.";
+        var dayKind = CzechCalendar.DayKindLabel(date);
 
         if (assignment is null)
         {
-            return new AssignmentDayItem(date, dayLabel, isToday, false, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, noAssignmentColor, noAssignmentColor, null, OpenDayCommand);
+            return new AssignmentDayItem(date, dayLabel, isToday, false, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, noAssignmentColor, noAssignmentColor, null, OpenDayCommand, DayKindText: dayKind);
         }
 
         var timeText = assignment.StartTime is { } start && assignment.EndTime is { } end
@@ -340,9 +341,21 @@ public sealed partial class WorkplaceViewModel : ObservableObject
 
         // OnCallText (2026-09-21) — a duty overlaid on top of this day's own primary type; see
         // WorkAssignment.OnCallWorkplaceName's own remarks for how the sync decides when this is set.
-        var onCallText = string.IsNullOrEmpty(assignment.OnCallWorkplaceName)
+        var onCallWorkplace = assignment.OnCallWorkplaceName;
+        var workplaceText = assignment.WorkplaceName ?? string.Empty;
+
+        // 2026-09-26 — on a weekend/holiday the headline is "Víkend"/the holiday's name (see
+        // AssignmentDayItem.DisplayTypeLabel), so a duty that IS the whole day moves to the explicit
+        // "Služba: …" line instead of appearing as a bare slot name ("ARIM I") under it.
+        if (dayKind.Length > 0 && assignment.Type == AssignmentType.OnCall && string.IsNullOrEmpty(onCallWorkplace))
+        {
+            onCallWorkplace = workplaceText;
+            workplaceText = string.Empty;
+        }
+
+        var onCallText = string.IsNullOrEmpty(onCallWorkplace)
             ? string.Empty
-            : $"{AssignmentTypeCatalog.Glyph(AssignmentType.OnCall)} {AssignmentTypeCatalog.Label(AssignmentType.OnCall)}: {assignment.OnCallWorkplaceName}";
+            : $"{AssignmentTypeCatalog.Glyph(AssignmentType.OnCall)} {AssignmentTypeCatalog.Label(AssignmentType.OnCall)}: {onCallWorkplace}";
 
         return new AssignmentDayItem(
             date,
@@ -352,13 +365,14 @@ public sealed partial class WorkplaceViewModel : ObservableObject
             assignment.Type.ToString(),
             AssignmentTypeCatalog.Label(assignment.Type),
             AssignmentTypeCatalog.Glyph(assignment.Type),
-            assignment.WorkplaceName ?? string.Empty,
+            workplaceText,
             timeText,
             AssignmentColorCatalog.SoftColor(assignment.Type),
             AssignmentColorCatalog.BaseColor(assignment.Type),
             assignment.Id,
             OpenDayCommand,
-            onCallText);
+            onCallText,
+            dayKind);
     }
 
     private static IEnumerable<AssignmentLegendItem> BuildLegendItems() =>
@@ -419,11 +433,17 @@ public sealed record AssignmentDayItem(
     Color AccentColor,
     Guid? AssignmentId,
     ICommand OpenCommand,
-    string OnCallText = "")
+    string OnCallText = "",
+    string DayKindText = "")
 {
     public bool HasWorkplace => !string.IsNullOrEmpty(WorkplaceText);
     public bool HasTime => !string.IsNullOrEmpty(TimeText);
     public bool HasNoAssignment => !HasAssignment;
+
+    /// <summary>The "Dnes" card's empty-day line — names the weekend/holiday instead of implying a missing shift.</summary>
+    public string EmptyTodayText => DayKindText.Length > 0
+        ? $"{DayKindText} — žádná směna. Klepnutím přidáte."
+        : "Dnes není naplánovaná žádná směna. Klepnutím přidáte.";
 
     /// <summary>
     /// 2026-09-21, user's own ask: "vyhoď zbytečný nápis Práce v kalendáři... odlišíme to jen barvou" —
@@ -436,8 +456,23 @@ public sealed record AssignmentDayItem(
     /// <c>OpicentrumSyncService.MergeSpravavolnaAsync</c>'s own remarks) doesn't need the generic label
     /// repeated above it. Empty (not "Bez záznamu") for a Work day, so <see cref="HasDisplayTypeLabel"/>
     /// can hide the Label outright rather than rendering a blank line.
+    ///
+    /// 2026-09-26, user's own ask: "Bez záznamu" only for an ordinary day with nothing recorded yet — a
+    /// weekend reads "Víkend" and a public holiday its own name (<see cref="DayKindText"/>, from
+    /// <c>CzechCalendar</c>), both with or without an entry; an entry's own type label follows after " · ".
     /// </summary>
-    public string DisplayTypeLabel => HasNoAssignment ? "Bez záznamu" : (TypeText == "Work" || HasWorkplace) ? string.Empty : TypeLabel;
+    public string DisplayTypeLabel
+    {
+        get
+        {
+            if (HasNoAssignment)
+                return DayKindText.Length > 0 ? DayKindText : "Bez záznamu";
+
+            var typeLabel = (TypeText == "Work" || TypeText == "OnCall" && HasOnCall || HasWorkplace) ? string.Empty : TypeLabel;
+            if (DayKindText.Length == 0) return typeLabel;
+            return typeLabel.Length == 0 ? DayKindText : $"{DayKindText} · {typeLabel}";
+        }
+    }
     public bool HasDisplayTypeLabel => !string.IsNullOrEmpty(DisplayTypeLabel);
 
     /// <summary>2026-09-21 — a duty overlaid on top of this day's own primary type (see <c>WorkAssignment.OnCallWorkplaceName</c>'s own remarks); e.g. a normal shift followed later the same day by on-call.</summary>
