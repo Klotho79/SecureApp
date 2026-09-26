@@ -1172,11 +1172,15 @@ public partial class App : Application
 		}
 	}
 
-	private static void NavigateToNotificationDetail(Guid notificationId)
+	/// <summary>A chat/group message notification (widget ticker or Android shade) opens the conversation itself (2026-09-26, user's ask); anything else opens the notification's detail.</summary>
+	private static async void NavigateToNotificationDetail(Guid notificationId)
 	{
 		try
 		{
-			Shell.Current?.GoToAsync($"{nameof(Views.NotificationDetailPage)}?notificationId={notificationId}");
+			var route = await ResolveNotificationRouteAsync(notificationId)
+				?? $"{nameof(Views.NotificationDetailPage)}?notificationId={notificationId}";
+			if (Shell.Current is { } shell)
+				await shell.GoToAsync(route, animate: false);
 		}
 		catch
 		{
@@ -1184,5 +1188,36 @@ public partial class App : Application
 			// fast cold start) just means the app opens to its normal home screen instead, same as
 			// tapping the app icon would have.
 		}
+	}
+
+	private static async Task<string?> ResolveNotificationRouteAsync(Guid notificationId)
+	{
+		var services = IPlatformApplication.Current?.Services;
+		if (services is null) return null;
+		using var scope = services.CreateScope();
+		var notification = await scope.ServiceProvider.GetRequiredService<INotificationRepository>().GetByIdAsync(notificationId);
+		if (notification is null) return null;
+
+		if (notification.RelatedGroupChatId is { } groupChatId)
+		{
+			AppShell.GroupChatPageFactory.PendingKey = groupChatId.ToString();
+			return $"{nameof(Views.GroupChatPage)}?groupChatId={groupChatId}";
+		}
+
+		if (notification.RelatedChatSessionId is not { } chatSessionId) return null;
+
+		// The notification may point at a session a resync has since replaced — open the peer's live one.
+		var sessions = scope.ServiceProvider.GetRequiredService<IChatSessionRepository>();
+		var original = await sessions.GetByIdAsync(chatSessionId);
+		if (original is null) return null;
+		var peerKeyHex = Convert.ToHexStringLower(original.PeerIdentityPublicKey);
+		chatSessionId = (await sessions.GetAllAsync())
+			.Where(s => Convert.ToHexStringLower(s.PeerIdentityPublicKey) == peerKeyHex)
+			.OrderByDescending(s => s.State != ChatSessionState.Closed)
+			.ThenByDescending(s => s.LastRatchetedAtUtc ?? s.CreatedAtUtc)
+			.First().Id;
+
+		AppShell.ChatPageFactory.PendingKey = chatSessionId.ToString();
+		return $"{nameof(Views.ChatPage)}?chatSessionId={chatSessionId}";
 	}
 }
