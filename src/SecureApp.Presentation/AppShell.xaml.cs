@@ -145,6 +145,10 @@ public partial class AppShell : Shell
 	{
 		if (Items.Count == 0 || Items[0] is not TabBar tabBar) return;
 
+		// Save before the rebuild: removing the active tab while Settings is the only
+		// remaining item causes Shell to switch to Settings. We restore it afterwards.
+		var previousItem = CurrentItem;
+
 		foreach (var (tab, _, _) in _hideableTabs)
 			tabBar.Items.Remove(tab);
 
@@ -153,5 +157,8 @@ public partial class AppShell : Shell
 			if (Preferences.Default.Get(preferenceKey, defaultVisible))
 				tabBar.Items.Insert(Math.Max(0, tabBar.Items.Count - 1), tab);
 		}
+
+		if ((object)previousItem is Tab prevTab && tabBar.Items.Contains(prevTab))
+			CurrentItem = prevTab;
 	}
 }
