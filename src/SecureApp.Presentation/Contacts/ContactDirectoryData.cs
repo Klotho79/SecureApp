@@ -4,7 +4,11 @@ using Microsoft.Maui.Controls;
 namespace SecureApp.Presentation.Contacts;
 
 /// <summary>One row of the extension directory (2026-09-10, transcribed from the reference "Příručka a logbook začínajícího anesteziologa" PDF's own "Telefonní seznam" page) — <see cref="Name"/> is kept exactly as printed, including a handful of names truncated in the source table's own narrow columns (e.g. "Minařík,..."), rather than guessed.</summary>
-public sealed record PhoneDirectoryEntry(string Section, string Name, string Number);
+public sealed record PhoneDirectoryEntry(string Section, string Name, string Number)
+{
+    /// <summary>"kl. 2280" / "📞 mob. 777 123 456" — see <see cref="PhoneNumberFormat"/>.</summary>
+    public string NumberLabel => (PhoneNumberFormat.FirstDialable(Number) is null ? "" : "📞 ") + PhoneNumberFormat.Describe(Number);
+}
 
 /// <summary>
 /// One row of "Kam volat při komplikacích s…" (2026-09-10) — a situation and who/what to contact

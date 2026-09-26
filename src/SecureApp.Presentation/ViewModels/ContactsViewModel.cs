@@ -159,9 +159,25 @@ public sealed partial class ContactsViewModel : ObservableObject
     private SharedContactItem ToItem(SharedContact c)
     {
         var subtitleParts = new List<string>();
-        if (!string.IsNullOrWhiteSpace(c.Phone)) subtitleParts.Add($"kl. {c.Phone}");
+        if (!string.IsNullOrWhiteSpace(c.Phone)) subtitleParts.Add(PhoneNumberFormat.Describe(c.Phone));
         if (!string.IsNullOrWhiteSpace(c.Note)) subtitleParts.Add(c.Note);
-        return new SharedContactItem(c.Id, c.DisplayName, c.Phone, c.Note, c.SortOrder, c.CreatedAtUtc, string.Join(" · ", subtitleParts), DeleteContactCommand);
+        return new SharedContactItem(c.Id, c.DisplayName, c.Phone, c.Note, c.SortOrder, c.CreatedAtUtc, string.Join(" · ", subtitleParts), DeleteContactCommand,
+            PhoneNumberFormat.FirstDialable(c.Phone) is not null, CallCommand);
+    }
+
+    /// <summary>Opens the phone's dialer pre-filled with the first complete number in <paramref name="raw"/> — never places the call by itself.</summary>
+    [RelayCommand]
+    private async Task CallAsync(string? raw)
+    {
+        if (PhoneNumberFormat.FirstDialable(raw) is not { } dial) return;
+        try
+        {
+            await Launcher.Default.OpenAsync(new Uri("tel:" + dial));
+        }
+        catch (Exception ex)
+        {
+            CompanyContactsErrorMessage = $"Vytáčení se nepodařilo otevřít: {ex.Message}";
+        }
     }
 
     private void ApplyFilter()
@@ -234,4 +250,4 @@ public sealed partial class ContactSectionGroup : ObservableObject
 }
 
 /// <summary>One row in "Firemní kontakty" (2026-09-20) — no chat action anywhere (see class-level remarks on <see cref="ContactsViewModel"/>); <see cref="Subtitle"/> is pre-joined (extension · note) so the DataTemplate needs no visibility triggers per field, this codebase's established "no converters" convention.</summary>
-public sealed record SharedContactItem(Guid Id, string DisplayName, string? Phone, string? Note, int SortOrder, DateTimeOffset CreatedAtUtc, string Subtitle, ICommand DeleteCommand);
+public sealed record SharedContactItem(Guid Id, string DisplayName, string? Phone, string? Note, int SortOrder, DateTimeOffset CreatedAtUtc, string Subtitle, ICommand DeleteCommand, bool CanCall, ICommand CallCommand);

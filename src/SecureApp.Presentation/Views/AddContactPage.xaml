@@ -17,7 +17,7 @@
             <Entry Text="{Binding DisplayName}" Placeholder="Jméno / oddělení" />
 
             <Label Text="Klapka / telefon" FontAttributes="Bold" Margin="0,8,0,0" />
-            <Entry Text="{Binding Phone}" Placeholder="Nepovinné" Keyboard="Telephone" />
+            <Entry Text="{Binding Phone}" Placeholder="Např. 2280 nebo 777 123 456 (víc čísel oddělte čárkou)" Keyboard="Telephone" />
 
             <Label Text="Poznámka" FontAttributes="Bold" Margin="0,8,0,0" />
             <Editor Text="{Binding Note}" Placeholder="Nepovinné" HeightRequest="70" />

@@ -132,7 +132,7 @@ public sealed partial class SmartSearchViewModel : ObservableObject
                     e.Number.Contains(query, StringComparison.OrdinalIgnoreCase) ||
                     e.Section.Contains(query, StringComparison.OrdinalIgnoreCase))
                 .Take(MaxResultsPerSection)
-                .Select(e => new SearchResultItem(e.Name, $"{e.Section} · kl. {e.Number}", "//ContactsTab", OpenCommand)));
+                .Select(e => new SearchResultItem(e.Name, $"{e.Section} · {Contacts.PhoneNumberFormat.Describe(e.Number)}", "//ContactsTab", OpenCommand)));
 
             // A bounded window (60 days back, 180 forward), not the whole table — this is a personal
             // schedule, not a searchable archive, and the spec's own "vacation" example (§11) is about

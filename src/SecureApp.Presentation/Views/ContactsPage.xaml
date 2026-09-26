@@ -38,12 +38,14 @@
                                         <DragGestureRecognizer CanDrag="True" DragStarting="OnContactDragStarting" />
                                         <DropGestureRecognizer AllowDrop="True" Drop="OnContactDrop" />
                                     </Border.GestureRecognizers>
-                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                    <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
                                         <VerticalStackLayout Grid.Column="0" Spacing="2">
                                             <Label Text="{Binding DisplayName}" FontSize="11" FontAttributes="Bold" LineBreakMode="TailTruncation" />
                                             <Label Text="{Binding Subtitle}" FontSize="9" TextColor="Gray" LineBreakMode="TailTruncation" />
                                         </VerticalStackLayout>
-                                        <Button Grid.Column="1" Text="🗑" BackgroundColor="Transparent" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" Padding="6,0" Command="{Binding DeleteCommand}" CommandParameter="{Binding .}" />
+                                        <!-- Only for a complete number (mob./tel.), never a bare extension. -->
+                                        <Button Grid.Column="1" Text="📞" BackgroundColor="Transparent" Padding="6,0" IsVisible="{Binding CanCall}" Command="{Binding CallCommand}" CommandParameter="{Binding Phone}" />
+                                        <Button Grid.Column="2" Text="🗑" BackgroundColor="Transparent" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" Padding="6,0" Command="{Binding DeleteCommand}" CommandParameter="{Binding .}" />
                                     </Grid>
                                 </Border>
                             </DataTemplate>
@@ -124,7 +126,12 @@
                                             <DataTemplate x:DataType="contacts:PhoneDirectoryEntry">
                                                 <Grid Padding="4,5,0,5" ColumnDefinitions="*,Auto">
                                                     <Label Grid.Column="0" Text="{Binding Name}" FontSize="11" VerticalOptions="Center" LineBreakMode="TailTruncation" />
-                                                    <Label Grid.Column="1" Text="{Binding Number, StringFormat='kl. {0}'}" FontSize="11.5" FontAttributes="Bold" VerticalOptions="Center" TextColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
+                                                    <Label Grid.Column="1" Text="{Binding NumberLabel}" FontSize="11.5" FontAttributes="Bold" VerticalOptions="Center" TextColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}">
+                                                        <!-- Tap dials a complete number; a bare extension is a no-op (CallCommand ignores it). -->
+                                                        <Label.GestureRecognizers>
+                                                            <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ContactsViewModel}}, Path=CallCommand}" CommandParameter="{Binding Number}" />
+                                                        </Label.GestureRecognizers>
+                                                    </Label>
                                                 </Grid>
                                             </DataTemplate>
                                         </BindableLayout.ItemTemplate>
