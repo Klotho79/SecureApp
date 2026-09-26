@@ -145,9 +145,10 @@ public partial class AppShell : Shell
 	{
 		if (Items.Count == 0 || Items[0] is not TabBar tabBar) return;
 
-		// Save before the rebuild: removing the active tab while Settings is the only
-		// remaining item causes Shell to switch to Settings. We restore it afterwards.
-		var previousItem = CurrentItem;
+		// Save the active Tab before the rebuild: removing it while Settings is the only
+		// remaining item causes Shell to switch to Settings; we restore it afterwards.
+		// tabBar.CurrentItem is ShellSection; Tab : ShellSection, so the cast is safe.
+		var previousSection = tabBar.CurrentItem;
 
 		foreach (var (tab, _, _) in _hideableTabs)
 			tabBar.Items.Remove(tab);
@@ -158,7 +159,7 @@ public partial class AppShell : Shell
 				tabBar.Items.Insert(Math.Max(0, tabBar.Items.Count - 1), tab);
 		}
 
-		if ((object)previousItem is Tab prevTab && tabBar.Items.Contains(prevTab))
+		if (previousSection is Tab prevTab && tabBar.Items.Contains(prevTab))
 			CurrentItem = prevTab;
 	}
 }
