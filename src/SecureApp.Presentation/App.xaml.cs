@@ -22,6 +22,7 @@ public partial class App : Application
 		var theme = mode switch { 1 => AppTheme.Light, 2 => AppTheme.Dark, _ => AppTheme.Unspecified };
 		if (Application.Current is { } app)
 			app.UserAppTheme = theme;
+		Infrastructure.ChatAppearance.Refresh();
 	}
 
 	private static void ApplySavedThemeMode()
@@ -35,12 +36,17 @@ public partial class App : Application
 
 	private const double BaseFontSize = 11.0;
 
-	/// <summary>Rescales the app's base font size by overwriting the AppFontSize resource the implicit control styles reference via DynamicResource — so default text, inputs and buttons resize live. Index 0..3 = 0.9 / 1.0 / 1.15 / 1.3.</summary>
+	/// <summary>Rescales app text live. Index 0..3 = 0.9 / 1.0 / 1.15 / 1.3. On Android every text control is scaled natively (see Infrastructure.FontScaling), so AppFontSize stays at its base there to avoid scaling twice.</summary>
 	public static void ApplyFontScale(int index)
 	{
-		var factor = index switch { 0 => 0.9, 2 => 1.15, 3 => 1.3, _ => 1.0 };
-		if (Application.Current is { } app)
-			app.Resources["AppFontSize"] = BaseFontSize * factor;
+		var factor = Infrastructure.FontScaling.FactorFor(index);
+		if (Application.Current is not { } app) return;
+#if ANDROID
+		app.Resources["AppFontSize"] = BaseFontSize;
+		Infrastructure.FontScaling.SetFactor(factor);
+#else
+		app.Resources["AppFontSize"] = BaseFontSize * factor;
+#endif
 	}
 
 	private static void ApplySavedFontScale()
@@ -59,6 +65,8 @@ public partial class App : Application
 		ApplySavedThemeMode();
 		ApplySavedFontScale();
 		Infrastructure.AccentPalette.ApplySaved();
+		Infrastructure.ChatAppearance.ApplySaved();
+		RequestedThemeChanged += (_, _) => Infrastructure.ChatAppearance.Refresh();
 
 		// Shared diagnostics log (2026-09-10) — a genuine crash is exactly the class of failure
 		// this log exists for (see IDiagnosticsReporter's own remarks): the one thing worse than an

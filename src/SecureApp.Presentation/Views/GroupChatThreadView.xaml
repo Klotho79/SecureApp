@@ -138,8 +138,8 @@
                                         <Border.Triggers>
                                             <DataTrigger TargetType="Border" Binding="{Binding IsOutbound}" Value="True">
                                                 <Setter Property="StrokeShape" Value="RoundRectangle 15,15,15,4" />
-                                                <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
-                                                <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
+                                                <Setter Property="Stroke" Value="{DynamicResource ChatOwnBubbleColor}" />
+                                                <Setter Property="BackgroundColor" Value="{DynamicResource ChatOwnBubbleColor}" />
                                                 <Setter Property="HorizontalOptions" Value="End" />
                                             </DataTrigger>
                                         </Border.Triggers>
@@ -151,7 +151,7 @@
                                                     TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}">
                                                     <Label.Triggers>
                                                         <DataTrigger TargetType="Label" Binding="{Binding IsOutbound}" Value="True">
-                                                            <Setter Property="TextColor" Value="{AppThemeBinding Light=#CFE7F0, Dark={StaticResource PrimaryDarkText}}" />
+                                                            <Setter Property="TextColor" Value="{DynamicResource ChatOwnBubbleMetaColor}" />
                                                         </DataTrigger>
                                                     </Label.Triggers>
                                                 </Label>
@@ -161,7 +161,7 @@
                                                     IsVisible="{Binding ShowStatusGlyph}"
                                                     FontSize="7"
                                                     VerticalOptions="Center"
-                                                    TextColor="{AppThemeBinding Light=#CFE7F0, Dark={StaticResource PrimaryDarkText}}" />
+                                                    TextColor="{DynamicResource ChatOwnBubbleMetaColor}" />
                                                 <Label
                                                     Text="{Binding SenderDisplayName}"
                                                     FontSize="7"
@@ -183,10 +183,10 @@
                                                 </Label>
                                             </HorizontalStackLayout>
 
-                                            <Label Grid.Row="1" Text="{Binding Text}" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" FontSize="9" LineBreakMode="WordWrap">
+                                            <Label Grid.Row="1" Text="{Binding Text}" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" FontSize="{DynamicResource ChatMessageFontSize}" LineBreakMode="WordWrap">
                                                 <Label.Triggers>
                                                     <DataTrigger TargetType="Label" Binding="{Binding IsOutbound}" Value="True">
-                                                        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource PrimaryDarkText}}" />
+                                                        <Setter Property="TextColor" Value="{DynamicResource ChatOwnBubbleTextColor}" />
                                                     </DataTrigger>
                                                 </Label.Triggers>
                                             </Label>
@@ -210,8 +210,8 @@
                                         <Border.Triggers>
                                             <DataTrigger TargetType="Border" Binding="{Binding IsOutbound}" Value="True">
                                                 <Setter Property="StrokeShape" Value="RoundRectangle 15,15,15,4" />
-                                                <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
-                                                <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
+                                                <Setter Property="Stroke" Value="{DynamicResource ChatOwnBubbleColor}" />
+                                                <Setter Property="BackgroundColor" Value="{DynamicResource ChatOwnBubbleColor}" />
                                                 <Setter Property="HorizontalOptions" Value="End" />
                                             </DataTrigger>
                                         </Border.Triggers>
@@ -223,7 +223,7 @@
                                                     TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}">
                                                     <Label.Triggers>
                                                         <DataTrigger TargetType="Label" Binding="{Binding IsOutbound}" Value="True">
-                                                            <Setter Property="TextColor" Value="{AppThemeBinding Light=#CFE7F0, Dark={StaticResource PrimaryDarkText}}" />
+                                                            <Setter Property="TextColor" Value="{DynamicResource ChatOwnBubbleMetaColor}" />
                                                         </DataTrigger>
                                                     </Label.Triggers>
                                                 </Label>
@@ -233,7 +233,7 @@
                                                     IsVisible="{Binding ShowStatusGlyph}"
                                                     FontSize="7"
                                                     VerticalOptions="Center"
-                                                    TextColor="{AppThemeBinding Light=#CFE7F0, Dark={StaticResource PrimaryDarkText}}" />
+                                                    TextColor="{DynamicResource ChatOwnBubbleMetaColor}" />
                                                 <Label
                                                     Text="{Binding SenderDisplayName}"
                                                     FontSize="7"
@@ -255,10 +255,10 @@
                                                 </Label>
                                             </HorizontalStackLayout>
 
-                                            <Label Grid.Row="1" Text="{Binding Text}" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" FontSize="9" LineBreakMode="WordWrap" IsVisible="{Binding HasText}">
+                                            <Label Grid.Row="1" Text="{Binding Text}" TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource White}}" FontSize="{DynamicResource ChatMessageFontSize}" LineBreakMode="WordWrap" IsVisible="{Binding HasText}">
                                                 <Label.Triggers>
                                                     <DataTrigger TargetType="Label" Binding="{Binding IsOutbound}" Value="True">
-                                                        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource PrimaryDarkText}}" />
+                                                        <Setter Property="TextColor" Value="{DynamicResource ChatOwnBubbleTextColor}" />
                                                     </DataTrigger>
                                                 </Label.Triggers>
                                             </Label>

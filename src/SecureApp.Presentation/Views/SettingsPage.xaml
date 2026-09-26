@@ -78,7 +78,7 @@
 
                         <Label Text="Velikost písma" FontAttributes="Bold" Margin="0,10,0,0" />
                         <Picker ItemsSource="{Binding FontScaleChoices}" SelectedIndex="{Binding FontScaleIndex}" />
-                        <Label Text="Zvětší/zmenší základní text, pole a tlačítka — projeví se hned. Platí jen pro toto zařízení." FontSize="9.5" TextColor="Gray" />
+                        <Label Text="Zvětší/zmenší veškerý text v aplikaci, včetně chatu — projeví se hned. Platí jen pro toto zařízení." FontSize="9.5" TextColor="Gray" />
 
                         <Label Text="Barva aplikace" FontAttributes="Bold" Margin="0,10,0,0" />
                         <!-- Preset swatches — tapping one applies + stores it. Tap handled via the VM's
@@ -104,6 +104,35 @@
                             <Button Grid.Column="2" Text="Použít" Style="{StaticResource SecondaryButton}" Command="{Binding SelectAccentCommand}" CommandParameter="{Binding AccentHexInput}" />
                         </Grid>
                         <Label Text="{Binding AccentStatusText}" IsVisible="{Binding HasAccentStatus}" FontSize="9.5" TextColor="Gray" LineBreakMode="WordWrap" />
+                    </VerticalStackLayout>
+                </Border>
+
+                <!-- Chat (2026-09-26) — message font size + own-bubble colour, applied live. -->
+                <Border Style="{StaticResource CardBorder}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Chat" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Label Text="Velikost písma zpráv" FontAttributes="Bold" />
+                        <Picker ItemsSource="{Binding ChatFontSizeChoices}" SelectedIndex="{Binding ChatFontSizeIndex}" />
+
+                        <Grid ColumnDefinitions="*,Auto" Margin="0,10,0,0">
+                            <Label Grid.Column="0" Text="Barva mých bublin" FontAttributes="Bold" VerticalOptions="Center" />
+                            <Border Grid.Column="1" BackgroundColor="{Binding ChatBubblePreviewColor}" WidthRequest="32" HeightRequest="32" StrokeThickness="0" StrokeShape="RoundRectangle 8" />
+                        </Grid>
+                        <FlexLayout Wrap="Wrap" BindableLayout.ItemsSource="{Binding AccentPresets}">
+                            <BindableLayout.ItemTemplate>
+                                <DataTemplate x:DataType="vm:AccentSwatchItem">
+                                    <Border StrokeThickness="0" BackgroundColor="{Binding SwatchColor}" WidthRequest="44" HeightRequest="44" Margin="4" StrokeShape="RoundRectangle 10">
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer
+                                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:SettingsViewModel}}, Path=SelectChatBubbleColorCommand}"
+                                                CommandParameter="{Binding Hex}" />
+                                        </Border.GestureRecognizers>
+                                    </Border>
+                                </DataTemplate>
+                            </BindableLayout.ItemTemplate>
+                        </FlexLayout>
+                        <Button Text="Podle barvy aplikace" Style="{StaticResource SecondaryButton}" Command="{Binding SelectChatBubbleColorCommand}" CommandParameter="" HorizontalOptions="Start" />
+                        <Label Text="Projeví se hned. Platí jen pro toto zařízení." FontSize="9.5" TextColor="Gray" />
                     </VerticalStackLayout>
                 </Border>
 

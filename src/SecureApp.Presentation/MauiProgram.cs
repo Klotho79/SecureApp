@@ -22,6 +22,8 @@ public static class MauiProgram
 {
 	public static MauiApp CreateMauiApp()
 	{
+		FontScaling.Register();
+
 		var builder = MauiApp.CreateBuilder();
 		builder
 			.UseMauiApp<App>()

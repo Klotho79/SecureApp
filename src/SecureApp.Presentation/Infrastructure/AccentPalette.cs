@@ -50,7 +50,7 @@ public static class AccentPalette
 
     public static bool IsValidHex(string? hex) => TryParseHex(hex, out _);
 
-    private static bool TryParseHex(string? hex, out Color color)
+    public static bool TryParseHex(string? hex, out Color color)
     {
         color = Colors.Transparent;
         if (string.IsNullOrWhiteSpace(hex)) return false;

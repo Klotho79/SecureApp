@@ -10,6 +10,13 @@
          base body size only. Default 11 matches what these styles used before. -->
     <x:Double x:Key="AppFontSize">11</x:Double>
 
+    <!-- Chat appearance (2026-09-26) — overwritten at startup and live by Infrastructure.ChatAppearance
+         from the per-device Settings → Chat choices; these are just the light-theme defaults. -->
+    <x:Double x:Key="ChatMessageFontSize">9</x:Double>
+    <Color x:Key="ChatOwnBubbleColor">#14688A</Color>
+    <Color x:Key="ChatOwnBubbleTextColor">#FFFFFF</Color>
+    <Color x:Key="ChatOwnBubbleMetaColor">#CFE7F0</Color>
+
     <Style TargetType="ActivityIndicator">
         <Setter Property="Color" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource White}}" />
     </Style>

@@ -336,6 +336,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         LoadThemeMode();
         LoadFontScale();
         LoadAccent();
+        LoadChatAppearance();
         IsSaved = false;
         ErrorMessage = null;
         IsLogbookVisible = Preferences.Default.Get(AppShell.LogbookVisibilityPreferenceKey, false);

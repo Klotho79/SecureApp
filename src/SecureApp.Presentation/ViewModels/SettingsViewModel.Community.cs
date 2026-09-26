@@ -113,6 +113,45 @@ public sealed partial class SettingsViewModel
         App.ApplyFontScale(value);
     }
 
+    // --- Chat appearance (2026-09-26) — message font size + own-bubble colour, both applied live.
+
+    public IReadOnlyList<string> ChatFontSizeChoices { get; } = Infrastructure.ChatAppearance.FontSizeChoices;
+
+    [ObservableProperty]
+    public partial int ChatFontSizeIndex { get; set; }
+
+    [ObservableProperty]
+    public partial Color ChatBubblePreviewColor { get; set; } = Colors.Transparent;
+
+    private bool _chatAppearanceLoaded;
+
+    private void LoadChatAppearance()
+    {
+        _chatAppearanceLoaded = false;
+        var prefs = Microsoft.Maui.Storage.Preferences.Default;
+        ChatFontSizeIndex = prefs.Get(Infrastructure.ChatAppearance.FontSizePreferenceKey, 1);
+        var hex = prefs.Get(Infrastructure.ChatAppearance.BubbleColorPreferenceKey, string.Empty);
+        ChatBubblePreviewColor = string.IsNullOrEmpty(hex) ? AccentPreviewColor : SafeColor(hex);
+        _chatAppearanceLoaded = true;
+    }
+
+    partial void OnChatFontSizeIndexChanged(int value)
+    {
+        if (!_chatAppearanceLoaded || value < 0) return;
+        Microsoft.Maui.Storage.Preferences.Default.Set(Infrastructure.ChatAppearance.FontSizePreferenceKey, value);
+        Infrastructure.ChatAppearance.ApplyFontSize(value);
+    }
+
+    /// <summary>Empty hex = back to following the app colour.</summary>
+    [RelayCommand]
+    private void SelectChatBubbleColor(string? hex)
+    {
+        hex = Infrastructure.AccentPalette.IsValidHex(hex) ? hex : string.Empty;
+        Microsoft.Maui.Storage.Preferences.Default.Set(Infrastructure.ChatAppearance.BubbleColorPreferenceKey, hex);
+        Infrastructure.ChatAppearance.ApplyBubbleColor(hex);
+        ChatBubblePreviewColor = string.IsNullOrEmpty(hex) ? AccentPreviewColor : SafeColor(hex!);
+    }
+
     private void LoadAccent()
     {
         var stored = Microsoft.Maui.Storage.Preferences.Default.Get(Infrastructure.AccentPalette.PreferenceKey, string.Empty);
