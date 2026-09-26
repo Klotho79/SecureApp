@@ -45,6 +45,21 @@
         android:background="@drawable/widget_card_background"
         android:padding="8dp">
 
+        <!-- Who is on duty today (2026-09-26): sluzby7.php slots + the posunutá služba. Hidden when unknown. -->
+        <TextView
+            android:id="@+id/widget_duty_today"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="4dp"
+            android:paddingStart="5dp"
+            android:paddingEnd="5dp"
+            android:text=""
+            android:textColor="@color/widgetCardText"
+            android:textSize="11sp"
+            android:maxLines="3"
+            android:ellipsize="end"
+            android:visibility="gone" />
+
         <LinearLayout android:id="@+id/widget_day1" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:padding="5dp">
             <TextView android:id="@+id/widget_day1_color" android:layout_width="16dp" android:layout_height="16dp" android:text="" android:background="@drawable/widget_dot_accent" />
             <TextView android:id="@+id/widget_day1_label" android:layout_width="64dp" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:text="" android:textColor="@color/widgetCardText" android:textSize="12sp" android:textStyle="bold" />

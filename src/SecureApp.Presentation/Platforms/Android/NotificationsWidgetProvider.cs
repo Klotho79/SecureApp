@@ -143,6 +143,8 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
             views.SetOnClickPendingIntent(Resource.Id.widget_card, PendingIntent.GetActivity(
                 context, "widgetRozpis".GetHashCode(), openRozpisIntent, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable));
 
+            ApplyDutyToday(views, today);
+
             for (var i = 0; i < DayCount; i++)
                 ApplyDay(context, views, DayRowIds[i], DayColorIds[i], DayLabelIds[i], DayTextIds[i], today.AddDays(i), byDate.GetValueOrDefault(today.AddDays(i)), isToday: i == 0);
 
@@ -158,6 +160,26 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
         {
             pendingResult?.Finish();
         }
+    }
+
+    /// <summary>"Slouží: Graus, Kula, … · Posunutá: Trněná" above the rozpis (2026-09-26, user's ask) — from the last Opicentrum sync, see DutyRosterStore.</summary>
+    private static void ApplyDutyToday(RemoteViews views, DateOnly today)
+    {
+        var day = DutyRosterStore.Get(today);
+        if (day is null)
+        {
+            views.SetViewVisibility(Resource.Id.widget_duty_today, global::Android.Views.ViewStates.Gone);
+            return;
+        }
+
+        var parts = new List<string>();
+        if (day.OnDuty.Count > 0)
+            parts.Add("Slouží: " + string.Join(", ", day.OnDuty.Select(DutyRosterStore.Surname)));
+        if (day.Shifted.Count > 0)
+            parts.Add("Posunutá: " + string.Join(", ", day.Shifted.Select(DutyRosterStore.Surname)));
+
+        views.SetTextViewText(Resource.Id.widget_duty_today, string.Join("  ·  ", parts));
+        views.SetViewVisibility(Resource.Id.widget_duty_today, global::Android.Views.ViewStates.Visible);
     }
 
     private static void ApplyDay(Context context, RemoteViews views, int rowId, int colorId, int labelId, int textId, DateOnly date, WorkAssignment? assignment, bool isToday)

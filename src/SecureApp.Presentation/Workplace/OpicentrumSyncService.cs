@@ -163,8 +163,18 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
             // see MergeSluzbyAsync's own remarks for how a day ends up with one.
             var resolved = new Dictionary<DateOnly, (AssignmentType Type, string? WorkplaceName, string? OnCallWorkplaceName)>();
 
-            await MergePracovisteAsync(http, rangeStart, rangeEnd, myName, myId, resolved, ct);
-            await MergeSluzbyAsync(http, rangeStart, rangeEnd, myName, resolved, ct);
+            // Everyone on duty per day, for the widget — collected from the same pages, see DutyRosterStore.
+            var onDuty = new Dictionary<DateOnly, List<string>>();
+            var shifted = new Dictionary<DateOnly, List<string>>();
+
+            await MergePracovisteAsync(http, rangeStart, rangeEnd, myName, myId, resolved, shifted, ct);
+            await MergeSluzbyAsync(http, rangeStart, rangeEnd, myName, resolved, onDuty, ct);
+            try
+            {
+                DutyRosterStore.Save(rangeStart, rangeEnd, onDuty, shifted);
+                SecureApp.Domain.Events.WidgetRefreshSignal.Raise();
+            }
+            catch { /* best-effort — the widget line just stays stale */ }
             if (myId is { } id)
                 await MergeSpravavolnaAsync(http, rangeStart, rangeEnd, id, resolved, ct);
 
@@ -364,7 +374,7 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
     /// <see cref="OpicentrumParsing"/>'s remarks for why the id alone (what this used to rely on) left
     /// every non-editor account without workplaces.
     /// </summary>
-    private static async Task MergePracovisteAsync(HttpClient http, DateOnly rangeStart, DateOnly rangeEnd, string myName, int? myId, Dictionary<DateOnly, (AssignmentType Type, string? WorkplaceName, string? OnCallWorkplaceName)> resolved, CancellationToken ct)
+    private static async Task MergePracovisteAsync(HttpClient http, DateOnly rangeStart, DateOnly rangeEnd, string myName, int? myId, Dictionary<DateOnly, (AssignmentType Type, string? WorkplaceName, string? OnCallWorkplaceName)> resolved, Dictionary<DateOnly, List<string>> shifted, CancellationToken ct)
     {
         foreach (var monday in DistinctMondaysInRange(rangeStart, rangeEnd))
         {
@@ -375,7 +385,10 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
             foreach (var entry in OpicentrumParsing.ParsePracovisteWeek(html))
             {
                 if (entry.Date < rangeStart || entry.Date > rangeEnd) continue;
-                var isMe = (myId is not null && entry.PersonId == myId) || NamesMatch(entry.PersonName, myName);
+                // "Odpolední 13-21 h", the last workplace row, is the posunutá služba.
+                if (entry.WorkplaceName.StartsWith("Odpolední", StringComparison.OrdinalIgnoreCase))
+                    AddName(shifted, entry.Date, entry.PersonName);
+                var isMe =(myId is not null && entry.PersonId == myId) || NamesMatch(entry.PersonName, myName);
                 if (isMe)
                     resolved[entry.Date] = (AssignmentType.Work, entry.WorkplaceName, null);
             }
@@ -393,7 +406,14 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
     /// underneath — every weekend, since pracoviste.php never has one to begin with — does the duty
     /// become the day's own primary Type = OnCall, exactly as before this change.
     /// </summary>
-    private static async Task MergeSluzbyAsync(HttpClient http, DateOnly rangeStart, DateOnly rangeEnd, string myName, Dictionary<DateOnly, (AssignmentType Type, string? WorkplaceName, string? OnCallWorkplaceName)> resolved, CancellationToken ct)
+    private static void AddName(Dictionary<DateOnly, List<string>> byDate, DateOnly date, string name)
+    {
+        if (name.Length == 0) return;
+        if (!byDate.TryGetValue(date, out var list)) byDate[date] = list = [];
+        if (!list.Any(existing => NamesMatch(existing, name))) list.Add(name);
+    }
+
+    private static async Task MergeSluzbyAsync(HttpClient http, DateOnly rangeStart, DateOnly rangeEnd, string myName, Dictionary<DateOnly, (AssignmentType Type, string? WorkplaceName, string? OnCallWorkplaceName)> resolved, Dictionary<DateOnly, List<string>> onDuty, CancellationToken ct)
     {
         foreach (var (year, month) in DistinctMonthsInRange(rangeStart, rangeEnd))
         {
@@ -422,7 +442,9 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
                 foreach (Match cellMatch in SluzbyCellRegex().Matches(rowMatch.Value))
                 {
                     if (cellIndex >= columns.Count) break;
-                    var name = WebUtility.HtmlDecode(StripTags(cellMatch.Groups["name"].Value)).Trim();
+                    var name = WebUtility.HtmlDecode(StripTags(cellMatch.Groups["name"].Value)).Replace(' ', ' ').Trim();
+                    if (name.Any(char.IsLetter))
+                        AddName(onDuty, date, name);
                     if (NamesMatch(name, myName))
                     {
                         resolved[date] = resolved.TryGetValue(date, out var current) && current.Type == AssignmentType.Work
