@@ -15,5 +15,8 @@ public enum NotificationCategory
     Library,
     Logbook,
     System,
-    Other
+    Other,
+
+    /// <summary>A change to the user's own schedule found by the Opicentrum sync (2026-09-26). Appended last: stored as its int value.</summary>
+    Schedule
 }

@@ -305,6 +305,9 @@ public partial class App : Application
 						lastStaleSweep = DateTimeOffset.UtcNow;
 					}
 				}
+
+				if (services is not null)
+					await RunBackgroundOpicentrumSyncAsync(services);
 			}
 			catch
 			{
@@ -314,6 +317,37 @@ public partial class App : Application
 
 			try { await Task.Delay(_supervisorTickInterval); }
 			catch { return; }
+		}
+	}
+
+	private const string LastBackgroundOpicentrumSyncPreferenceKey = "opicentrum_last_bg_sync_utc";
+	private static readonly TimeSpan _backgroundOpicentrumSyncInterval = TimeSpan.FromHours(3);
+
+	/// <summary>
+	/// Opicentrum sync without opening the Rozpis (2026-09-26): with the background service keeping the
+	/// process alive, this is what lets a schedule change reach the user as a notification on its own,
+	/// and keeps the widget's duty list fresh. Every few hours, last week through the end of next month.
+	/// </summary>
+	private static async Task RunBackgroundOpicentrumSyncAsync(IServiceProvider services)
+	{
+		try
+		{
+			var prefs = Microsoft.Maui.Storage.Preferences.Default;
+			var lastTicks = prefs.Get(LastBackgroundOpicentrumSyncPreferenceKey, 0L);
+			if (lastTicks > 0 && DateTimeOffset.UtcNow - new DateTimeOffset(lastTicks, TimeSpan.Zero) < _backgroundOpicentrumSyncInterval) return;
+
+			var sync = services.GetService<IOpicentrumSyncService>();
+			if (sync is null || !await sync.HasCredentialsAsync()) return;
+			prefs.Set(LastBackgroundOpicentrumSyncPreferenceKey, DateTimeOffset.UtcNow.UtcTicks);
+
+			var today = DateOnly.FromDateTime(DateTime.Today);
+			var nextMonth = new DateOnly(today.Year, today.Month, 1).AddMonths(1);
+			var result = await sync.SyncAsync(today.AddDays(-7), nextMonth.AddMonths(1).AddDays(-1));
+			AppLog.Event("opicentrum.bg-sync", ("ok", result.Success), ("created", result.CreatedCount), ("updated", result.UpdatedCount));
+		}
+		catch (Exception ex)
+		{
+			AppLog.Error(nameof(RunBackgroundOpicentrumSyncAsync), "background Opicentrum sync failed", ex);
 		}
 	}
 
@@ -1221,6 +1255,9 @@ public partial class App : Application
 		using var scope = services.CreateScope();
 		var notification = await scope.ServiceProvider.GetRequiredService<INotificationRepository>().GetByIdAsync(notificationId);
 		if (notification is null) return null;
+
+		if (notification.Category == NotificationCategory.Schedule)
+			return nameof(Views.WorkplacePage);
 
 		if (notification.RelatedGroupChatId is { } groupChatId)
 		{

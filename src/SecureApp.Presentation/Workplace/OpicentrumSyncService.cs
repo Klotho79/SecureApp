@@ -100,11 +100,14 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
     private readonly IWorkAssignmentRepository _assignmentRepository;
     private readonly INotificationRepository _notificationRepository;
 
-    public OpicentrumSyncService(ISecureVaultKeyStore vault, IWorkAssignmentRepository assignmentRepository, INotificationRepository notificationRepository)
+    private readonly INativeNotificationService _nativeNotificationService;
+
+    public OpicentrumSyncService(ISecureVaultKeyStore vault, IWorkAssignmentRepository assignmentRepository, INotificationRepository notificationRepository, INativeNotificationService nativeNotificationService)
     {
         _vault = vault ?? throw new ArgumentNullException(nameof(vault));
         _assignmentRepository = assignmentRepository ?? throw new ArgumentNullException(nameof(assignmentRepository));
         _notificationRepository = notificationRepository ?? throw new ArgumentNullException(nameof(notificationRepository));
+        _nativeNotificationService = nativeNotificationService ?? throw new ArgumentNullException(nameof(nativeNotificationService));
     }
 
     public async Task<bool> HasCredentialsAsync(CancellationToken ct = default)
@@ -517,8 +520,9 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
 
         var created = 0;
         var updated = 0;
+        var changes = new List<(DateOnly Date, string Before, string After)>();
 
-        foreach (var (date, (type, workplaceName, onCallWorkplaceName)) in resolved)
+        foreach (var (date, (type, workplaceName, onCallWorkplaceName)) in resolved.OrderBy(r => r.Key))
         {
             if (existingByDate.TryGetValue(date, out var current))
             {
@@ -535,22 +539,38 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
                 current.Update(type, current.StartTime, current.EndTime, null, workplaceName, current.Note, onCallWorkplaceName);
                 await _assignmentRepository.UpdateAsync(current, ct);
                 updated++;
-
-                await NotificationPublisher.PublishSystemWarningAsync(
-                    _notificationRepository,
-                    "Rozpis aktualizován z Opicentra",
-                    $"{date:d. M. yyyy}: bylo „{previousLabel}“, nyní „{newLabel}“.",
-                    ct: ct);
+                changes.Add((date, previousLabel, newLabel));
             }
             else
             {
+                // A day seen for the first time (e.g. next month entering the range) is not a
+                // "change" — notifying those would bury the real ones under dozens of rows.
                 var assignment = new WorkAssignment(date, type, workplaceName: workplaceName, onCallWorkplaceName: onCallWorkplaceName);
                 await _assignmentRepository.AddAsync(assignment, ct);
                 created++;
             }
         }
 
+        if (changes.Count > 0)
+            await PublishScheduleChangesAsync(changes, ct);
+
         return new OpicentrumSyncResult(true, created, updated, null);
+    }
+
+    private static readonly CultureInfo Czech = new("cs-CZ");
+
+    /// <summary>
+    /// One Rozpis notification per sync, listing every changed day (2026-09-26, user's ask: the app
+    /// itself says when a shift changed). Important when any change is within the next 7 days.
+    /// Posted to the Android shade too, since the sync now also runs in the background.
+    /// </summary>
+    private async Task PublishScheduleChangesAsync(List<(DateOnly Date, string Before, string After)> changes, CancellationToken ct)
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var isImportant = changes.Any(c => c.Date >= today && c.Date <= today.AddDays(7));
+        var title = changes.Count == 1 ? "Změna v rozpisu" : $"Změny v rozpisu ({changes.Count})";
+        var body = string.Join("\n", changes.Select(c => $"{c.Date.ToString("ddd d. M.", Czech)}: {c.Before} → {c.After}"));
+        await NotificationPublisher.PublishScheduleChangeAsync(_notificationRepository, title, body, isImportant, _nativeNotificationService, ct);
     }
 
     private static string DescribeAssignment(AssignmentType type, string? workplaceName, string? onCallWorkplaceName)

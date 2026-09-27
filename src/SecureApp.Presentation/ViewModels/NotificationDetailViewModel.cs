@@ -107,7 +107,8 @@ public sealed partial class NotificationDetailViewModel : ObservableObject, IQue
             _relatedChatSessionId = notification.RelatedChatSessionId;
             _relatedGroupChatId = notification.RelatedGroupChatId;
             _hasRelatedLibraryFile = notification.RelatedLibraryFileId is not null;
-            HasRelated = _relatedChatSessionId is not null || _relatedGroupChatId is not null || _hasRelatedLibraryFile;
+            _isSchedule = notification.Category == NotificationCategory.Schedule;
+            HasRelated = _relatedChatSessionId is not null || _relatedGroupChatId is not null || _hasRelatedLibraryFile || _isSchedule;
         }
         catch (Exception ex)
         {
@@ -164,7 +165,11 @@ public sealed partial class NotificationDetailViewModel : ObservableObject, IQue
             RequestNavigate?.Invoke($"ChatPage?chatSessionId={chatSessionId}");
         else if (_hasRelatedLibraryFile)
             RequestNavigate?.Invoke("//LibraryTab");
+        else if (_isSchedule)
+            RequestNavigate?.Invoke("WorkplacePage");
     }
+
+    private bool _isSchedule;
 
     private static string CategoryDisplayName(NotificationCategory category) => category switch
     {
@@ -173,6 +178,7 @@ public sealed partial class NotificationDetailViewModel : ObservableObject, IQue
         NotificationCategory.Library => "Knihovna",
         NotificationCategory.Logbook => "Logbook",
         NotificationCategory.System => "Systém",
+        NotificationCategory.Schedule => "Rozpis",
         _ => "Ostatní"
     };
 

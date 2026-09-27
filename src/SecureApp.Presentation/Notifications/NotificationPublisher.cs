@@ -152,6 +152,23 @@ public static class NotificationPublisher
         return TryAddAsync(notificationRepository, notification, nativeNotificationService, ct);
     }
 
+    /// <summary>The Opicentrum sync changed the user's own schedule (2026-09-26) — tapping it opens the Rozpis. Important when a change falls within the coming week.</summary>
+    public static Task PublishScheduleChangeAsync(
+        INotificationRepository notificationRepository,
+        string title,
+        string body,
+        bool isImportant,
+        INativeNotificationService? nativeNotificationService = null,
+        CancellationToken ct = default)
+    {
+        var notification = new Notification(
+            title: title,
+            body: body,
+            category: NotificationCategory.Schedule,
+            priority: isImportant ? NotificationPriority.Important : NotificationPriority.Normal);
+        return TryAddAsync(notificationRepository, notification, nativeNotificationService, ct);
+    }
+
     private static async Task TryAddAsync(INotificationRepository notificationRepository, Notification notification, INativeNotificationService? nativeNotificationService, CancellationToken ct)
     {
         try

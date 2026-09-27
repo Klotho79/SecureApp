@@ -96,6 +96,7 @@ public sealed partial class NotificationsViewModel : ObservableObject
             new NotificationFilterChip("Důležité", NotificationFilter.Default with { OnlyImportant = true }, SelectFilterCommand),
             new NotificationFilterChip("Nepřečtené", NotificationFilter.Default with { OnlyUnread = true }, SelectFilterCommand),
             new NotificationFilterChip("Chat", NotificationFilter.Default with { Category = NotificationCategory.Chat }, SelectFilterCommand),
+            new NotificationFilterChip("Rozpis", NotificationFilter.Default with { Category = NotificationCategory.Schedule }, SelectFilterCommand),
             new NotificationFilterChip("Knihovna", NotificationFilter.Default with { Category = NotificationCategory.Library }, SelectFilterCommand),
             new NotificationFilterChip("Systém", NotificationFilter.Default with { Category = NotificationCategory.System }, SelectFilterCommand),
             new NotificationFilterChip("Archiv", NotificationFilter.Default with { ArchivedOnly = true }, SelectFilterCommand),
@@ -263,6 +264,7 @@ public sealed partial class NotificationsViewModel : ObservableObject
         NotificationCategory.Library => "Knihovna",
         NotificationCategory.Logbook => "Logbook",
         NotificationCategory.System => "Systém",
+        NotificationCategory.Schedule => "Rozpis",
         _ => "Ostatní"
     };
 
@@ -271,9 +273,10 @@ public sealed partial class NotificationsViewModel : ObservableObject
         NotificationCategory.System => 0,
         NotificationCategory.Chat => 1,
         NotificationCategory.Group => 2,
-        NotificationCategory.Library => 3,
-        NotificationCategory.Logbook => 4,
-        _ => 5
+        NotificationCategory.Schedule => 3,
+        NotificationCategory.Library => 4,
+        NotificationCategory.Logbook => 5,
+        _ => 6
     };
 }
 
