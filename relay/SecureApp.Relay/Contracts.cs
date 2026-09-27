@@ -74,6 +74,9 @@ public sealed record WrappedKeyResponse(string WrappedBlob);
 
 public sealed record ReportDiagnosticLogRequest(string Level, string Message, string? Context, string? ExceptionDetails);
 
+/// <summary>A batch of raw AppLog lines from one device (2026-09-26) — Kind is "errors" or "metrics".</summary>
+public sealed record AppLogUploadRequest(string Kind, List<string> Lines);
+
 /// <summary><c>DeviceDisplayName</c> is resolved server-side against the CURRENT member directory, not stored at report time — see <c>RelayDatabase.GetRecentDiagnosticLogs</c>'s own remarks.</summary>
 public sealed record DiagnosticLogEntryDto(Guid Id, string DeviceDisplayName, string Level, string Message, string? Context, string? ExceptionDetails, DateTimeOffset CreatedAtUtc);
 

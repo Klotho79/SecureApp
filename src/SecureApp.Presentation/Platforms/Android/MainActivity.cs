@@ -37,6 +37,7 @@ public class MainActivity : MauiAppCompatActivity
         base.OnCreate(savedInstanceState);
         ApplyWindowSoftInputMode();
         RequestNotificationPermissionIfNeeded();
+        Platforms.Android.RelayConnectionService.Start(this);
         HandleNotificationIntent(Intent);
         HandleWidgetIntent(Intent);
     }

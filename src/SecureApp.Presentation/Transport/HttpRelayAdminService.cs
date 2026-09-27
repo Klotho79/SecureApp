@@ -89,6 +89,22 @@ public sealed class HttpRelayAdminService : IRelayAdminService
         response.EnsureSuccessStatusCode();
     }
 
+    public async Task<IReadOnlyList<string>> GetDeviceAppLogAsync(Uri endpoint, string adminSecret, Guid deviceId, string kind, int limit = 300, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+        ArgumentException.ThrowIfNullOrWhiteSpace(adminSecret);
+
+        var uri = new Uri(ToHttpUri(endpoint), $"admin/applog/{deviceId}?kind={Uri.EscapeDataString(kind)}&limit={limit}");
+        using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+        request.Headers.Add("X-Admin-Secret", adminSecret);
+
+        using var response = await _httpClient.SendAsync(request, ct);
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+            throw new InvalidOperationException("Relay odmítl zadané admin heslo.");
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<List<string>>(HttpJsonOptions, ct) ?? [];
+    }
+
     public async Task<IReadOnlyList<ManagedDevice>> GetManagedDevicesAsync(Uri endpoint, string adminSecret, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(endpoint);

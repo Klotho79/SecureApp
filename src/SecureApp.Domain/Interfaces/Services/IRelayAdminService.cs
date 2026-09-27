@@ -32,6 +32,9 @@ public interface IRelayAdminService
     /// <summary>Deregisters a device entirely — deletes its credential, its directory entry, and purges its stuck outbox queue (see <c>RelayDatabase.DeregisterDevice</c>'s own remarks). Idempotent: deregistering an already-gone device is not an error.</summary>
     Task DeregisterDeviceAsync(Uri endpoint, string adminSecret, Guid deviceId, CancellationToken ct = default);
 
+    /// <summary>The newest lines of one device's uploaded app log (2026-09-26) — <paramref name="kind"/> is "errors" or "metrics"; oldest-first.</summary>
+    Task<IReadOnlyList<string>> GetDeviceAppLogAsync(Uri endpoint, string adminSecret, Guid deviceId, string kind, int limit = 300, CancellationToken ct = default);
+
     /// <summary>
     /// New-member onboarding (2026-09-23, user's own ask: "apka sama... předala kódy" — a brand-new
     /// member has no network access at all, so someone already inside needs to mint them a WireGuard

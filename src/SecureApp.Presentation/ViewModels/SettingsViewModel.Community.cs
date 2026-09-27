@@ -113,6 +113,32 @@ public sealed partial class SettingsViewModel
         App.ApplyFontScale(value);
     }
 
+    // --- Background messaging (2026-09-26) — status + a way into Android's battery setting.
+
+    public bool IsBackgroundRunSupported => Infrastructure.BackgroundRun.IsSupported;
+
+    [ObservableProperty]
+    public partial string BackgroundRunStatusText { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial bool IsBackgroundRunAllowed { get; set; }
+
+    public void RefreshBackgroundRunStatus()
+    {
+        IsBackgroundRunAllowed = Infrastructure.BackgroundRun.IsAllowed();
+        BackgroundRunStatusText = IsBackgroundRunAllowed
+            ? "✓ Aplikace smí běžet na pozadí — zprávy a oznámení chodí i když je zavřená."
+            : "⚠ Android může aplikaci uspat — zprávy pak přijdou až při jejím otevření.";
+    }
+
+    [RelayCommand]
+    private async Task OpenBackgroundRunSettingsAsync()
+    {
+        if (Shell.Current is { } shell && !await shell.DisplayAlertAsync(Infrastructure.BackgroundRun.Title, Infrastructure.BackgroundRun.Explanation, "Nastavit", "Zrušit"))
+            return;
+        Infrastructure.BackgroundRun.OpenSettings();
+    }
+
     // --- Chat appearance (2026-09-26) — message font size + own-bubble colour, both applied live.
 
     public IReadOnlyList<string> ChatFontSizeChoices { get; } = Infrastructure.ChatAppearance.FontSizeChoices;
@@ -309,6 +335,7 @@ public sealed partial class SettingsViewModel
     public void ClearMemberManagement()
     {
         _managementAdminSecret = null;
+        _devicesAdminSecret = null;
         ManagedMembers.Clear();
         MemberManagementStatusText = null;
     }

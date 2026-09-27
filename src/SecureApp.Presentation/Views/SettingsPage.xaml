@@ -190,6 +190,21 @@
             <!-- ============================ SYSTÉM ============================ -->
             <VerticalStackLayout Spacing="12" IsVisible="{Binding IsSystemSettingsTab}">
 
+                <!-- Zprávy na pozadí (2026-09-26) — Android only. -->
+                <Border Style="{StaticResource CardBorder}" IsVisible="{Binding IsBackgroundRunSupported}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Zprávy na pozadí" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Label Text="{Binding BackgroundRunStatusText}" FontSize="10" LineBreakMode="WordWrap" />
+                        <Button Text="Nastavit běh na pozadí" Style="{StaticResource SecondaryButton}" HorizontalOptions="Start" Command="{Binding OpenBackgroundRunSettingsCommand}">
+                            <Button.Triggers>
+                                <DataTrigger TargetType="Button" Binding="{Binding IsBackgroundRunAllowed}" Value="True">
+                                    <Setter Property="IsVisible" Value="False" />
+                                </DataTrigger>
+                            </Button.Triggers>
+                        </Button>
+                    </VerticalStackLayout>
+                </Border>
+
                 <Border Style="{StaticResource CardBorder}">
                     <VerticalStackLayout Spacing="8">
                         <Label Text="Relay" Style="{StaticResource SectionHeader}" Margin="0" />
@@ -266,8 +281,8 @@
                     </VerticalStackLayout>
                 </Border>
 
-                <!-- Diagnostický log — not admin-gated by design (any device reports and reads). -->
-                <Border Style="{StaticResource CardBorder}">
+                <!-- Diagnostický log — every device still reports into it, but only the admin reads it (2026-09-26, user's call). -->
+                <Border Style="{StaticResource CardBorder}" IsVisible="{Binding IsAdmin}">
                     <VerticalStackLayout Spacing="8">
                         <Label Text="Diagnostický log" Style="{StaticResource SectionHeader}" Margin="0" />
                         <Label Text="Sdílené chybové/varovné hlášení ze všech zařízení v komunitě." FontSize="9.5" TextColor="Gray" />
@@ -397,6 +412,10 @@
                                                     </DataTrigger>
                                                 </Label.Triggers>
                                             </Label>
+                                            <Grid ColumnDefinitions="*,*" ColumnSpacing="8" Margin="0,4,0,0">
+                                                <Button Grid.Column="0" Text="📄 Log chyb" Style="{StaticResource SecondaryButton}" Command="{Binding ShowErrorsCommand}" CommandParameter="{Binding Id}" />
+                                                <Button Grid.Column="1" Text="📊 Log událostí" Style="{StaticResource SecondaryButton}" Command="{Binding ShowEventsCommand}" CommandParameter="{Binding Id}" />
+                                            </Grid>
                                             <Label Text="Zadej admin heslo výše, pak:" FontSize="8.5" TextColor="Gray" Margin="0,4,0,0" />
                                             <Button Text="🗑 Odregistrovat" Style="{StaticResource SecondaryButton}" Command="{Binding DeregisterCommand}" CommandParameter="{Binding Id}" />
                                         </VerticalStackLayout>
@@ -404,6 +423,17 @@
                                 </DataTemplate>
                             </CollectionView.ItemTemplate>
                         </CollectionView>
+
+                        <!-- One device's uploaded app log (2026-09-26) — see Diagnostics.AppLogUploader. -->
+                        <Border Style="{StaticResource CardBorder}" Margin="0" IsVisible="{Binding HasDeviceLog}" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
+                            <VerticalStackLayout Spacing="6">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                    <Label Grid.Column="0" Text="{Binding DeviceLogTitle}" FontAttributes="Bold" FontSize="10" LineBreakMode="WordWrap" VerticalOptions="Center" />
+                                    <Button Grid.Column="1" Text="✕" Style="{StaticResource SecondaryButton}" WidthRequest="40" Padding="0" Command="{Binding CloseDeviceLogCommand}" />
+                                </Grid>
+                                <Label Text="{Binding DeviceLogText}" FontSize="8" FontFamily="monospace" LineBreakMode="WordWrap" />
+                            </VerticalStackLayout>
+                        </Border>
                     </VerticalStackLayout>
                 </Border>
 

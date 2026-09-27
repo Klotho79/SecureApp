@@ -337,6 +337,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         LoadFontScale();
         LoadAccent();
         LoadChatAppearance();
+        RefreshBackgroundRunStatus();
         IsSaved = false;
         ErrorMessage = null;
         IsLogbookVisible = Preferences.Default.Get(AppShell.LogbookVisibilityPreferenceKey, false);
@@ -374,7 +375,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         // already catches its own failures into DiagnosticLogErrorMessage rather than throwing, so
         // a relay that's unreachable right now doesn't block the rest of this page from loading;
         // "⟳ Obnovit" retries it explicitly.
-        await LoadDiagnosticLogAsync();
+        if (IsAdmin)
+            await LoadDiagnosticLogAsync();
     }
 
     /// <summary>True while <see cref="AdminSecretInputText"/> is validated and about to be used — factored out so every admin command below applies the identical check/clear pattern instead of repeating it.</summary>
@@ -404,7 +406,61 @@ public sealed partial class SettingsViewModel : ObservableObject
             return;
         }
         if (!TryTakeAdminSecret(out var adminSecret)) return;
+        _devicesAdminSecret = adminSecret;
         await RefreshRegisteredDevicesAsync(endpoint, adminSecret);
+    }
+
+    // Held only while Settings stays open, so viewing several devices' logs doesn't need the secret
+    // retyped each time — same session-scoped pattern as _managementAdminSecret; cleared in ClearMemberManagement.
+    private string? _devicesAdminSecret;
+
+    [ObservableProperty]
+    public partial string? DeviceLogTitle { get; set; }
+
+    [ObservableProperty]
+    public partial string? DeviceLogText { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasDeviceLog { get; set; }
+
+    [RelayCommand]
+    private Task ShowDeviceErrorsAsync(Guid deviceId) => ShowDeviceLogAsync(deviceId, "errors", "chyby");
+
+    [RelayCommand]
+    private Task ShowDeviceEventsAsync(Guid deviceId) => ShowDeviceLogAsync(deviceId, "metrics", "události");
+
+    /// <summary>Loads one device's uploaded app log (newest first) — see Diagnostics.AppLogUploader for how it gets there.</summary>
+    private async Task ShowDeviceLogAsync(Guid deviceId, string kind, string kindLabel)
+    {
+        AdminErrorMessage = null;
+        if (!Uri.TryCreate(RelayEndpointText, UriKind.Absolute, out var endpoint)) return;
+        if (string.IsNullOrEmpty(_devicesAdminSecret))
+        {
+            AdminErrorMessage = "Nejprve načtěte seznam zařízení (admin heslo + ⟳ Obnovit).";
+            return;
+        }
+
+        var name = RegisteredDevices.FirstOrDefault(d => d.Id == deviceId)?.DisplayName ?? deviceId.ToString();
+        try
+        {
+            var lines = await _relayAdminService.GetDeviceAppLogAsync(endpoint, _devicesAdminSecret, deviceId, kind);
+            DeviceLogTitle = $"Log: {name} — {kindLabel} ({lines.Count} řádků, nejnovější nahoře)";
+            DeviceLogText = lines.Count == 0
+                ? "Zatím nic — zařízení log ještě neodeslalo (odesílá ho samo zhruba každé 3 minuty, když je připojené)."
+                : string.Join("\n", lines.Reverse().Select(l => l.Replace('\t', ' ')));
+            HasDeviceLog = true;
+        }
+        catch (Exception ex)
+        {
+            AdminErrorMessage = $"Log se nepodařilo načíst: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private void CloseDeviceLog()
+    {
+        HasDeviceLog = false;
+        DeviceLogText = null;
     }
 
     private async Task RefreshRegisteredDevicesAsync(Uri endpoint, string adminSecret)
@@ -445,7 +501,9 @@ public sealed partial class SettingsViewModel : ObservableObject
             pendingText,
             device.PendingOutboxCount > 0,
             device.LastActiveAtUtc is null,
-            DeregisterDeviceCommand);
+            DeregisterDeviceCommand,
+            ShowDeviceErrorsCommand,
+            ShowDeviceEventsCommand);
     }
 
     /// <summary>
@@ -754,7 +812,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 }
 
 /// <summary>One row in the admin's device-management list (2.1, 2026-09-17) — <see cref="StatusText"/>/<see cref="PendingText"/> are pre-formatted here (not in XAML) so the CollectionView's DataTemplate needs no value converters, this codebase's established "no converters" convention.</summary>
-public sealed record RegisteredDeviceItem(Guid Id, string DisplayName, string StatusText, string PendingText, bool HasPendingMessages, bool IsStale, ICommand DeregisterCommand);
+public sealed record RegisteredDeviceItem(Guid Id, string DisplayName, string StatusText, string PendingText, bool HasPendingMessages, bool IsStale, ICommand DeregisterCommand, ICommand ShowErrorsCommand, ICommand ShowEventsCommand);
 
 /// <summary>One row in the "Diagnostický log" list (2026-09-10) — display-only, no per-row command, unlike <see cref="RegisteredDeviceItem"/>. <see cref="Level"/> stays the English enum name (<c>Error</c>/<c>Warning</c>/<c>Info</c>) — the XAML template colors it, doesn't translate it, same "wire-level concept stays English" call this codebase already made for <c>TransportConnectionState</c>. <see cref="HasContext"/> is precomputed here (not a converter) so the DataTemplate's <c>IsVisible</c> binding stays a plain bool — this codebase's established preference over introducing a new <c>IValueConverter</c> for one spot.</summary>
 public sealed record DiagnosticLogItem(string TimeText, string Level, string DeviceDisplayName, string Message, string? Context)

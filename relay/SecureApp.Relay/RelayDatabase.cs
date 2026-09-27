@@ -228,6 +228,20 @@ public sealed class RelayDatabase
             """);
         Execute(connection, "CREATE INDEX IF NOT EXISTS ix_diagnostic_logs_created ON diagnostic_logs(created_at_utc)");
 
+        // Per-device app log (2026-09-26, user's ask: every device's own errors/metrics log lands here
+        // automatically, readable by the admin only — members never have to send anything). Raw
+        // lines exactly as the app's AppLog wrote them; capped per device+kind, see AppendAppLogLines.
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS device_app_logs (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                device_id         TEXT NOT NULL,
+                kind              TEXT NOT NULL,
+                line              TEXT NOT NULL,
+                received_at_utc   TEXT NOT NULL
+            )
+            """);
+        Execute(connection, "CREATE INDEX IF NOT EXISTS ix_device_app_logs_device ON device_app_logs(device_id, kind, id)");
+
         // Logbook catalog sync (2026-09-10) — see ILogbookCatalogSyncService's own remarks for why
         // this is plaintext (reference/protocol content, not patient data) and device-authenticated
         // rather than admin-gated. Upsert-by-id (see UpsertLogbookChecklist/UpsertLogbookProcedureType)
@@ -851,6 +865,59 @@ public sealed class RelayDatabase
         Execute(connection,
             "DELETE FROM diagnostic_logs WHERE id IN (SELECT id FROM diagnostic_logs ORDER BY created_at_utc DESC LIMIT -1 OFFSET @max)",
             ("@max", DiagnosticLogMaxRows));
+    }
+
+    private const int AppLogMaxLinesPerDeviceKind = 5000;
+
+    /// <summary>Appends a batch of one device's AppLog lines ("errors" or "metrics"), then trims that device+kind to its newest <see cref="AppLogMaxLinesPerDeviceKind"/> lines.</summary>
+    public void AppendAppLogLines(Guid deviceId, string kind, IReadOnlyList<string> lines)
+    {
+        using var connection = OpenConnection();
+        using var transaction = connection.BeginTransaction();
+        var now = Format(DateTimeOffset.UtcNow);
+        using (var insert = connection.CreateCommand())
+        {
+            insert.Transaction = transaction;
+            insert.CommandText = "INSERT INTO device_app_logs (device_id, kind, line, received_at_utc) VALUES (@device, @kind, @line, @at)";
+            var pDevice = insert.Parameters.AddWithValue("@device", deviceId.ToString());
+            var pKind = insert.Parameters.AddWithValue("@kind", kind);
+            var pLine = insert.Parameters.AddWithValue("@line", "");
+            var pAt = insert.Parameters.AddWithValue("@at", now);
+            foreach (var line in lines)
+            {
+                pLine.Value = line;
+                insert.ExecuteNonQuery();
+            }
+        }
+        using (var trim = connection.CreateCommand())
+        {
+            trim.Transaction = transaction;
+            trim.CommandText = """
+                DELETE FROM device_app_logs WHERE device_id = @device AND kind = @kind AND id NOT IN (
+                    SELECT id FROM device_app_logs WHERE device_id = @device AND kind = @kind ORDER BY id DESC LIMIT @max)
+                """;
+            trim.Parameters.AddWithValue("@device", deviceId.ToString());
+            trim.Parameters.AddWithValue("@kind", kind);
+            trim.Parameters.AddWithValue("@max", AppLogMaxLinesPerDeviceKind);
+            trim.ExecuteNonQuery();
+        }
+        transaction.Commit();
+    }
+
+    /// <summary>The newest <paramref name="limit"/> lines of one device's log, returned oldest-first (reading order).</summary>
+    public IReadOnlyList<string> GetAppLogLines(Guid deviceId, string kind, int limit)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT line FROM device_app_logs WHERE device_id = @device AND kind = @kind ORDER BY id DESC LIMIT @limit";
+        command.Parameters.AddWithValue("@device", deviceId.ToString());
+        command.Parameters.AddWithValue("@kind", kind);
+        command.Parameters.AddWithValue("@limit", limit);
+        var lines = new List<string>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read()) lines.Add(reader.GetString(0));
+        lines.Reverse();
+        return lines;
     }
 
     private static readonly TimeSpan DiagnosticLogRetention = TimeSpan.FromDays(30);

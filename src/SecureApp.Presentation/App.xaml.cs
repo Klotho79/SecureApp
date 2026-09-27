@@ -301,6 +301,7 @@ public partial class App : Application
 						await RunPeerIdentityReconciliationAsync(services, transport);
 						await ApplyDevicePolicyAsync(services);
 						await SyncBoardToNotificationsAsync(services);
+						await Diagnostics.AppLogUploader.UploadAsync(services);
 						lastStaleSweep = DateTimeOffset.UtcNow;
 					}
 				}
@@ -1160,6 +1161,21 @@ public partial class App : Application
 			// the notification-detail consume right above.
 			if (Notifications.PendingWidgetRouteRouter.ConsumePendingRoute() is { } pendingRoute)
 				NavigateToRoute(pendingRoute);
+
+			// Background messaging (2026-09-26): explain + offer the battery setting if it's still off.
+			// Delayed so it doesn't collide with the first-launch notification-permission prompt.
+			window.Dispatcher.DispatchDelayed(TimeSpan.FromSeconds(4), async () =>
+			{
+				try
+				{
+					if (window.Page is { } page)
+						await Infrastructure.BackgroundRun.PromptIfNeededAsync(page);
+				}
+				catch (Exception ex)
+				{
+					AppLog.Error(nameof(Infrastructure.BackgroundRun), "background-run prompt failed", ex);
+				}
+			});
 		};
 
 		return window;

@@ -17,11 +17,16 @@ public partial class SettingsPage : ContentPage
         base.OnAppearing();
         _viewModel.LoadCommand.Execute(null);
         _viewModel.StartObservingConnection();
+        // Coming back from Android's battery setting resumes the window without re-firing OnAppearing.
+        if (Window is { } window) window.Resumed += OnWindowResumed;
     }
+
+    private void OnWindowResumed(object? sender, EventArgs e) => _viewModel.RefreshBackgroundRunStatus();
 
     protected override void OnDisappearing()
     {
         base.OnDisappearing();
+        if (Window is { } window) window.Resumed -= OnWindowResumed;
         _viewModel.StopObservingConnection();
         _viewModel.StopActivationPolling();
         _viewModel.ClearMemberManagement();

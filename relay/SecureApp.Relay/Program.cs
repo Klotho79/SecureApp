@@ -586,6 +586,31 @@ app.MapGet("/diagnostics/logs", (HttpRequest request, RelayDatabase db) =>
     return Results.Ok(entries.Select(e => new DiagnosticLogEntryDto(e.Id, e.DeviceDisplayName, e.Level, e.Message, e.Context, e.ExceptionDetails, e.CreatedAtUtc)).ToList());
 });
 
+// --- Per-device app log (2026-09-26): every device uploads its own AppLog lines; only the admin reads them.
+
+app.MapPost("/diagnostics/applog", (HttpRequest request, AppLogUploadRequest body, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+    if (body.Kind is not ("errors" or "metrics") || body.Lines is null || body.Lines.Count > 2000)
+        return Results.BadRequest("Kind must be 'errors' or 'metrics', at most 2000 lines per request.");
+
+    var lines = body.Lines.Select(l => l.Length > 4000 ? l[..4000] : l).ToList();
+    if (lines.Count > 0)
+        db.AppendAppLogLines(deviceId, body.Kind, lines);
+    return Results.Ok();
+});
+
+app.MapGet("/admin/applog/{id:guid}", (Guid id, HttpRequest request, RelayDatabase db) =>
+{
+    if (!IsAdminAuthorized(request, adminSecret))
+        return Results.Unauthorized();
+
+    var kind = request.Query["kind"].ToString() is "metrics" ? "metrics" : "errors";
+    var limit = int.TryParse(request.Query["limit"].ToString(), out var parsed) ? Math.Clamp(parsed, 1, 5000) : 300;
+    return Results.Ok(db.GetAppLogLines(id, kind, limit));
+});
+
 // --- Logbook catalog sync (2026-09-10) — see Contracts.cs's own remarks.
 
 app.MapPost("/logbook/checklists", (HttpRequest request, LogbookChecklistDto body, RelayDatabase db) =>
