@@ -93,6 +93,9 @@ public sealed record LogbookProcedureTypeDto(Guid Id, string Name, string Abbrev
 
 public sealed record SharedContactDto(Guid Id, string DisplayName, string? Phone, string? Note, int SortOrder, DateTimeOffset CreatedAtUtc);
 
+/// <summary>One row of an admin-only bulk import (2026-09-29, "Telefonní seznam ARIM.xlsx" one-off) — server assigns Id/SortOrder/CreatedAtUtc, same as <see cref="SharedContactDto"/> minus the fields a fresh import never carries in from a spreadsheet.</summary>
+public sealed record SharedContactImportRow(string DisplayName, string? Phone, string? Note);
+
 public sealed record WorkplaceDto(Guid Id, string Name, string? Description, DateTimeOffset CreatedAtUtc);
 
 // --- Admin-assigned device policy + notice board (2026-09-24) — see RelayDatabase's device_policy

@@ -709,6 +709,26 @@ app.MapDelete("/contacts/{id:guid}", (Guid id, HttpRequest request, RelayDatabas
     return Results.NoContent();
 });
 
+// Admin-only bulk import (2026-09-29, one-off: "Telefonní seznam ARIM.xlsx") — admin-secret-authed
+// rather than device-authed like the three endpoints above, since this call never comes from the
+// app itself, only from a one-time operator script that has no device identity of its own. Appends
+// after whatever SortOrder already exists so it never clobbers the manually-ordered entries above it.
+app.MapPost("/admin/contacts/bulk-import", (HttpRequest request, List<SharedContactImportRow> rows, RelayDatabase db) =>
+{
+    if (!IsAdminAuthorized(request, adminSecret))
+        return Results.Unauthorized();
+
+    var nextSortOrder = db.GetSharedContacts().Select(c => c.SortOrder).DefaultIfEmpty(-1).Max() + 1;
+    var now = DateTimeOffset.UtcNow;
+    foreach (var row in rows)
+    {
+        if (string.IsNullOrWhiteSpace(row.DisplayName)) continue;
+        db.UpsertSharedContact(Guid.NewGuid(), row.DisplayName, row.Phone, row.Note, nextSortOrder, now);
+        nextSortOrder++;
+    }
+    return Results.Ok(new { imported = rows.Count });
+});
+
 // --- Shared company workplace catalog (2026-09-20, NOTIFICATION_HUB_SPEC.md Phase 5) — mirrors
 // the /contacts endpoints right above exactly; see Contracts.cs's own remarks.
 
