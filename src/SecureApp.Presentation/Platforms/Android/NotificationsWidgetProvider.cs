@@ -9,6 +9,7 @@ using SecureApp.Domain.Enums;
 using SecureApp.Domain.Events;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.ValueObjects;
+using SecureApp.Presentation.Contacts;
 using SecureApp.Presentation.Workplace;
 
 namespace SecureApp.Presentation.Platforms.Android;
@@ -119,6 +120,28 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
     private const int DayCount = 5;
     private static readonly string[] CzechDayAbbreviations = ["Po", "Út", "St", "Čt", "Pá", "So", "Ne"];
 
+    // Duty-roster rows (2026-09-29) — see widget_notifications.xml's own remarks on why this is a
+    // fixed-row array (RemoteViews has no dynamic-length list without a RemoteViewsService adapter).
+    private static readonly int[] DutyRowIds =
+    [
+        Resource.Id.widget_duty1, Resource.Id.widget_duty2, Resource.Id.widget_duty3, Resource.Id.widget_duty4,
+        Resource.Id.widget_duty5, Resource.Id.widget_duty6, Resource.Id.widget_duty7, Resource.Id.widget_duty8,
+        Resource.Id.widget_duty9, Resource.Id.widget_duty10,
+    ];
+    private static readonly int[] DutyTextIds =
+    [
+        Resource.Id.widget_duty1_text, Resource.Id.widget_duty2_text, Resource.Id.widget_duty3_text, Resource.Id.widget_duty4_text,
+        Resource.Id.widget_duty5_text, Resource.Id.widget_duty6_text, Resource.Id.widget_duty7_text, Resource.Id.widget_duty8_text,
+        Resource.Id.widget_duty9_text, Resource.Id.widget_duty10_text,
+    ];
+    private static readonly int[] DutyPhoneIds =
+    [
+        Resource.Id.widget_duty1_phone, Resource.Id.widget_duty2_phone, Resource.Id.widget_duty3_phone, Resource.Id.widget_duty4_phone,
+        Resource.Id.widget_duty5_phone, Resource.Id.widget_duty6_phone, Resource.Id.widget_duty7_phone, Resource.Id.widget_duty8_phone,
+        Resource.Id.widget_duty9_phone, Resource.Id.widget_duty10_phone,
+    ];
+    private const int MaxDutyRows = 10;
+
     private static async Task RefreshAsync(Context context, AppWidgetManager manager, int[] widgetIds, PendingResult? pendingResult = null)
     {
         try
@@ -164,6 +187,15 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
             views.SetOnClickPendingIntent(Resource.Id.widget_card, PendingIntent.GetActivity(
                 context, "widgetRozpis".GetHashCode(), openRozpisIntent, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable));
 
+            // 2026-09-29, user's ask: "na widget dej i možnost otevřít kontakty" — ContactsPage IS a
+            // real tab (unlike WorkplacePage), so a plain absolute route already lands correctly
+            // highlighted; no WorkplaceRoute-style tab-fixup needed on the App.xaml.cs side.
+            var openContactsIntent = new Intent(context, typeof(MainActivity));
+            openContactsIntent.SetFlags(ActivityFlags.SingleTop | ActivityFlags.ClearTop);
+            openContactsIntent.PutExtra("widgetRoute", "//ContactsTab");
+            views.SetOnClickPendingIntent(Resource.Id.widget_open_contacts, PendingIntent.GetActivity(
+                context, "widgetContacts".GetHashCode(), openContactsIntent, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable));
+
             ApplyMode(context, views, today);
 
             for (var i = 0; i < DayCount; i++)
@@ -205,10 +237,46 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
         if (!showDuty) return;
 
         var entries = DutyRosterStore.Get(today);
-        var text = entries.Count == 0
-            ? "Služby na dnešek zatím nejsou načtené — otevřete Rozpis v aplikaci."
-            : string.Join("\n", entries.Select(e => $"{e.Position}: {e.Name}"));
-        views.SetTextViewText(Resource.Id.widget_duty_list, text);
+        if (entries.Count == 0)
+        {
+            views.SetViewVisibility(DutyRowIds[0], global::Android.Views.ViewStates.Visible);
+            views.SetTextViewText(DutyTextIds[0], "Služby na dnešek zatím nejsou načtené — otevřete Rozpis v aplikaci.");
+            views.SetViewVisibility(DutyPhoneIds[0], global::Android.Views.ViewStates.Gone);
+            for (var j = 1; j < MaxDutyRows; j++)
+                views.SetViewVisibility(DutyRowIds[j], global::Android.Views.ViewStates.Gone);
+            return;
+        }
+
+        // 2026-09-29, user's ask: "ke sloužícím přidej pictogram a na ktery když se klikne skopiruje
+        // služební tel do tel k vytočení" — a phone icon next to whoever resolves to a dialable number
+        // in ContactPhoneCache's offline snapshot of the shared contact directory (fuzzy name match,
+        // same portal-name-mismatch handling OpicentrumParsing already solves). Intent.ActionDial always
+        // just opens the dialer pre-filled — it can never place the call itself — same "never auto-dial"
+        // rule ContactsViewModel.CallAsync already follows in-app.
+        for (var i = 0; i < MaxDutyRows; i++)
+        {
+            if (i >= entries.Count)
+            {
+                views.SetViewVisibility(DutyRowIds[i], global::Android.Views.ViewStates.Gone);
+                continue;
+            }
+
+            var entry = entries[i];
+            views.SetViewVisibility(DutyRowIds[i], global::Android.Views.ViewStates.Visible);
+            views.SetTextViewText(DutyTextIds[i], $"{entry.Position}: {entry.Name}");
+
+            var dialNumber = ContactPhoneCache.TryFindPhone(entry.Name);
+            if (dialNumber is null)
+            {
+                views.SetViewVisibility(DutyPhoneIds[i], global::Android.Views.ViewStates.Gone);
+                continue;
+            }
+
+            views.SetViewVisibility(DutyPhoneIds[i], global::Android.Views.ViewStates.Visible);
+            var dialIntent = new Intent(Intent.ActionDial, global::Android.Net.Uri.Parse("tel:" + dialNumber));
+            views.SetOnClickPendingIntent(DutyPhoneIds[i], PendingIntent.GetActivity(
+                context, ("widgetDial" + i).GetHashCode(), dialIntent, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable));
+        }
     }
 
     private static void ApplyDay(Context context, RemoteViews views, int rowId, int colorId, int labelId, int textId, DateOnly date, WorkAssignment? assignment, bool isToday)

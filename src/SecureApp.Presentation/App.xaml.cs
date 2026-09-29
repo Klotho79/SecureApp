@@ -302,6 +302,8 @@ public partial class App : Application
 						await ApplyDevicePolicyAsync(services);
 						await SyncBoardToNotificationsAsync(services);
 						await Diagnostics.AppLogUploader.UploadAsync(services);
+						if (services.GetService<ISharedContactService>() is { } sharedContactService)
+							await Contacts.ContactPhoneCache.RefreshAsync(sharedContactService);
 						lastStaleSweep = DateTimeOffset.UtcNow;
 					}
 				}
@@ -321,12 +323,13 @@ public partial class App : Application
 	}
 
 	private const string LastBackgroundOpicentrumSyncPreferenceKey = "opicentrum_last_bg_sync_utc";
-	private static readonly TimeSpan _backgroundOpicentrumSyncInterval = TimeSpan.FromHours(3);
+	private static readonly TimeSpan _backgroundOpicentrumSyncInterval = TimeSpan.FromMinutes(10);
 
 	/// <summary>
 	/// Opicentrum sync without opening the Rozpis (2026-09-26): with the background service keeping the
 	/// process alive, this is what lets a schedule change reach the user as a notification on its own,
-	/// and keeps the widget's duty list fresh. Every few hours, last week through the end of next month.
+	/// and keeps the widget's duty list fresh. Every ~10 minutes (2026-09-29: tightened from 3h so a
+	/// schedule change surfaces promptly), last week through the end of next month.
 	/// </summary>
 	private static async Task RunBackgroundOpicentrumSyncAsync(IServiceProvider services)
 	{
@@ -1222,13 +1225,28 @@ public partial class App : Application
 	{
 		try
 		{
-			Shell.Current?.GoToAsync(route);
+			Shell.Current?.GoToAsync(WorkplaceRoute(route));
 		}
 		catch
 		{
 			// Best-effort — same reasoning as NavigateToNotificationDetail's own catch right below.
 		}
 	}
+
+	/// <summary>
+	/// WorkplacePage (Rozpis) isn't a tab of its own — it's pushed on top of whatever tab happens to
+	/// be current (see PendingWidgetRouteRouter's own remarks). A bare relative GoToAsync therefore
+	/// pushes it onto whatever tab was active when the widget/notification fired, NOT necessarily
+	/// Nástěnka (2026-09-29, user's own bug report: opened the widget's Rozpis card while on Kontakty
+	/// — Rozpis is what showed, but "Kontakty" stayed lit in the tab bar and tapping it again did
+	/// nothing, since Shell still considered Kontakty the active tab). Prefixing with Nástěnka's own
+	/// absolute route switches the tab AND pushes the page in one navigation (same "//ContactsTab"
+	/// absolute-route pattern SmartSearchViewModel already uses), so the tab bar's highlight always
+	/// matches what's actually on screen, and the ORIGINATING tab's own stack (e.g. Kontakty) is left
+	/// untouched underneath, exactly as the user left it, once they switch back to it.
+	/// </summary>
+	private static string WorkplaceRoute(string route)
+		=> route == nameof(Views.WorkplacePage) ? $"//NotificationsTab/{route}" : route;
 
 	/// <summary>A chat/group message notification (widget ticker or Android shade) opens the conversation itself (2026-09-26, user's ask); anything else opens the notification's detail.</summary>
 	private static async void NavigateToNotificationDetail(Guid notificationId)
@@ -1256,8 +1274,9 @@ public partial class App : Application
 		var notification = await scope.ServiceProvider.GetRequiredService<INotificationRepository>().GetByIdAsync(notificationId);
 		if (notification is null) return null;
 
+		// Same tab-highlight bug/fix as the widget's own Rozpis card — see WorkplaceRoute's own remarks.
 		if (notification.Category == NotificationCategory.Schedule)
-			return nameof(Views.WorkplacePage);
+			return WorkplaceRoute(nameof(Views.WorkplacePage));
 
 		if (notification.RelatedGroupChatId is { } groupChatId)
 		{
