@@ -35,6 +35,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly IUpdateService _updateService;
     private readonly INativeAppInstaller? _nativeAppInstaller;
     private readonly INativeUpdateDownloader? _nativeUpdateDownloader;
+    private readonly IIdentityBackupService _identityBackupService;
 
     private EventHandler<TransportConnectionState>? _connectionStateHandler;
     private IDispatcherTimer? _activationPollTimer;
@@ -228,6 +229,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         IOpicentrumSyncService opicentrumSyncService,
         IUpdateService updateService,
         ICommunityBoardService communityBoardService,
+        IIdentityBackupService identityBackupService,
         INativeAppInstaller? nativeAppInstaller = null,
         INativeUpdateDownloader? nativeUpdateDownloader = null)
     {
@@ -243,6 +245,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         _opicentrumSyncService = opicentrumSyncService ?? throw new ArgumentNullException(nameof(opicentrumSyncService));
         _updateService = updateService ?? throw new ArgumentNullException(nameof(updateService));
         _communityBoardService = communityBoardService ?? throw new ArgumentNullException(nameof(communityBoardService));
+        _identityBackupService = identityBackupService ?? throw new ArgumentNullException(nameof(identityBackupService));
         _nativeAppInstaller = nativeAppInstaller;
         _nativeUpdateDownloader = nativeUpdateDownloader;
 

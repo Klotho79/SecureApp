@@ -280,6 +280,19 @@ public sealed class RelayDatabase
                 updated_at_utc    TEXT NOT NULL
             )
             """);
+        // Identity backup (2026-09-29, disaster recovery — see IIdentityBackupService's own remarks).
+        // lookup_key is SHA-256(email+passphrase), computed CLIENT-SIDE only — this relay never sees
+        // the email or passphrase themselves, just this derived key and an envelope it cannot decrypt
+        // (AES-256-GCM, keyed by a PBKDF2 derivation of that same passphrase, also never sent here).
+        // Deliberately unauthenticated, same accepted tradeoff as activation_requests below: a device
+        // that just lost its local data has no device credential left to authenticate with.
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS identity_backups (
+                lookup_key        TEXT PRIMARY KEY NOT NULL,
+                envelope_json     TEXT NOT NULL,
+                updated_at_utc    TEXT NOT NULL
+            )
+            """);
         // Shared company workplace catalog (2026-09-20, NOTIFICATION_HUB_SPEC.md Phase 5) — same
         // reference-catalog shape as shared_contacts right above; the personal day-by-day schedule
         // that references these by id/name snapshot stays local per-device (see WorkAssignment's
@@ -1062,6 +1075,27 @@ public sealed class RelayDatabase
     {
         using var connection = OpenConnection();
         Execute(connection, "DELETE FROM shared_contacts WHERE id = @id", ("@id", id.ToString()));
+    }
+
+    /// <summary>Upsert — a re-backup with the same email+passphrase (e.g. after rotating identity on purpose) simply overwrites the previous one.</summary>
+    public void UpsertIdentityBackup(string lookupKey, string envelopeJson)
+    {
+        using var connection = OpenConnection();
+        Execute(connection,
+            """
+            INSERT INTO identity_backups (lookup_key, envelope_json, updated_at_utc) VALUES (@key, @envelope, @now)
+            ON CONFLICT(lookup_key) DO UPDATE SET envelope_json = @envelope, updated_at_utc = @now
+            """,
+            ("@key", lookupKey), ("@envelope", envelopeJson), ("@now", Format(DateTimeOffset.UtcNow)));
+    }
+
+    public string? GetIdentityBackup(string lookupKey)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT envelope_json FROM identity_backups WHERE lookup_key = @key";
+        command.Parameters.AddWithValue("@key", lookupKey);
+        return command.ExecuteScalar() as string;
     }
 
     public void UpsertWorkplace(Guid id, string name, string? description, DateTimeOffset createdAtUtc)

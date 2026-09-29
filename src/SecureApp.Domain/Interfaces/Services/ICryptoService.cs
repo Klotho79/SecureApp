@@ -50,4 +50,15 @@ public interface ICryptoService
 
     /// <summary>Symmetric counterpart to <see cref="EncryptWithKeyAsync"/> — decrypts with a caller-supplied raw key, ignoring <paramref name="payload"/>'s <c>KeyId</c>.</summary>
     Task<byte[]> DecryptWithKeyAsync(EncryptedPayload payload, byte[] key, CancellationToken ct = default);
+
+    /// <summary>
+    /// Reads out an encryption key pair's raw private material (2026-09-29, disaster recovery —
+    /// see <see cref="ValueObjects.IdentityKeyMaterial"/>'s own remarks). The ONLY caller in the whole
+    /// codebase is meant to be the identity-backup feature; every other consumer of a key must keep
+    /// going through <see cref="EncryptAsync"/>/<see cref="DecryptAsync"/>/<see cref="DecapsulateAsync"/>.
+    /// </summary>
+    Task<ValueObjects.IdentityKeyMaterial> ExportEncryptionKeyMaterialAsync(Guid keyId, CancellationToken ct = default);
+
+    /// <summary>Writes previously-exported key material back into the vault under its original KeyId — the counterpart to <see cref="ExportEncryptionKeyMaterialAsync"/>. Does not touch <c>EncryptionKeyMetadata</c>; the caller (<c>IMessagingService.RestoreLocalIdentityAsync</c>) owns that.</summary>
+    Task ImportEncryptionKeyMaterialAsync(ValueObjects.IdentityKeyMaterial material, CancellationToken ct = default);
 }

@@ -224,6 +224,36 @@
                     </VerticalStackLayout>
                 </Border>
 
+                <!-- Identita: zálohovat/obnovit (2026-09-29, disaster recovery po skutečné ztrátě
+                     identity na S23+ tuhle session) — "Zálohovat" jen když je zařízení zaregistrované
+                     (je co zálohovat), "Obnovit" jen dokud NENÍ (jinak by to přepsalo živou identitu —
+                     IMessagingService.RestoreLocalIdentityAsync to ostatně serverově i tak odmítne). -->
+                <Border Style="{StaticResource CardBorder}" IsVisible="{Binding IsRegistered}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Záloha identity" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Label Text="Zálohuje jen to, čím vás appka pozná (ne historii zpráv — ta je end-to-end šifrovaná a existuje jen v tomto telefonu). Po ztrátě/smazání appky umožní obnovit STEJNOU identitu místo založení nové." FontSize="9.5" TextColor="Gray" LineBreakMode="WordWrap" />
+                        <Entry Text="{Binding IdentityBackupEmailText}" Placeholder="E-mail (klíč k záloze na relay serveru)" Keyboard="Email" />
+                        <Entry Text="{Binding IdentityBackupPassphraseText}" Placeholder="Heslo zálohy (min. 8 znaků)" IsPassword="True" />
+                        <Entry Text="{Binding IdentityBackupPassphraseConfirmText}" Placeholder="Heslo znovu" IsPassword="True" />
+                        <Button Text="Zálohovat identitu" Command="{Binding BackupIdentityCommand}" IsEnabled="{Binding CanBackupIdentity}" />
+                        <controls:DelayedActivityIndicator IsBusy="{Binding IsBackingUpIdentity}" HorizontalOptions="Center" />
+                        <Label Text="{Binding IdentityBackupStatusText}" IsVisible="{Binding HasIdentityBackupStatus}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" LineBreakMode="WordWrap" />
+                    </VerticalStackLayout>
+                </Border>
+
+                <Border Style="{StaticResource CardBorder}" IsVisible="{Binding IsNotRegistered}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Obnovit identitu ze zálohy" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Label Text="Máte zálohu z dřívějška (stejný e-mail a heslo, co jste zadali při zálohování)? Obnovte identitu PŘED klepnutím na Aktivovat výše — ostatní vás pak poznají jako stejnou osobu, ne jako nové zařízení." FontSize="9.5" TextColor="Gray" LineBreakMode="WordWrap" />
+                        <Entry Text="{Binding RestoreEmailText}" Placeholder="E-mail použitý při zálohování" Keyboard="Email" />
+                        <Entry Text="{Binding RestorePassphraseText}" Placeholder="Heslo zálohy" IsPassword="True" />
+                        <Button Text="Obnovit z relay serveru" Command="{Binding RestoreIdentityFromRelayCommand}" IsEnabled="{Binding CanRestoreIdentity}" />
+                        <Button Text="Obnovit ze souboru v telefonu" Style="{StaticResource SecondaryButton}" Command="{Binding RestoreIdentityFromFileCommand}" IsEnabled="{Binding CanRestoreIdentity}" />
+                        <controls:DelayedActivityIndicator IsBusy="{Binding IsRestoringIdentity}" HorizontalOptions="Center" />
+                        <Label Text="{Binding RestoreStatusText}" IsVisible="{Binding HasRestoreStatus}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" LineBreakMode="WordWrap" />
+                    </VerticalStackLayout>
+                </Border>
+
                 <!-- Opicentrum — third-party login for the ARO staff portal the Rozpis syncs from. -->
                 <Border Style="{StaticResource CardBorder}">
                     <VerticalStackLayout Spacing="8">

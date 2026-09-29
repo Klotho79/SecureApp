@@ -158,6 +158,9 @@ public static class MauiProgram
 		// ISharedContactService's own remarks).
 		builder.Services.AddSingleton<ISharedContactService, HttpSharedContactService>();
 
+		// Identity backup/restore (2026-09-29, disaster recovery — see IIdentityBackupService's own remarks).
+		builder.Services.AddSingleton<IIdentityBackupService, SecureApp.Presentation.Identity.IdentityBackupService>();
+
 		// Shared company workplace catalog (2026-09-20, Phase 5 — see IWorkplaceCatalogService's own remarks).
 		builder.Services.AddSingleton<IWorkplaceCatalogService, HttpWorkplaceCatalogService>();
 

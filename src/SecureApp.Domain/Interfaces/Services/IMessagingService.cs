@@ -23,6 +23,15 @@ public interface IMessagingService
     Task<Guid> GetLocalIdentityKeyIdAsync(CancellationToken ct = default);
 
     /// <summary>
+    /// Disaster recovery (2026-09-29): restores a previously-exported <see cref="IdentityKeyMaterial"/>
+    /// as THIS device's ChatIdentity key, instead of <see cref="GetLocalIdentityPublicKeyAsync"/> minting a
+    /// fresh one on first use. Must run before anything else touches the identity key on a fresh/wiped
+    /// device — throws if a ChatIdentity key is already active, so this can never silently replace a
+    /// live identity out from under existing sessions.
+    /// </summary>
+    Task RestoreLocalIdentityAsync(ValueObjects.IdentityKeyMaterial material, CancellationToken ct = default);
+
+    /// <summary>
     /// Finds an existing non-Closed session with this exact peer identity, if any. Callers
     /// (New Chat's "paste/scan a contact card or invite" flow) should check this BEFORE calling
     /// <see cref="CreateSessionAsync"/>/<see cref="AcceptSessionAsync"/> and just open the existing

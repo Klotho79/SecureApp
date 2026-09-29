@@ -98,6 +98,9 @@ public sealed record SharedContactImportRow(string DisplayName, string? Phone, s
 
 public sealed record WorkplaceDto(Guid Id, string Name, string? Description, DateTimeOffset CreatedAtUtc);
 
+/// <summary>Body for both PUT and GET of an identity backup (2026-09-29) — see RelayDatabase's identity_backups table and IIdentityBackupService's own remarks. EnvelopeJson is opaque ciphertext to this relay; it's the client's own AES-256-GCM envelope, unrelated to anything this relay itself encrypts.</summary>
+public sealed record IdentityBackupDto(string EnvelopeJson);
+
 // --- Admin-assigned device policy + notice board (2026-09-24) — see RelayDatabase's device_policy
 // and board_posts tables for the full reasoning. Roles and tab visibility used to be decided purely
 // on-device (anyone could make themselves Admin), so an admin had no way to govern anyone else.

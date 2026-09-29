@@ -82,6 +82,21 @@ public sealed class BouncyCastleCryptoService : ICryptoService
     public async Task<byte[]> GetEncryptionPublicKeyAsync(Guid keyId, CancellationToken ct = default)
         => await _vault.RetrieveSecretAsync(VaultKey(keyId, "kem-pub"), ct) ?? throw new VaultLockedException();
 
+    public async Task<IdentityKeyMaterial> ExportEncryptionKeyMaterialAsync(Guid keyId, CancellationToken ct = default)
+    {
+        var privateKey = await _vault.RetrieveSecretAsync(VaultKey(keyId, "kem-priv"), ct) ?? throw new VaultLockedException();
+        var publicKey = await _vault.RetrieveSecretAsync(VaultKey(keyId, "kem-pub"), ct) ?? throw new VaultLockedException();
+        var aesKey = await _vault.RetrieveSecretAsync(VaultKey(keyId, "aes-key"), ct) ?? throw new VaultLockedException();
+        return new IdentityKeyMaterial(keyId, privateKey, publicKey, aesKey);
+    }
+
+    public async Task ImportEncryptionKeyMaterialAsync(IdentityKeyMaterial material, CancellationToken ct = default)
+    {
+        await _vault.StoreSecretAsync(VaultKey(material.KeyId, "kem-priv"), material.PrivateKey, ct);
+        await _vault.StoreSecretAsync(VaultKey(material.KeyId, "kem-pub"), material.PublicKey, ct);
+        await _vault.StoreSecretAsync(VaultKey(material.KeyId, "aes-key"), material.AesKey, ct);
+    }
+
     public async Task<KeyPairReference> GenerateSigningKeyPairAsync(CancellationToken ct = default)
     {
         var kpg = new MLDsaKeyPairGenerator();

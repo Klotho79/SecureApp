@@ -50,6 +50,21 @@ public sealed class MessagingService : IMessagingService
     public Task<Guid> GetLocalIdentityKeyIdAsync(CancellationToken ct = default)
         => GetOrCreateLocalIdentityKeyIdAsync(ct);
 
+    public async Task RestoreLocalIdentityAsync(IdentityKeyMaterial material, CancellationToken ct = default)
+    {
+        var existing = await _keyMetadataRepository.GetActiveKeyAsync(KeyPurpose.ChatIdentity, ct);
+        if (existing is not null)
+            throw new EncryptionOperationException("Toto zařízení už má aktivní identitu — obnova ze zálohy je jen pro čerstvé/vymazané zařízení.");
+
+        await _crypto.ImportEncryptionKeyMaterialAsync(material, ct);
+
+        var metadata = new EncryptionKeyMetadata(EncryptionAlgorithm.HybridMlKem768Aes256Gcm, KeyPurpose.ChatIdentity);
+        EntityMaterializer.Set(metadata, nameof(Entity.Id), material.KeyId);
+        await _keyMetadataRepository.AddAsync(metadata, ct);
+
+        await _auditLogger.LogAsync(AuditAction.EncryptionKeyGenerated, details: $"purpose={KeyPurpose.ChatIdentity};restored=true", ct: ct);
+    }
+
     public Task<ChatSession?> FindExistingSessionAsync(byte[] peerIdentityPublicKey, CancellationToken ct = default)
         => _sessionRepository.GetByPeerPublicKeyAsync(peerIdentityPublicKey, ct);
 

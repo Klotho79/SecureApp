@@ -288,6 +288,26 @@ app.MapPost("/admin/activation-requests/{id:guid}/approve", (Guid id, HttpReques
     return Results.Ok();
 });
 
+// Identity backup/restore (2026-09-29, disaster recovery — see IIdentityBackupService's own remarks
+// and RelayDatabase's identity_backups table). Unauthenticated by necessity, same reasoning as
+// /activation/request right above: a device that just lost its local data has no device credential
+// left. {lookupKey} is SHA-256(email+passphrase) computed CLIENT-SIDE — this relay never sees either
+// raw value, only this derived key and an envelope it cannot decrypt without the passphrase.
+app.MapPut("/identity-backup/{lookupKey}", (string lookupKey, IdentityBackupDto body, RelayDatabase db) =>
+{
+    if (string.IsNullOrWhiteSpace(body.EnvelopeJson))
+        return Results.BadRequest("EnvelopeJson is required.");
+
+    db.UpsertIdentityBackup(lookupKey, body.EnvelopeJson);
+    return Results.Ok();
+});
+
+app.MapGet("/identity-backup/{lookupKey}", (string lookupKey, RelayDatabase db) =>
+{
+    var envelopeJson = db.GetIdentityBackup(lookupKey);
+    return envelopeJson is null ? Results.NotFound() : Results.Ok(new IdentityBackupDto(envelopeJson));
+});
+
 app.MapPost("/admin/activation-requests/{id:guid}/reject", (Guid id, HttpRequest request, RelayDatabase db) =>
 {
     if (!IsAdminAuthorized(request, adminSecret))
