@@ -22,6 +22,16 @@ namespace SecureApp.Presentation.ViewModels;
 /// </summary>
 public sealed partial class ContactsViewModel : ObservableObject
 {
+    /// <summary>
+    /// 2026-09-29, user's own correction: a bulk import ("Telefonní seznam ARIM.xlsx", the WhatsApp
+    /// group's own membership) was first dropped straight into "Firemní kontakty" tagged via
+    /// <see cref="SharedContact.Note"/> — the user explicitly wanted it as its OWN collapsible section
+    /// instead ("udelej založku stejou jako je Firemní kontakty ale nazvy ji Soukromé kontakty ARIM").
+    /// Reusing <see cref="SharedContact.Note"/> as the split key (rather than a schema/relay change)
+    /// costs nothing extra: the 71 rows already carry it from that import.
+    /// </summary>
+    private const string ArimNoteTag = "ARIM";
+
     private readonly ISharedContactService _sharedContactService;
 
     [ObservableProperty]
@@ -48,6 +58,9 @@ public sealed partial class ContactsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool HasCompanyContactsError { get; set; }
 
+    /// <summary>"Soukromé kontakty ARIM" — same shape/behavior (call, delete, PC drag-reorder) as "Firemní kontakty", just its own collapsed-by-default section (2026-09-29: 71 rows is too long to show open by default). Collapsed via <see cref="SharedContactSectionGroup.VisibleEntries"/>, same BindableLayout-doesn't-virtualize reasoning as <see cref="ContactSectionGroup"/>.</summary>
+    public SharedContactSectionGroup ArimContactsGroup { get; }
+
     public IReadOnlyList<QuickContactEntry> QuickContacts { get; } = ContactDirectoryData.QuickContacts;
 
     /// <summary>Raised so the Page (which alone can push a MAUI navigation) opens the add-contact form — same MAUI-free-ViewModel split this codebase already established elsewhere.</summary>
@@ -59,6 +72,7 @@ public sealed partial class ContactsViewModel : ObservableObject
         SearchQuery = string.Empty;
         PhoneSections = [];
         CompanyContacts = [];
+        ArimContactsGroup = new SharedContactSectionGroup("Soukromé kontakty ARIM", [], initiallyExpanded: false);
         HasNoCompanyContacts = true;
         ApplyFilter();
     }
@@ -80,10 +94,19 @@ public sealed partial class ContactsViewModel : ObservableObject
         CompanyContactsErrorMessage = null;
         try
         {
-            var contacts = await _sharedContactService.FetchAsync();
+            var ordered = (await _sharedContactService.FetchAsync()).OrderBy(c => c.SortOrder).ToList();
+
             CompanyContacts = new ObservableCollection<SharedContactItem>(
-                contacts.OrderBy(c => c.SortOrder).Select(ToItem));
+                ordered.Where(c => !string.Equals(c.Note, ArimNoteTag, StringComparison.Ordinal))
+                    .Select(c => ToItem(c, includeNoteInSubtitle: true)));
             HasNoCompanyContacts = CompanyContacts.Count == 0;
+
+            ArimContactsGroup.SetEntries(
+                ordered.Where(c => string.Equals(c.Note, ArimNoteTag, StringComparison.Ordinal))
+                    // Note IS the section header here ("Soukromé kontakty ARIM") — repeating "ARIM" as
+                    // every single row's own subtitle too would just be noise.
+                    .Select(c => ToItem(c, includeNoteInSubtitle: false))
+                    .ToList());
         }
         catch (Exception ex)
         {
@@ -110,8 +133,15 @@ public sealed partial class ContactsViewModel : ObservableObject
                 CompanyContactsErrorMessage = "Kontakt se nepodařilo smazat — zkuste to prosím znovu.";
                 return;
             }
-            CompanyContacts = new ObservableCollection<SharedContactItem>(CompanyContacts.Where(c => c.Id != item.Id));
-            HasNoCompanyContacts = CompanyContacts.Count == 0;
+            if (CompanyContacts.Any(c => c.Id == item.Id))
+            {
+                CompanyContacts = new ObservableCollection<SharedContactItem>(CompanyContacts.Where(c => c.Id != item.Id));
+                HasNoCompanyContacts = CompanyContacts.Count == 0;
+            }
+            else
+            {
+                ArimContactsGroup.SetEntries(ArimContactsGroup.Entries.Where(c => c.Id != item.Id).ToList());
+            }
         }
         catch (Exception ex)
         {
@@ -129,16 +159,42 @@ public sealed partial class ContactsViewModel : ObservableObject
     public async Task ReorderAsync(Guid draggedId, Guid targetId)
     {
         if (draggedId == targetId) return;
-        var list = CompanyContacts.ToList();
+
+        // Dragged and target must be in the SAME section — reordering only ever happens within
+        // "Firemní kontakty" or within "Soukromé kontakty ARIM", never between them.
+        if (CompanyContacts.Any(c => c.Id == draggedId) && CompanyContacts.Any(c => c.Id == targetId))
+        {
+            if (Reordered(CompanyContacts, draggedId, targetId) is not { } list) return;
+            CompanyContacts = new ObservableCollection<SharedContactItem>(list);
+            await PersistReorderAsync(list);
+            await LoadCompanyContactsAsync();
+            return;
+        }
+
+        if (ArimContactsGroup.Entries.Any(c => c.Id == draggedId) && ArimContactsGroup.Entries.Any(c => c.Id == targetId))
+        {
+            if (Reordered(ArimContactsGroup.Entries, draggedId, targetId) is not { } list) return;
+            ArimContactsGroup.SetEntries(list);
+            await PersistReorderAsync(list);
+            await LoadCompanyContactsAsync();
+        }
+    }
+
+    private static List<SharedContactItem>? Reordered(IReadOnlyList<SharedContactItem> source, Guid draggedId, Guid targetId)
+    {
+        var list = source.ToList();
         var draggedIndex = list.FindIndex(c => c.Id == draggedId);
         var targetIndex = list.FindIndex(c => c.Id == targetId);
-        if (draggedIndex < 0 || targetIndex < 0) return;
+        if (draggedIndex < 0 || targetIndex < 0) return null;
 
         var dragged = list[draggedIndex];
         list.RemoveAt(draggedIndex);
         list.Insert(targetIndex, dragged);
-        CompanyContacts = new ObservableCollection<SharedContactItem>(list);
+        return list;
+    }
 
+    private async Task PersistReorderAsync(List<SharedContactItem> list)
+    {
         try
         {
             for (var i = 0; i < list.Count; i++)
@@ -147,8 +203,6 @@ public sealed partial class ContactsViewModel : ObservableObject
                 var updated = new SharedContact(list[i].Id, list[i].DisplayName, list[i].Phone, list[i].Note, i, list[i].CreatedAtUtc);
                 await _sharedContactService.PublishAsync(updated);
             }
-            // Re-load so every row's own SortOrder (used for the next reorder's "already in place" check) is current.
-            await LoadCompanyContactsAsync();
         }
         catch (Exception ex)
         {
@@ -156,11 +210,11 @@ public sealed partial class ContactsViewModel : ObservableObject
         }
     }
 
-    private SharedContactItem ToItem(SharedContact c)
+    private SharedContactItem ToItem(SharedContact c, bool includeNoteInSubtitle)
     {
         var subtitleParts = new List<string>();
         if (!string.IsNullOrWhiteSpace(c.Phone)) subtitleParts.Add(PhoneNumberFormat.Describe(c.Phone));
-        if (!string.IsNullOrWhiteSpace(c.Note)) subtitleParts.Add(c.Note);
+        if (includeNoteInSubtitle && !string.IsNullOrWhiteSpace(c.Note)) subtitleParts.Add(c.Note);
         return new SharedContactItem(c.Id, c.DisplayName, c.Phone, c.Note, c.SortOrder, c.CreatedAtUtc, string.Join(" · ", subtitleParts), DeleteContactCommand,
             PhoneNumberFormat.FirstDialable(c.Phone) is not null, CallCommand);
     }
@@ -249,5 +303,46 @@ public sealed partial class ContactSectionGroup : ObservableObject
     private void ToggleExpanded() => IsExpanded = !IsExpanded;
 }
 
-/// <summary>One row in "Firemní kontakty" (2026-09-20) — no chat action anywhere (see class-level remarks on <see cref="ContactsViewModel"/>); <see cref="Subtitle"/> is pre-joined (extension · note) so the DataTemplate needs no visibility triggers per field, this codebase's established "no converters" convention.</summary>
+/// <summary>One row in "Firemní kontakty" or "Soukromé kontakty ARIM" (2026-09-20) — no chat action anywhere (see class-level remarks on <see cref="ContactsViewModel"/>); <see cref="Subtitle"/> is pre-joined (extension · note) so the DataTemplate needs no visibility triggers per field, this codebase's established "no converters" convention.</summary>
 public sealed record SharedContactItem(Guid Id, string DisplayName, string? Phone, string? Note, int SortOrder, DateTimeOffset CreatedAtUtc, string Subtitle, ICommand DeleteCommand, bool CanCall, ICommand CallCommand);
+
+/// <summary>
+/// One collapsible section of <see cref="SharedContactItem"/>s — "Soukromé kontakty ARIM" (2026-09-29),
+/// same collapsed-by-default/lazy-<see cref="VisibleEntries"/> pattern as <see cref="ContactSectionGroup"/>
+/// (see that class's own remarks: BindableLayout does not virtualize, so a still-collapsed section must
+/// bind to an EMPTY list, not just be visually hidden, or all ~71 heavy per-row Borders/DragGestureRecognizers
+/// get built on page load regardless). Unlike <see cref="ContactSectionGroup"/> this refetches from the
+/// relay on every <c>LoadAsync</c>, so <see cref="Entries"/> has a setter (<see cref="SetEntries"/>)
+/// instead of being fixed at construction.
+/// </summary>
+public sealed partial class SharedContactSectionGroup : ObservableObject
+{
+    public string Name { get; }
+    public IReadOnlyList<SharedContactItem> Entries { get; private set; }
+    public int Count => Entries.Count;
+    public bool HasEntries => Entries.Count > 0;
+    public IReadOnlyList<SharedContactItem> VisibleEntries => IsExpanded ? Entries : [];
+
+    [ObservableProperty]
+    public partial bool IsExpanded { get; set; }
+
+    public SharedContactSectionGroup(string name, IReadOnlyList<SharedContactItem> entries, bool initiallyExpanded)
+    {
+        Name = name;
+        Entries = entries;
+        IsExpanded = initiallyExpanded;
+    }
+
+    public void SetEntries(IReadOnlyList<SharedContactItem> entries)
+    {
+        Entries = entries;
+        OnPropertyChanged(nameof(Count));
+        OnPropertyChanged(nameof(HasEntries));
+        OnPropertyChanged(nameof(VisibleEntries));
+    }
+
+    partial void OnIsExpandedChanged(bool value) => OnPropertyChanged(nameof(VisibleEntries));
+
+    [RelayCommand]
+    private void ToggleExpanded() => IsExpanded = !IsExpanded;
+}

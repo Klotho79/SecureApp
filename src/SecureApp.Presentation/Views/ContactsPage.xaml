@@ -54,6 +54,53 @@
                 </VerticalStackLayout>
             </Border>
 
+            <!-- Soukromé kontakty ARIM (2026-09-29, user's own correction: this MUST be its own
+                 collapsible section, not folded into "Firemní kontakty" — same shape/behavior (call,
+                 delete, PC drag-reorder), just its own card, collapsed by default since the list (the
+                 whole ARIM WhatsApp group, imported from xlsx) is 71 rows long. Bound to
+                 ArimContactsGroup.VisibleEntries, not Entries directly — see SharedContactSectionGroup's
+                 own remarks on why (BindableLayout does not virtualize). -->
+            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding ArimContactsGroup.HasEntries}">
+                <VerticalStackLayout Spacing="8">
+                    <Grid ColumnDefinitions="*,Auto" Padding="0,2">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding ArimContactsGroup.ToggleExpandedCommand}" />
+                        </Grid.GestureRecognizers>
+                        <Label Grid.Column="0" Text="{Binding ArimContactsGroup.Name, StringFormat='{0} ▾'}" Style="{StaticResource SectionHeader}" Margin="0">
+                            <Label.Triggers>
+                                <DataTrigger TargetType="Label" Binding="{Binding ArimContactsGroup.IsExpanded}" Value="False">
+                                    <Setter Property="Text" Value="{Binding ArimContactsGroup.Name, StringFormat='{0} ▸'}" />
+                                </DataTrigger>
+                            </Label.Triggers>
+                        </Label>
+                        <Label Grid.Column="1" Text="{Binding ArimContactsGroup.Count}" FontSize="9.5" TextColor="Gray" VerticalOptions="Center" />
+                    </Grid>
+                    <Label Text="Sdílený seznam pro celou komunitu — změna se projeví u všech." FontSize="9.5" TextColor="Gray" />
+
+                    <VerticalStackLayout Spacing="6" IsVisible="{Binding ArimContactsGroup.IsExpanded}" BindableLayout.ItemsSource="{Binding ArimContactsGroup.VisibleEntries}">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="vm:SharedContactItem">
+                                <Border Style="{StaticResource CardBorder}" Margin="0" Padding="10,8" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
+                                    <Border.GestureRecognizers>
+                                        <DragGestureRecognizer CanDrag="True" DragStarting="OnContactDragStarting" />
+                                        <DropGestureRecognizer AllowDrop="True" Drop="OnContactDrop" />
+                                    </Border.GestureRecognizers>
+                                    <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+                                        <VerticalStackLayout Grid.Column="0" Spacing="2">
+                                            <Label Text="{Binding DisplayName}" FontSize="11" FontAttributes="Bold" LineBreakMode="TailTruncation" />
+                                            <Label Text="{Binding Subtitle}" FontSize="9" TextColor="Gray" LineBreakMode="TailTruncation" />
+                                        </VerticalStackLayout>
+                                        <!-- Only for a complete number (mob./tel.), never a bare extension. -->
+                                        <Button Grid.Column="1" Text="📞" BackgroundColor="Transparent" Padding="6,0" IsVisible="{Binding CanCall}" Command="{Binding CallCommand}" CommandParameter="{Binding Phone}" />
+                                        <Button Grid.Column="2" Text="🗑" BackgroundColor="Transparent" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" Padding="6,0" Command="{Binding DeleteCommand}" CommandParameter="{Binding .}" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+            </Border>
+
             <!-- Rychlé kontakty first — "kam volat při komplikacích" is exactly the thing you need
                  fast in a real situation, so it leads rather than the much longer extension list
                  below it (2026-09-10, transcribed from the reference logbook PDF). -->
