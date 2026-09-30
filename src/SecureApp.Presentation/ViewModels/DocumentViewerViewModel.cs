@@ -11,8 +11,13 @@ public sealed partial class DocumentViewerViewModel : ObservableObject, IQueryAt
 {
     // Upper bound handed to IDocumentRenderingService.RenderPageAsync — a resolution cap, not
     // a fixed output size (see DocumentRenderingService's own remarks on that distinction).
-    private const int MaxRenderWidth = 1200;
-    private const int MaxRenderHeight = 1600;
+    // 2026-09-30: raised from 1200x1600 for pinch-zoom (DocumentViewerPage.xaml.cs) — reading small
+    // text while zoomed in means stretching this SAME bitmap via a Scale transform, not re-rendering
+    // at higher resolution; a higher source resolution means less extreme Scale is needed for the
+    // same readable result, which also means less strain on whatever's causing the glitching the
+    // user saw ("pri urcitem... zvetseni se zacne obrazek glicovat") at the old cap's higher Scale values.
+    private const int MaxRenderWidth = 1800;
+    private const int MaxRenderHeight = 2400;
 
     private readonly IDocumentRepository _documentRepository;
     private readonly IDocumentRenderingService _renderingService;

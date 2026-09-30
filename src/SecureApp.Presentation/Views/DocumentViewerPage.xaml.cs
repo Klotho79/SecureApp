@@ -70,7 +70,13 @@ public partial class DocumentViewerPage : ContentPage
 	{
 		if (e.Status != GestureStatus.Running) return;
 
-		_currentScale = Math.Clamp(_currentScale * e.Scale, 1, MaxScale);
+		// 2026-09-30, user: "pitrebuji 3 gesta na zvetseni" (needed 3 separate pinch gestures to reach
+		// a useful zoom) — a plain e.Scale multiply tracks real finger spread 1:1, but two fingers on a
+		// phone screen can only physically spread so far in one motion. Raising the delta to a power
+		// > 1 amplifies each callback's effect without changing the underlying tracking math, so the
+		// SAME physical pinch now covers noticeably more zoom in one continuous gesture.
+		var amplifiedDelta = Math.Pow(e.Scale, PinchSensitivity);
+		_currentScale = Math.Clamp(_currentScale * amplifiedDelta, 1, MaxScale);
 		DocumentImage.Scale = _currentScale;
 		ClampTranslation();
 		// Pinch has no "total since gesture start" value the way Pan does (see OnPanUpdated's own
@@ -125,7 +131,13 @@ public partial class DocumentViewerPage : ContentPage
 		DocumentImage.TranslationY = Math.Clamp(DocumentImage.TranslationY, -maxY, maxY);
 	}
 
-	private const double MaxScale = 4;
+	// 2026-09-30: lowered from 4 — the user saw the image "glicovat" (glitch) at/near the old max,
+	// which reads as a rendering-transform limit (stretching an already-rasterized bitmap this far
+	// via Scale, not re-rendering it at higher resolution) rather than something this gesture code
+	// itself can fix outright. Paired with DocumentViewerViewModel's higher source render resolution
+	// (1800x2400, up from 1200x1600) so the same READABLE result needs less extreme Scale to reach.
+	private const double MaxScale = 3;
+	private const double PinchSensitivity = 1.6;
 
 	/// <summary>2026-09-30, user's own ask — rename this document from the viewer itself.</summary>
 	private async void OnRenameClicked(object? sender, EventArgs e)
