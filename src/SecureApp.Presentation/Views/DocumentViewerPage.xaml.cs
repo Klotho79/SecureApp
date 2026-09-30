@@ -30,6 +30,7 @@ public partial class DocumentViewerPage : ContentPage
 	private double _panX;
 	private double _panY;
 	private bool _ignoreNextPinchDelta;
+	private double _smoothedDelta = 1;
 
 	public DocumentViewerPage(DocumentViewerViewModel viewModel)
 	{
@@ -60,6 +61,7 @@ public partial class DocumentViewerPage : ContentPage
 		_currentScale = 1;
 		_panX = 0;
 		_panY = 0;
+		_smoothedDelta = 1;
 		DocumentImage.Scale = 1;
 		DocumentImage.TranslationX = 0;
 		DocumentImage.TranslationY = 0;
@@ -72,7 +74,7 @@ public partial class DocumentViewerPage : ContentPage
 		if (e.Status == GestureStatus.Started)
 		{
 			_ignoreNextPinchDelta = true;
-			Infrastructure.AppLog.Event("zoom.pinch.started", ("currentScale", Math.Round(_currentScale, 3)));
+			_smoothedDelta = 1;
 			return;
 		}
 
@@ -84,24 +86,23 @@ public partial class DocumentViewerPage : ContentPage
 			return;
 		}
 
-		// 2026-09-30 (v7 — MEASURED, not guessed): on-device metrics logging (v6) caught the actual
-		// raw e.Scale values during the reported flicker — they alternate almost exactly between ~3x
-		// and ~0.3x on EVERY callback, ~17ms apart, for as long as the user keeps pinching near max.
-		// That is not real finger motion (two touch samples 17ms apart cannot legitimately swing the
-		// pinch span 10x and back); it is noisy/duplicate touch data from the platform. v5's clamp to
-		// [0.5, 2.0] was measurably too loose: Math.Pow(2.0, 1.6)≈3.03 and Math.Pow(0.5, 1.6)≈0.33 still
-		// swing _currentScale the full 1..MaxScale range every frame, which is why the user saw zero
-		// change. Rejecting (not clamping-and-applying) anything outside a plausible per-frame range
-		// keeps _currentScale exactly where it was through the noisy stretch instead of tracking it.
-		if (e.Scale < 0.8 || e.Scale > 1.25)
-		{
-			Infrastructure.AppLog.Metric("zoom.pinch.rejected", e.Scale, "x", ("currentScale", Math.Round(_currentScale, 3)));
-			return;
-		}
+		// 2026-09-30 (v7, measured): on-device metrics caught raw e.Scale genuinely alternating between
+		// ~3x and ~0.3x every callback while holding near max zoom — not real finger motion (two touch
+		// samples ~17ms apart can't legitimately swing the pinch span 10x and back), just noisy/duplicate
+		// platform touch data. Reject it outright rather than clamp-and-apply a squashed version of it.
+		if (e.Scale < 0.8 || e.Scale > 1.25) return;
 
-		var amplifiedDelta = Math.Pow(e.Scale, PinchSensitivity);
-		var before = _currentScale;
-		_currentScale = Math.Clamp(_currentScale * amplifiedDelta, 1, MaxScale);
+		// 2026-09-30 (v9, measured): v4-v8 amplified e.Scale via Math.Pow(_, 1.6) so max zoom was
+		// reachable in fewer physical pinch gestures. On-device metrics then showed this was ALSO
+		// amplifying completely ordinary per-frame touch jitter (e.g. raw 0.9/1.2 alternating even
+		// during an otherwise steady pinch) into ±40% swings per frame — read as "skace tam a zpet"
+		// (jumps back and forth). v2/v3, which tracked e.Scale directly with no amplification, were
+		// never reported as jumpy, only slower to reach max zoom over 2-3 gestures — a far smaller
+		// complaint. Amplification removed entirely; a light exponential smoothing of the accepted
+		// delta (blend with the previous frame's) irons out the jitter that's still visible even
+		// unamplified, without another guess-and-measure round.
+		_smoothedDelta = _smoothedDelta * 0.5 + e.Scale * 0.5;
+		_currentScale = Math.Clamp(_currentScale * _smoothedDelta, 1, MaxScale);
 		DocumentImage.Scale = _currentScale;
 		ClampTranslation();
 		// Pinch has no "total since gesture start" value the way Pan does (see OnPanUpdated's own
@@ -109,16 +110,6 @@ public partial class DocumentViewerPage : ContentPage
 		// immediately, not just for display.
 		_panX = DocumentImage.TranslationX;
 		_panY = DocumentImage.TranslationY;
-
-		// 2026-09-30 (v8 — user report after v7: "lepsi ale zumovani neni plynule... a skace tam a
-		// zpet", i.e. the severe full-range flicker is gone but zoom now feels jumpy/non-smooth).
-		// Logged rather than assumed: PinchSensitivity's ^1.6 exponent widens whatever real per-frame
-		// jitter survives the [0.8, 1.25] reject band (e.g. 0.85 -> 0.85^1.6≈0.78, 1.2 -> 1.2^1.6≈1.34),
-		// which is a reasonable suspect given v3 (plain 1:1 tracking, no amplification) was never
-		// reported as jumpy — but that is a historical inference, not a fresh measurement, so capture
-		// the real accepted-delta sequence before touching PinchSensitivity again.
-		Infrastructure.AppLog.Metric("zoom.pinch.applied", e.Scale, "x",
-			("amplified", Math.Round(amplifiedDelta, 3)), ("before", Math.Round(before, 3)), ("after", Math.Round(_currentScale, 3)));
 	}
 
 	/// <summary>
@@ -172,7 +163,6 @@ public partial class DocumentViewerPage : ContentPage
 	// itself can fix outright. Paired with DocumentViewerViewModel's higher source render resolution
 	// (1800x2400, up from 1200x1600) so the same READABLE result needs less extreme Scale to reach.
 	private const double MaxScale = 3;
-	private const double PinchSensitivity = 1.6;
 
 	/// <summary>2026-09-30, user's own ask — rename this document from the viewer itself.</summary>
 	private async void OnRenameClicked(object? sender, EventArgs e)
