@@ -71,16 +71,8 @@ public partial class DocumentViewerPage : ContentPage
 	{
 		if (e.Status == GestureStatus.Started)
 		{
-			// 2026-09-30 (v5): reaching max zoom now needs several separate pinch gestures (fingers
-			// lift, re-grip, pinch again) — exactly the scenario where the platform's underlying
-			// ScaleGestureDetector hasn't measured any real finger movement yet, so its FIRST Running
-			// callback after a fresh two-finger touch-down can carry a stale/priming Scale value
-			// instead of a real one. User report: "rychle preblikava obraz z max do normal zvetseni"
-			// (rapid flicker between max and normal zoom) at the exact point (max zoom) where gesture
-			// restarts happen most — a bad priming value, amplified by PinchSensitivity below, was
-			// slamming _currentScale down near 1, then the gesture's real callbacks (fingers already
-			// spread wide) snapped it straight back up. Skipping this one callback discards it.
 			_ignoreNextPinchDelta = true;
+			Infrastructure.AppLog.Event("zoom.pinch.started", ("currentScale", Math.Round(_currentScale, 3)));
 			return;
 		}
 
@@ -89,21 +81,28 @@ public partial class DocumentViewerPage : ContentPage
 		if (_ignoreNextPinchDelta)
 		{
 			_ignoreNextPinchDelta = false;
+			// 2026-09-30 (v5, unconfirmed by user — "je to stejne"): the theory was that this first
+			// Running callback after a fresh two-finger touch-down carries a stale/priming Scale value.
+			// LOGGED rather than assumed fixed, since v5 made no observed difference — see zoom.pinch.*
+			// metrics below, which should show whether e.Scale here is actually anomalous or not.
+			Infrastructure.AppLog.Metric("zoom.pinch.ignoredDelta", e.Scale, "x", ("currentScale", Math.Round(_currentScale, 3)));
 			return;
 		}
 
-		// 2026-09-30, user: "pitrebuji 3 gesta na zvetseni" (needed 3 separate pinch gestures to reach
-		// a useful zoom) — a plain e.Scale multiply tracks real finger spread 1:1, but two fingers on a
-		// phone screen can only physically spread so far in one motion. Raising the delta to a power
-		// > 1 amplifies each callback's effect without changing the underlying tracking math, so the
-		// SAME physical pinch now covers noticeably more zoom in one continuous gesture.
-		//
-		// Clamped BEFORE amplifying (v5) — legitimate per-callback deltas between consecutive touch
-		// samples during a real pinch are never this extreme; anything outside this range is far more
-		// likely sensor/detector noise (e.g. a momentary multi-touch tracking glitch) than real intent,
-		// and PinchSensitivity would otherwise amplify exactly that noise the hardest.
+		// 2026-09-30 (v6 — TEMPORARY instrumentation): v4 (sensitivity/resolution) and v5 (ignore
+		// first callback + clamp raw delta) both shipped on REASONED-BUT-UNVERIFIED hypotheses, and
+		// neither changed the user's report ("rychle preblikava... z max do normal" / "je to stejne")
+		// at all — not better, not worse. That's the tell that this isn't actually being driven by
+		// anything in this method's own math (both attempts touched different parts of it), so guessing
+		// a THIRD constant/logic tweak blind would repeat the same mistake. Logging every callback's
+		// raw e.Scale next to the before/after _currentScale it produces will show definitively whether
+		// _currentScale itself is oscillating (a real logic bug, and exactly which e.Scale values cause
+		// it) or stays stable while only the on-screen image flickers (a native rendering-layer issue —
+		// e.g. Android promoting/demoting a hardware layer once the transformed 1800x2400 bitmap crosses
+		// a GPU texture-size threshold near MaxScale — which no amount of C# gesture-math tuning fixes).
 		var rawDelta = Math.Clamp(e.Scale, 0.5, 2.0);
 		var amplifiedDelta = Math.Pow(rawDelta, PinchSensitivity);
+		var before = _currentScale;
 		_currentScale = Math.Clamp(_currentScale * amplifiedDelta, 1, MaxScale);
 		DocumentImage.Scale = _currentScale;
 		ClampTranslation();
@@ -112,6 +111,9 @@ public partial class DocumentViewerPage : ContentPage
 		// immediately, not just for display.
 		_panX = DocumentImage.TranslationX;
 		_panY = DocumentImage.TranslationY;
+
+		Infrastructure.AppLog.Metric("zoom.pinch.applied", e.Scale, "x",
+			("rawDelta", Math.Round(rawDelta, 3)), ("before", Math.Round(before, 3)), ("after", Math.Round(_currentScale, 3)));
 	}
 
 	/// <summary>
