@@ -8,7 +8,7 @@
     x:DataType="vm:DocumentViewerViewModel"
     Title="{Binding Title}">
 
-    <Grid RowDefinitions="*,Auto" Padding="20" RowSpacing="10">
+    <Grid RowDefinitions="*,Auto,Auto" Padding="20" RowSpacing="10">
 
         <Grid Grid.Row="0">
             <controls:DelayedActivityIndicator IsBusy="{Binding IsLoading}" HorizontalOptions="Center" VerticalOptions="Center" />
@@ -24,34 +24,37 @@
                  vertical ScrollView, which measures its content with unbounded height, so AspectFit
                  had no height to fit against and the image rendered larger than the window and got
                  cut off (the user's report on PC). Placed directly in the cell with Fill on both
-                 axes, AspectFit now scales the whole image down to fit — nothing cropped. -->
+                 axes, AspectFit now scales the whole image down to fit — nothing cropped.
+                 2026-09-30 (Scale/AnchorX/AnchorY): zoom (see ZoomIn/ZoomOutCommand) scales this same
+                 image AROUND ITS CENTER rather than via a ScrollView — deliberately kept out of a
+                 ScrollView, which is exactly the unbounded-height trap the comment above already
+                 documents fighting. This means zoomed-in content that extends past the edges isn't
+                 pannable yet (a real limitation, not hidden) — good enough to read small text near
+                 the middle of a page; ask again if scrolling a zoomed page turns out to matter. -->
             <Image
                 Source="{Binding CurrentPageImage}"
                 Aspect="AspectFit"
                 IsVisible="{Binding HasImage}"
                 HorizontalOptions="Fill"
-                VerticalOptions="Fill" />
+                VerticalOptions="Fill"
+                Scale="{Binding ImageScale}"
+                AnchorX="0.5"
+                AnchorY="0.5" />
+        </Grid>
 
-            <!-- Milestone 4, Task 4.4: moving watermark overlay (username + timestamp + IP).
-                 InputTransparent so it never blocks taps on the image/buttons underneath. -->
-            <Label
-                Text="{Binding WatermarkText}"
-                TranslationX="{Binding WatermarkTranslationX}"
-                TranslationY="{Binding WatermarkTranslationY}"
-                IsVisible="{Binding HasImage}"
-                InputTransparent="True"
-                HorizontalOptions="Center"
-                VerticalOptions="Center"
-                FontSize="10.5"
-                TextColor="Red"
-                Opacity="0.35" />
+        <!-- Zvětšení (2026-09-30, user's own ask — replaced the removed visible watermark, which made
+             the document unreadable with no way around it: "nejde ani číst ani zvětšit"). -->
+        <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto">
+            <Button Grid.Column="0" Text="🔍− Zmenšit" Style="{StaticResource SecondaryButton}" Command="{Binding ZoomOutCommand}" IsEnabled="{Binding CanZoomOut}" />
+            <Label Grid.Column="1" Text="{Binding ImageScale, StringFormat='{0:P0}'}" HorizontalOptions="Center" VerticalOptions="Center" FontSize="10" TextColor="Gray" />
+            <Button Grid.Column="2" Text="🔍+ Zvětšit" Style="{StaticResource SecondaryButton}" Command="{Binding ZoomInCommand}" IsEnabled="{Binding CanZoomIn}" />
         </Grid>
 
         <!-- Stáhnout (2026-09-30, user's own ask): saves the original decrypted file outside the app
              via the OS share sheet, and logs the download (who/what/when, admin-searchable) — see
              DocumentViewerViewModel.DownloadAsync's own remarks. -->
         <Label
-            Grid.Row="1"
+            Grid.Row="2"
             Text="{Binding DownloadErrorMessage}"
             IsVisible="{Binding HasDownloadError}"
             HorizontalOptions="Center"
@@ -59,7 +62,7 @@
             VerticalOptions="Start"
             TranslationY="-28" />
 
-        <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto,Auto">
+        <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto,Auto">
             <Button Grid.Column="0" Text="⬅ Předchozí" Command="{Binding PreviousPageCommand}" IsEnabled="{Binding CanGoToPreviousPage}" />
             <Label
                 Grid.Column="1"

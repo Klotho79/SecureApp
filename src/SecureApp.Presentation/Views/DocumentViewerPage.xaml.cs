@@ -21,12 +21,5 @@ public partial class DocumentViewerPage : ContentPage
 		// thread now (see DocumentViewerViewModel.GoToPageAsync). Same "separate graphics from
 		// loading" principle as the chat pages.
 		Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(280), () => _viewModel.LoadDocumentCommand.Execute(null));
-		_viewModel.StartWatermark();
-	}
-
-	protected override void OnDisappearing()
-	{
-		base.OnDisappearing();
-		_viewModel.StopWatermark();
 	}
 }

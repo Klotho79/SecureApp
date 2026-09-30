@@ -34,18 +34,15 @@ public sealed class DocumentRenderingService : IDocumentRenderingService
     private readonly IDocumentRepository _documentRepository;
     private readonly ICryptoService _crypto;
     private readonly ISpreadsheetParsingService _spreadsheetParsingService;
-    private readonly ICurrentUserService _currentUserService;
 
     public DocumentRenderingService(
         IDocumentRepository documentRepository,
         ICryptoService crypto,
-        ISpreadsheetParsingService spreadsheetParsingService,
-        ICurrentUserService currentUserService)
+        ISpreadsheetParsingService spreadsheetParsingService)
     {
         _documentRepository = documentRepository ?? throw new ArgumentNullException(nameof(documentRepository));
         _crypto = crypto ?? throw new ArgumentNullException(nameof(crypto));
         _spreadsheetParsingService = spreadsheetParsingService ?? throw new ArgumentNullException(nameof(spreadsheetParsingService));
-        _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
     }
 
     /// <summary>
@@ -106,16 +103,6 @@ public sealed class DocumentRenderingService : IDocumentRenderingService
             DocumentType.Spreadsheet => await RenderSpreadsheetPageAsync(documentId, plaintext, pageIndex, maxWidth, maxHeight, ct),
             _ => throw new NotSupportedException($"Rendering is not supported for document type '{document.DocumentType}'.")
         };
-
-        // 2026-09-30, user's own ask: an invisible pixel-level watermark ALONGSIDE the visible
-        // moving overlay (DocumentViewerViewModel) — see PixelWatermark's own remarks for what this
-        // actually protects against (a digital copy) versus what it can't (a re-photographed
-        // screen — the visible overlay still has to carry that job). Payload deliberately excludes
-        // documentId — the display name + timestamp alone is enough to trace who saw SOMETHING at
-        // a given moment; the exact document is whatever the institution's own access logs show for
-        // that person at that time, so this stays short (more redundant repeats fit in the image).
-        var payload = $"{_currentUserService.Current.DisplayName}|{DateTimeOffset.UtcNow:O}";
-        PixelWatermark.Embed(bitmap, payload);
 
         using var encoded = bitmap.Encode(SKEncodedImageFormat.Png, 100);
         return new RenderedPage(encoded.ToArray(), bitmap.Width, bitmap.Height);
