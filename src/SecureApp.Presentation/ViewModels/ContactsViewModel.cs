@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -32,7 +33,11 @@ public sealed partial class ContactsViewModel : ObservableObject
     /// </summary>
     private const string ArimNoteTag = "ARIM";
 
+    /// <summary>Proper Czech alphabetical order (2026-09-30, user's own ask) — plain OrdinalIgnoreCase (what <see cref="ApplyFilter"/>'s static phone directory already uses) sorts "Ch" after "H", not between "H" and "I" the way Czech readers expect. Requires full ICU globalization (no InvariantGlobalization in the csproj) to actually apply cs-CZ collation rules, not just diacritic-insensitive ordinal.</summary>
+    private static readonly StringComparer CzechNameComparer = StringComparer.Create(CultureInfo.GetCultureInfo("cs-CZ"), ignoreCase: true);
+
     private readonly ISharedContactService _sharedContactService;
+    private List<SharedContact> _allArimContacts = [];
 
     [ObservableProperty]
     public partial string SearchQuery { get; set; }
@@ -61,6 +66,10 @@ public sealed partial class ContactsViewModel : ObservableObject
     /// <summary>"Soukromé kontakty ARIM" — same shape/behavior (call, delete, PC drag-reorder) as "Firemní kontakty", just its own collapsed-by-default section (2026-09-29: 71 rows is too long to show open by default). Collapsed via <see cref="SharedContactSectionGroup.VisibleEntries"/>, same BindableLayout-doesn't-virtualize reasoning as <see cref="ContactSectionGroup"/>.</summary>
     public SharedContactSectionGroup ArimContactsGroup { get; }
 
+    /// <summary>2026-09-30, user's own ask — searching by name or number over the 71-row ARIM list. Auto-expands the section on a non-empty query (same "search reveals its own results" convention <see cref="ApplyFilter"/>'s static phone directory already follows), but doesn't force it back closed when the query is cleared — the user's own manual toggle wins at that point.</summary>
+    [ObservableProperty]
+    public partial string ArimSearchQuery { get; set; } = string.Empty;
+
     public IReadOnlyList<QuickContactEntry> QuickContacts { get; } = ContactDirectoryData.QuickContacts;
 
     /// <summary>Raised so the Page (which alone can push a MAUI navigation) opens the add-contact form — same MAUI-free-ViewModel split this codebase already established elsewhere.</summary>
@@ -78,6 +87,7 @@ public sealed partial class ContactsViewModel : ObservableObject
     }
 
     partial void OnSearchQueryChanged(string value) => ApplyFilter();
+    partial void OnArimSearchQueryChanged(string value) => ApplyArimFilter();
     partial void OnCompanyContactsErrorMessageChanged(string? value) => HasCompanyContactsError = !string.IsNullOrEmpty(value);
 
     /// <summary>Called from the page's OnAppearing — refreshes both the static directory filter and (2026-09-20) the shared company contact list.</summary>
@@ -101,12 +111,8 @@ public sealed partial class ContactsViewModel : ObservableObject
                     .Select(c => ToItem(c, includeNoteInSubtitle: true)));
             HasNoCompanyContacts = CompanyContacts.Count == 0;
 
-            ArimContactsGroup.SetEntries(
-                ordered.Where(c => string.Equals(c.Note, ArimNoteTag, StringComparison.Ordinal))
-                    // Note IS the section header here ("Soukromé kontakty ARIM") — repeating "ARIM" as
-                    // every single row's own subtitle too would just be noise.
-                    .Select(c => ToItem(c, includeNoteInSubtitle: false))
-                    .ToList());
+            _allArimContacts = ordered.Where(c => string.Equals(c.Note, ArimNoteTag, StringComparison.Ordinal)).ToList();
+            ApplyArimFilter();
         }
         catch (Exception ex)
         {
@@ -116,6 +122,27 @@ public sealed partial class ContactsViewModel : ObservableObject
         {
             IsLoadingCompanyContacts = false;
         }
+    }
+
+    /// <summary>Czech-alphabetical + search over <see cref="_allArimContacts"/> (2026-09-30, user's own ask) — re-run on every load AND on every <see cref="ArimSearchQuery"/> change, so a search survives the next background refresh instead of being wiped by it.</summary>
+    private void ApplyArimFilter()
+    {
+        var query = ArimSearchQuery.Trim();
+        IEnumerable<SharedContact> source = _allArimContacts;
+        if (query.Length > 0)
+        {
+            source = source.Where(c =>
+                c.DisplayName.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                (c.Phone?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false));
+            if (!ArimContactsGroup.IsExpanded) ArimContactsGroup.IsExpanded = true;
+        }
+
+        ArimContactsGroup.SetEntries(
+            source.OrderBy(c => c.DisplayName, CzechNameComparer)
+                // Note IS the section header here ("Soukromé kontakty ARIM") — repeating "ARIM" as
+                // every single row's own subtitle too would just be noise.
+                .Select(c => ToItem(c, includeNoteInSubtitle: false))
+                .ToList());
     }
 
     [RelayCommand]
@@ -140,7 +167,10 @@ public sealed partial class ContactsViewModel : ObservableObject
             }
             else
             {
-                ArimContactsGroup.SetEntries(ArimContactsGroup.Entries.Where(c => c.Id != item.Id).ToList());
+                // Keep _allArimContacts in sync too — ApplyArimFilter re-derives from it on every
+                // search keystroke, and would otherwise resurrect a just-deleted contact.
+                _allArimContacts = _allArimContacts.Where(c => c.Id != item.Id).ToList();
+                ApplyArimFilter();
             }
         }
         catch (Exception ex)
@@ -162,22 +192,14 @@ public sealed partial class ContactsViewModel : ObservableObject
 
         // Dragged and target must be in the SAME section — reordering only ever happens within
         // "Firemní kontakty" or within "Soukromé kontakty ARIM", never between them.
-        if (CompanyContacts.Any(c => c.Id == draggedId) && CompanyContacts.Any(c => c.Id == targetId))
-        {
-            if (Reordered(CompanyContacts, draggedId, targetId) is not { } list) return;
-            CompanyContacts = new ObservableCollection<SharedContactItem>(list);
-            await PersistReorderAsync(list);
-            await LoadCompanyContactsAsync();
-            return;
-        }
-
-        if (ArimContactsGroup.Entries.Any(c => c.Id == draggedId) && ArimContactsGroup.Entries.Any(c => c.Id == targetId))
-        {
-            if (Reordered(ArimContactsGroup.Entries, draggedId, targetId) is not { } list) return;
-            ArimContactsGroup.SetEntries(list);
-            await PersistReorderAsync(list);
-            await LoadCompanyContactsAsync();
-        }
+        // "Soukromé kontakty ARIM" has no drag handle at all any more (2026-09-30) — it's always
+        // Czech-alphabetically sorted now (see ApplyArimFilter), so a manual SortOrder would just get
+        // silently overwritten by the very next filter/search re-run. Only Firemní kontakty keeps a
+        // meaningful manual order.
+        if (Reordered(CompanyContacts, draggedId, targetId) is not { } list) return;
+        CompanyContacts = new ObservableCollection<SharedContactItem>(list);
+        await PersistReorderAsync(list);
+        await LoadCompanyContactsAsync();
     }
 
     private static List<SharedContactItem>? Reordered(IReadOnlyList<SharedContactItem> source, Guid draggedId, Guid targetId)

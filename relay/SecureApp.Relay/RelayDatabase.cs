@@ -1089,6 +1089,14 @@ public sealed class RelayDatabase
             ("@key", lookupKey), ("@envelope", envelopeJson), ("@now", Format(DateTimeOffset.UtcNow)));
     }
 
+    /// <summary>Admin-only rename (2026-09-30) — only display_name + updated_at_utc change, everything else about the row (phone, note, sort_order) is untouched. A no-op if the id doesn't exist, same "silently do nothing on a stale id" convention as the other admin write endpoints here.</summary>
+    public void RenameSharedContact(Guid id, string displayName)
+    {
+        using var connection = OpenConnection();
+        Execute(connection, "UPDATE shared_contacts SET display_name = @name, updated_at_utc = @now WHERE id = @id",
+            ("@name", displayName), ("@now", Format(DateTimeOffset.UtcNow)), ("@id", id.ToString()));
+    }
+
     public string? GetIdentityBackup(string lookupKey)
     {
         using var connection = OpenConnection();

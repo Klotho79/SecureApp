@@ -63,13 +63,16 @@
 
             <!-- Soukromé kontakty ARIM (2026-09-29, user's own correction: this MUST be its own
                  collapsible section, not folded into "Firemní kontakty" — same shape/behavior (call,
-                 delete, PC drag-reorder), just its own card, collapsed by default since the list (the
-                 whole ARIM WhatsApp group, imported from xlsx) is 71 rows long. A CollectionView here
-                 (not BindableLayout — see this file's own remarks on the "Telefonní seznam" section
-                 below for why BindableLayout alone still isn't enough at this size), so expanding it
-                 actually virtualizes/recycles rows instead of building all 71 heavy per-row
-                 Border+Grid+drag-gesture views the instant IsExpanded flips true (2026-09-29, user
-                 hit exactly this: "otevření těch 71 kontaktů trvá pekelně dlouho"). -->
+                 delete), just its own card, collapsed by default since the list (the whole ARIM
+                 WhatsApp group, imported from xlsx) is 71 rows long. A CollectionView here (not
+                 BindableLayout — see this file's own remarks on the "Telefonní seznam" section below
+                 for why BindableLayout alone still isn't enough at this size), so expanding it actually
+                 virtualizes/recycles rows instead of building all 71 heavy per-row views the instant
+                 IsExpanded flips true (2026-09-29, user hit exactly this: "otevření těch 71 kontaktů
+                 trvá pekelně dlouho"). 2026-09-30, user's own ask: Czech-alphabetical order + search
+                 (ArimSearchQuery/ApplyArimFilter) — no drag-reorder handle here any more, since a
+                 manual order would just get overwritten by the very next alphabetical re-sort; only
+                 Firemní kontakty above still supports it. -->
             <Border Style="{StaticResource CardBorder}" IsVisible="{Binding ArimContactsGroup.HasEntries}">
                 <VerticalStackLayout Spacing="8">
                     <Grid ColumnDefinitions="*,Auto" Padding="0,2">
@@ -86,6 +89,7 @@
                         <Label Grid.Column="1" Text="{Binding ArimContactsGroup.Count}" FontSize="9.5" TextColor="Gray" VerticalOptions="Center" />
                     </Grid>
                     <Label Text="Sdílený seznam pro celou komunitu — změna se projeví u všech." FontSize="9.5" TextColor="Gray" />
+                    <SearchBar Text="{Binding ArimSearchQuery}" Placeholder="Hledat jméno nebo číslo…" />
 
                     <CollectionView ItemsSource="{Binding ArimContactsGroup.VisibleEntries}" IsVisible="{Binding ArimContactsGroup.IsExpanded}" SelectionMode="None">
                         <CollectionView.ItemsLayout>
@@ -94,10 +98,6 @@
                         <CollectionView.ItemTemplate>
                             <DataTemplate x:DataType="vm:SharedContactItem">
                                 <Border Style="{StaticResource CardBorder}" Margin="0" Padding="10,8" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
-                                    <Border.GestureRecognizers>
-                                        <DragGestureRecognizer CanDrag="True" DragStarting="OnContactDragStarting" />
-                                        <DropGestureRecognizer AllowDrop="True" Drop="OnContactDrop" />
-                                    </Border.GestureRecognizers>
                                     <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
                                         <VerticalStackLayout Grid.Column="0" Spacing="2">
                                             <Label Text="{Binding DisplayName}" FontSize="11" FontAttributes="Bold" LineBreakMode="TailTruncation" />

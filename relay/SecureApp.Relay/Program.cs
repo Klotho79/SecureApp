@@ -749,6 +749,22 @@ app.MapPost("/admin/contacts/bulk-import", (HttpRequest request, List<SharedCont
     return Results.Ok(new { imported = rows.Count });
 });
 
+// Admin-only bulk rename (2026-09-30, "- služební" relabeling of two ARIM-imported entries) — same
+// admin-secret-authed shape as bulk-import right above, for the same reason (an operator script, not
+// the app itself, is the caller).
+app.MapPost("/admin/contacts/rename", (HttpRequest request, List<SharedContactRenameRow> rows, RelayDatabase db) =>
+{
+    if (!IsAdminAuthorized(request, adminSecret))
+        return Results.Unauthorized();
+
+    foreach (var row in rows)
+    {
+        if (string.IsNullOrWhiteSpace(row.DisplayName)) continue;
+        db.RenameSharedContact(row.Id, row.DisplayName);
+    }
+    return Results.Ok(new { renamed = rows.Count });
+});
+
 // --- Shared company workplace catalog (2026-09-20, NOTIFICATION_HUB_SPEC.md Phase 5) — mirrors
 // the /contacts endpoints right above exactly; see Contracts.cs's own remarks.
 

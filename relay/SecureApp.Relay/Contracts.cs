@@ -96,6 +96,9 @@ public sealed record SharedContactDto(Guid Id, string DisplayName, string? Phone
 /// <summary>One row of an admin-only bulk import (2026-09-29, "Telefonní seznam ARIM.xlsx" one-off) — server assigns Id/SortOrder/CreatedAtUtc, same as <see cref="SharedContactDto"/> minus the fields a fresh import never carries in from a spreadsheet.</summary>
 public sealed record SharedContactImportRow(string DisplayName, string? Phone, string? Note);
 
+/// <summary>One row of an admin-only bulk rename (2026-09-30, "- služební" relabeling of a couple of ARIM-imported entries) — only DisplayName changes, everything else about the row stays untouched.</summary>
+public sealed record SharedContactRenameRow(Guid Id, string DisplayName);
+
 public sealed record WorkplaceDto(Guid Id, string Name, string? Description, DateTimeOffset CreatedAtUtc);
 
 /// <summary>Body for both PUT and GET of an identity backup (2026-09-29) — see RelayDatabase's identity_backups table and IIdentityBackupService's own remarks. EnvelopeJson is opaque ciphertext to this relay; it's the client's own AES-256-GCM envelope, unrelated to anything this relay itself encrypts.</summary>
