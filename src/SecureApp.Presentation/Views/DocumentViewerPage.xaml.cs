@@ -100,6 +100,7 @@ public partial class DocumentViewerPage : ContentPage
 		}
 
 		var amplifiedDelta = Math.Pow(e.Scale, PinchSensitivity);
+		var before = _currentScale;
 		_currentScale = Math.Clamp(_currentScale * amplifiedDelta, 1, MaxScale);
 		DocumentImage.Scale = _currentScale;
 		ClampTranslation();
@@ -108,6 +109,16 @@ public partial class DocumentViewerPage : ContentPage
 		// immediately, not just for display.
 		_panX = DocumentImage.TranslationX;
 		_panY = DocumentImage.TranslationY;
+
+		// 2026-09-30 (v8 — user report after v7: "lepsi ale zumovani neni plynule... a skace tam a
+		// zpet", i.e. the severe full-range flicker is gone but zoom now feels jumpy/non-smooth).
+		// Logged rather than assumed: PinchSensitivity's ^1.6 exponent widens whatever real per-frame
+		// jitter survives the [0.8, 1.25] reject band (e.g. 0.85 -> 0.85^1.6≈0.78, 1.2 -> 1.2^1.6≈1.34),
+		// which is a reasonable suspect given v3 (plain 1:1 tracking, no amplification) was never
+		// reported as jumpy — but that is a historical inference, not a fresh measurement, so capture
+		// the real accepted-delta sequence before touching PinchSensitivity again.
+		Infrastructure.AppLog.Metric("zoom.pinch.applied", e.Scale, "x",
+			("amplified", Math.Round(amplifiedDelta, 3)), ("before", Math.Round(before, 3)), ("after", Math.Round(_currentScale, 3)));
 	}
 
 	/// <summary>
