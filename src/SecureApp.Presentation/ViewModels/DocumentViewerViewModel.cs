@@ -29,6 +29,8 @@ public sealed partial class DocumentViewerViewModel : ObservableObject, IQueryAt
     private readonly IDocumentRepository _documentRepository;
     private readonly IDocumentRenderingService _renderingService;
     private readonly ICurrentUserService _currentUserService;
+    private readonly ICryptoService _crypto;
+    private readonly IDocumentDownloadLogService _downloadLog;
 
     private Guid _documentId;
     private int _watermarkOffsetIndex;
@@ -69,6 +71,18 @@ public sealed partial class DocumentViewerViewModel : ObservableObject, IQueryAt
     public partial bool CanGoToNextPage { get; set; }
 
     [ObservableProperty]
+    public partial bool IsDownloading { get; set; }
+
+    [ObservableProperty]
+    public partial bool CanDownload { get; set; } = true;
+
+    [ObservableProperty]
+    public partial string? DownloadErrorMessage { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasDownloadError { get; set; }
+
+    [ObservableProperty]
     public partial string WatermarkText { get; set; }
 
     [ObservableProperty]
@@ -80,11 +94,15 @@ public sealed partial class DocumentViewerViewModel : ObservableObject, IQueryAt
     public DocumentViewerViewModel(
         IDocumentRepository documentRepository,
         IDocumentRenderingService renderingService,
-        ICurrentUserService currentUserService)
+        ICurrentUserService currentUserService,
+        ICryptoService crypto,
+        IDocumentDownloadLogService downloadLog)
     {
         _documentRepository = documentRepository ?? throw new ArgumentNullException(nameof(documentRepository));
         _renderingService = renderingService ?? throw new ArgumentNullException(nameof(renderingService));
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
+        _crypto = crypto ?? throw new ArgumentNullException(nameof(crypto));
+        _downloadLog = downloadLog ?? throw new ArgumentNullException(nameof(downloadLog));
 
         Title = "Dokument";
         PageIndicatorText = string.Empty;
@@ -92,6 +110,10 @@ public sealed partial class DocumentViewerViewModel : ObservableObject, IQueryAt
     }
 
     partial void OnErrorMessageChanged(string? value) => HasError = !string.IsNullOrEmpty(value);
+
+    partial void OnDownloadErrorMessageChanged(string? value) => HasDownloadError = !string.IsNullOrEmpty(value);
+
+    partial void OnIsDownloadingChanged(bool value) => CanDownload = !value;
 
     partial void OnCurrentPageImageChanged(ImageSource? value) => HasImage = value is not null;
 
@@ -138,6 +160,45 @@ public sealed partial class DocumentViewerViewModel : ObservableObject, IQueryAt
         finally
         {
             IsLoading = false;
+        }
+    }
+
+    /// <summary>
+    /// 2026-09-30, user's own ask: decrypts the ORIGINAL file content (not a rendered page) and hands
+    /// it to the OS share sheet so the user picks where it lands outside the app — then logs the
+    /// download (who + when + which document) to the relay, admin-searchable (see
+    /// IDocumentDownloadLogService's own remarks). The log call is best-effort by design (it swallows
+    /// its own failures) — a relay hiccup must never block the user from actually getting their file.
+    /// </summary>
+    [RelayCommand]
+    private async Task DownloadAsync()
+    {
+        DownloadErrorMessage = null;
+        IsDownloading = true;
+        try
+        {
+            var document = await _documentRepository.GetByIdAsync(_documentId) ?? throw new DocumentNotFoundException(_documentId);
+            var plaintext = await _crypto.DecryptAsync(document.EncryptedContent);
+
+            var path = Path.Combine(Microsoft.Maui.Storage.FileSystem.CacheDirectory, document.FileName);
+            await File.WriteAllBytesAsync(path, plaintext);
+
+            await Microsoft.Maui.ApplicationModel.DataTransfer.Share.Default.RequestAsync(
+                new Microsoft.Maui.ApplicationModel.DataTransfer.ShareFileRequest
+                {
+                    Title = "Uložit dokument mimo appku",
+                    File = new Microsoft.Maui.ApplicationModel.DataTransfer.ShareFile(path),
+                });
+
+            await _downloadLog.LogAsync(document.Title, document.SourceLibraryFileId);
+        }
+        catch (Exception ex)
+        {
+            DownloadErrorMessage = $"Stažení se nezdařilo: {ex.Message}";
+        }
+        finally
+        {
+            IsDownloading = false;
         }
     }
 

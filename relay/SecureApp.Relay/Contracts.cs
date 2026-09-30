@@ -101,6 +101,11 @@ public sealed record SharedContactRenameRow(Guid Id, string DisplayName);
 
 public sealed record WorkplaceDto(Guid Id, string Name, string? Description, DateTimeOffset CreatedAtUtc);
 
+/// <summary>Document download audit log (2026-09-30) — see RelayDatabase's document_downloads table. Posted device-authed on every "Stáhnout" tap; searched admin-secret-authed via GET /admin/document-downloads.</summary>
+public sealed record DocumentDownloadLogRequest(string DisplayName, string DocumentTitle, Guid? SourceLibraryFileId);
+
+public sealed record DocumentDownloadEntryDto(Guid Id, Guid DeviceId, string DisplayName, string DocumentTitle, Guid? SourceLibraryFileId, DateTimeOffset DownloadedAtUtc);
+
 /// <summary>Body for both PUT and GET of an identity backup (2026-09-29) — see RelayDatabase's identity_backups table and IIdentityBackupService's own remarks. EnvelopeJson is opaque ciphertext to this relay; it's the client's own AES-256-GCM envelope, unrelated to anything this relay itself encrypts.</summary>
 public sealed record IdentityBackupDto(string EnvelopeJson);
 

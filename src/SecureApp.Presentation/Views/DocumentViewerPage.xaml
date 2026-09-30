@@ -47,14 +47,27 @@
                 Opacity="0.35" />
         </Grid>
 
-        <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto">
+        <!-- Stáhnout (2026-09-30, user's own ask): saves the original decrypted file outside the app
+             via the OS share sheet, and logs the download (who/what/when, admin-searchable) — see
+             DocumentViewerViewModel.DownloadAsync's own remarks. -->
+        <Label
+            Grid.Row="1"
+            Text="{Binding DownloadErrorMessage}"
+            IsVisible="{Binding HasDownloadError}"
+            HorizontalOptions="Center"
+            TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}"
+            VerticalOptions="Start"
+            TranslationY="-28" />
+
+        <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto,Auto">
             <Button Grid.Column="0" Text="⬅ Předchozí" Command="{Binding PreviousPageCommand}" IsEnabled="{Binding CanGoToPreviousPage}" />
             <Label
                 Grid.Column="1"
                 Text="{Binding PageIndicatorText}"
                 HorizontalOptions="Center"
                 VerticalOptions="Center" />
-            <Button Grid.Column="2" Text="Další ➡" Command="{Binding NextPageCommand}" IsEnabled="{Binding CanGoToNextPage}" />
+            <Button Grid.Column="2" Text="⬇ Stáhnout" Style="{StaticResource SecondaryButton}" Command="{Binding DownloadCommand}" IsEnabled="{Binding CanDownload}" />
+            <Button Grid.Column="3" Text="Další ➡" Command="{Binding NextPageCommand}" IsEnabled="{Binding CanGoToNextPage}" />
         </Grid>
     </Grid>
 </ContentPage>

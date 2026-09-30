@@ -374,6 +374,42 @@
                     </VerticalStackLayout>
                 </Border>
 
+                <!-- Log stažení dokumentů (2026-09-30, user's own ask: "bude log kdo co kdy stahl
+                     podle dokumentu vyhledatelny") — every "Stáhnout" tap in DocumentViewerPage logs
+                     here; admin-only search by document title, newest first. -->
+                <Border Style="{StaticResource CardBorder}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Log stažení dokumentů" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Label Text="Kdo, co a kdy stáhl tlačítkem Stáhnout v prohlížeči dokumentů — hledej podle názvu dokumentu, prázdné pole zobrazí vše." FontSize="9.5" TextColor="Gray" />
+
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <Entry Grid.Column="0" Text="{Binding DocumentDownloadSearchText}" Placeholder="Název dokumentu (nebo prázdné = vše)" />
+                            <Button Grid.Column="1" Text="Hledat" Command="{Binding SearchDocumentDownloadsCommand}" />
+                        </Grid>
+                        <controls:DelayedActivityIndicator IsBusy="{Binding IsSearchingDocumentDownloads}" HorizontalOptions="Center" />
+                        <Label Text="Žádné záznamy." FontSize="9.5" TextColor="Gray" IsVisible="{Binding HasNoDocumentDownloadResults}" />
+
+                        <CollectionView ItemsSource="{Binding DocumentDownloadResults}" SelectionMode="None">
+                            <CollectionView.ItemsLayout>
+                                <LinearItemsLayout Orientation="Vertical" ItemSpacing="6" />
+                            </CollectionView.ItemsLayout>
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="vm:DocumentDownloadLogItem">
+                                    <Border Style="{StaticResource CardBorder}" Margin="0" Padding="10,8" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <VerticalStackLayout Grid.Column="0" Spacing="2">
+                                                <Label Text="{Binding DocumentTitle}" FontSize="11" FontAttributes="Bold" LineBreakMode="TailTruncation" />
+                                                <Label Text="{Binding DisplayName}" FontSize="9.5" TextColor="Gray" />
+                                            </VerticalStackLayout>
+                                            <Label Grid.Column="1" Text="{Binding DownloadedAtText}" FontSize="9" TextColor="Gray" VerticalOptions="Center" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
+                    </VerticalStackLayout>
+                </Border>
+
                 <!-- Správa členů — role + per-tab visibility per member. -->
                 <Border Style="{StaticResource CardBorder}">
                     <VerticalStackLayout Spacing="8">

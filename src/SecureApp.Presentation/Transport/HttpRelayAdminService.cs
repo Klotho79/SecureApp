@@ -144,6 +144,25 @@ public sealed class HttpRelayAdminService : IRelayAdminService
         response.EnsureSuccessStatusCode();
     }
 
+    public async Task<IReadOnlyList<DocumentDownloadEntry>> SearchDocumentDownloadsAsync(Uri endpoint, string adminSecret, string? query, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+        ArgumentException.ThrowIfNullOrWhiteSpace(adminSecret);
+
+        var uri = new Uri(ToHttpUri(endpoint), string.IsNullOrWhiteSpace(query)
+            ? "admin/document-downloads"
+            : $"admin/document-downloads?query={Uri.EscapeDataString(query)}");
+        using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+        request.Headers.Add("X-Admin-Secret", adminSecret);
+
+        using var response = await _httpClient.SendAsync(request, ct);
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+            throw new InvalidOperationException("Relay odmítl zadané admin heslo.");
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<List<DocumentDownloadEntry>>(HttpJsonOptions, ct) ?? [];
+    }
+
     private sealed record ManagedDeviceSummary(Guid DeviceId, string DisplayName, int? Role, List<string>? HiddenTabs, DateTimeOffset? LastSeenUtc);
 
     // Mirrors WebSocketMessageTransport.ToHttpUri — the Settings UI stores/edits one ws:// address

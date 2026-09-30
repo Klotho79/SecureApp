@@ -51,4 +51,7 @@ public interface IRelayAdminService
 
     /// <summary>Sets one member's role and which tabs they may not see. A null <paramref name="role"/> hands the role decision back to that device; <paramref name="hiddenTabs"/> is the full set of AppShell preference keys to hide.</summary>
     Task SetDevicePolicyAsync(Uri endpoint, string adminSecret, Guid deviceId, Enums.Role? role, IReadOnlyList<string> hiddenTabs, CancellationToken ct = default);
+
+    /// <summary>Document-download audit log search (2026-09-30) — <paramref name="query"/> matches a document's title as a substring, case-insensitive; null/empty returns every logged download, newest first. See <see cref="ValueObjects.DocumentDownloadEntry"/>'s own remarks.</summary>
+    Task<IReadOnlyList<ValueObjects.DocumentDownloadEntry>> SearchDocumentDownloadsAsync(Uri endpoint, string adminSecret, string? query, CancellationToken ct = default);
 }

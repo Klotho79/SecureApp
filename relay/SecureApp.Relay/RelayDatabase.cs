@@ -286,6 +286,21 @@ public sealed class RelayDatabase
         // (AES-256-GCM, keyed by a PBKDF2 derivation of that same passphrase, also never sent here).
         // Deliberately unauthenticated, same accepted tradeoff as activation_requests below: a device
         // that just lost its local data has no device credential left to authenticate with.
+        // Document download audit log (2026-09-30, user's own ask: "bude log kdo co kdy stahl podle
+        // dokumentu vyhledatelny") — one row per "Stáhnout" tap in DocumentViewerPage. Device-authed
+        // to WRITE (any already-activated device, same trust model as /contacts), admin-secret to
+        // READ/search (see /admin/document-downloads) — a download log is exactly the kind of thing
+        // only an admin/the institution should be able to browse, not every other device.
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS document_downloads (
+                id                      TEXT PRIMARY KEY NOT NULL,
+                device_id               TEXT NOT NULL,
+                display_name            TEXT NOT NULL,
+                document_title          TEXT NOT NULL,
+                source_library_file_id  TEXT NULL,
+                downloaded_at_utc       TEXT NOT NULL
+            )
+            """);
         Execute(connection, """
             CREATE TABLE IF NOT EXISTS identity_backups (
                 lookup_key        TEXT PRIMARY KEY NOT NULL,
@@ -1075,6 +1090,42 @@ public sealed class RelayDatabase
     {
         using var connection = OpenConnection();
         Execute(connection, "DELETE FROM shared_contacts WHERE id = @id", ("@id", id.ToString()));
+    }
+
+    /// <summary>One row per "Stáhnout" tap in DocumentViewerPage (2026-09-30) — see document_downloads' own remarks.</summary>
+    public void LogDocumentDownload(Guid id, Guid deviceId, string displayName, string documentTitle, Guid? sourceLibraryFileId, DateTimeOffset downloadedAtUtc)
+    {
+        using var connection = OpenConnection();
+        Execute(connection,
+            "INSERT INTO document_downloads (id, device_id, display_name, document_title, source_library_file_id, downloaded_at_utc) VALUES (@id, @deviceId, @name, @title, @libId, @at)",
+            ("@id", id.ToString()), ("@deviceId", deviceId.ToString()), ("@name", displayName), ("@title", documentTitle),
+            ("@libId", (object?)sourceLibraryFileId?.ToString() ?? DBNull.Value), ("@at", Format(downloadedAtUtc)));
+    }
+
+    /// <summary>Admin-only search (2026-09-30) — <paramref name="query"/> matches DocumentTitle as a case-insensitive substring (SQLite LIKE is ASCII-case-insensitive by default; good enough for this, same posture as the shared contact/workplace lists elsewhere in this file). Null/empty query returns everything, newest first.</summary>
+    public IReadOnlyList<(Guid Id, Guid DeviceId, string DisplayName, string DocumentTitle, Guid? SourceLibraryFileId, DateTimeOffset DownloadedAtUtc)> SearchDocumentDownloads(string? query)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = string.IsNullOrWhiteSpace(query)
+            ? "SELECT id, device_id, display_name, document_title, source_library_file_id, downloaded_at_utc FROM document_downloads ORDER BY downloaded_at_utc DESC"
+            : "SELECT id, device_id, display_name, document_title, source_library_file_id, downloaded_at_utc FROM document_downloads WHERE document_title LIKE @query ORDER BY downloaded_at_utc DESC";
+        if (!string.IsNullOrWhiteSpace(query))
+            command.Parameters.AddWithValue("@query", $"%{query}%");
+
+        var results = new List<(Guid, Guid, string, string, Guid?, DateTimeOffset)>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            results.Add((
+                Guid.Parse((string)reader["id"]),
+                Guid.Parse((string)reader["device_id"]),
+                (string)reader["display_name"],
+                (string)reader["document_title"],
+                reader["source_library_file_id"] is DBNull ? null : Guid.Parse((string)reader["source_library_file_id"]),
+                DateTimeOffset.Parse((string)reader["downloaded_at_utc"], CultureInfo.InvariantCulture)));
+        }
+        return results;
     }
 
     /// <summary>Upsert — a re-backup with the same email+passphrase (e.g. after rotating identity on purpose) simply overwrites the previous one.</summary>

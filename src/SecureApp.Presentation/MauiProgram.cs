@@ -161,6 +161,9 @@ public static class MauiProgram
 		// Identity backup/restore (2026-09-29, disaster recovery — see IIdentityBackupService's own remarks).
 		builder.Services.AddSingleton<IIdentityBackupService, SecureApp.Presentation.Identity.IdentityBackupService>();
 
+		// Document download audit log (2026-09-30 — see IDocumentDownloadLogService's own remarks).
+		builder.Services.AddSingleton<IDocumentDownloadLogService, SecureApp.Presentation.Rendering.HttpDocumentDownloadLogService>();
+
 		// Shared company workplace catalog (2026-09-20, Phase 5 — see IWorkplaceCatalogService's own remarks).
 		builder.Services.AddSingleton<IWorkplaceCatalogService, HttpWorkplaceCatalogService>();
 

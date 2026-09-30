@@ -729,6 +729,30 @@ app.MapDelete("/contacts/{id:guid}", (Guid id, HttpRequest request, RelayDatabas
     return Results.NoContent();
 });
 
+// --- Document download audit log (2026-09-30, user's own ask: "bude log kdo co kdy stahl podle
+// dokumentu vyhledatelny") — WRITE is device-authed (any already-activated device, same as /contacts
+// above), SEARCH is admin-only (see RelayDatabase's document_downloads table for why).
+app.MapPost("/document-downloads", (HttpRequest request, DocumentDownloadLogRequest body, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+
+    if (string.IsNullOrWhiteSpace(body.DocumentTitle))
+        return Results.BadRequest("DocumentTitle is required.");
+
+    db.LogDocumentDownload(Guid.NewGuid(), deviceId, body.DisplayName, body.DocumentTitle, body.SourceLibraryFileId, DateTimeOffset.UtcNow);
+    return Results.Ok();
+});
+
+app.MapGet("/admin/document-downloads", (HttpRequest request, RelayDatabase db, string? query) =>
+{
+    if (!IsAdminAuthorized(request, adminSecret))
+        return Results.Unauthorized();
+
+    var entries = db.SearchDocumentDownloads(query);
+    return Results.Ok(entries.Select(e => new DocumentDownloadEntryDto(e.Id, e.DeviceId, e.DisplayName, e.DocumentTitle, e.SourceLibraryFileId, e.DownloadedAtUtc)).ToList());
+});
+
 // Admin-only bulk import (2026-09-29, one-off: "Telefonní seznam ARIM.xlsx") — admin-secret-authed
 // rather than device-authed like the three endpoints above, since this call never comes from the
 // app itself, only from a one-time operator script that has no device identity of its own. Appends
