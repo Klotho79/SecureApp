@@ -9,15 +9,26 @@ public partial class DocumentViewerPage : ContentPage
 	private readonly DocumentViewerViewModel _viewModel;
 
 	// Pinch-to-zoom + one-finger pan (2026-09-30, user's own ask, replacing an earlier +/- button
-	// attempt: "plynule zvetsovani a posun pri zvetseni... jak to byva roztazenim prstu"). This is
-	// Microsoft's own documented pinch-then-pan pattern (docs: "Recognize a pinch gesture") — state
+	// attempt: "plynule zvetsovani a posun pri zvetseni... jak to byva roztazenim prstu"). State
 	// lives here in the Page's code-behind, not the ViewModel, because it's pure gesture/visual-
 	// transform bookkeeping (Scale/TranslationX/Y on a live Image), the same "MAUI-touching glue
 	// stays in the Page" split this codebase already uses for ContactsPage's drag-and-drop.
+	//
+	// 2026-09-30 rewrite (v1 had real bugs — user: "zvetsuje se z praveho dolniho rohu a posun je
+	// pomaly"): v1 flipped AnchorX/AnchorY from the default (0.5, 0.5) to (0, 0) the moment a pinch
+	// started, which snaps the existing Scale transform onto a NEW origin instantly — a visible jump
+	// toward one corner — and then computed the pan clamp range for a (0,0) anchor while the actual
+	// anchor briefly disagreed mid-transition, so the pannable range was wrong (too small in one
+	// axis), which read as "slow"/stuck panning. This version never touches AnchorX/AnchorY at all —
+	// they stay MAUI's own default (0.5, 0.5), so zooming always expands from the image's CENTER,
+	// and the pan clamp is the correspondingly SYMMETRIC ± half-overflow range for that anchor
+	// (previously it was the range for a top-left anchor, which does not match a center anchor).
+	// Scale itself is now a plain running multiply (Scale *= e.Scale, e.Scale being MAUI's own
+	// per-callback pinch delta) instead of an additive approximation — simpler and numerically
+	// steadier, which should also read as smoother.
 	private double _currentScale = 1;
-	private double _startScale = 1;
-	private double _xOffset;
-	private double _yOffset;
+	private double _panX;
+	private double _panY;
 
 	public DocumentViewerPage(DocumentViewerViewModel viewModel)
 	{
@@ -46,9 +57,8 @@ public partial class DocumentViewerPage : ContentPage
 	private void ResetZoom()
 	{
 		_currentScale = 1;
-		_startScale = 1;
-		_xOffset = 0;
-		_yOffset = 0;
+		_panX = 0;
+		_panY = 0;
 		DocumentImage.Scale = 1;
 		DocumentImage.TranslationX = 0;
 		DocumentImage.TranslationY = 0;
@@ -56,79 +66,66 @@ public partial class DocumentViewerPage : ContentPage
 
 	private void OnDoubleTapped(object? sender, TappedEventArgs e) => ResetZoom();
 
-	/// <summary>
-	/// Verbatim structure of Microsoft's own documented pinch-to-zoom-and-pan sample (.NET MAUI docs,
-	/// "Recognize a pinch gesture") — tracks the pinch's own ScaleOrigin so zoom centers on wherever
-	/// the fingers actually are, not always the image's middle, and clamps the resulting translation
-	/// so zoomed content can never be dragged past its own edges into empty space.
-	/// </summary>
 	private void OnPinchUpdated(object? sender, PinchGestureUpdatedEventArgs e)
 	{
-		if (e.Status == GestureStatus.Started)
-		{
-			_startScale = DocumentImage.Scale;
-			DocumentImage.AnchorX = 0;
-			DocumentImage.AnchorY = 0;
-		}
-		if (e.Status == GestureStatus.Running)
-		{
-			_currentScale += (e.Scale - 1) * _startScale;
-			_currentScale = Math.Max(1, _currentScale);
+		if (e.Status != GestureStatus.Running) return;
 
-			var renderedX = DocumentImage.X + _xOffset;
-			var deltaX = renderedX / Width;
-			var deltaWidth = Width / (DocumentImage.Width * _startScale);
-			var originX = (e.ScaleOrigin.X - deltaX) * deltaWidth;
-
-			var renderedY = DocumentImage.Y + _yOffset;
-			var deltaY = renderedY / Height;
-			var deltaHeight = Height / (DocumentImage.Height * _startScale);
-			var originY = (e.ScaleOrigin.Y - deltaY) * deltaHeight;
-
-			var targetX = _xOffset - originX * DocumentImage.Width * (_currentScale - _startScale);
-			var targetY = _yOffset - originY * DocumentImage.Height * (_currentScale - _startScale);
-
-			targetX = Clamp(targetX, -DocumentImage.Width * (_currentScale - 1), 0);
-			targetY = Clamp(targetY, -DocumentImage.Height * (_currentScale - 1), 0);
-
-			DocumentImage.TranslationX = targetX;
-			DocumentImage.TranslationY = targetY;
-			DocumentImage.Scale = _currentScale;
-
-			_xOffset = targetX;
-			_yOffset = targetY;
-		}
-		if (e.Status is GestureStatus.Completed or GestureStatus.Canceled)
-		{
-			_startScale = 1; // next pinch's Scale delta is relative to THIS gesture's own start, not the very first one
-		}
+		_currentScale = Math.Clamp(_currentScale * e.Scale, 1, MaxScale);
+		DocumentImage.Scale = _currentScale;
+		ClampTranslation();
+		// Pinch has no "total since gesture start" value the way Pan does (see OnPanUpdated's own
+		// remarks) — its own translation nudges are ad hoc, so the clamped result IS the new baseline
+		// immediately, not just for display.
+		_panX = DocumentImage.TranslationX;
+		_panY = DocumentImage.TranslationY;
 	}
 
 	/// <summary>
 	/// One-finger drag to keep panning after the pinch itself ends (a real pinch always needs two
 	/// fingers; without this, releasing to one finger would freeze the pan). No-op while unzoomed —
 	/// nothing to pan when the image already fits the screen.
+	///
+	/// <see cref="PanUpdatedEventArgs.TotalX"/>/<see cref="PanUpdatedEventArgs.TotalY"/> are the total
+	/// distance panned since THIS gesture started, not since the last callback — so <see cref="_panX"/>/
+	/// <see cref="_panY"/> (the position BEFORE this gesture) must stay untouched for the whole Running
+	/// phase; the v1 bug ("posun je pomaly") was clamping's own result getting written back into that
+	/// baseline on every single Running callback, which then got added to again on the next one —
+	/// compounding into hitting the edge clamp almost immediately, which read as the drag "sticking".
+	/// Only Completed bakes the final (already-clamped) position in as the next gesture's baseline.
 	/// </summary>
 	private void OnPanUpdated(object? sender, PanUpdatedEventArgs e)
 	{
-		if (DocumentImage.Scale <= 1) return;
+		if (_currentScale <= 1) return;
 
 		switch (e.StatusType)
 		{
 			case GestureStatus.Running:
-				var targetX = Clamp(_xOffset + e.TotalX, -DocumentImage.Width * (DocumentImage.Scale - 1), 0);
-				var targetY = Clamp(_yOffset + e.TotalY, -DocumentImage.Height * (DocumentImage.Scale - 1), 0);
-				DocumentImage.TranslationX = targetX;
-				DocumentImage.TranslationY = targetY;
+				DocumentImage.TranslationX = _panX + e.TotalX;
+				DocumentImage.TranslationY = _panY + e.TotalY;
+				ClampTranslation(); // display-only clamp — does NOT touch _panX/_panY, see remarks above
 				break;
 			case GestureStatus.Completed:
-				_xOffset = DocumentImage.TranslationX;
-				_yOffset = DocumentImage.TranslationY;
+				_panX = DocumentImage.TranslationX;
+				_panY = DocumentImage.TranslationY;
 				break;
 		}
 	}
 
-	private static double Clamp(double value, double min, double max) => Math.Max(min, Math.Min(max, value));
+	/// <summary>
+	/// DocumentImage keeps MAUI's own default AnchorX/AnchorY (0.5, 0.5, i.e. its center) — deliberately
+	/// never touched — so Scale always expands the image symmetrically outward from its middle. The
+	/// overflow past each edge is therefore Width/Height * (scale - 1) SPLIT EVENLY on both sides, so
+	/// the pannable range is ± half that, not the 0..-full-overflow range a top-left anchor would need.
+	/// </summary>
+	private void ClampTranslation()
+	{
+		var maxX = DocumentImage.Width * (_currentScale - 1) / 2;
+		var maxY = DocumentImage.Height * (_currentScale - 1) / 2;
+		DocumentImage.TranslationX = Math.Clamp(DocumentImage.TranslationX, -maxX, maxX);
+		DocumentImage.TranslationY = Math.Clamp(DocumentImage.TranslationY, -maxY, maxY);
+	}
+
+	private const double MaxScale = 4;
 
 	/// <summary>2026-09-30, user's own ask — rename this document from the viewer itself.</summary>
 	private async void OnRenameClicked(object? sender, EventArgs e)
