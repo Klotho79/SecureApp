@@ -91,7 +91,17 @@
                     <Label Text="Sdílený seznam pro celou komunitu — změna se projeví u všech." FontSize="9.5" TextColor="Gray" />
                     <SearchBar Text="{Binding ArimSearchQuery}" Placeholder="Hledat jméno nebo číslo…" />
 
-                    <CollectionView ItemsSource="{Binding ArimContactsGroup.VisibleEntries}" IsVisible="{Binding ArimContactsGroup.IsExpanded}" SelectionMode="None">
+                    <!-- HeightRequest is load-bearing, not cosmetic (2026-09-30 — user still hit the
+                         slow expand even with a CollectionView: "otevření... trvá neskutečně dlouho"):
+                         a CollectionView with no fixed height, nested inside this page's own outer
+                         ScrollView, has to MEASURE EVERY ITEM anyway to compute its own natural
+                         height for that outer scroll layout — which defeats virtualization exactly
+                         as thoroughly as the BindableLayout this replaced. Giving it a bounded height
+                         turns it into its own internally-scrolling, genuinely virtualized list (only
+                         on-screen rows + a small buffer ever get realized), at the cost of a nested
+                         scroll gesture — acceptable here since 71 rows was always going to need
+                         scrolling no matter how this is built. -->
+                    <CollectionView ItemsSource="{Binding ArimContactsGroup.VisibleEntries}" IsVisible="{Binding ArimContactsGroup.IsExpanded}" SelectionMode="None" HeightRequest="420">
                         <CollectionView.ItemsLayout>
                             <LinearItemsLayout Orientation="Vertical" ItemSpacing="6" />
                         </CollectionView.ItemsLayout>
