@@ -29,6 +29,7 @@ public partial class DocumentViewerPage : ContentPage
 	private double _currentScale = 1;
 	private double _panX;
 	private double _panY;
+	private bool _ignoreNextPinchDelta;
 
 	public DocumentViewerPage(DocumentViewerViewModel viewModel)
 	{
@@ -68,14 +69,41 @@ public partial class DocumentViewerPage : ContentPage
 
 	private void OnPinchUpdated(object? sender, PinchGestureUpdatedEventArgs e)
 	{
+		if (e.Status == GestureStatus.Started)
+		{
+			// 2026-09-30 (v5): reaching max zoom now needs several separate pinch gestures (fingers
+			// lift, re-grip, pinch again) — exactly the scenario where the platform's underlying
+			// ScaleGestureDetector hasn't measured any real finger movement yet, so its FIRST Running
+			// callback after a fresh two-finger touch-down can carry a stale/priming Scale value
+			// instead of a real one. User report: "rychle preblikava obraz z max do normal zvetseni"
+			// (rapid flicker between max and normal zoom) at the exact point (max zoom) where gesture
+			// restarts happen most — a bad priming value, amplified by PinchSensitivity below, was
+			// slamming _currentScale down near 1, then the gesture's real callbacks (fingers already
+			// spread wide) snapped it straight back up. Skipping this one callback discards it.
+			_ignoreNextPinchDelta = true;
+			return;
+		}
+
 		if (e.Status != GestureStatus.Running) return;
+
+		if (_ignoreNextPinchDelta)
+		{
+			_ignoreNextPinchDelta = false;
+			return;
+		}
 
 		// 2026-09-30, user: "pitrebuji 3 gesta na zvetseni" (needed 3 separate pinch gestures to reach
 		// a useful zoom) — a plain e.Scale multiply tracks real finger spread 1:1, but two fingers on a
 		// phone screen can only physically spread so far in one motion. Raising the delta to a power
 		// > 1 amplifies each callback's effect without changing the underlying tracking math, so the
 		// SAME physical pinch now covers noticeably more zoom in one continuous gesture.
-		var amplifiedDelta = Math.Pow(e.Scale, PinchSensitivity);
+		//
+		// Clamped BEFORE amplifying (v5) — legitimate per-callback deltas between consecutive touch
+		// samples during a real pinch are never this extreme; anything outside this range is far more
+		// likely sensor/detector noise (e.g. a momentary multi-touch tracking glitch) than real intent,
+		// and PinchSensitivity would otherwise amplify exactly that noise the hardest.
+		var rawDelta = Math.Clamp(e.Scale, 0.5, 2.0);
+		var amplifiedDelta = Math.Pow(rawDelta, PinchSensitivity);
 		_currentScale = Math.Clamp(_currentScale * amplifiedDelta, 1, MaxScale);
 		DocumentImage.Scale = _currentScale;
 		ClampTranslation();
