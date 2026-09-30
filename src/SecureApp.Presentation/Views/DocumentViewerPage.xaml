@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="UTF-8" ?>
+<?xml version="1.0" encoding="UTF-8" ?>
 <ContentPage
     x:Class="SecureApp.Presentation.Views.DocumentViewerPage"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -8,7 +8,13 @@
     x:DataType="vm:DocumentViewerViewModel"
     Title="{Binding Title}">
 
-    <Grid RowDefinitions="*,Auto,Auto" Padding="20" RowSpacing="10">
+    <!-- Přejmenovat (2026-09-30, user's own ask) — a toolbar item rather than another row of
+         buttons; this page's bottom row is already Předchozí/indikátor/Stáhnout/Další. -->
+    <ContentPage.ToolbarItems>
+        <ToolbarItem Text="✏ Přejmenovat" Clicked="OnRenameClicked" />
+    </ContentPage.ToolbarItems>
+
+    <Grid RowDefinitions="*,Auto" Padding="20" RowSpacing="10">
 
         <Grid Grid.Row="0">
             <controls:DelayedActivityIndicator IsBusy="{Binding IsLoading}" HorizontalOptions="Center" VerticalOptions="Center" />
@@ -25,36 +31,34 @@
                  had no height to fit against and the image rendered larger than the window and got
                  cut off (the user's report on PC). Placed directly in the cell with Fill on both
                  axes, AspectFit now scales the whole image down to fit — nothing cropped.
-                 2026-09-30 (Scale/AnchorX/AnchorY): zoom (see ZoomIn/ZoomOutCommand) scales this same
-                 image AROUND ITS CENTER rather than via a ScrollView — deliberately kept out of a
-                 ScrollView, which is exactly the unbounded-height trap the comment above already
-                 documents fighting. This means zoomed-in content that extends past the edges isn't
-                 pannable yet (a real limitation, not hidden) — good enough to read small text near
-                 the middle of a page; ask again if scrolling a zoomed page turns out to matter. -->
+                 2026-09-30: pinch-to-zoom + one-finger pan while zoomed, replacing the earlier +/-
+                 button attempt the user rejected ("plynule zvetsovani a posun... jak to byva
+                 roztazenim prstu") — see DocumentViewerPage.xaml.cs's own remarks for the gesture
+                 math (Microsoft's own documented pinch-then-pan pattern: PinchGestureRecognizer
+                 alone only zooms, so PanGestureRecognizer is layered on for continued one-finger
+                 panning after the pinch ends). Deliberately still not inside a ScrollView — same
+                 unbounded-height trap as before; the code-behind clamps TranslationX/Y itself so
+                 zoomed content can never pan past its own edges into empty space. -->
             <Image
+                x:Name="DocumentImage"
                 Source="{Binding CurrentPageImage}"
                 Aspect="AspectFit"
                 IsVisible="{Binding HasImage}"
                 HorizontalOptions="Fill"
-                VerticalOptions="Fill"
-                Scale="{Binding ImageScale}"
-                AnchorX="0.5"
-                AnchorY="0.5" />
-        </Grid>
-
-        <!-- Zvětšení (2026-09-30, user's own ask — replaced the removed visible watermark, which made
-             the document unreadable with no way around it: "nejde ani číst ani zvětšit"). -->
-        <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto">
-            <Button Grid.Column="0" Text="🔍− Zmenšit" Style="{StaticResource SecondaryButton}" Command="{Binding ZoomOutCommand}" IsEnabled="{Binding CanZoomOut}" />
-            <Label Grid.Column="1" Text="{Binding ImageScale, StringFormat='{0:P0}'}" HorizontalOptions="Center" VerticalOptions="Center" FontSize="10" TextColor="Gray" />
-            <Button Grid.Column="2" Text="🔍+ Zvětšit" Style="{StaticResource SecondaryButton}" Command="{Binding ZoomInCommand}" IsEnabled="{Binding CanZoomIn}" />
+                VerticalOptions="Fill">
+                <Image.GestureRecognizers>
+                    <PinchGestureRecognizer PinchUpdated="OnPinchUpdated" />
+                    <PanGestureRecognizer PanUpdated="OnPanUpdated" />
+                    <TapGestureRecognizer NumberOfTapsRequired="2" Tapped="OnDoubleTapped" />
+                </Image.GestureRecognizers>
+            </Image>
         </Grid>
 
         <!-- Stáhnout (2026-09-30, user's own ask): saves the original decrypted file outside the app
              via the OS share sheet, and logs the download (who/what/when, admin-searchable) — see
              DocumentViewerViewModel.DownloadAsync's own remarks. -->
         <Label
-            Grid.Row="2"
+            Grid.Row="1"
             Text="{Binding DownloadErrorMessage}"
             IsVisible="{Binding HasDownloadError}"
             HorizontalOptions="Center"
@@ -62,7 +66,7 @@
             VerticalOptions="Start"
             TranslationY="-28" />
 
-        <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto,Auto">
+        <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto,Auto">
             <Button Grid.Column="0" Text="⬅ Předchozí" Command="{Binding PreviousPageCommand}" IsEnabled="{Binding CanGoToPreviousPage}" />
             <Label
                 Grid.Column="1"

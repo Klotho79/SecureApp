@@ -14,10 +14,6 @@ public sealed partial class DocumentViewerViewModel : ObservableObject, IQueryAt
     private const int MaxRenderWidth = 1200;
     private const int MaxRenderHeight = 1600;
 
-    private const double MinZoom = 1.0;
-    private const double MaxZoom = 4.0;
-    private const double ZoomStep = 0.5;
-
     private readonly IDocumentRepository _documentRepository;
     private readonly IDocumentRenderingService _renderingService;
     private readonly ICryptoService _crypto;
@@ -69,23 +65,6 @@ public sealed partial class DocumentViewerViewModel : ObservableObject, IQueryAt
 
     [ObservableProperty]
     public partial bool HasDownloadError { get; set; }
-
-    /// <summary>
-    /// 2026-09-30, user's own ask, replacing the removed visible watermark overlay (which made
-    /// documents unreadable with no way to zoom past it — "nejde ani číst ani zvětšit"): simple
-    /// +/- buttons scale the rendered page image; bound to <c>Image.Scale</c> in the page's own
-    /// XAML, inside a ScrollView so a zoomed-in page can be panned. No pinch gesture yet — this is
-    /// the reliable cross-platform (touch AND mouse-click) baseline; pinch can be layered on later
-    /// if actually asked for.
-    /// </summary>
-    [ObservableProperty]
-    public partial double ImageScale { get; set; } = MinZoom;
-
-    [ObservableProperty]
-    public partial bool CanZoomIn { get; set; } = true;
-
-    [ObservableProperty]
-    public partial bool CanZoomOut { get; set; }
 
     public DocumentViewerViewModel(
         IDocumentRepository documentRepository,
@@ -219,7 +198,6 @@ public sealed partial class DocumentViewerViewModel : ObservableObject, IQueryAt
             CurrentPageNumber = pageNumber;
             CanGoToPreviousPage = CurrentPageNumber > 1;
             CanGoToNextPage = CurrentPageNumber < PageCount;
-            ImageScale = MinZoom; // a fresh page always starts unzoomed — a leftover zoom from the previous page would be confusing
         }
         catch (Exception ex) when (ex is NotSupportedException or ArgumentOutOfRangeException)
         {
@@ -231,15 +209,26 @@ public sealed partial class DocumentViewerViewModel : ObservableObject, IQueryAt
         }
     }
 
+    /// <summary>
+    /// 2026-09-30, user's own ask: rename this document from the viewer itself (not just from the
+    /// browser). Re-fetches rather than caching the document loaded by <see cref="LoadDocumentAsync"/>
+    /// — same "always load fresh before mutating" caution <see cref="DownloadAsync"/> already takes,
+    /// since nothing here guarantees the in-memory snapshot from the initial load is still current.
+    /// </summary>
     [RelayCommand]
-    private void ZoomIn() => ImageScale = Math.Min(MaxZoom, ImageScale + ZoomStep);
-
-    [RelayCommand]
-    private void ZoomOut() => ImageScale = Math.Max(MinZoom, ImageScale - ZoomStep);
-
-    partial void OnImageScaleChanged(double value)
+    private async Task RenameDocumentAsync(string? newTitle)
     {
-        CanZoomIn = value < MaxZoom;
-        CanZoomOut = value > MinZoom;
+        if (string.IsNullOrWhiteSpace(newTitle)) return;
+        try
+        {
+            var document = await _documentRepository.GetByIdAsync(_documentId) ?? throw new DocumentNotFoundException(_documentId);
+            document.Rename(newTitle.Trim());
+            await _documentRepository.UpdateAsync(document);
+            Title = document.Title;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Přejmenování se nezdařilo: {ex.Message}";
+        }
     }
 }
