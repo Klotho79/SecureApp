@@ -81,28 +81,25 @@ public partial class DocumentViewerPage : ContentPage
 		if (_ignoreNextPinchDelta)
 		{
 			_ignoreNextPinchDelta = false;
-			// 2026-09-30 (v5, unconfirmed by user — "je to stejne"): the theory was that this first
-			// Running callback after a fresh two-finger touch-down carries a stale/priming Scale value.
-			// LOGGED rather than assumed fixed, since v5 made no observed difference — see zoom.pinch.*
-			// metrics below, which should show whether e.Scale here is actually anomalous or not.
-			Infrastructure.AppLog.Metric("zoom.pinch.ignoredDelta", e.Scale, "x", ("currentScale", Math.Round(_currentScale, 3)));
 			return;
 		}
 
-		// 2026-09-30 (v6 — TEMPORARY instrumentation): v4 (sensitivity/resolution) and v5 (ignore
-		// first callback + clamp raw delta) both shipped on REASONED-BUT-UNVERIFIED hypotheses, and
-		// neither changed the user's report ("rychle preblikava... z max do normal" / "je to stejne")
-		// at all — not better, not worse. That's the tell that this isn't actually being driven by
-		// anything in this method's own math (both attempts touched different parts of it), so guessing
-		// a THIRD constant/logic tweak blind would repeat the same mistake. Logging every callback's
-		// raw e.Scale next to the before/after _currentScale it produces will show definitively whether
-		// _currentScale itself is oscillating (a real logic bug, and exactly which e.Scale values cause
-		// it) or stays stable while only the on-screen image flickers (a native rendering-layer issue —
-		// e.g. Android promoting/demoting a hardware layer once the transformed 1800x2400 bitmap crosses
-		// a GPU texture-size threshold near MaxScale — which no amount of C# gesture-math tuning fixes).
-		var rawDelta = Math.Clamp(e.Scale, 0.5, 2.0);
-		var amplifiedDelta = Math.Pow(rawDelta, PinchSensitivity);
-		var before = _currentScale;
+		// 2026-09-30 (v7 — MEASURED, not guessed): on-device metrics logging (v6) caught the actual
+		// raw e.Scale values during the reported flicker — they alternate almost exactly between ~3x
+		// and ~0.3x on EVERY callback, ~17ms apart, for as long as the user keeps pinching near max.
+		// That is not real finger motion (two touch samples 17ms apart cannot legitimately swing the
+		// pinch span 10x and back); it is noisy/duplicate touch data from the platform. v5's clamp to
+		// [0.5, 2.0] was measurably too loose: Math.Pow(2.0, 1.6)≈3.03 and Math.Pow(0.5, 1.6)≈0.33 still
+		// swing _currentScale the full 1..MaxScale range every frame, which is why the user saw zero
+		// change. Rejecting (not clamping-and-applying) anything outside a plausible per-frame range
+		// keeps _currentScale exactly where it was through the noisy stretch instead of tracking it.
+		if (e.Scale < 0.8 || e.Scale > 1.25)
+		{
+			Infrastructure.AppLog.Metric("zoom.pinch.rejected", e.Scale, "x", ("currentScale", Math.Round(_currentScale, 3)));
+			return;
+		}
+
+		var amplifiedDelta = Math.Pow(e.Scale, PinchSensitivity);
 		_currentScale = Math.Clamp(_currentScale * amplifiedDelta, 1, MaxScale);
 		DocumentImage.Scale = _currentScale;
 		ClampTranslation();
@@ -111,9 +108,6 @@ public partial class DocumentViewerPage : ContentPage
 		// immediately, not just for display.
 		_panX = DocumentImage.TranslationX;
 		_panY = DocumentImage.TranslationY;
-
-		Infrastructure.AppLog.Metric("zoom.pinch.applied", e.Scale, "x",
-			("rawDelta", Math.Round(rawDelta, 3)), ("before", Math.Round(before, 3)), ("after", Math.Round(_currentScale, 3)));
 	}
 
 	/// <summary>
