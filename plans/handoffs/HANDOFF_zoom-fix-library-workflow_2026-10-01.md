@@ -534,4 +534,5 @@ $adb = "C:\Users\dvora\AppData\Local\Android\Sdk\platform-tools\adb.exe"
 
 ## Session Closed
 **Closed at:** 2026-10-01 (this session)
+**Commit:** `07a1d47` (local only — NOT pushed to `pi`/`github`; deployment was left as an open decision for the next session)
 **Session status:** Handed off to next session, mid-flow (user said "Pokracujem" and was interrupted by /handoff)
