@@ -113,14 +113,44 @@ public sealed record IdentityBackupDto(string EnvelopeJson);
 // and board_posts tables for the full reasoning. Roles and tab visibility used to be decided purely
 // on-device (anyone could make themselves Admin), so an admin had no way to govern anyone else.
 
-/// <summary>What the CALLING device is allowed to be. <c>Role</c> null means no admin has managed this device yet — the client then keeps its own local role rather than being demoted. <c>HiddenTabs</c> holds AppShell preference keys (e.g. <c>tab_chaty_visible</c>) the device must not show.</summary>
-public sealed record DevicePolicyResponse(int? Role, IReadOnlyList<string> HiddenTabs);
+/// <summary>What the CALLING device is allowed to be. <c>Role</c> null means no admin has managed this device yet — the client then keeps its own local role rather than being demoted. <c>HiddenTabs</c> holds AppShell preference keys (e.g. <c>tab_chaty_visible</c>) the device must not show. <c>DocumentReviewer</c> (2026-10-01) is the separate Document Library review capability — see <c>device_policy</c>'s own remarks.</summary>
+public sealed record DevicePolicyResponse(int? Role, IReadOnlyList<string> HiddenTabs, bool DocumentReviewer = false);
 
 /// <summary>One member as the admin's management screen sees them. <c>LastSeenUtc</c> is the directory's own last-published timestamp (null = never connected since the directory existed).</summary>
-public sealed record ManagedDeviceDto(Guid DeviceId, string DisplayName, int? Role, IReadOnlyList<string> HiddenTabs, DateTimeOffset? LastSeenUtc);
+public sealed record ManagedDeviceDto(Guid DeviceId, string DisplayName, int? Role, IReadOnlyList<string> HiddenTabs, DateTimeOffset? LastSeenUtc, bool DocumentReviewer = false);
 
-/// <summary>Admin sets one member's role and which tabs they may not see. A null <c>Role</c> clears the assignment and hands the role decision back to the device.</summary>
-public sealed record SetDevicePolicyRequest(int? Role, IReadOnlyList<string>? HiddenTabs);
+/// <summary>Admin sets one member's role, which tabs they may not see, and (2026-10-01) whether they may review Document Library submissions. A null <c>Role</c> clears the assignment and hands the role decision back to the device. A null <c>DocumentReviewer</c> leaves that capability unchanged.</summary>
+public sealed record SetDevicePolicyRequest(int? Role, IReadOnlyList<string>? HiddenTabs, bool? DocumentReviewer = null);
+
+// --- Document Library content-approval workflow (2026-10-01) — see the library_documents/
+// library_document_versions/library_document_reviews tables' own remarks. Layered alongside the
+// existing /library/files/* family; every version's actual encrypted content is an ordinary
+// library_files row, uploaded via the exact same endpoint a private chat attachment already uses.
+
+/// <summary>One reviewable Document Library entry, across however many versions it has had.</summary>
+public sealed record LibraryDocumentDto(
+    Guid Id, string Title, string FolderPath, string Status,
+    Guid? CurrentVersionId, Guid? CurrentLibraryFileId,
+    Guid CreatedByDeviceId, Guid? SubmittedByDeviceId, DateTimeOffset? SubmittedAtUtc,
+    DateTimeOffset CreatedAtUtc, DateTimeOffset UpdatedAtUtc);
+
+/// <summary>One content revision of a <see cref="LibraryDocumentDto"/>.</summary>
+public sealed record LibraryDocumentVersionDto(Guid Id, Guid LibraryDocumentId, int VersionNumber, Guid LibraryFileId, Guid AuthorDeviceId, DateTimeOffset CreatedAtUtc, string? ChangeNote);
+
+/// <summary>One reviewer decision — the content-lifecycle audit trail, the twin of <see cref="DocumentDownloadEntryDto"/>.</summary>
+public sealed record LibraryDocumentReviewEntryDto(Guid Id, Guid LibraryDocumentId, Guid VersionId, Guid ReviewerDeviceId, string Decision, string? Comment, DateTimeOffset DecidedAtUtc);
+
+/// <summary>Full detail (versions + review history) for the review-queue detail screen and the admin audit view.</summary>
+public sealed record LibraryDocumentDetailDto(LibraryDocumentDto Document, IReadOnlyList<LibraryDocumentVersionDto> Versions, IReadOnlyList<LibraryDocumentReviewEntryDto> Reviews);
+
+/// <summary>Creates a new Draft document from an already-uploaded (private, listed=false) library file.</summary>
+public sealed record CreateLibraryDocumentRequest(string Title, string FolderPath, Guid LibraryFileId, string? ChangeNote);
+
+/// <summary>Stages a new version on an existing document from an already-uploaded private library file. Resets status to Draft.</summary>
+public sealed record AddLibraryDocumentVersionRequest(Guid LibraryFileId, string? ChangeNote);
+
+/// <summary>A reviewer's decision on a document's current pending version. <c>Comment</c> is required when <c>Decision</c> is "Rejected".</summary>
+public sealed record ReviewLibraryDocumentRequest(string Decision, string? Comment);
 
 /// <summary><c>ContentBlob</c> is opaque to the relay — the client encrypts the message with the shared community library key before posting, so the board is ciphertext at rest exactly like a library file.</summary>
 public sealed record CreateBoardPostRequest(string ContentBlob);

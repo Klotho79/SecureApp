@@ -49,9 +49,12 @@ public interface IRelayAdminService
     /// <summary>Every member with their admin-assigned role + hidden tabs (2026-09-24) — the data behind the "Správa členů" screen.</summary>
     Task<IReadOnlyList<ManagedDevice>> GetManagedDevicesAsync(Uri endpoint, string adminSecret, CancellationToken ct = default);
 
-    /// <summary>Sets one member's role and which tabs they may not see. A null <paramref name="role"/> hands the role decision back to that device; <paramref name="hiddenTabs"/> is the full set of AppShell preference keys to hide.</summary>
-    Task SetDevicePolicyAsync(Uri endpoint, string adminSecret, Guid deviceId, Enums.Role? role, IReadOnlyList<string> hiddenTabs, CancellationToken ct = default);
+    /// <summary>Sets one member's role, which tabs they may not see, and whether they may review Document Library submissions (2026-10-01). A null <paramref name="role"/> hands the role decision back to that device; <paramref name="hiddenTabs"/> is the full set of AppShell preference keys to hide; a null <paramref name="isDocumentReviewer"/> leaves that capability unchanged.</summary>
+    Task SetDevicePolicyAsync(Uri endpoint, string adminSecret, Guid deviceId, Enums.Role? role, IReadOnlyList<string> hiddenTabs, bool? isDocumentReviewer = null, CancellationToken ct = default);
 
     /// <summary>Document-download audit log search (2026-09-30) — <paramref name="query"/> matches a document's title as a substring, case-insensitive; null/empty returns every logged download, newest first. See <see cref="ValueObjects.DocumentDownloadEntry"/>'s own remarks.</summary>
     Task<IReadOnlyList<ValueObjects.DocumentDownloadEntry>> SearchDocumentDownloadsAsync(Uri endpoint, string adminSecret, string? query, CancellationToken ct = default);
+
+    /// <summary>Document Library approval-decision audit log search (2026-10-01) — <paramref name="query"/> matches a document's title as a substring, case-insensitive; null/empty returns every logged review decision, newest first. The approval-workflow twin of <see cref="SearchDocumentDownloadsAsync"/>.</summary>
+    Task<IReadOnlyList<ValueObjects.LibraryDocumentReviewEntry>> SearchLibraryDocumentAuditAsync(Uri endpoint, string adminSecret, string? query, CancellationToken ct = default);
 }

@@ -68,6 +68,10 @@ public partial class AppShell : Shell
 		// parameter that DocumentViewerViewModel.ApplyQueryAttributes picks up.
 		Routing.RegisterRoute(nameof(DocumentViewerPage), typeof(DocumentViewerPage));
 
+		// Document Library review queue (2026-10-01) — reached via the "📋 Ke schválení" button on
+		// LibraryPage, Reviewer/Admin devices only (LibraryViewModel.IsDocumentReviewer gates the button).
+		Routing.RegisterRoute(nameof(LibraryReviewQueuePage), typeof(LibraryReviewQueuePage));
+
 		// Reached via the '+ New Chat' button on ChatListPage.
 		Routing.RegisterRoute(nameof(NewChatPage), typeof(NewChatPage));
 

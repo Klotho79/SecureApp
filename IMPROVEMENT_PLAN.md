@@ -291,6 +291,19 @@ Příkazy `git push pi`, SSH do Pi a `docker compose` jsou rutinně blokované s
 - [ ] User-facing theming/settings (accent, density, font size, tab visibility)
       without code changes; persisted per device.
 
+## Phase 5 — Document Library telemetry (2026-10-01, adapted from a pasted AIM-spec requirement)
+- [x] TTI (time-to-interactive) logged for `LibraryPage` and `LibraryReviewQueuePage`
+      (`OnAppearing` → first load completing), via the existing `AppLog` metrics pipeline —
+      no new logging system.
+- [x] Search-latency logged for `LibraryViewModel.SearchAsync`'s relay round trip, same
+      `AppLog` pipeline. Note: the original spec's <30ms target was for a LOCAL indexed
+      query; this is a network call to the relay, so the number is expected to run far
+      higher — logged for visibility/trending, not held to that target.
+- [ ] Scroll FPS during list scrolling — explicitly deferred. MAUI has no built-in
+      cross-platform frame callback; an Android-only Choreographer hook is the only
+      realistic path and wasn't justified for this pass (same "flag and defer" call as
+      the video/HLS pipeline below).
+
 ---
 
 **2026-09-15/16 — real live bug: chat compose-box keyboard pans the whole window up (S23+, S9+).**
@@ -315,6 +328,20 @@ navigation merge, no data/storage change — AppShell.xaml now nests both ShellC
 which Shell renders as a top sub-tab strip natively; DocumentBrowserPage/LibraryPage and their
 ViewModels are untouched. `AppShell.xaml.cs`'s `LogbookTabInsertIndex` adjusted 4→3 to match the new
 tab count. Deployed and confirmed on S9+ and S23+.
+
+**2026-10-01 — Document Library content-approval workflow, adapted from a pasted "AIM Medical Mobile
+App" spec.** The user pasted a generic architecture doc and asked to rework the app's documents
+accordingly; it assumed a different stack entirely (WatermelonDB — a JS/React Native database,
+incompatible with this .NET MAUI/C# app) and included a video/HLS transcoding pipeline. Scoped down
+with the user first via `AskUserQuestion` before any code: applies only to the Document Library (not
+chat/contacts/Rozpis/Logbook), the new reviewer capability is scoped to documents only (the rest of the
+app keeps its existing global Admin/Modifier/Viewer `Role`), video/HLS explicitly deferred, existing
+library content preserved with zero migration. Planned via `EnterPlanMode` (two Explore/Plan subagent
+passes mapping the actual current `Document`/`Role`/`RoleAccessPolicy`/`library_files`/`device_policy`
+code before designing anything) before writing any code. Full design rationale and file list in
+DEVELOPMENT_PLAN.md's Milestone 5 entry for this date — not duplicated here. **Verified:** Domain,
+relay, and Presentation (Windows + Android) all build 0-error. **Not verified:** no live device test of
+the actual draft→submit→review→approve/reject→publish flow yet — next session's first job.
 
 ## Log of changes
 - 2026-09-13: Plan created; Phase 0 (durable AppLog error + metrics) landed; chat/group

@@ -286,7 +286,7 @@ public sealed partial class SettingsViewModel
             var members = await _relayAdminService.GetManagedDevicesAsync(endpoint, adminSecret);
             ManagedMembers.Clear();
             foreach (var m in members)
-                ManagedMembers.Add(new MemberPolicyItem(m.DeviceId, m.DisplayName, m.Role, m.HiddenTabs, m.LastSeenUtc));
+                ManagedMembers.Add(new MemberPolicyItem(m.DeviceId, m.DisplayName, m.Role, m.HiddenTabs, m.LastSeenUtc, m.IsDocumentReviewer));
             MemberManagementStatusText = members.Count == 0 ? "Zatím žádní členové." : $"Načteno členů: {members.Count}.";
 
             // The admin opening this screen is, by definition, online right now and (almost always)
@@ -320,7 +320,7 @@ public sealed partial class SettingsViewModel
 
         try
         {
-            await _relayAdminService.SetDevicePolicyAsync(endpoint, _managementAdminSecret, member.DeviceId, member.SelectedRole, member.HiddenTabs);
+            await _relayAdminService.SetDevicePolicyAsync(endpoint, _managementAdminSecret, member.DeviceId, member.SelectedRole, member.HiddenTabs, member.IsDocumentReviewer);
             member.StatusText = "Uloženo ✓";
             MemberManagementStatusText = $"Uloženo pro {member.DisplayName}.";
         }
@@ -359,7 +359,7 @@ public sealed class AccentSwatchItem
 /// <summary>One member row in the admin's "Správa členů" screen — editable role + per-tab visibility.</summary>
 public sealed partial class MemberPolicyItem : ObservableObject
 {
-    public MemberPolicyItem(Guid deviceId, string displayName, Role? role, IReadOnlyList<string> hiddenTabs, DateTimeOffset? lastSeenUtc)
+    public MemberPolicyItem(Guid deviceId, string displayName, Role? role, IReadOnlyList<string> hiddenTabs, DateTimeOffset? lastSeenUtc, bool isDocumentReviewer = false)
     {
         DeviceId = deviceId;
         DisplayName = displayName;
@@ -369,6 +369,7 @@ public sealed partial class MemberPolicyItem : ObservableObject
         ShowKontakty = !hiddenTabs.Contains(AppShell.ContactsTabVisibilityPreferenceKey);
         ShowNastenka = !hiddenTabs.Contains(AppShell.NotificationsTabVisibilityPreferenceKey);
         ShowLogbook = !hiddenTabs.Contains(AppShell.LogbookVisibilityPreferenceKey);
+        IsDocumentReviewer = isDocumentReviewer;
         LastSeenText = lastSeenUtc is { } seen
             ? $"naposledy {seen.LocalDateTime:d.M. HH:mm}"
             : "nikdy nepřipojeno";
@@ -398,6 +399,10 @@ public sealed partial class MemberPolicyItem : ObservableObject
 
     [ObservableProperty]
     public partial bool ShowLogbook { get; set; }
+
+    /// <summary>Document Library review capability (2026-10-01) — orthogonal to <see cref="SelectedRole"/>, see <c>DevicePolicy.IsDocumentReviewer</c>'s own remarks.</summary>
+    [ObservableProperty]
+    public partial bool IsDocumentReviewer { get; set; }
 
     [ObservableProperty]
     public partial string? StatusText { get; set; }

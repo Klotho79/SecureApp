@@ -48,7 +48,7 @@ public sealed class HttpDevicePolicyService : IDevicePolicyService
             return DevicePolicy.Unmanaged;
 
         var role = dto.Role is null ? (Role?)null : (Role)dto.Role.Value;
-        return new DevicePolicy(role, dto.HiddenTabs ?? []);
+        return new DevicePolicy(role, dto.HiddenTabs ?? [], dto.DocumentReviewer);
     }
 
     private static Uri ToHttpUri(Uri wsEndpoint)
@@ -57,5 +57,5 @@ public sealed class HttpDevicePolicyService : IDevicePolicyService
         return new UriBuilder(wsEndpoint) { Scheme = scheme, Port = wsEndpoint.Port }.Uri;
     }
 
-    private sealed record PolicyDto(int? Role, List<string>? HiddenTabs);
+    private sealed record PolicyDto(int? Role, List<string>? HiddenTabs, bool DocumentReviewer = false);
 }

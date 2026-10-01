@@ -410,6 +410,43 @@
                     </VerticalStackLayout>
                 </Border>
 
+                <!-- Log schvalování dokumentů (2026-10-01, content-approval workflow) — every
+                     approve/reject decision from the Document Library review queue logs here;
+                     admin-only search by document title, newest first. Direct structural twin of the
+                     download-log card above. -->
+                <Border Style="{StaticResource CardBorder}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Log schvalování dokumentů" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Label Text="Kdo, co a kdy schválil nebo zamítl v knihovně postupů — hledej podle názvu dokumentu, prázdné pole zobrazí vše." FontSize="9.5" TextColor="Gray" />
+
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <Entry Grid.Column="0" Text="{Binding LibraryDocumentAuditSearchText}" Placeholder="Název dokumentu (nebo prázdné = vše)" />
+                            <Button Grid.Column="1" Text="Hledat" Command="{Binding SearchLibraryDocumentAuditCommand}" />
+                        </Grid>
+                        <controls:DelayedActivityIndicator IsBusy="{Binding IsSearchingLibraryDocumentAudit}" HorizontalOptions="Center" />
+                        <Label Text="Žádné záznamy." FontSize="9.5" TextColor="Gray" IsVisible="{Binding HasNoLibraryDocumentAuditResults}" />
+
+                        <CollectionView ItemsSource="{Binding LibraryDocumentAuditResults}" SelectionMode="None">
+                            <CollectionView.ItemsLayout>
+                                <LinearItemsLayout Orientation="Vertical" ItemSpacing="6" />
+                            </CollectionView.ItemsLayout>
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="vm:LibraryDocumentAuditItem">
+                                    <Border Style="{StaticResource CardBorder}" Margin="0" Padding="10,8" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <VerticalStackLayout Grid.Column="0" Spacing="2">
+                                                <Label Text="{Binding Decision}" FontSize="11" FontAttributes="Bold" />
+                                                <Label Text="{Binding Comment}" FontSize="9.5" TextColor="Gray" LineBreakMode="TailTruncation" />
+                                            </VerticalStackLayout>
+                                            <Label Grid.Column="1" Text="{Binding DecidedAtText}" FontSize="9" TextColor="Gray" VerticalOptions="Center" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
+                    </VerticalStackLayout>
+                </Border>
+
                 <!-- Správa členů — role + per-tab visibility per member. -->
                 <Border Style="{StaticResource CardBorder}">
                     <VerticalStackLayout Spacing="8">
@@ -435,6 +472,8 @@
                                             <Grid ColumnDefinitions="*,Auto"><Label Grid.Column="0" Text="Kontakty" VerticalOptions="Center" /><Switch Grid.Column="1" IsToggled="{Binding ShowKontakty}" /></Grid>
                                             <Grid ColumnDefinitions="*,Auto"><Label Grid.Column="0" Text="Nástěnka" VerticalOptions="Center" /><Switch Grid.Column="1" IsToggled="{Binding ShowNastenka}" /></Grid>
                                             <Grid ColumnDefinitions="*,Auto"><Label Grid.Column="0" Text="Logbook" VerticalOptions="Center" /><Switch Grid.Column="1" IsToggled="{Binding ShowLogbook}" /></Grid>
+                                            <!-- 2026-10-01, content-approval workflow — orthogonal to Role, see DevicePolicy.IsDocumentReviewer's own remarks. -->
+                                            <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0"><Label Grid.Column="0" Text="Reviewer dokumentů" VerticalOptions="Center" /><Switch Grid.Column="1" IsToggled="{Binding IsDocumentReviewer}" /></Grid>
                                             <Button Text="Uložit"
                                                     Command="{Binding Source={RelativeSource AncestorType={x:Type vm:SettingsViewModel}}, Path=SaveMemberPolicyCommand}"
                                                     CommandParameter="{Binding .}" />

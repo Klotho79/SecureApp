@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using System.Net.WebSockets;
 using System.Security.Cryptography;
 using System.Text;
+using SecureApp.Domain.Policies;
 using SecureApp.Relay;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -445,6 +446,118 @@ app.MapPost("/library/files/{id:guid}/publish", (Guid id, HttpRequest request, R
     return Results.NoContent();
 });
 
+// --- Document Library content-approval workflow (2026-10-01) — layered alongside /library/files/*
+// above; every version's actual encrypted content is uploaded via THAT endpoint (listed=false) before
+// being staged here, so none of this family touches crypto/storage directly. Review capability is the
+// per-device document_reviewer policy flag, separate from Role — see device_policy's own remarks and
+// LibraryReviewPolicy.CanReview (self-review is never allowed, regardless of capability).
+
+app.MapPost("/library-documents", (HttpRequest request, CreateLibraryDocumentRequest body, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+    if (string.IsNullOrWhiteSpace(body.Title))
+        return Results.BadRequest("Title is required.");
+    if (db.GetLibraryFile(body.LibraryFileId) is null)
+        return Results.BadRequest("LibraryFileId does not refer to an uploaded file.");
+
+    var record = db.CreateLibraryDocument(body.Title, body.FolderPath, body.LibraryFileId, deviceId, body.ChangeNote);
+    return Results.Ok(ToLibraryDocumentDto(record));
+});
+
+app.MapPost("/library-documents/{id:guid}/versions", (Guid id, HttpRequest request, AddLibraryDocumentVersionRequest body, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+    if (db.GetLibraryFile(body.LibraryFileId) is null)
+        return Results.BadRequest("LibraryFileId does not refer to an uploaded file.");
+
+    var record = db.AddLibraryDocumentVersion(id, body.LibraryFileId, deviceId, body.ChangeNote);
+    return record is null ? Results.NotFound() : Results.Ok(ToLibraryDocumentDto(record));
+});
+
+app.MapPost("/library-documents/{id:guid}/submit", (Guid id, HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+
+    var record = db.SubmitLibraryDocumentForReview(id, deviceId);
+    return record is null ? Results.NotFound() : Results.Ok(ToLibraryDocumentDto(record));
+});
+
+app.MapGet("/library-documents/mine", (HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+
+    return Results.Ok(db.SearchLibraryDocumentsByOwner(deviceId).Select(ToLibraryDocumentDto).ToList());
+});
+
+app.MapGet("/library-documents/pending", (HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+
+    var policy = db.GetDevicePolicy(deviceId);
+    if (policy is not { } p || (!p.DocumentReviewer && p.Role != 0))
+        return Results.Forbid();
+
+    return Results.Ok(db.SearchPendingLibraryDocuments().Select(ToLibraryDocumentDto).ToList());
+});
+
+app.MapGet("/library-documents/{id:guid}", (Guid id, HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out _))
+        return Results.Unauthorized();
+
+    var doc = db.GetLibraryDocument(id);
+    if (doc is null)
+        return Results.NotFound();
+
+    var versions = db.GetLibraryDocumentVersions(id).Select(ToLibraryDocumentVersionDto).ToList();
+    var reviews = db.GetLibraryDocumentReviews(id).Select(ToLibraryDocumentReviewDto).ToList();
+    return Results.Ok(new LibraryDocumentDetailDto(ToLibraryDocumentDto(doc), versions, reviews));
+});
+
+app.MapPost("/library-documents/{id:guid}/review", (Guid id, HttpRequest request, ReviewLibraryDocumentRequest body, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var reviewerDeviceId))
+        return Results.Unauthorized();
+
+    var doc = db.GetLibraryDocument(id);
+    if (doc is null)
+        return Results.NotFound();
+
+    var policy = db.GetDevicePolicy(reviewerDeviceId);
+    var isReviewer = policy?.DocumentReviewer ?? false;
+    var isAdmin = policy?.Role == 0;
+    var submitterId = doc.SubmittedByDeviceId ?? doc.CreatedByDeviceId;
+    if (!LibraryReviewPolicy.CanReview(isReviewer, isAdmin, reviewerDeviceId.ToString(), submitterId.ToString()))
+        return Results.Forbid();
+
+    var approve = string.Equals(body.Decision, "Approved", StringComparison.OrdinalIgnoreCase);
+    var reject = string.Equals(body.Decision, "Rejected", StringComparison.OrdinalIgnoreCase);
+    if (!approve && !reject)
+        return Results.BadRequest("Decision must be 'Approved' or 'Rejected'.");
+    if (reject && string.IsNullOrWhiteSpace(body.Comment))
+        return Results.BadRequest("Comment is required when rejecting.");
+
+    var result = approve
+        ? db.ApproveLibraryDocumentVersion(id, reviewerDeviceId, body.Comment)
+        : db.RejectLibraryDocumentVersion(id, reviewerDeviceId, body.Comment!);
+
+    return result is null ? Results.Conflict("Document is not currently awaiting review.") : Results.NoContent();
+});
+
+app.MapGet("/admin/library-documents/audit", (HttpRequest request, RelayDatabase db, string? query) =>
+{
+    if (!IsAdminAuthorized(request, adminSecret))
+        return Results.Unauthorized();
+
+    var entries = db.SearchLibraryDocumentReviews(query);
+    return Results.Ok(entries.Select(e => new LibraryDocumentReviewEntryDto(e.Id, e.LibraryDocumentId, e.VersionId, e.ReviewerDeviceId, e.Decision, e.Comment, e.DecidedAtUtc)).ToList());
+});
+
 // --- Member directory (2026-09-06) — see Contracts.cs's own remarks. Device-authenticated
 // (X-Device-Id/X-Device-Secret), same as /library/files — not admin-gated, since any already
 // admin-approved device is exactly who this is meant to be visible to.
@@ -492,7 +605,7 @@ app.MapGet("/me/policy", (HttpRequest request, RelayDatabase db) =>
         return Results.Unauthorized();
 
     var policy = db.GetDevicePolicy(deviceId);
-    return Results.Ok(new DevicePolicyResponse(policy?.Role, policy?.HiddenTabs ?? Array.Empty<string>()));
+    return Results.Ok(new DevicePolicyResponse(policy?.Role, policy?.HiddenTabs ?? Array.Empty<string>(), policy?.DocumentReviewer ?? false));
 });
 
 app.MapGet("/admin/users", (HttpRequest request, RelayDatabase db) =>
@@ -501,7 +614,7 @@ app.MapGet("/admin/users", (HttpRequest request, RelayDatabase db) =>
         return Results.Unauthorized();
 
     var devices = db.GetManagedDevices()
-        .Select(d => new ManagedDeviceDto(d.DeviceId, d.DisplayName, d.Role, d.HiddenTabs, d.LastSeenUtc))
+        .Select(d => new ManagedDeviceDto(d.DeviceId, d.DisplayName, d.Role, d.HiddenTabs, d.LastSeenUtc, d.DocumentReviewer))
         .ToList();
     return Results.Ok(devices);
 });
@@ -511,7 +624,7 @@ app.MapPost("/admin/users/{id:guid}/policy", (HttpRequest request, Guid id, SetD
     if (!IsAdminAuthorized(request, adminSecret))
         return Results.Unauthorized();
 
-    db.SetDevicePolicy(id, body.Role, body.HiddenTabs ?? new List<string>());
+    db.SetDevicePolicy(id, body.Role, body.HiddenTabs ?? new List<string>(), body.DocumentReviewer);
     return Results.NoContent();
 });
 
@@ -1031,3 +1144,15 @@ static object ToLibraryFileDto(LibraryFileRecord record) => new
     record.UploadedByDeviceId,
     record.UploadedAtUtc
 };
+
+static LibraryDocumentDto ToLibraryDocumentDto(LibraryDocumentRecord record) => new(
+    record.Id, record.Title, record.FolderPath, record.Status,
+    record.CurrentVersionId, record.CurrentLibraryFileId,
+    record.CreatedByDeviceId, record.SubmittedByDeviceId, record.SubmittedAtUtc,
+    record.CreatedAtUtc, record.UpdatedAtUtc);
+
+static LibraryDocumentVersionDto ToLibraryDocumentVersionDto(LibraryDocumentVersionRecord record) => new(
+    record.Id, record.LibraryDocumentId, record.VersionNumber, record.LibraryFileId, record.AuthorDeviceId, record.CreatedAtUtc, record.ChangeNote);
+
+static LibraryDocumentReviewEntryDto ToLibraryDocumentReviewDto(LibraryDocumentReviewRecord record) => new(
+    record.Id, record.LibraryDocumentId, record.VersionId, record.ReviewerDeviceId, record.Decision, record.Comment, record.DecidedAtUtc);

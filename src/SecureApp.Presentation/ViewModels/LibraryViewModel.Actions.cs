@@ -64,4 +64,74 @@ public sealed partial class LibraryViewModel
             StatusErrorMessage = $"Nepodařilo se otevřít '{item.FileName}': {ex.Message}";
         }
     }
+
+    /// <summary>
+    /// 2026-10-01, the content-approval workflow: a Modifier uploads a Draft instead of publishing
+    /// directly. Reuses the exact same private (listed:false) upload <see cref="UploadAsync"/> already
+    /// does for the direct-publish path — the only difference is what happens AFTER the upload
+    /// (<see cref="ILibraryReviewService.CreateDraftAsync"/> instead of nothing/immediate visibility).
+    /// </summary>
+    [RelayCommand]
+    private async Task UploadDraftAsync()
+    {
+        if (!CanModifyContent)
+        {
+            StatusErrorMessage = "Nahrávat koncepty do knihovny může jen Admin nebo Modifier.";
+            return;
+        }
+
+        FileResult? picked;
+        try
+        {
+            picked = await FilePicker.PickAsync(new PickOptions { PickerTitle = "Vyberte soubor pro koncept" });
+        }
+        catch (Exception ex)
+        {
+            StatusErrorMessage = $"Nepodařilo se otevřít výběr souborů: {ex.Message}";
+            return;
+        }
+        if (picked is null) return;
+
+        var title = await (Shell.Current?.CurrentPage?.DisplayPromptAsync("Nový koncept", "Název dokumentu:", initialValue: System.IO.Path.GetFileNameWithoutExtension(picked.FileName)) ?? Task.FromResult<string?>(null));
+        if (string.IsNullOrWhiteSpace(title)) return;
+
+        IsUploading = true;
+        StatusErrorMessage = null;
+        try
+        {
+            var tags = UploadTags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            await using var stream = await picked.OpenReadAsync();
+            var uploaded = await _libraryService.UploadAsync(UploadFolderPath, picked.FileName, tags, stream, listed: false);
+            await _libraryReviewService.CreateDraftAsync(title.Trim(), UploadFolderPath, uploaded.Id, null);
+            await SearchAsync();
+        }
+        catch (Exception ex)
+        {
+            StatusErrorMessage = $"Nepodařilo se vytvořit koncept '{picked.FileName}': {ex.Message}";
+        }
+        finally
+        {
+            IsUploading = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task SubmitDraftForReviewAsync(LibraryDocumentDraftItem? item)
+    {
+        if (item is null) return;
+
+        StatusErrorMessage = null;
+        try
+        {
+            await _libraryReviewService.SubmitForReviewAsync(item.Id);
+            await RefreshReviewWorkflowStateAsync();
+        }
+        catch (Exception ex)
+        {
+            StatusErrorMessage = $"Nepodařilo se odeslat '{item.Title}' ke schválení: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private async Task OpenReviewQueueAsync() => await Shell.Current.GoToAsync(nameof(LibraryReviewQueuePage), animate: false);
 }

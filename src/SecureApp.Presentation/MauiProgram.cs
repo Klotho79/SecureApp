@@ -164,6 +164,10 @@ public static class MauiProgram
 		// Document download audit log (2026-09-30 — see IDocumentDownloadLogService's own remarks).
 		builder.Services.AddSingleton<IDocumentDownloadLogService, SecureApp.Presentation.Rendering.HttpDocumentDownloadLogService>();
 
+		// Document Library content-approval workflow (2026-10-01 — see ILibraryReviewService's own
+		// remarks). Same registration shape as ISharedLibraryService, which it's layered alongside.
+		builder.Services.AddSingleton<ILibraryReviewService, SecureApp.Presentation.Library.HttpLibraryReviewService>();
+
 		// Shared company workplace catalog (2026-09-20, Phase 5 — see IWorkplaceCatalogService's own remarks).
 		builder.Services.AddSingleton<IWorkplaceCatalogService, HttpWorkplaceCatalogService>();
 
@@ -195,6 +199,10 @@ public static class MauiProgram
 		// Shared community file library.
 		builder.Services.AddTransient<LibraryViewModel>();
 		builder.Services.AddTransient<LibraryPage>();
+
+		// Document Library content-approval review queue (2026-10-01).
+		builder.Services.AddTransient<LibraryReviewQueueViewModel>();
+		builder.Services.AddTransient<LibraryReviewQueuePage>();
 
 		// Logbook (2026-09-09) — see GroupChat's own registration comment above for the pattern this follows.
 		builder.Services.AddTransient<LogbookViewModel>();

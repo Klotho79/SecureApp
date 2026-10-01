@@ -123,10 +123,10 @@ public sealed class HttpRelayAdminService : IRelayAdminService
         return results.Select(d => new ManagedDevice(
             d.DeviceId, d.DisplayName,
             d.Role is null ? null : (SecureApp.Domain.Enums.Role)d.Role.Value,
-            d.HiddenTabs ?? [], d.LastSeenUtc)).ToList();
+            d.HiddenTabs ?? [], d.LastSeenUtc, d.DocumentReviewer)).ToList();
     }
 
-    public async Task SetDevicePolicyAsync(Uri endpoint, string adminSecret, Guid deviceId, SecureApp.Domain.Enums.Role? role, IReadOnlyList<string> hiddenTabs, CancellationToken ct = default)
+    public async Task SetDevicePolicyAsync(Uri endpoint, string adminSecret, Guid deviceId, SecureApp.Domain.Enums.Role? role, IReadOnlyList<string> hiddenTabs, bool? isDocumentReviewer = null, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
         ArgumentException.ThrowIfNullOrWhiteSpace(adminSecret);
@@ -134,7 +134,7 @@ public sealed class HttpRelayAdminService : IRelayAdminService
         var uri = new Uri(ToHttpUri(endpoint), $"admin/users/{deviceId}/policy");
         using var request = new HttpRequestMessage(HttpMethod.Post, uri)
         {
-            Content = JsonContent.Create(new { Role = role is null ? (int?)null : (int)role.Value, HiddenTabs = hiddenTabs }, options: HttpJsonOptions)
+            Content = JsonContent.Create(new { Role = role is null ? (int?)null : (int)role.Value, HiddenTabs = hiddenTabs, DocumentReviewer = isDocumentReviewer }, options: HttpJsonOptions)
         };
         request.Headers.Add("X-Admin-Secret", adminSecret);
 
@@ -142,6 +142,25 @@ public sealed class HttpRelayAdminService : IRelayAdminService
         if (response.StatusCode == HttpStatusCode.Unauthorized)
             throw new InvalidOperationException("Relay odmítl zadané admin heslo.");
         response.EnsureSuccessStatusCode();
+    }
+
+    public async Task<IReadOnlyList<LibraryDocumentReviewEntry>> SearchLibraryDocumentAuditAsync(Uri endpoint, string adminSecret, string? query, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+        ArgumentException.ThrowIfNullOrWhiteSpace(adminSecret);
+
+        var uri = new Uri(ToHttpUri(endpoint), string.IsNullOrWhiteSpace(query)
+            ? "admin/library-documents/audit"
+            : $"admin/library-documents/audit?query={Uri.EscapeDataString(query)}");
+        using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+        request.Headers.Add("X-Admin-Secret", adminSecret);
+
+        using var response = await _httpClient.SendAsync(request, ct);
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+            throw new InvalidOperationException("Relay odmítl zadané admin heslo.");
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<List<LibraryDocumentReviewEntry>>(HttpJsonOptions, ct) ?? [];
     }
 
     public async Task<IReadOnlyList<DocumentDownloadEntry>> SearchDocumentDownloadsAsync(Uri endpoint, string adminSecret, string? query, CancellationToken ct = default)
@@ -163,7 +182,7 @@ public sealed class HttpRelayAdminService : IRelayAdminService
         return await response.Content.ReadFromJsonAsync<List<DocumentDownloadEntry>>(HttpJsonOptions, ct) ?? [];
     }
 
-    private sealed record ManagedDeviceSummary(Guid DeviceId, string DisplayName, int? Role, List<string>? HiddenTabs, DateTimeOffset? LastSeenUtc);
+    private sealed record ManagedDeviceSummary(Guid DeviceId, string DisplayName, int? Role, List<string>? HiddenTabs, DateTimeOffset? LastSeenUtc, bool DocumentReviewer = false);
 
     // Mirrors WebSocketMessageTransport.ToHttpUri — the Settings UI stores/edits one ws:// address
     // for both the WebSocket connection and every HTTP admin/device call, so this needs the same

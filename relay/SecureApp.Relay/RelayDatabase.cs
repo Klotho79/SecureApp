@@ -16,6 +16,19 @@ public sealed record LibraryFileRecord(
     Guid UploadedByDeviceId,
     DateTimeOffset UploadedAtUtc);
 
+/// <summary>One reviewable Document Library entry — see <c>library_documents</c>'s schema in <see cref="RelayDatabase.Initialize"/>.</summary>
+public sealed record LibraryDocumentRecord(
+    Guid Id, string Title, string FolderPath, string Status,
+    Guid? CurrentVersionId, Guid? CurrentLibraryFileId,
+    Guid CreatedByDeviceId, Guid? SubmittedByDeviceId, DateTimeOffset? SubmittedAtUtc,
+    DateTimeOffset CreatedAtUtc, DateTimeOffset UpdatedAtUtc);
+
+/// <summary>One content revision of a <see cref="LibraryDocumentRecord"/> — see <c>library_document_versions</c>'s schema.</summary>
+public sealed record LibraryDocumentVersionRecord(Guid Id, Guid LibraryDocumentId, int VersionNumber, Guid LibraryFileId, Guid AuthorDeviceId, DateTimeOffset CreatedAtUtc, string? ChangeNote);
+
+/// <summary>One reviewer decision — see <c>library_document_reviews</c>'s schema.</summary>
+public sealed record LibraryDocumentReviewRecord(Guid Id, Guid LibraryDocumentId, Guid VersionId, Guid ReviewerDeviceId, string Decision, string? Comment, DateTimeOffset DecidedAtUtc);
+
 /// <summary>One pending/decided activation request — see <c>Contracts.cs</c>'s own remarks for the flow this replaces.</summary>
 public sealed record ActivationRequestRecord(
     Guid Id,
@@ -170,6 +183,65 @@ public sealed class RelayDatabase
                 role              INTEGER NULL,
                 hidden_tabs       TEXT NOT NULL,
                 updated_at_utc    TEXT NOT NULL
+            )
+            """);
+        // document_reviewer (2026-10-01) — a separate, orthogonal capability for the Document Library
+        // content-approval workflow, deliberately NOT folded into `role`: the user scoped review
+        // capability to documents only, and a device can be Modifier-and-Reviewer at once. Same
+        // guarded-ALTER pattern as library_files.is_listed (SQLite has no ADD COLUMN IF NOT EXISTS).
+        if (!ColumnExists(connection, "device_policy", "document_reviewer"))
+            Execute(connection, "ALTER TABLE device_policy ADD COLUMN document_reviewer INTEGER NOT NULL DEFAULT 0");
+
+        // Document Library content-approval workflow (2026-10-01) — layered ALONGSIDE library_files,
+        // never migrating it: an existing library_files row with no matching row here simply has no
+        // review history, still found the normal way via GET /library/files. Each version's actual
+        // encrypted content IS an ordinary library_files row (library_file_id below) — staging a
+        // version reuses the existing upload endpoint verbatim, same call a private chat attachment
+        // already uses (listed=false), so no new crypto/storage code exists anywhere in this feature.
+        // Status: Draft -> PendingReview -> Published | Rejected (Rejected loops back to Draft via a
+        // new version + resubmit). Approve IS publish — one step, matching TryPublishLibraryFile's own
+        // single-step shape rather than adding a separate release step nothing else here has.
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS library_documents (
+                id                        TEXT PRIMARY KEY NOT NULL,
+                title                     TEXT NOT NULL,
+                folder_path               TEXT NOT NULL,
+                status                    TEXT NOT NULL,
+                current_version_id        TEXT NULL,
+                current_library_file_id   TEXT NULL,
+                created_by_device_id      TEXT NOT NULL,
+                submitted_by_device_id    TEXT NULL,
+                submitted_at_utc          TEXT NULL,
+                created_at_utc            TEXT NOT NULL,
+                updated_at_utc            TEXT NOT NULL
+            )
+            """);
+        Execute(connection, "CREATE INDEX IF NOT EXISTS ix_library_documents_status ON library_documents(status)");
+
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS library_document_versions (
+                id                      TEXT PRIMARY KEY NOT NULL,
+                library_document_id     TEXT NOT NULL,
+                version_number          INTEGER NOT NULL,
+                library_file_id         TEXT NOT NULL,
+                author_device_id        TEXT NOT NULL,
+                created_at_utc          TEXT NOT NULL,
+                change_note             TEXT NULL
+            )
+            """);
+        Execute(connection, "CREATE INDEX IF NOT EXISTS ix_library_document_versions_doc ON library_document_versions(library_document_id)");
+
+        // Append-only — the direct audit-trail twin of document_downloads, but for approval decisions
+        // rather than downloads. Admin-only search via GET /admin/library-documents/audit.
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS library_document_reviews (
+                id                      TEXT PRIMARY KEY NOT NULL,
+                library_document_id     TEXT NOT NULL,
+                version_id              TEXT NOT NULL,
+                reviewer_device_id      TEXT NOT NULL,
+                decision                TEXT NOT NULL,
+                comment                 TEXT NULL,
+                decided_at_utc          TEXT NOT NULL
             )
             """);
 
@@ -589,6 +661,290 @@ public sealed class RelayDatabase
         return command.ExecuteNonQuery() > 0;
     }
 
+    // --- Document Library content-approval workflow (2026-10-01) — see library_documents/
+    // library_document_versions/library_document_reviews's own schema remarks above. "The latest
+    // version" (whatever is currently Draft/PendingReview) is always the version row with the highest
+    // version_number for a document — there is deliberately no separate "pending version" column,
+    // since only one version is ever in flight at a time (ReviewAsync only acts once a document is
+    // PendingReview, and SubmitLibraryDocumentForReview requires Draft first).
+
+    public LibraryDocumentRecord CreateLibraryDocument(string title, string folderPath, Guid libraryFileId, Guid createdByDeviceId, string? changeNote)
+    {
+        using var connection = OpenConnection();
+        using var transaction = connection.BeginTransaction();
+        var id = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+
+        Execute(connection, transaction,
+            """
+            INSERT INTO library_documents (id, title, folder_path, status, current_version_id, current_library_file_id, created_by_device_id, submitted_by_device_id, submitted_at_utc, created_at_utc, updated_at_utc)
+            VALUES (@id, @title, @folder, 'Draft', NULL, NULL, @creator, NULL, NULL, @now, @now)
+            """,
+            ("@id", id.ToString()), ("@title", title), ("@folder", folderPath), ("@creator", createdByDeviceId.ToString()), ("@now", Format(now)));
+
+        InsertNextVersion(connection, transaction, id, libraryFileId, createdByDeviceId, changeNote, now);
+
+        transaction.Commit();
+        return new LibraryDocumentRecord(id, title, folderPath, "Draft", null, null, createdByDeviceId, null, null, now, now);
+    }
+
+    /// <summary>Stages a new version (e.g. revising a Rejected document) and resets status to Draft. Returns null if the document doesn't exist.</summary>
+    public LibraryDocumentRecord? AddLibraryDocumentVersion(Guid documentId, Guid libraryFileId, Guid authorDeviceId, string? changeNote)
+    {
+        using var connection = OpenConnection();
+        using var transaction = connection.BeginTransaction();
+        if (GetLibraryDocument(connection, transaction, documentId) is null)
+            return null;
+
+        var now = DateTimeOffset.UtcNow;
+        InsertNextVersion(connection, transaction, documentId, libraryFileId, authorDeviceId, changeNote, now);
+        Execute(connection, transaction,
+            "UPDATE library_documents SET status = 'Draft', submitted_by_device_id = NULL, submitted_at_utc = NULL, updated_at_utc = @now WHERE id = @id",
+            ("@id", documentId.ToString()), ("@now", Format(now)));
+
+        var result = GetLibraryDocument(connection, transaction, documentId);
+        transaction.Commit();
+        return result;
+    }
+
+    private static void InsertNextVersion(SqliteConnection connection, SqliteTransaction transaction, Guid documentId, Guid libraryFileId, Guid authorDeviceId, string? changeNote, DateTimeOffset now)
+    {
+        using var maxCommand = connection.CreateCommand();
+        maxCommand.Transaction = transaction;
+        maxCommand.CommandText = "SELECT COALESCE(MAX(version_number), 0) FROM library_document_versions WHERE library_document_id = @id";
+        maxCommand.Parameters.AddWithValue("@id", documentId.ToString());
+        var nextVersion = Convert.ToInt32(maxCommand.ExecuteScalar()) + 1;
+
+        Execute(connection, transaction,
+            """
+            INSERT INTO library_document_versions (id, library_document_id, version_number, library_file_id, author_device_id, created_at_utc, change_note)
+            VALUES (@id, @docId, @versionNumber, @fileId, @author, @now, @note)
+            """,
+            ("@id", Guid.NewGuid().ToString()), ("@docId", documentId.ToString()), ("@versionNumber", nextVersion),
+            ("@fileId", libraryFileId.ToString()), ("@author", authorDeviceId.ToString()), ("@now", Format(now)), ("@note", (object?)changeNote ?? DBNull.Value));
+    }
+
+    /// <summary>Moves the document's current (Draft) version into the reviewer queue. Returns null if the document doesn't exist or isn't currently Draft.</summary>
+    public LibraryDocumentRecord? SubmitLibraryDocumentForReview(Guid documentId, Guid submittedByDeviceId)
+    {
+        using var connection = OpenConnection();
+        using var transaction = connection.BeginTransaction();
+        var existing = GetLibraryDocument(connection, transaction, documentId);
+        if (existing is null || existing.Status != "Draft")
+            return null;
+
+        var now = DateTimeOffset.UtcNow;
+        Execute(connection, transaction,
+            "UPDATE library_documents SET status = 'PendingReview', submitted_by_device_id = @submitter, submitted_at_utc = @now, updated_at_utc = @now WHERE id = @id",
+            ("@id", documentId.ToString()), ("@submitter", submittedByDeviceId.ToString()), ("@now", Format(now)));
+
+        var result = GetLibraryDocument(connection, transaction, documentId);
+        transaction.Commit();
+        return result;
+    }
+
+    /// <summary>
+    /// Approves (publishes) the document's current pending version: lists the new version's
+    /// library_files row, unlists the PREVIOUS current one (if any — a first-ever version has none),
+    /// and advances current_version_id/current_library_file_id. Records the decision in
+    /// library_document_reviews. Returns null if the document doesn't exist or isn't PendingReview.
+    /// </summary>
+    public LibraryDocumentRecord? ApproveLibraryDocumentVersion(Guid documentId, Guid reviewerDeviceId, string? comment)
+    {
+        using var connection = OpenConnection();
+        using var transaction = connection.BeginTransaction();
+        var existing = GetLibraryDocument(connection, transaction, documentId);
+        if (existing is null || existing.Status != "PendingReview")
+            return null;
+
+        var latestVersion = GetLatestVersion(connection, transaction, documentId)
+            ?? throw new InvalidOperationException($"library_documents row {documentId} has no versions — data integrity bug.");
+
+        var now = DateTimeOffset.UtcNow;
+        if (existing.CurrentLibraryFileId is { } previousFileId)
+            Execute(connection, transaction, "UPDATE library_files SET is_listed = 0 WHERE id = @id", ("@id", previousFileId.ToString()));
+        Execute(connection, transaction, "UPDATE library_files SET is_listed = 1 WHERE id = @id", ("@id", latestVersion.LibraryFileId.ToString()));
+
+        Execute(connection, transaction,
+            "UPDATE library_documents SET status = 'Published', current_version_id = @versionId, current_library_file_id = @fileId, updated_at_utc = @now WHERE id = @id",
+            ("@id", documentId.ToString()), ("@versionId", latestVersion.Id.ToString()), ("@fileId", latestVersion.LibraryFileId.ToString()), ("@now", Format(now)));
+
+        InsertReview(connection, transaction, documentId, latestVersion.Id, reviewerDeviceId, "Approved", comment, now);
+
+        var result = GetLibraryDocument(connection, transaction, documentId);
+        transaction.Commit();
+        return result;
+    }
+
+    /// <summary>Rejects the document's current pending version (not terminal — the author stages a new version and resubmits). Returns null if the document doesn't exist or isn't PendingReview.</summary>
+    public LibraryDocumentRecord? RejectLibraryDocumentVersion(Guid documentId, Guid reviewerDeviceId, string comment)
+    {
+        using var connection = OpenConnection();
+        using var transaction = connection.BeginTransaction();
+        var existing = GetLibraryDocument(connection, transaction, documentId);
+        if (existing is null || existing.Status != "PendingReview")
+            return null;
+
+        var latestVersion = GetLatestVersion(connection, transaction, documentId)
+            ?? throw new InvalidOperationException($"library_documents row {documentId} has no versions — data integrity bug.");
+
+        var now = DateTimeOffset.UtcNow;
+        Execute(connection, transaction,
+            "UPDATE library_documents SET status = 'Rejected', updated_at_utc = @now WHERE id = @id",
+            ("@id", documentId.ToString()), ("@now", Format(now)));
+
+        InsertReview(connection, transaction, documentId, latestVersion.Id, reviewerDeviceId, "Rejected", comment, now);
+
+        var result = GetLibraryDocument(connection, transaction, documentId);
+        transaction.Commit();
+        return result;
+    }
+
+    private static void InsertReview(SqliteConnection connection, SqliteTransaction transaction, Guid documentId, Guid versionId, Guid reviewerDeviceId, string decision, string? comment, DateTimeOffset now)
+        => Execute(connection, transaction,
+            "INSERT INTO library_document_reviews (id, library_document_id, version_id, reviewer_device_id, decision, comment, decided_at_utc) VALUES (@id, @docId, @versionId, @reviewer, @decision, @comment, @now)",
+            ("@id", Guid.NewGuid().ToString()), ("@docId", documentId.ToString()), ("@versionId", versionId.ToString()),
+            ("@reviewer", reviewerDeviceId.ToString()), ("@decision", decision), ("@comment", (object?)comment ?? DBNull.Value), ("@now", Format(now)));
+
+    public LibraryDocumentRecord? GetLibraryDocument(Guid id)
+    {
+        using var connection = OpenConnection();
+        return GetLibraryDocument(connection, null, id);
+    }
+
+    private static LibraryDocumentRecord? GetLibraryDocument(SqliteConnection connection, SqliteTransaction? transaction, Guid id)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "SELECT id, title, folder_path, status, current_version_id, current_library_file_id, created_by_device_id, submitted_by_device_id, submitted_at_utc, created_at_utc, updated_at_utc FROM library_documents WHERE id = @id";
+        command.Parameters.AddWithValue("@id", id.ToString());
+
+        using var reader = command.ExecuteReader();
+        return reader.Read() ? ReadLibraryDocument(reader) : null;
+    }
+
+    private static LibraryDocumentVersionRecord? GetLatestVersion(SqliteConnection connection, SqliteTransaction transaction, Guid documentId)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "SELECT id, library_document_id, version_number, library_file_id, author_device_id, created_at_utc, change_note FROM library_document_versions WHERE library_document_id = @id ORDER BY version_number DESC LIMIT 1";
+        command.Parameters.AddWithValue("@id", documentId.ToString());
+
+        using var reader = command.ExecuteReader();
+        return reader.Read() ? ReadVersion(reader) : null;
+    }
+
+    /// <summary>Every document this device created or submitted — the "Moje koncepty" list, newest first.</summary>
+    public IReadOnlyList<LibraryDocumentRecord> SearchLibraryDocumentsByOwner(Guid deviceId)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT id, title, folder_path, status, current_version_id, current_library_file_id, created_by_device_id, submitted_by_device_id, submitted_at_utc, created_at_utc, updated_at_utc
+            FROM library_documents WHERE created_by_device_id = @id OR submitted_by_device_id = @id ORDER BY updated_at_utc DESC
+            """;
+        command.Parameters.AddWithValue("@id", deviceId.ToString());
+
+        var results = new List<LibraryDocumentRecord>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read()) results.Add(ReadLibraryDocument(reader));
+        return results;
+    }
+
+    /// <summary>Every document currently awaiting review, oldest-submitted first (fairness: first in, first reviewed).</summary>
+    public IReadOnlyList<LibraryDocumentRecord> SearchPendingLibraryDocuments()
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT id, title, folder_path, status, current_version_id, current_library_file_id, created_by_device_id, submitted_by_device_id, submitted_at_utc, created_at_utc, updated_at_utc
+            FROM library_documents WHERE status = 'PendingReview' ORDER BY submitted_at_utc ASC
+            """;
+
+        var results = new List<LibraryDocumentRecord>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read()) results.Add(ReadLibraryDocument(reader));
+        return results;
+    }
+
+    public IReadOnlyList<LibraryDocumentVersionRecord> GetLibraryDocumentVersions(Guid documentId)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id, library_document_id, version_number, library_file_id, author_device_id, created_at_utc, change_note FROM library_document_versions WHERE library_document_id = @id ORDER BY version_number ASC";
+        command.Parameters.AddWithValue("@id", documentId.ToString());
+
+        var results = new List<LibraryDocumentVersionRecord>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read()) results.Add(ReadVersion(reader));
+        return results;
+    }
+
+    public IReadOnlyList<LibraryDocumentReviewRecord> GetLibraryDocumentReviews(Guid documentId)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id, library_document_id, version_id, reviewer_device_id, decision, comment, decided_at_utc FROM library_document_reviews WHERE library_document_id = @id ORDER BY decided_at_utc ASC";
+        command.Parameters.AddWithValue("@id", documentId.ToString());
+
+        var results = new List<LibraryDocumentReviewRecord>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read()) results.Add(ReadReview(reader));
+        return results;
+    }
+
+    /// <summary>Admin-only audit search (2026-10-01) — <paramref name="query"/> matches the OWNING document's title as a case-insensitive substring; null/empty returns every logged decision, newest first. The approval-workflow twin of <see cref="SearchDocumentDownloads"/>.</summary>
+    public IReadOnlyList<LibraryDocumentReviewRecord> SearchLibraryDocumentReviews(string? query)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = string.IsNullOrWhiteSpace(query)
+            ? "SELECT r.id, r.library_document_id, r.version_id, r.reviewer_device_id, r.decision, r.comment, r.decided_at_utc FROM library_document_reviews r ORDER BY r.decided_at_utc DESC"
+            : """
+              SELECT r.id, r.library_document_id, r.version_id, r.reviewer_device_id, r.decision, r.comment, r.decided_at_utc
+              FROM library_document_reviews r JOIN library_documents d ON d.id = r.library_document_id
+              WHERE d.title LIKE @query ORDER BY r.decided_at_utc DESC
+              """;
+        if (!string.IsNullOrWhiteSpace(query))
+            command.Parameters.AddWithValue("@query", $"%{query}%");
+
+        var results = new List<LibraryDocumentReviewRecord>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read()) results.Add(ReadReview(reader));
+        return results;
+    }
+
+    private static LibraryDocumentRecord ReadLibraryDocument(SqliteDataReader reader) => new(
+        Guid.Parse((string)reader["id"]),
+        (string)reader["title"],
+        (string)reader["folder_path"],
+        (string)reader["status"],
+        reader["current_version_id"] is DBNull ? null : Guid.Parse((string)reader["current_version_id"]),
+        reader["current_library_file_id"] is DBNull ? null : Guid.Parse((string)reader["current_library_file_id"]),
+        Guid.Parse((string)reader["created_by_device_id"]),
+        reader["submitted_by_device_id"] is DBNull ? null : Guid.Parse((string)reader["submitted_by_device_id"]),
+        reader["submitted_at_utc"] is DBNull ? null : DateTimeOffset.Parse((string)reader["submitted_at_utc"], CultureInfo.InvariantCulture),
+        DateTimeOffset.Parse((string)reader["created_at_utc"], CultureInfo.InvariantCulture),
+        DateTimeOffset.Parse((string)reader["updated_at_utc"], CultureInfo.InvariantCulture));
+
+    private static LibraryDocumentVersionRecord ReadVersion(SqliteDataReader reader) => new(
+        Guid.Parse((string)reader["id"]),
+        Guid.Parse((string)reader["library_document_id"]),
+        Convert.ToInt32(reader["version_number"]),
+        Guid.Parse((string)reader["library_file_id"]),
+        Guid.Parse((string)reader["author_device_id"]),
+        DateTimeOffset.Parse((string)reader["created_at_utc"], CultureInfo.InvariantCulture),
+        reader["change_note"] is DBNull ? null : (string)reader["change_note"]);
+
+    private static LibraryDocumentReviewRecord ReadReview(SqliteDataReader reader) => new(
+        Guid.Parse((string)reader["id"]),
+        Guid.Parse((string)reader["library_document_id"]),
+        Guid.Parse((string)reader["version_id"]),
+        Guid.Parse((string)reader["reviewer_device_id"]),
+        (string)reader["decision"],
+        reader["comment"] is DBNull ? null : (string)reader["comment"],
+        DateTimeOffset.Parse((string)reader["decided_at_utc"], CultureInfo.InvariantCulture));
+
     public Guid CreateActivationRequest(string displayName, string email, string keyFingerprint)
     {
         var id = Guid.NewGuid();
@@ -691,11 +1047,11 @@ public sealed class RelayDatabase
     // --- Admin-assigned device policy (2026-09-24) — see the device_policy table's own remarks.
 
     /// <summary>This device's admin-assigned policy, or null when no admin has managed it yet (in which case the client keeps deciding locally, rather than being silently demoted).</summary>
-    public (int? Role, IReadOnlyList<string> HiddenTabs, DateTimeOffset UpdatedAtUtc)? GetDevicePolicy(Guid deviceId)
+    public (int? Role, IReadOnlyList<string> HiddenTabs, bool DocumentReviewer, DateTimeOffset UpdatedAtUtc)? GetDevicePolicy(Guid deviceId)
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT role, hidden_tabs, updated_at_utc FROM device_policy WHERE device_id = @id";
+        command.CommandText = "SELECT role, hidden_tabs, document_reviewer, updated_at_utc FROM device_policy WHERE device_id = @id";
         command.Parameters.AddWithValue("@id", deviceId.ToString());
 
         using var reader = command.ExecuteReader();
@@ -703,26 +1059,28 @@ public sealed class RelayDatabase
             return null;
 
         var role = reader["role"] is DBNull ? (int?)null : Convert.ToInt32(reader["role"]);
-        return (role, DeserializeTabs((string)reader["hidden_tabs"]), DateTimeOffset.Parse((string)reader["updated_at_utc"]));
+        return (role, DeserializeTabs((string)reader["hidden_tabs"]), Convert.ToInt32(reader["document_reviewer"]) != 0, DateTimeOffset.Parse((string)reader["updated_at_utc"]));
     }
 
-    /// <summary>Creates or replaces one device's policy. A null <paramref name="role"/> means "leave the role to the device itself" while still applying any tab restrictions.</summary>
-    public void SetDevicePolicy(Guid deviceId, int? role, IReadOnlyList<string> hiddenTabs)
+    /// <summary>Creates or replaces one device's policy. A null <paramref name="role"/> means "leave the role to the device itself" while still applying any tab restrictions. A null <paramref name="documentReviewer"/> leaves that capability unchanged (defaults to false for a brand-new row).</summary>
+    public void SetDevicePolicy(Guid deviceId, int? role, IReadOnlyList<string> hiddenTabs, bool? documentReviewer = null)
     {
         using var connection = OpenConnection();
+        var existingReviewer = documentReviewer ?? GetDevicePolicy(deviceId)?.DocumentReviewer ?? false;
         Execute(connection,
             """
-            INSERT INTO device_policy (device_id, role, hidden_tabs, updated_at_utc) VALUES (@id, @role, @tabs, @now)
-            ON CONFLICT(device_id) DO UPDATE SET role = @role, hidden_tabs = @tabs, updated_at_utc = @now
+            INSERT INTO device_policy (device_id, role, hidden_tabs, document_reviewer, updated_at_utc) VALUES (@id, @role, @tabs, @reviewer, @now)
+            ON CONFLICT(device_id) DO UPDATE SET role = @role, hidden_tabs = @tabs, document_reviewer = @reviewer, updated_at_utc = @now
             """,
             ("@id", deviceId.ToString()),
             ("@role", role is null ? DBNull.Value : role.Value),
             ("@tabs", System.Text.Json.JsonSerializer.Serialize(hiddenTabs)),
+            ("@reviewer", existingReviewer ? 1 : 0),
             ("@now", Format(DateTimeOffset.UtcNow)));
     }
 
     /// <summary>Every registered device with whatever policy it currently has, for the admin's own management screen. Names come from the live directory (a device that has never published shows its registration-time name instead).</summary>
-    public IReadOnlyList<(Guid DeviceId, string DisplayName, int? Role, IReadOnlyList<string> HiddenTabs, DateTimeOffset? LastSeenUtc)> GetManagedDevices()
+    public IReadOnlyList<(Guid DeviceId, string DisplayName, int? Role, IReadOnlyList<string> HiddenTabs, DateTimeOffset? LastSeenUtc, bool DocumentReviewer)> GetManagedDevices()
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
@@ -731,6 +1089,7 @@ public sealed class RelayDatabase
                    COALESCE(e.display_name, d.display_name) AS display_name,
                    p.role              AS role,
                    p.hidden_tabs       AS hidden_tabs,
+                   p.document_reviewer AS document_reviewer,
                    e.updated_at_utc    AS last_seen
             FROM devices d
             LEFT JOIN directory_entries e ON e.device_id = d.id
@@ -738,7 +1097,7 @@ public sealed class RelayDatabase
             ORDER BY display_name COLLATE NOCASE
             """;
 
-        var results = new List<(Guid, string, int?, IReadOnlyList<string>, DateTimeOffset?)>();
+        var results = new List<(Guid, string, int?, IReadOnlyList<string>, DateTimeOffset?, bool)>();
         using var reader = command.ExecuteReader();
         while (reader.Read())
         {
@@ -747,7 +1106,8 @@ public sealed class RelayDatabase
                 (string)reader["display_name"],
                 reader["role"] is DBNull ? null : Convert.ToInt32(reader["role"]),
                 reader["hidden_tabs"] is DBNull ? Array.Empty<string>() : DeserializeTabs((string)reader["hidden_tabs"]),
-                reader["last_seen"] is DBNull ? null : DateTimeOffset.Parse((string)reader["last_seen"])));
+                reader["last_seen"] is DBNull ? null : DateTimeOffset.Parse((string)reader["last_seen"]),
+                reader["document_reviewer"] is not DBNull && Convert.ToInt32(reader["document_reviewer"]) != 0));
         }
 
         return results;
@@ -1213,6 +1573,17 @@ public sealed class RelayDatabase
     private static void Execute(SqliteConnection connection, string sql, params (string Name, object Value)[] parameters)
     {
         using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        foreach (var (name, value) in parameters)
+            command.Parameters.AddWithValue(name, value);
+        command.ExecuteNonQuery();
+    }
+
+    /// <summary>Same as the connection-only overload, but enlisted in an in-progress transaction — used by the Document Library review workflow's multi-statement operations (e.g. approving a version touches both library_files and library_documents atomically).</summary>
+    private static void Execute(SqliteConnection connection, SqliteTransaction transaction, string sql, params (string Name, object Value)[] parameters)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = sql;
         foreach (var (name, value) in parameters)
             command.Parameters.AddWithValue(name, value);

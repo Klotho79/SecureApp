@@ -20,6 +20,8 @@ public sealed partial class LibraryViewModel : ObservableObject
     private readonly ISharedLibraryService _libraryService;
     private readonly ICurrentUserService _currentUserService;
     private readonly IDiagnosticsReporter _diagnosticsReporter;
+    private readonly ILibraryReviewService _libraryReviewService;
+    private readonly IDevicePolicyService _devicePolicyService;
 
     [ObservableProperty]
     public partial string SearchQuery { get; set; }
@@ -85,11 +87,34 @@ public sealed partial class LibraryViewModel : ObservableObject
     [ObservableProperty]
     public partial bool HasStatusError { get; set; }
 
-    public LibraryViewModel(ISharedLibraryService libraryService, ICurrentUserService currentUserService, IDiagnosticsReporter diagnosticsReporter)
+    /// <summary>
+    /// Document Library content-approval workflow (2026-10-01). "Moje koncepty" — documents this
+    /// device created or submitted, across any status (Draft/PendingReview/Published/Rejected).
+    /// Separate from <see cref="Results"/> (the ordinary published-only browse list), since a Draft or
+    /// PendingReview document is deliberately invisible there (its library_files row is unlisted).
+    /// </summary>
+    [ObservableProperty]
+    public partial ObservableCollection<LibraryDocumentDraftItem> MyDocuments { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasMyDocuments { get; set; }
+
+    /// <summary>Whether THIS device may review other members' submissions — gates the "📋 Ke schválení" entry point. Read fresh on every page appearance, not cached, since an admin can grant/revoke it at any time.</summary>
+    [ObservableProperty]
+    public partial bool IsDocumentReviewer { get; set; }
+
+    public LibraryViewModel(
+        ISharedLibraryService libraryService,
+        ICurrentUserService currentUserService,
+        IDiagnosticsReporter diagnosticsReporter,
+        ILibraryReviewService libraryReviewService,
+        IDevicePolicyService devicePolicyService)
     {
         _libraryService = libraryService ?? throw new ArgumentNullException(nameof(libraryService));
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         _diagnosticsReporter = diagnosticsReporter ?? throw new ArgumentNullException(nameof(diagnosticsReporter));
+        _libraryReviewService = libraryReviewService ?? throw new ArgumentNullException(nameof(libraryReviewService));
+        _devicePolicyService = devicePolicyService ?? throw new ArgumentNullException(nameof(devicePolicyService));
 
         SearchQuery = string.Empty;
         FolderFilter = string.Empty;
@@ -100,6 +125,7 @@ public sealed partial class LibraryViewModel : ObservableObject
         Categories = [];
         SelectedCategory = "Vše";
         CanModifyContent = true;
+        MyDocuments = [];
         RecomputeCanUpload();
     }
 
@@ -123,15 +149,23 @@ public sealed partial class LibraryViewModel : ObservableObject
         CanModifyContent = RoleAccessPolicy.IsAllowed(_currentUserService.Current.Role, RbacAction.UploadLibraryFile);
         try
         {
+            // Search-latency telemetry (2026-10-01, the AIM-spec-derived requirement adapted to this
+            // app's existing AppLog metrics pipeline rather than a new logging system — see AppLog's
+            // own remarks). Target per the spec was <30ms for a LOCAL indexed query; this one is a
+            // network round trip to the relay, so the number is expected to run much higher — logged
+            // for visibility/trending, not held to that local-query target.
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             var results = await _libraryService.SearchAsync(
                 string.IsNullOrWhiteSpace(SearchQuery) ? null : SearchQuery,
                 string.IsNullOrWhiteSpace(FolderFilter) ? null : FolderFilter,
                 string.IsNullOrWhiteSpace(TagFilter) ? null : TagFilter);
+            Infrastructure.AppLog.Metric("search_latency.library", sw.Elapsed.TotalMilliseconds, "ms", ("resultCount", results.Count));
 
             Results = new ObservableCollection<LibraryFileItem>(results.Select(ToItem));
             IsEmpty = Results.Count == 0;
 
             await RefreshCategoriesAsync();
+            await RefreshReviewWorkflowStateAsync();
         }
         catch (Exception ex)
         {
@@ -142,6 +176,44 @@ public sealed partial class LibraryViewModel : ObservableObject
             IsLoading = false;
         }
     }
+
+    /// <summary>
+    /// Best-effort by design (2026-10-01) — a failure here must never block the ordinary library
+    /// browse/search above from working; "Moje koncepty" and the reviewer entry point simply stay
+    /// empty/hidden until the next successful refresh, same posture as the rest of this screen's
+    /// network-dependent extras.
+    /// </summary>
+    private async Task RefreshReviewWorkflowStateAsync()
+    {
+        try
+        {
+            var policy = await _devicePolicyService.GetMyPolicyAsync();
+            IsDocumentReviewer = policy.IsDocumentReviewer;
+
+            var mine = await _libraryReviewService.GetMyDocumentsAsync();
+            MyDocuments = new ObservableCollection<LibraryDocumentDraftItem>(mine.Select(ToDraftItem));
+            HasMyDocuments = MyDocuments.Count > 0;
+        }
+        catch
+        {
+            // Best-effort — see this method's own remarks.
+        }
+    }
+
+    private static LibraryDocumentDraftItem ToDraftItem(LibraryDocumentSummary summary) => new(
+        summary.Id,
+        summary.Title,
+        StatusLabel(summary.Status),
+        summary.Status is LibraryDocumentStatus.Draft or LibraryDocumentStatus.Rejected);
+
+    private static string StatusLabel(LibraryDocumentStatus status) => status switch
+    {
+        LibraryDocumentStatus.Draft => "Koncept",
+        LibraryDocumentStatus.PendingReview => "Čeká na schválení",
+        LibraryDocumentStatus.Published => "Publikováno",
+        LibraryDocumentStatus.Rejected => "Zamítnuto",
+        _ => status.ToString()
+    };
 
     /// <summary>
     /// A starting structure so the chip row isn't empty before anyone has uploaded anything — the
@@ -237,3 +309,6 @@ public sealed record LibraryFileItem(Guid Id, string FileName, string? FolderPat
 
 /// <summary>Wraps a plain tag string only so it has a stable reference type for BindableLayout's ItemsSource — a bare List&lt;string&gt; binds fine too, but this keeps the DataTemplate's x:DataType explicit rather than implicitly "x:String".</summary>
 public sealed record LibraryTagItem(string Label);
+
+/// <summary>One row in "Moje koncepty" (2026-10-01) — <see cref="CanSubmit"/> gates the "Odeslat ke schválení" button, true only for Draft/Rejected (a PendingReview or already-Published document has nothing to (re)submit).</summary>
+public sealed record LibraryDocumentDraftItem(Guid Id, string Title, string StatusText, bool CanSubmit);

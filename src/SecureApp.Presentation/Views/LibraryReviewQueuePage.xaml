@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="SecureApp.Presentation.Views.LibraryReviewQueuePage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
+    x:DataType="vm:LibraryReviewQueueViewModel"
+    Title="Ke schválení">
+
+    <RefreshView IsRefreshing="{Binding IsLoading}" Command="{Binding LoadCommand}">
+        <ScrollView>
+            <VerticalStackLayout Padding="16" Spacing="12">
+
+                <Label
+                    Text="{Binding StatusErrorMessage}"
+                    IsVisible="{Binding HasStatusError}"
+                    TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}"
+                    LineBreakMode="WordWrap" />
+
+                <Label
+                    Text="Žádné dokumenty nečekají na schválení."
+                    IsVisible="{Binding IsEmpty}"
+                    Margin="0,32"
+                    HorizontalOptions="Center"
+                    HorizontalTextAlignment="Center"
+                    TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
+
+                <VerticalStackLayout BindableLayout.ItemsSource="{Binding PendingItems}" Spacing="10">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ReviewQueueItem">
+                            <Border Style="{StaticResource CardBorder}" Margin="0">
+                                <VerticalStackLayout Spacing="8">
+                                    <Label Text="{Binding Title}" FontSize="12" FontAttributes="Bold" LineBreakMode="TailTruncation" />
+                                    <Label Text="{Binding FolderPath}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
+                                    <Label Text="{Binding SubmittedAtText}" FontSize="9" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
+
+                                    <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8">
+                                        <Button Grid.Column="0" Text="👁 Otevřít" Style="{StaticResource SecondaryButton}"
+                                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibraryReviewQueueViewModel}}, Path=OpenItemCommand}"
+                                                CommandParameter="{Binding .}" />
+                                        <Button Grid.Column="1" Text="✓ Schválit" Style="{StaticResource SecondaryButton}"
+                                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibraryReviewQueueViewModel}}, Path=ApproveCommand}"
+                                                CommandParameter="{Binding .}" />
+                                        <Button Grid.Column="2" Text="✗ Zamítnout" Style="{StaticResource SecondaryButton}"
+                                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibraryReviewQueueViewModel}}, Path=RejectCommand}"
+                                                CommandParameter="{Binding .}" />
+                                    </Grid>
+                                </VerticalStackLayout>
+                            </Border>
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </VerticalStackLayout>
+
+            </VerticalStackLayout>
+        </ScrollView>
+    </RefreshView>
+</ContentPage>
