@@ -500,7 +500,7 @@ app.MapGet("/library-documents/pending", (HttpRequest request, RelayDatabase db)
 
     var policy = db.GetDevicePolicy(deviceId);
     if (policy is not { } p || (!p.DocumentReviewer && p.Role != 0))
-        return Results.Forbid();
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
 
     return Results.Ok(db.SearchPendingLibraryDocuments().Select(ToLibraryDocumentDto).ToList());
 });
@@ -533,7 +533,7 @@ app.MapPost("/library-documents/{id:guid}/review", (Guid id, HttpRequest request
     var isAdmin = policy?.Role == 0;
     var submitterId = doc.SubmittedByDeviceId ?? doc.CreatedByDeviceId;
     if (!LibraryReviewPolicy.CanReview(isReviewer, isAdmin, reviewerDeviceId.ToString(), submitterId.ToString()))
-        return Results.Forbid();
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
 
     var approve = string.Equals(body.Decision, "Approved", StringComparison.OrdinalIgnoreCase);
     var reject = string.Equals(body.Decision, "Rejected", StringComparison.OrdinalIgnoreCase);
@@ -638,7 +638,7 @@ app.MapPost("/board", (HttpRequest request, CreateBoardPostRequest body, RelayDa
 
     var role = db.GetDevicePolicy(deviceId)?.Role;
     if (role is not (0 or 1)) // Admin or Modifier only
-        return Results.Forbid();
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
     if (string.IsNullOrWhiteSpace(body.ContentBlob))
         return Results.BadRequest("Empty post.");
 
