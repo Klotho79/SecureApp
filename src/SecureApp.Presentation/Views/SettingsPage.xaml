@@ -465,6 +465,7 @@
                                         <VerticalStackLayout Spacing="4">
                                             <Label Text="{Binding DisplayName}" FontAttributes="Bold" FontSize="11.5" />
                                             <Label Text="{Binding LastSeenText}" FontSize="9" TextColor="Gray" />
+                                            <Label Text="{Binding AppVersionText}" FontSize="9" TextColor="Gray" />
                                             <Label Text="Role" FontSize="9" TextColor="Gray" Margin="0,4,0,0" />
                                             <Picker ItemsSource="{Binding RoleChoices}" SelectedIndex="{Binding SelectedRoleIndex}" />
                                             <Grid ColumnDefinitions="*,Auto"><Label Grid.Column="0" Text="Chaty" VerticalOptions="Center" /><Switch Grid.Column="1" IsToggled="{Binding ShowChaty}" /></Grid>

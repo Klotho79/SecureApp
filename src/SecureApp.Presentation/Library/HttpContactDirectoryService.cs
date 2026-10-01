@@ -53,10 +53,15 @@ public sealed class HttpContactDirectoryService : IContactDirectoryService
         var endpoint = await GetHttpEndpointAsync(ct);
         var uri = new Uri(endpoint, "directory/publish");
 
+        // AppVersion (2026-10-01) — "1.29 (32)" display+build, so the admin's member screen can spot
+        // an outdated device without having to ask ("jakou verzi appky mas?") every time something
+        // like the shared-library-key auto-sync behaves differently on an old build.
+        var appVersion = $"{Microsoft.Maui.ApplicationModel.AppInfo.Current.VersionString} ({Microsoft.Maui.ApplicationModel.AppInfo.Current.BuildString})";
+
         using var request = new HttpRequestMessage(HttpMethod.Post, uri)
         {
             Content = JsonContent.Create(
-                new { DisplayName = _currentUserService.Current.DisplayName, PublicKeyBase64 = Convert.ToBase64String(publicKey) },
+                new { DisplayName = _currentUserService.Current.DisplayName, PublicKeyBase64 = Convert.ToBase64String(publicKey), AppVersion = appVersion },
                 options: HttpJsonOptions)
         };
         await AddDeviceAuthAsync(request, ct);

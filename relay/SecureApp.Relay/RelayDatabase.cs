@@ -192,6 +192,15 @@ public sealed class RelayDatabase
         if (!ColumnExists(connection, "device_policy", "document_reviewer"))
             Execute(connection, "ALTER TABLE device_policy ADD COLUMN document_reviewer INTEGER NOT NULL DEFAULT 0");
 
+        // app_version (2026-10-01) — reported by the client on every /directory/publish call (already
+        // fired on nearly every app launch, see HttpContactDirectoryService.PublishSelfAsync's own
+        // remarks), so the admin's member screen can see at a glance who is on an outdated build
+        // without having to ask each member to read it off their own Settings screen. Nullable: an
+        // older client that predates this field simply never sends it, same tolerance as every other
+        // guarded-ALTER column in this file.
+        if (!ColumnExists(connection, "directory_entries", "app_version"))
+            Execute(connection, "ALTER TABLE directory_entries ADD COLUMN app_version TEXT NULL");
+
         // Document Library content-approval workflow (2026-10-01) — layered ALONGSIDE library_files,
         // never migrating it: an existing library_files row with no matching row here simply has no
         // review history, still found the normal way via GET /library/files. Each version's actual
@@ -1033,15 +1042,15 @@ public sealed class RelayDatabase
         DateTimeOffset.Parse((string)reader["created_at_utc"], CultureInfo.InvariantCulture),
         reader["assigned_device_id"] is DBNull ? null : Guid.Parse((string)reader["assigned_device_id"]));
 
-    public void UpsertDirectoryEntry(Guid deviceId, string displayName, byte[] publicKey)
+    public void UpsertDirectoryEntry(Guid deviceId, string displayName, byte[] publicKey, string? appVersion)
     {
         using var connection = OpenConnection();
         Execute(connection,
             """
-            INSERT INTO directory_entries (device_id, display_name, public_key, updated_at_utc) VALUES (@id, @name, @key, @now)
-            ON CONFLICT(device_id) DO UPDATE SET display_name = @name, public_key = @key, updated_at_utc = @now
+            INSERT INTO directory_entries (device_id, display_name, public_key, updated_at_utc, app_version) VALUES (@id, @name, @key, @now, @version)
+            ON CONFLICT(device_id) DO UPDATE SET display_name = @name, public_key = @key, updated_at_utc = @now, app_version = @version
             """,
-            ("@id", deviceId.ToString()), ("@name", displayName), ("@key", publicKey), ("@now", Format(DateTimeOffset.UtcNow)));
+            ("@id", deviceId.ToString()), ("@name", displayName), ("@key", publicKey), ("@now", Format(DateTimeOffset.UtcNow)), ("@version", (object?)appVersion ?? DBNull.Value));
     }
 
     // --- Admin-assigned device policy (2026-09-24) — see the device_policy table's own remarks.
@@ -1080,7 +1089,7 @@ public sealed class RelayDatabase
     }
 
     /// <summary>Every registered device with whatever policy it currently has, for the admin's own management screen. Names come from the live directory (a device that has never published shows its registration-time name instead).</summary>
-    public IReadOnlyList<(Guid DeviceId, string DisplayName, int? Role, IReadOnlyList<string> HiddenTabs, DateTimeOffset? LastSeenUtc, bool DocumentReviewer)> GetManagedDevices()
+    public IReadOnlyList<(Guid DeviceId, string DisplayName, int? Role, IReadOnlyList<string> HiddenTabs, DateTimeOffset? LastSeenUtc, bool DocumentReviewer, string? AppVersion)> GetManagedDevices()
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
@@ -1090,14 +1099,15 @@ public sealed class RelayDatabase
                    p.role              AS role,
                    p.hidden_tabs       AS hidden_tabs,
                    p.document_reviewer AS document_reviewer,
-                   e.updated_at_utc    AS last_seen
+                   e.updated_at_utc    AS last_seen,
+                   e.app_version       AS app_version
             FROM devices d
             LEFT JOIN directory_entries e ON e.device_id = d.id
             LEFT JOIN device_policy    p ON p.device_id = d.id
             ORDER BY display_name COLLATE NOCASE
             """;
 
-        var results = new List<(Guid, string, int?, IReadOnlyList<string>, DateTimeOffset?, bool)>();
+        var results = new List<(Guid, string, int?, IReadOnlyList<string>, DateTimeOffset?, bool, string?)>();
         using var reader = command.ExecuteReader();
         while (reader.Read())
         {
@@ -1107,7 +1117,8 @@ public sealed class RelayDatabase
                 reader["role"] is DBNull ? null : Convert.ToInt32(reader["role"]),
                 reader["hidden_tabs"] is DBNull ? Array.Empty<string>() : DeserializeTabs((string)reader["hidden_tabs"]),
                 reader["last_seen"] is DBNull ? null : DateTimeOffset.Parse((string)reader["last_seen"]),
-                reader["document_reviewer"] is not DBNull && Convert.ToInt32(reader["document_reviewer"]) != 0));
+                reader["document_reviewer"] is not DBNull && Convert.ToInt32(reader["document_reviewer"]) != 0,
+                reader["app_version"] is DBNull ? null : (string)reader["app_version"]));
         }
 
         return results;

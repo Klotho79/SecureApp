@@ -123,7 +123,7 @@ public sealed class HttpRelayAdminService : IRelayAdminService
         return results.Select(d => new ManagedDevice(
             d.DeviceId, d.DisplayName,
             d.Role is null ? null : (SecureApp.Domain.Enums.Role)d.Role.Value,
-            d.HiddenTabs ?? [], d.LastSeenUtc, d.DocumentReviewer)).ToList();
+            d.HiddenTabs ?? [], d.LastSeenUtc, d.DocumentReviewer, d.AppVersion)).ToList();
     }
 
     public async Task SetDevicePolicyAsync(Uri endpoint, string adminSecret, Guid deviceId, SecureApp.Domain.Enums.Role? role, IReadOnlyList<string> hiddenTabs, bool? isDocumentReviewer = null, CancellationToken ct = default)
@@ -182,7 +182,7 @@ public sealed class HttpRelayAdminService : IRelayAdminService
         return await response.Content.ReadFromJsonAsync<List<DocumentDownloadEntry>>(HttpJsonOptions, ct) ?? [];
     }
 
-    private sealed record ManagedDeviceSummary(Guid DeviceId, string DisplayName, int? Role, List<string>? HiddenTabs, DateTimeOffset? LastSeenUtc, bool DocumentReviewer = false);
+    private sealed record ManagedDeviceSummary(Guid DeviceId, string DisplayName, int? Role, List<string>? HiddenTabs, DateTimeOffset? LastSeenUtc, bool DocumentReviewer = false, string? AppVersion = null);
 
     // Mirrors WebSocketMessageTransport.ToHttpUri — the Settings UI stores/edits one ws:// address
     // for both the WebSocket connection and every HTTP admin/device call, so this needs the same

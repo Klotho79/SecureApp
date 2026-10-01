@@ -19,14 +19,15 @@ public sealed record DevicePolicy(Role? Role, IReadOnlyList<string> HiddenTabs, 
     public static DevicePolicy Unmanaged { get; } = new(null, Array.Empty<string>(), false);
 }
 
-/// <summary>One member as the admin's management screen sees them (2026-09-24). <see cref="IsDocumentReviewer"/> (2026-10-01) appended last — see <see cref="DevicePolicy"/>'s own remarks.</summary>
+/// <summary>One member as the admin's management screen sees them (2026-09-24). <see cref="IsDocumentReviewer"/> (2026-10-01) appended last — see <see cref="DevicePolicy"/>'s own remarks. <see cref="AppVersion"/> (2026-10-01) is whatever the device last reported on <c>/directory/publish</c> — null for an older client that predates this field, or one that has never reconnected since.</summary>
 public sealed record ManagedDevice(
     Guid DeviceId,
     string DisplayName,
     Role? Role,
     IReadOnlyList<string> HiddenTabs,
     DateTimeOffset? LastSeenUtc,
-    bool IsDocumentReviewer = false);
+    bool IsDocumentReviewer = false,
+    string? AppVersion = null);
 
 /// <summary>One notice-board post, decrypted for display (2026-09-24). <see cref="AuthorDisplayName"/> is resolved by the relay against the live directory, so a rename applies retroactively.</summary>
 public sealed record BoardPost(

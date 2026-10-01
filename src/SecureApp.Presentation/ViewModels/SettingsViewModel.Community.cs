@@ -286,7 +286,7 @@ public sealed partial class SettingsViewModel
             var members = await _relayAdminService.GetManagedDevicesAsync(endpoint, adminSecret);
             ManagedMembers.Clear();
             foreach (var m in members)
-                ManagedMembers.Add(new MemberPolicyItem(m.DeviceId, m.DisplayName, m.Role, m.HiddenTabs, m.LastSeenUtc, m.IsDocumentReviewer));
+                ManagedMembers.Add(new MemberPolicyItem(m.DeviceId, m.DisplayName, m.Role, m.HiddenTabs, m.LastSeenUtc, m.IsDocumentReviewer, m.AppVersion));
             MemberManagementStatusText = members.Count == 0 ? "Zatím žádní členové." : $"Načteno členů: {members.Count}.";
 
             // The admin opening this screen is, by definition, online right now and (almost always)
@@ -359,7 +359,7 @@ public sealed class AccentSwatchItem
 /// <summary>One member row in the admin's "Správa členů" screen — editable role + per-tab visibility.</summary>
 public sealed partial class MemberPolicyItem : ObservableObject
 {
-    public MemberPolicyItem(Guid deviceId, string displayName, Role? role, IReadOnlyList<string> hiddenTabs, DateTimeOffset? lastSeenUtc, bool isDocumentReviewer = false)
+    public MemberPolicyItem(Guid deviceId, string displayName, Role? role, IReadOnlyList<string> hiddenTabs, DateTimeOffset? lastSeenUtc, bool isDocumentReviewer = false, string? appVersion = null)
     {
         DeviceId = deviceId;
         DisplayName = displayName;
@@ -373,11 +373,16 @@ public sealed partial class MemberPolicyItem : ObservableObject
         LastSeenText = lastSeenUtc is { } seen
             ? $"naposledy {seen.LocalDateTime:d.M. HH:mm}"
             : "nikdy nepřipojeno";
+        // AppVersion (2026-10-01) — null means either an older client that predates this field, or a
+        // device that has never published to the directory since this field shipped; both read the
+        // same to the admin ("neznámá"), since neither case is actionable differently right now.
+        AppVersionText = string.IsNullOrWhiteSpace(appVersion) ? "verze neznámá" : $"verze {appVersion}";
     }
 
     public Guid DeviceId { get; }
     public string DisplayName { get; }
     public string LastSeenText { get; }
+    public string AppVersionText { get; }
 
     /// <summary>Picker source: index 0 = "ponechat na zařízení" (null), then the three real roles.</summary>
     public IReadOnlyList<string> RoleChoices { get; } = ["Neurčeno (ponechat)", "Admin", "Modifier", "Viewer"];
