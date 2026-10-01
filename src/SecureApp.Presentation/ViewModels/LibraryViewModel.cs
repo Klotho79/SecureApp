@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SecureApp.Domain.Enums;
+using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Domain.Policies;
 using SecureApp.Domain.ValueObjects;
@@ -22,6 +23,7 @@ public sealed partial class LibraryViewModel : ObservableObject
     private readonly IDiagnosticsReporter _diagnosticsReporter;
     private readonly ILibraryReviewService _libraryReviewService;
     private readonly IDevicePolicyService _devicePolicyService;
+    private readonly ITransportSettingsRepository _transportSettingsRepository;
 
     [ObservableProperty]
     public partial string SearchQuery { get; set; }
@@ -108,13 +110,15 @@ public sealed partial class LibraryViewModel : ObservableObject
         ICurrentUserService currentUserService,
         IDiagnosticsReporter diagnosticsReporter,
         ILibraryReviewService libraryReviewService,
-        IDevicePolicyService devicePolicyService)
+        IDevicePolicyService devicePolicyService,
+        ITransportSettingsRepository transportSettingsRepository)
     {
         _libraryService = libraryService ?? throw new ArgumentNullException(nameof(libraryService));
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         _diagnosticsReporter = diagnosticsReporter ?? throw new ArgumentNullException(nameof(diagnosticsReporter));
         _libraryReviewService = libraryReviewService ?? throw new ArgumentNullException(nameof(libraryReviewService));
         _devicePolicyService = devicePolicyService ?? throw new ArgumentNullException(nameof(devicePolicyService));
+        _transportSettingsRepository = transportSettingsRepository ?? throw new ArgumentNullException(nameof(transportSettingsRepository));
 
         SearchQuery = string.Empty;
         FolderFilter = string.Empty;
@@ -161,7 +165,8 @@ public sealed partial class LibraryViewModel : ObservableObject
                 string.IsNullOrWhiteSpace(TagFilter) ? null : TagFilter);
             Infrastructure.AppLog.Metric("search_latency.library", sw.Elapsed.TotalMilliseconds, "ms", ("resultCount", results.Count));
 
-            Results = new ObservableCollection<LibraryFileItem>(results.Select(ToItem));
+            var myDeviceId = (await _transportSettingsRepository.GetAsync())?.AssignedDeviceId;
+            Results = new ObservableCollection<LibraryFileItem>(results.Select(r => ToItem(r, myDeviceId)));
             IsEmpty = Results.Count == 0;
 
             await RefreshCategoriesAsync();
@@ -276,10 +281,14 @@ public sealed partial class LibraryViewModel : ObservableObject
         _ = SearchAsync();
     }
 
-    private static LibraryFileItem ToItem(SharedLibraryFileSummary summary)
+    private static LibraryFileItem ToItem(SharedLibraryFileSummary summary, Guid? myDeviceId)
     {
         var hasFolder = !string.IsNullOrWhiteSpace(summary.FolderPath);
         var sizeAndDate = $"{FormatSize(summary.SizeBytes)} · Aktualizováno {summary.UploadedAtUtc.LocalDateTime:g}";
+        // Mirrors the relay's own TryDeleteLibraryFile rule for an ordinary (non-admin-secret)
+        // device call: only the uploader may delete. Shown as a 🗑 button only when it would
+        // actually succeed, rather than offering it to everyone and surfacing a confusing 404.
+        var isMine = myDeviceId is { } id && string.Equals(summary.UploadedByDeviceId, id.ToString(), StringComparison.OrdinalIgnoreCase);
 
         return new LibraryFileItem(
             summary.Id,
@@ -288,7 +297,24 @@ public sealed partial class LibraryViewModel : ObservableObject
             hasFolder,
             summary.Tags.Select(t => new LibraryTagItem(t)).ToList(),
             summary.Tags.Count > 0,
-            sizeAndDate);
+            sizeAndDate,
+            isMine);
+    }
+
+    [RelayCommand]
+    private async Task DeleteAsync(LibraryFileItem? item)
+    {
+        if (item is null) return;
+        try
+        {
+            await _libraryService.DeleteAsync(item.Id);
+            Results = new ObservableCollection<LibraryFileItem>(Results.Where(r => r.Id != item.Id));
+            IsEmpty = Results.Count == 0;
+        }
+        catch (Exception ex)
+        {
+            StatusErrorMessage = $"'{item.FileName}' se nepodařilo smazat: {ex.Message}";
+        }
     }
 
     private static string FormatSize(long bytes) => bytes switch
@@ -305,7 +331,7 @@ public sealed partial class LibraryViewModel : ObservableObject
 /// accent-colored category line and the tags as individual chips, matching the redesign mockup
 /// (https://claude.ai/code/artifact/7a7bebe1-6ea6-4df1-9908-b9bbdc900ccf) instead of one flat gray line.
 /// </summary>
-public sealed record LibraryFileItem(Guid Id, string FileName, string? FolderPath, bool HasFolder, IReadOnlyList<LibraryTagItem> Tags, bool HasTags, string SizeAndDateText);
+public sealed record LibraryFileItem(Guid Id, string FileName, string? FolderPath, bool HasFolder, IReadOnlyList<LibraryTagItem> Tags, bool HasTags, string SizeAndDateText, bool IsMine);
 
 /// <summary>Wraps a plain tag string only so it has a stable reference type for BindableLayout's ItemsSource — a bare List&lt;string&gt; binds fine too, but this keeps the DataTemplate's x:DataType explicit rather than implicitly "x:String".</summary>
 public sealed record LibraryTagItem(string Label);

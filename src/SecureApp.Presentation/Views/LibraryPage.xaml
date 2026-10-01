@@ -119,7 +119,7 @@
                         <CollectionView.ItemTemplate>
                             <DataTemplate x:DataType="vm:LibraryFileItem">
                                 <Border Style="{StaticResource CardBorder}" Margin="0">
-                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
 
                                         <Border Grid.Column="0" WidthRequest="38" HeightRequest="38" Padding="0" StrokeShape="RoundRectangle 9" Stroke="Transparent" BackgroundColor="{AppThemeBinding Light={StaticResource AccentSoft}, Dark={StaticResource AccentSoftDark}}" VerticalOptions="Start">
                                             <Label Text="📄" FontSize="13" HorizontalOptions="Center" VerticalOptions="Center" />
@@ -141,6 +141,14 @@
 
                                             <Label Text="{Binding SizeAndDateText}" FontSize="9" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
                                         </VerticalStackLayout>
+
+                                        <!-- 2026-10-01: only the uploader can delete via the ordinary (non-admin) relay
+                                             call, so this only shows on your own uploads — see LibraryViewModel.ToItem's
+                                             own remarks. -->
+                                        <Button Grid.Column="2" Text="🗑" BackgroundColor="Transparent" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" Padding="6,0" VerticalOptions="Start"
+                                                IsVisible="{Binding IsMine}"
+                                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibraryViewModel}}, Path=DeleteCommand}"
+                                                CommandParameter="{Binding .}" />
                                     </Grid>
                                 </Border>
                             </DataTemplate>
