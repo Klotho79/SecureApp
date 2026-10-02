@@ -87,6 +87,16 @@ public sealed partial class LibraryViewModel : ObservableObject
     [ObservableProperty]
     public partial bool CanModifyContent { get; set; }
 
+    /// <summary>
+    /// Gates the "✏ Spravovat" entry point on the browse page (2026-10-02 redesign — upload/drafts/
+    /// review-queue moved to their own <see cref="Views.LibraryManagePage"/> so the browse page's
+    /// results list gets the scroll space back; see that page's own remarks). True for either a
+    /// content-modifier (upload) or a reviewer (review queue) — either reason alone is enough to need
+    /// the manage screen, even a Viewer-role device the admin separately flagged as reviewer.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool CanManageLibrary { get; set; }
+
     [ObservableProperty]
     public partial string? StatusErrorMessage { get; set; }
 
@@ -146,9 +156,17 @@ public sealed partial class LibraryViewModel : ObservableObject
 
     partial void OnIsUploadingChanged(bool value) => RecomputeCanUpload();
 
-    partial void OnCanModifyContentChanged(bool value) => RecomputeCanUpload();
+    partial void OnCanModifyContentChanged(bool value)
+    {
+        RecomputeCanUpload();
+        RecomputeCanManageLibrary();
+    }
+
+    partial void OnIsDocumentReviewerChanged(bool value) => RecomputeCanManageLibrary();
 
     private void RecomputeCanUpload() => CanUpload = !IsUploading && CanModifyContent;
+
+    private void RecomputeCanManageLibrary() => CanManageLibrary = CanModifyContent || IsDocumentReviewer;
 
     [RelayCommand]
     private async Task SearchAsync()
@@ -191,10 +209,15 @@ public sealed partial class LibraryViewModel : ObservableObject
     /// Best-effort by design (2026-10-01) — a failure here must never block the ordinary library
     /// browse/search above from working; "Moje koncepty" and the reviewer entry point simply stay
     /// empty/hidden until the next successful refresh, same posture as the rest of this screen's
-    /// network-dependent extras.
+    /// network-dependent extras. Public so <see cref="Views.LibraryManagePage"/> can call it directly
+    /// on appearing, without needing the full browse-page <see cref="SearchAsync"/> (and its
+    /// Results/Categories fetch) it also runs inside of — also recomputes <see cref="CanModifyContent"/>
+    /// itself for that same reason (the Manage page needs it for the upload card's visibility, but
+    /// never calls SearchAsync, the only other place that currently sets it).
     /// </summary>
-    private async Task RefreshReviewWorkflowStateAsync()
+    public async Task RefreshReviewWorkflowStateAsync()
     {
+        CanModifyContent = RoleAccessPolicy.IsAllowed(_currentUserService.Current.Role, RbacAction.UploadLibraryFile);
         try
         {
             var policy = await _devicePolicyService.GetMyPolicyAsync();

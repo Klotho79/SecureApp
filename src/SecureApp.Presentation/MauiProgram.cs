@@ -200,6 +200,10 @@ public static class MauiProgram
 		builder.Services.AddTransient<LibraryViewModel>();
 		builder.Services.AddTransient<LibraryPage>();
 
+		// Upload/drafts/review-queue entry, split off the browse page (2026-10-02) — see
+		// LibraryManagePage.xaml's own remarks. Shares the LibraryViewModel type above, not a new one.
+		builder.Services.AddTransient<LibraryManagePage>();
+
 		// Document Library content-approval review queue (2026-10-01).
 		builder.Services.AddTransient<LibraryReviewQueueViewModel>();
 		builder.Services.AddTransient<LibraryReviewQueuePage>();

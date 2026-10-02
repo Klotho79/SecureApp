@@ -13,7 +13,7 @@
          Kontakty already use for the same reason. -->
 
 
-    <Grid RowDefinitions="Auto,Auto,*" Padding="16" RowSpacing="14">
+    <Grid RowDefinitions="Auto,*" Padding="16" RowSpacing="14">
 
         <!-- Header + search + filters, all in one scroll-independent block so the results list
              below gets its own scroll region (RefreshView needs sole ownership of the ScrollView
@@ -24,9 +24,11 @@
                     <Label Text="Knihovna postupů" Style="{StaticResource PageTitle}" />
                     <Label Text="Sdílená, šifrovaná příručka pro celý tým — prohledávatelná podle názvu, složky nebo štítku." FontSize="10" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
                 </VerticalStackLayout>
-                <!-- 2026-10-01, content-approval workflow — only a device the admin flagged as
-                     Reviewer (or Admin) sees this at all. -->
-                <Button Grid.Column="1" Text="📋 Ke schválení" Style="{StaticResource SecondaryButton}" Command="{Binding OpenReviewQueueCommand}" IsVisible="{Binding IsDocumentReviewer}" VerticalOptions="Start" />
+                <!-- 2026-10-02 redesign: upload/"Moje koncepty"/review-queue moved to their own page
+                     (LibraryManagePage) so this browse page's results list keeps most of the screen —
+                     a real usability complaint on a phone ("na rolování souborů máš cca 1.5 cm"). One
+                     entry point instead of two separate header buttons. -->
+                <Button Grid.Column="1" Text="✏ Spravovat" Style="{StaticResource SecondaryButton}" Command="{Binding OpenManageCommand}" IsVisible="{Binding CanManageLibrary}" VerticalOptions="Start" />
             </Grid>
 
             <!-- Search + category — reworked 2026-09-06 from a custom search card + horizontal
@@ -73,53 +75,9 @@
                 LineBreakMode="WordWrap" />
         </VerticalStackLayout>
 
-        <!-- Upload — kept as its own compact card rather than folded into the search card above,
-             so "find a procedure" and "add a procedure" read as two clearly separate actions. -->
-        <Border Grid.Row="1" Style="{StaticResource CardBorder}" Margin="0" IsVisible="{Binding CanModifyContent}">
-            <VerticalStackLayout Spacing="8">
-                <Label Text="Přidat postup" Style="{StaticResource SectionHeader}" Margin="0" FontSize="11" />
-                <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
-                    <Entry Grid.Column="0" Text="{Binding UploadFolderPath}" Placeholder="Složka (volitelné)" />
-                    <Entry Grid.Column="1" Text="{Binding UploadTags}" Placeholder="Štítky, oddělené čárkou" />
-                </Grid>
-                <!-- 2026-10-01, content-approval workflow: "Nahrát" publishes directly (unchanged
-                     behavior — still the only option admins typically use); "Jako koncept" stages it
-                     for review first instead. Both call the same underlying upload. -->
-                <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
-                    <Button Grid.Column="0" Text="⬆ Nahrát" Style="{StaticResource SecondaryButton}" Command="{Binding UploadCommand}" IsEnabled="{Binding CanUpload}" />
-                    <Button Grid.Column="1" Text="📝 Jako koncept" Style="{StaticResource SecondaryButton}" Command="{Binding UploadDraftCommand}" IsEnabled="{Binding CanUpload}" />
-                </Grid>
-            </VerticalStackLayout>
-        </Border>
-
-        <RefreshView Grid.Row="2" IsRefreshing="{Binding IsLoading}" Command="{Binding SearchCommand}">
+        <RefreshView Grid.Row="1" IsRefreshing="{Binding IsLoading}" Command="{Binding SearchCommand}">
             <ScrollView>
                 <VerticalStackLayout Spacing="10">
-
-                    <!-- "Moje koncepty" (2026-10-01, content-approval workflow) — documents this
-                         device created/submitted, across any status; a Draft/PendingReview document is
-                         deliberately invisible in the ordinary Results list below (unlisted), so this
-                         is the only place to see/resubmit one. -->
-                    <Border Style="{StaticResource CardBorder}" Margin="0" IsVisible="{Binding HasMyDocuments}">
-                        <VerticalStackLayout Spacing="8">
-                            <Label Text="Moje koncepty" Style="{StaticResource SectionHeader}" Margin="0" FontSize="11" />
-                            <VerticalStackLayout BindableLayout.ItemsSource="{Binding MyDocuments}" Spacing="6">
-                                <BindableLayout.ItemTemplate>
-                                    <DataTemplate x:DataType="vm:LibraryDocumentDraftItem">
-                                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
-                                            <Label Grid.Column="0" Text="{Binding Title}" FontSize="10.5" VerticalOptions="Center" LineBreakMode="TailTruncation" />
-                                            <Border Grid.Column="1" Style="{StaticResource Chip}" Margin="0">
-                                                <Label Text="{Binding StatusText}" Style="{StaticResource ChipLabel}" />
-                                            </Border>
-                                            <Button Grid.Column="2" Text="Odeslat ke schválení" Style="{StaticResource SecondaryButton}" FontSize="9" Padding="8,4"
-                                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibraryViewModel}}, Path=SubmitDraftForReviewCommand}"
-                                                    CommandParameter="{Binding .}" IsVisible="{Binding CanSubmit}" />
-                                        </Grid>
-                                    </DataTemplate>
-                                </BindableLayout.ItemTemplate>
-                            </VerticalStackLayout>
-                        </VerticalStackLayout>
-                    </Border>
 
                     <Label
                         Text="Nenalezeny žádné postupy — zkuste jiné hledání, nebo jeden přidejte výše."

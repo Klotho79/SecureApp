@@ -134,4 +134,8 @@ public sealed partial class LibraryViewModel
 
     [RelayCommand]
     private async Task OpenReviewQueueAsync() => await Shell.Current.GoToAsync(nameof(LibraryReviewQueuePage), animate: false);
+
+    /// <summary>2026-10-02 redesign — upload/"Moje koncepty"/review-queue entry moved off the browse page onto their own page; see <see cref="Views.LibraryManagePage"/>'s own remarks.</summary>
+    [RelayCommand]
+    private async Task OpenManageAsync() => await Shell.Current.GoToAsync(nameof(LibraryManagePage), animate: false);
 }

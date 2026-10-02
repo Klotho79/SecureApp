@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="SecureApp.Presentation.Views.LibraryManagePage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
+    x:DataType="vm:LibraryViewModel"
+    Title="Spravovat knihovnu">
+    <!--
+        2026-10-02: split off LibraryPage (the browse/search screen) — a real usability complaint
+        from the user after trying the card-grid redesign on a phone: with the upload card and
+        "Moje koncepty" stacked above it, the actual results list only had about 1.5 cm of scroll
+        space left. Browsing and administering content are different tasks; this page now owns
+        everything that isn't "find a procedure" (upload, drafts-in-progress, review queue entry),
+        reached via the browse page's "✏ Spravovat" button (CanManageLibrary-gated). Shares the
+        SAME LibraryViewModel type as LibraryPage (not a new ViewModel) — a fresh Transient instance
+        per page, same "reload fresh on every OnAppearing" pattern this app already uses for
+        LibraryReviewQueuePage, rather than trying to share one VM instance across two pages.
+    -->
+    <ScrollView>
+        <VerticalStackLayout Padding="16" Spacing="14">
+
+            <Label Text="Spravovat knihovnu" Style="{StaticResource PageTitle}" />
+
+            <Button Text="📋 Ke schválení" Style="{StaticResource SecondaryButton}" Command="{Binding OpenReviewQueueCommand}" IsVisible="{Binding IsDocumentReviewer}" HorizontalOptions="Start" />
+
+            <Border Style="{StaticResource CardBorder}" Margin="0" IsVisible="{Binding CanModifyContent}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Přidat postup" Style="{StaticResource SectionHeader}" Margin="0" FontSize="11" />
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                        <Entry Grid.Column="0" Text="{Binding UploadFolderPath}" Placeholder="Složka (volitelné)" />
+                        <Entry Grid.Column="1" Text="{Binding UploadTags}" Placeholder="Štítky, oddělené čárkou" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                        <Button Grid.Column="0" Text="⬆ Nahrát" Style="{StaticResource SecondaryButton}" Command="{Binding UploadCommand}" IsEnabled="{Binding CanUpload}" />
+                        <Button Grid.Column="1" Text="📝 Jako koncept" Style="{StaticResource SecondaryButton}" Command="{Binding UploadDraftCommand}" IsEnabled="{Binding CanUpload}" />
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+
+            <Border Style="{StaticResource CardBorder}" Margin="0" IsVisible="{Binding HasMyDocuments}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Moje koncepty" Style="{StaticResource SectionHeader}" Margin="0" FontSize="11" />
+                    <VerticalStackLayout BindableLayout.ItemsSource="{Binding MyDocuments}" Spacing="6">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="vm:LibraryDocumentDraftItem">
+                                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                                    <Label Grid.Column="0" Text="{Binding Title}" FontSize="10.5" VerticalOptions="Center" LineBreakMode="TailTruncation" />
+                                    <Border Grid.Column="1" Style="{StaticResource Chip}" Margin="0">
+                                        <Label Text="{Binding StatusText}" Style="{StaticResource ChipLabel}" />
+                                    </Border>
+                                    <Button Grid.Column="2" Text="Odeslat ke schválení" Style="{StaticResource SecondaryButton}" FontSize="9" Padding="8,4"
+                                            Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibraryViewModel}}, Path=SubmitDraftForReviewCommand}"
+                                            CommandParameter="{Binding .}" IsVisible="{Binding CanSubmit}" />
+                                </Grid>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+            </Border>
+
+            <Label
+                Text="{Binding StatusErrorMessage}"
+                IsVisible="{Binding HasStatusError}"
+                TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}"
+                LineBreakMode="WordWrap" />
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>
