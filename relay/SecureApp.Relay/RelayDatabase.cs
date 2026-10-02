@@ -24,6 +24,15 @@ public sealed record LibrarySubcategoryRecord(
     Guid CreatedByDeviceId,
     DateTimeOffset CreatedAtUtc);
 
+/// <summary>One external link inside a sub-category — see <c>library_links</c>'s schema in <see cref="RelayDatabase.Initialize"/>.</summary>
+public sealed record LibraryLinkRecord(
+    Guid Id,
+    Guid SubcategoryId,
+    string Title,
+    string Url,
+    Guid CreatedByDeviceId,
+    DateTimeOffset CreatedAtUtc);
+
 /// <summary>One reviewable Document Library entry — see <c>library_documents</c>'s schema in <see cref="RelayDatabase.Initialize"/>.</summary>
 public sealed record LibraryDocumentRecord(
     Guid Id, string Title, string FolderPath, string Status,
@@ -142,6 +151,22 @@ public sealed class RelayDatabase
             )
             """);
         Execute(connection, "CREATE INDEX IF NOT EXISTS ix_library_subcategories_parent ON library_subcategories(parent_category)");
+
+        // Library links (2026-10-02) — a sub-category's content is files (library_files, via the
+        // existing upload endpoint, FolderPath set to "{ParentCategory}/{SubcategoryName}") PLUS
+        // optionally plain external links (PubMed, ČSARIM, etc.) — no ciphertext, no upload, just an
+        // opaque title+URL pair scoped to one sub-category.
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS library_links (
+                id                       TEXT PRIMARY KEY NOT NULL,
+                subcategory_id           TEXT NOT NULL,
+                title                    TEXT NOT NULL,
+                url                      TEXT NOT NULL,
+                created_by_device_id     TEXT NOT NULL,
+                created_at_utc           TEXT NOT NULL
+            )
+            """);
+        Execute(connection, "CREATE INDEX IF NOT EXISTS ix_library_links_subcategory ON library_links(subcategory_id)");
         // 2026-09-14: is_listed distinguishes a real community-library file (1) from a PRIVATE chat
         // attachment (0) — same encrypted storage, but private ones are hidden from the library browser
         // and reachable only by the id carried in the E2EE chat message. Guarded ALTER (SQLite has no
@@ -693,6 +718,101 @@ public sealed class RelayDatabase
         if (!isAdminOverride)
             command.Parameters.AddWithValue("@caller", callerDeviceId.ToString());
 
+        return command.ExecuteNonQuery() > 0;
+    }
+
+    // --- Library sub-categories + links (2026-10-02) — see library_subcategories/library_links'
+    // schema remarks above.
+
+    public LibrarySubcategoryRecord CreateLibrarySubcategory(string parentCategory, string name, Guid createdByDeviceId)
+    {
+        using var connection = OpenConnection();
+        var id = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+        Execute(connection,
+            "INSERT INTO library_subcategories (id, parent_category, name, created_by_device_id, created_at_utc) VALUES (@id, @parent, @name, @creator, @now)",
+            ("@id", id.ToString()), ("@parent", parentCategory), ("@name", name), ("@creator", createdByDeviceId.ToString()), ("@now", Format(now)));
+        return new LibrarySubcategoryRecord(id, parentCategory, name, createdByDeviceId, now);
+    }
+
+    public IReadOnlyList<LibrarySubcategoryRecord> GetLibrarySubcategories(string parentCategory)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id, parent_category, name, created_by_device_id, created_at_utc FROM library_subcategories WHERE parent_category = @parent ORDER BY name COLLATE NOCASE";
+        command.Parameters.AddWithValue("@parent", parentCategory);
+
+        var results = new List<LibrarySubcategoryRecord>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            results.Add(new LibrarySubcategoryRecord(
+                Guid.Parse((string)reader["id"]),
+                (string)reader["parent_category"],
+                (string)reader["name"],
+                Guid.Parse((string)reader["created_by_device_id"]),
+                DateTimeOffset.Parse((string)reader["created_at_utc"], CultureInfo.InvariantCulture)));
+        }
+        return results;
+    }
+
+    /// <summary>Deletes nothing (returns false) unless the caller created it or <paramref name="isAdminOverride"/> is set — same cooperative-role trust as <see cref="TryDeleteLibraryFile"/>. Does not touch any files/links already filed under it; they just become unreachable from the browse grid until a new sub-category with the same name is created (or an admin re-creates it).</summary>
+    public bool TryDeleteLibrarySubcategory(Guid id, Guid callerDeviceId, bool isAdminOverride)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = isAdminOverride
+            ? "DELETE FROM library_subcategories WHERE id = @id"
+            : "DELETE FROM library_subcategories WHERE id = @id AND created_by_device_id = @caller";
+        command.Parameters.AddWithValue("@id", id.ToString());
+        if (!isAdminOverride)
+            command.Parameters.AddWithValue("@caller", callerDeviceId.ToString());
+        return command.ExecuteNonQuery() > 0;
+    }
+
+    public LibraryLinkRecord CreateLibraryLink(Guid subcategoryId, string title, string url, Guid createdByDeviceId)
+    {
+        using var connection = OpenConnection();
+        var id = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+        Execute(connection,
+            "INSERT INTO library_links (id, subcategory_id, title, url, created_by_device_id, created_at_utc) VALUES (@id, @sub, @title, @url, @creator, @now)",
+            ("@id", id.ToString()), ("@sub", subcategoryId.ToString()), ("@title", title), ("@url", url), ("@creator", createdByDeviceId.ToString()), ("@now", Format(now)));
+        return new LibraryLinkRecord(id, subcategoryId, title, url, createdByDeviceId, now);
+    }
+
+    public IReadOnlyList<LibraryLinkRecord> GetLibraryLinks(Guid subcategoryId)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id, subcategory_id, title, url, created_by_device_id, created_at_utc FROM library_links WHERE subcategory_id = @sub ORDER BY created_at_utc";
+        command.Parameters.AddWithValue("@sub", subcategoryId.ToString());
+
+        var results = new List<LibraryLinkRecord>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            results.Add(new LibraryLinkRecord(
+                Guid.Parse((string)reader["id"]),
+                Guid.Parse((string)reader["subcategory_id"]),
+                (string)reader["title"],
+                (string)reader["url"],
+                Guid.Parse((string)reader["created_by_device_id"]),
+                DateTimeOffset.Parse((string)reader["created_at_utc"], CultureInfo.InvariantCulture)));
+        }
+        return results;
+    }
+
+    public bool TryDeleteLibraryLink(Guid id, Guid callerDeviceId, bool isAdminOverride)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = isAdminOverride
+            ? "DELETE FROM library_links WHERE id = @id"
+            : "DELETE FROM library_links WHERE id = @id AND created_by_device_id = @caller";
+        command.Parameters.AddWithValue("@id", id.ToString());
+        if (!isAdminOverride)
+            command.Parameters.AddWithValue("@caller", callerDeviceId.ToString());
         return command.ExecuteNonQuery() > 0;
     }
 

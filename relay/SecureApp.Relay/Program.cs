@@ -478,6 +478,73 @@ app.MapPost("/library/files/{id:guid}/publish", (Guid id, HttpRequest request, R
     return Results.NoContent();
 });
 
+// --- Library sub-categories + links (2026-10-02) — see RelayDatabase's own schema remarks. A
+// sub-category groups the files/links for one clinical topic under a top-level category (the client
+// has a fixed 5, not stored here). Create/delete follow the same uploader-or-admin trust as
+// /library/files above; listing is open to any device, same as browsing the library itself.
+
+app.MapPost("/library/subcategories", (HttpRequest request, CreateLibrarySubcategoryRequest body, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+    if (string.IsNullOrWhiteSpace(body.ParentCategory) || string.IsNullOrWhiteSpace(body.Name))
+        return Results.BadRequest("ParentCategory and Name are both required.");
+
+    var record = db.CreateLibrarySubcategory(body.ParentCategory, body.Name.Trim(), deviceId);
+    return Results.Ok(ToLibrarySubcategoryDto(record));
+});
+
+app.MapGet("/library/subcategories", (HttpRequest request, RelayDatabase db, string? parent) =>
+{
+    if (!TryGetDeviceAuth(request, db, out _))
+        return Results.Unauthorized();
+    if (string.IsNullOrWhiteSpace(parent))
+        return Results.Ok(new List<LibrarySubcategoryDto>());
+
+    return Results.Ok(db.GetLibrarySubcategories(parent).Select(ToLibrarySubcategoryDto).ToList());
+});
+
+app.MapDelete("/library/subcategories/{id:guid}", (Guid id, HttpRequest request, RelayDatabase db) =>
+{
+    var isAdmin = IsAdminAuthorized(request, adminSecret);
+    var isDeviceAuthed = TryGetDeviceAuth(request, db, out var callerDeviceId);
+    if (!isAdmin && !isDeviceAuthed)
+        return Results.Unauthorized();
+
+    return db.TryDeleteLibrarySubcategory(id, callerDeviceId, isAdmin) ? Results.NoContent() : Results.NotFound();
+});
+
+app.MapPost("/library/links", (HttpRequest request, CreateLibraryLinkRequest body, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+    if (string.IsNullOrWhiteSpace(body.Title) || string.IsNullOrWhiteSpace(body.Url))
+        return Results.BadRequest("Title and Url are both required.");
+    if (!Uri.TryCreate(body.Url, UriKind.Absolute, out _))
+        return Results.BadRequest("Url is not a valid absolute URL.");
+
+    var record = db.CreateLibraryLink(body.SubcategoryId, body.Title.Trim(), body.Url.Trim(), deviceId);
+    return Results.Ok(ToLibraryLinkDto(record));
+});
+
+app.MapGet("/library/links", (HttpRequest request, RelayDatabase db, Guid subcategoryId) =>
+{
+    if (!TryGetDeviceAuth(request, db, out _))
+        return Results.Unauthorized();
+
+    return Results.Ok(db.GetLibraryLinks(subcategoryId).Select(ToLibraryLinkDto).ToList());
+});
+
+app.MapDelete("/library/links/{id:guid}", (Guid id, HttpRequest request, RelayDatabase db) =>
+{
+    var isAdmin = IsAdminAuthorized(request, adminSecret);
+    var isDeviceAuthed = TryGetDeviceAuth(request, db, out var callerDeviceId);
+    if (!isAdmin && !isDeviceAuthed)
+        return Results.Unauthorized();
+
+    return db.TryDeleteLibraryLink(id, callerDeviceId, isAdmin) ? Results.NoContent() : Results.NotFound();
+});
+
 // --- Document Library content-approval workflow (2026-10-01) — layered alongside /library/files/*
 // above; every version's actual encrypted content is uploaded via THAT endpoint (listed=false) before
 // being staged here, so none of this family touches crypto/storage directly. Review capability is the
@@ -1176,6 +1243,12 @@ static object ToLibraryFileDto(LibraryFileRecord record) => new
     record.UploadedByDeviceId,
     record.UploadedAtUtc
 };
+
+static LibrarySubcategoryDto ToLibrarySubcategoryDto(LibrarySubcategoryRecord record) => new(
+    record.Id, record.ParentCategory, record.Name, record.CreatedByDeviceId, record.CreatedAtUtc);
+
+static LibraryLinkDto ToLibraryLinkDto(LibraryLinkRecord record) => new(
+    record.Id, record.SubcategoryId, record.Title, record.Url, record.CreatedByDeviceId, record.CreatedAtUtc);
 
 static LibraryDocumentDto ToLibraryDocumentDto(LibraryDocumentRecord record) => new(
     record.Id, record.Title, record.FolderPath, record.Status,

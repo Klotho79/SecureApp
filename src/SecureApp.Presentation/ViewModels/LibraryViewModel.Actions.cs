@@ -138,4 +138,44 @@ public sealed partial class LibraryViewModel
     /// <summary>2026-10-02 redesign — upload/"Moje koncepty"/review-queue entry moved off the browse page onto their own page; see <see cref="Views.LibraryManagePage"/>'s own remarks.</summary>
     [RelayCommand]
     private async Task OpenManageAsync() => await Shell.Current.GoToAsync(nameof(LibraryManagePage), animate: false);
+
+    /// <summary>Tapped from a sub-category card (2026-10-02) — see <see cref="Views.LibrarySubcategoryDetailPage"/>'s own remarks.</summary>
+    [RelayCommand]
+    private async Task OpenSubcategoryAsync(SubcategoryItem? item)
+    {
+        if (item is null) return;
+        await Shell.Current.GoToAsync(
+            $"{nameof(LibrarySubcategoryDetailPage)}?subcategoryId={item.Id}&parentCategory={Uri.EscapeDataString(item.ParentCategory)}&name={Uri.EscapeDataString(item.Name)}",
+            animate: false);
+    }
+
+    /// <summary>Creates a new sub-category card under the currently selected top category — see <see cref="Subcategories"/>'s own remarks. CanModifyContent-gated same as upload; requires a real top category to already be selected (sub-categories are always scoped to one).</summary>
+    [RelayCommand]
+    private async Task AddSubcategoryAsync()
+    {
+        if (!CanModifyContent)
+        {
+            StatusErrorMessage = "Přidávat podkategorie může jen Admin nebo Modifier.";
+            return;
+        }
+        if (!IsTopCategorySelected || SelectedCategory is null)
+        {
+            StatusErrorMessage = "Nejprve vyberte kategorii nahoře.";
+            return;
+        }
+
+        var name = await (Shell.Current?.CurrentPage?.DisplayPromptAsync("Nová podkategorie", "Název (např. 'Protokol masivní transfuze'):") ?? Task.FromResult<string?>(null));
+        if (string.IsNullOrWhiteSpace(name)) return;
+
+        StatusErrorMessage = null;
+        try
+        {
+            await _libraryService.CreateSubcategoryAsync(SelectedCategory, name.Trim());
+            await RefreshSubcategoriesAsync();
+        }
+        catch (Exception ex)
+        {
+            StatusErrorMessage = $"Nepodařilo se vytvořit podkategorii '{name}': {ex.Message}";
+        }
+    }
 }

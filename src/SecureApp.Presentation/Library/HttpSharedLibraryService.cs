@@ -213,6 +213,105 @@ public sealed class HttpSharedLibraryService : ISharedLibraryService
         response.EnsureSuccessStatusCode();
     }
 
+    // --- Library sub-categories + links (2026-10-02) — see LibrarySubcategorySummary's own remarks.
+    // Plain JSON over the ordinary device-authed HTTP channel, same shape as directory/contacts —
+    // nothing here is ciphertext (a sub-category name and a public link are not secret).
+
+    public async Task<LibrarySubcategorySummary> CreateSubcategoryAsync(string parentCategory, string name, CancellationToken ct = default)
+    {
+        var endpoint = await GetHttpEndpointAsync(ct);
+        var uri = new Uri(endpoint, "library/subcategories");
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, uri)
+        {
+            Content = JsonContent.Create(new { ParentCategory = parentCategory, Name = name }, options: HttpJsonOptions)
+        };
+        await AddDeviceAuthAsync(request, ct);
+        using var response = await _httpClient.SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
+
+        var dto = await response.Content.ReadFromJsonAsync<LibrarySubcategoryDto>(HttpJsonOptions, ct)
+            ?? throw new InvalidOperationException("Relay vrátil prázdnou odpověď při vytváření podkategorie.");
+        return ToSubcategorySummary(dto);
+    }
+
+    public async Task<IReadOnlyList<LibrarySubcategorySummary>> ListSubcategoriesAsync(string parentCategory, CancellationToken ct = default)
+    {
+        var endpoint = await GetHttpEndpointAsync(ct);
+        var uri = new Uri(endpoint, $"library/subcategories?parent={Uri.EscapeDataString(parentCategory)}");
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+        await AddDeviceAuthAsync(request, ct);
+        using var response = await _httpClient.SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
+
+        var dtos = await response.Content.ReadFromJsonAsync<List<LibrarySubcategoryDto>>(HttpJsonOptions, ct) ?? [];
+        return dtos.Select(ToSubcategorySummary).ToList();
+    }
+
+    public async Task DeleteSubcategoryAsync(Guid id, CancellationToken ct = default)
+    {
+        var endpoint = await GetHttpEndpointAsync(ct);
+        var uri = new Uri(endpoint, $"library/subcategories/{id}");
+
+        using var request = new HttpRequestMessage(HttpMethod.Delete, uri);
+        await AddDeviceAuthAsync(request, ct);
+        using var response = await _httpClient.SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
+    }
+
+    public async Task<LibraryLinkSummary> CreateLinkAsync(Guid subcategoryId, string title, string url, CancellationToken ct = default)
+    {
+        var endpoint = await GetHttpEndpointAsync(ct);
+        var uri = new Uri(endpoint, "library/links");
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, uri)
+        {
+            Content = JsonContent.Create(new { SubcategoryId = subcategoryId, Title = title, Url = url }, options: HttpJsonOptions)
+        };
+        await AddDeviceAuthAsync(request, ct);
+        using var response = await _httpClient.SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
+
+        var dto = await response.Content.ReadFromJsonAsync<LibraryLinkDto>(HttpJsonOptions, ct)
+            ?? throw new InvalidOperationException("Relay vrátil prázdnou odpověď při vytváření odkazu.");
+        return ToLinkSummary(dto);
+    }
+
+    public async Task<IReadOnlyList<LibraryLinkSummary>> ListLinksAsync(Guid subcategoryId, CancellationToken ct = default)
+    {
+        var endpoint = await GetHttpEndpointAsync(ct);
+        var uri = new Uri(endpoint, $"library/links?subcategoryId={subcategoryId}");
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+        await AddDeviceAuthAsync(request, ct);
+        using var response = await _httpClient.SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
+
+        var dtos = await response.Content.ReadFromJsonAsync<List<LibraryLinkDto>>(HttpJsonOptions, ct) ?? [];
+        return dtos.Select(ToLinkSummary).ToList();
+    }
+
+    public async Task DeleteLinkAsync(Guid id, CancellationToken ct = default)
+    {
+        var endpoint = await GetHttpEndpointAsync(ct);
+        var uri = new Uri(endpoint, $"library/links/{id}");
+
+        using var request = new HttpRequestMessage(HttpMethod.Delete, uri);
+        await AddDeviceAuthAsync(request, ct);
+        using var response = await _httpClient.SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
+    }
+
+    private static LibrarySubcategorySummary ToSubcategorySummary(LibrarySubcategoryDto dto) =>
+        new(dto.Id, dto.ParentCategory, dto.Name, dto.CreatedByDeviceId.ToString(), dto.CreatedAtUtc);
+
+    private static LibraryLinkSummary ToLinkSummary(LibraryLinkDto dto) =>
+        new(dto.Id, dto.SubcategoryId, dto.Title, dto.Url, dto.CreatedByDeviceId.ToString(), dto.CreatedAtUtc);
+
+    private sealed record LibrarySubcategoryDto(Guid Id, string ParentCategory, string Name, Guid CreatedByDeviceId, DateTimeOffset CreatedAtUtc);
+    private sealed record LibraryLinkDto(Guid Id, Guid SubcategoryId, string Title, string Url, Guid CreatedByDeviceId, DateTimeOffset CreatedAtUtc);
+
     // --- Relay-mediated shared-library-key escrow (2026-09-11) — see ISharedLibraryService's own
     // remarks. Uses only the crypto primitives already in this codebase: ML-KEM EncapsulateAsync
     // against a recipient's raw directory public key + AES-256-GCM under a shared secret HKDF'd to a

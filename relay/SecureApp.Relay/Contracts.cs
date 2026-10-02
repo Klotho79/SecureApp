@@ -152,6 +152,16 @@ public sealed record AddLibraryDocumentVersionRequest(Guid LibraryFileId, string
 /// <summary>A reviewer's decision on a document's current pending version. <c>Comment</c> is required when <c>Decision</c> is "Rejected".</summary>
 public sealed record ReviewLibraryDocumentRequest(string Decision, string? Comment);
 
+/// <summary>One library sub-category (2026-10-02) — see RelayDatabase's own schema remarks.</summary>
+public sealed record LibrarySubcategoryDto(Guid Id, string ParentCategory, string Name, Guid CreatedByDeviceId, DateTimeOffset CreatedAtUtc);
+
+public sealed record CreateLibrarySubcategoryRequest(string ParentCategory, string Name);
+
+/// <summary>One external link filed under a sub-category.</summary>
+public sealed record LibraryLinkDto(Guid Id, Guid SubcategoryId, string Title, string Url, Guid CreatedByDeviceId, DateTimeOffset CreatedAtUtc);
+
+public sealed record CreateLibraryLinkRequest(Guid SubcategoryId, string Title, string Url);
+
 /// <summary><c>ContentBlob</c> is opaque to the relay — the client encrypts the message with the shared community library key before posting, so the board is ciphertext at rest exactly like a library file.</summary>
 public sealed record CreateBoardPostRequest(string ContentBlob);
 

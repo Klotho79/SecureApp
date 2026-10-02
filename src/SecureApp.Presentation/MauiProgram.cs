@@ -204,6 +204,10 @@ public static class MauiProgram
 		// LibraryManagePage.xaml's own remarks. Shares the LibraryViewModel type above, not a new one.
 		builder.Services.AddTransient<LibraryManagePage>();
 
+		// Sub-category detail (files + links), reached by tapping a card on the browse grid (2026-10-02).
+		builder.Services.AddTransient<LibrarySubcategoryDetailViewModel>();
+		builder.Services.AddTransient<LibrarySubcategoryDetailPage>();
+
 		// Document Library content-approval review queue (2026-10-01).
 		builder.Services.AddTransient<LibraryReviewQueueViewModel>();
 		builder.Services.AddTransient<LibraryReviewQueuePage>();

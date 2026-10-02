@@ -76,6 +76,9 @@ public partial class AppShell : Shell
 		// LibraryPage (LibraryViewModel.CanManageLibrary gates the button).
 		Routing.RegisterRoute(nameof(LibraryManagePage), typeof(LibraryManagePage));
 
+		// Sub-category detail, reached by tapping a card on LibraryPage's browse grid (2026-10-02).
+		Routing.RegisterRoute(nameof(LibrarySubcategoryDetailPage), typeof(LibrarySubcategoryDetailPage));
+
 		// Reached via the '+ New Chat' button on ChatListPage.
 		Routing.RegisterRoute(nameof(NewChatPage), typeof(NewChatPage));
 

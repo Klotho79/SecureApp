@@ -63,4 +63,18 @@ public interface ISharedLibraryService
     /// false) if this device already has the key or none has been escrowed for it yet.
     /// </summary>
     Task<bool> TryImportWrappedKeyAsync(CancellationToken ct = default);
+
+    // --- Library sub-categories + links (2026-10-02) — see LibrarySubcategorySummary's own remarks.
+
+    Task<LibrarySubcategorySummary> CreateSubcategoryAsync(string parentCategory, string name, CancellationToken ct = default);
+
+    Task<IReadOnlyList<LibrarySubcategorySummary>> ListSubcategoriesAsync(string parentCategory, CancellationToken ct = default);
+
+    Task DeleteSubcategoryAsync(Guid id, CancellationToken ct = default);
+
+    Task<LibraryLinkSummary> CreateLinkAsync(Guid subcategoryId, string title, string url, CancellationToken ct = default);
+
+    Task<IReadOnlyList<LibraryLinkSummary>> ListLinksAsync(Guid subcategoryId, CancellationToken ct = default);
+
+    Task DeleteLinkAsync(Guid id, CancellationToken ct = default);
 }

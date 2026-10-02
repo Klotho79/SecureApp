@@ -104,6 +104,31 @@ public sealed partial class LibraryViewModel : ObservableObject
     public partial bool HasStatusError { get; set; }
 
     /// <summary>
+    /// Sub-category cards under the selected top category (2026-10-02 — "dole jsou soubory ty tam
+    /// nechci, tam maji byt dalsi polozky"). Replaces the flat file list as the browse page's default
+    /// content; the file list only comes back while actively text-searching (<see cref="IsSearching"/>),
+    /// since a sub-category grid has nothing to show for "find files matching this text" — that still
+    /// needs to search across every file regardless of which sub-category it's filed under.
+    /// </summary>
+    [ObservableProperty]
+    public partial ObservableCollection<SubcategoryItem> Subcategories { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasSubcategories { get; set; }
+
+    /// <summary>True once a real top category (not "Vše") is picked — gates both the sub-category grid and the "add sub-category" tile.</summary>
+    [ObservableProperty]
+    public partial bool IsTopCategorySelected { get; set; }
+
+    /// <summary>Mirrors <see cref="IsTopCategorySelected"/> — kept as its own bound property (this codebase's established pattern, see HasNoAdminSecret) so XAML never needs a converter to negate a binding.</summary>
+    [ObservableProperty]
+    public partial bool IsNoTopCategorySelected { get; set; }
+
+    /// <summary>True while <see cref="SearchQuery"/> is non-empty — switches the browse page from the sub-category grid back to a flat, cross-category file list (see <see cref="Subcategories"/>'s own remarks).</summary>
+    [ObservableProperty]
+    public partial bool IsSearching { get; set; }
+
+    /// <summary>
     /// Document Library content-approval workflow (2026-10-01). "Moje koncepty" — documents this
     /// device created or submitted, across any status (Draft/PendingReview/Published/Rejected).
     /// Separate from <see cref="Results"/> (the ordinary published-only browse list), since a Draft or
@@ -142,11 +167,14 @@ public sealed partial class LibraryViewModel : ObservableObject
         Results = [];
         Categories = [];
         CategoryChips = [];
+        Subcategories = [];
         SelectedCategory = "Vše";
         CanModifyContent = true;
         MyDocuments = [];
         RecomputeCanUpload();
     }
+
+    partial void OnSearchQueryChanged(string value) => IsSearching = !string.IsNullOrWhiteSpace(value);
 
     partial void OnStatusErrorMessageChanged(string? value)
     {
@@ -317,6 +345,10 @@ public sealed partial class LibraryViewModel : ObservableObject
             return;
         }
 
+        IsTopCategorySelected = value != "Vše";
+        IsNoTopCategorySelected = !IsTopCategorySelected;
+        _ = RefreshSubcategoriesAsync();
+
         var target = value == "Vše" ? string.Empty : value;
         if (string.Equals(target, FolderFilter, StringComparison.OrdinalIgnoreCase))
         {
@@ -326,6 +358,35 @@ public sealed partial class LibraryViewModel : ObservableObject
         FolderFilter = target;
         _ = SearchAsync();
     }
+
+    /// <summary>Best-effort, same posture as <see cref="RefreshReviewWorkflowStateAsync"/> — a failure here must never block browsing. Clears the grid for "Vše" (sub-categories only make sense under a real top category).</summary>
+    private async Task RefreshSubcategoriesAsync()
+    {
+        if (!IsTopCategorySelected || SelectedCategory is null)
+        {
+            Subcategories = [];
+            HasSubcategories = false;
+            return;
+        }
+
+        try
+        {
+            var myDeviceId = (await _transportSettingsRepository.GetAsync())?.AssignedDeviceId;
+            var items = await _libraryService.ListSubcategoriesAsync(SelectedCategory);
+            Subcategories = new ObservableCollection<SubcategoryItem>(items.Select(s => ToSubcategoryItem(s, myDeviceId)));
+            HasSubcategories = Subcategories.Count > 0;
+        }
+        catch (Exception ex)
+        {
+            _ = _diagnosticsReporter.ReportAsync(DiagnosticLogLevel.Warning, $"Nepodařilo se načíst podkategorie pro '{SelectedCategory}'.", nameof(LibraryViewModel), ex);
+        }
+    }
+
+    private static SubcategoryItem ToSubcategoryItem(LibrarySubcategorySummary summary, Guid? myDeviceId) => new(
+        summary.Id,
+        summary.ParentCategory,
+        summary.Name,
+        myDeviceId is { } id && string.Equals(summary.CreatedByDeviceId, id.ToString(), StringComparison.OrdinalIgnoreCase));
 
     private static LibraryFileItem ToItem(SharedLibraryFileSummary summary, Guid? myDeviceId)
     {
@@ -363,6 +424,22 @@ public sealed partial class LibraryViewModel : ObservableObject
         }
     }
 
+    [RelayCommand]
+    private async Task DeleteSubcategoryAsync(SubcategoryItem? item)
+    {
+        if (item is null) return;
+        try
+        {
+            await _libraryService.DeleteSubcategoryAsync(item.Id);
+            Subcategories = new ObservableCollection<SubcategoryItem>(Subcategories.Where(s => s.Id != item.Id));
+            HasSubcategories = Subcategories.Count > 0;
+        }
+        catch (Exception ex)
+        {
+            StatusErrorMessage = $"'{item.Name}' se nepodařilo smazat: {ex.Message}";
+        }
+    }
+
     private static string FormatSize(long bytes) => bytes switch
     {
         < 1024 => $"{bytes} B",
@@ -387,3 +464,6 @@ public sealed record CategoryChipItem(string Name, string Icon, bool IsSelected)
 
 /// <summary>One row in "Moje koncepty" (2026-10-01) — <see cref="CanSubmit"/> gates the "Odeslat ke schválení" button, true only for Draft/Rejected (a PendingReview or already-Published document has nothing to (re)submit).</summary>
 public sealed record LibraryDocumentDraftItem(Guid Id, string Title, string StatusText, bool CanSubmit);
+
+/// <summary>One sub-category card on the browse grid (2026-10-02). <see cref="CanDelete"/> mirrors <see cref="LibraryFileItem.IsMine"/> — only the creator can delete via the ordinary device-authed call, see RelayDatabase.TryDeleteLibrarySubcategory's own remarks.</summary>
+public sealed record SubcategoryItem(Guid Id, string ParentCategory, string Name, bool CanDelete);

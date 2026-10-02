@@ -19,52 +19,41 @@
              below gets its own scroll region (RefreshView needs sole ownership of the ScrollView
              it wraps — see Grid.Row 2). -->
         <VerticalStackLayout Grid.Row="0" Spacing="14">
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-                <VerticalStackLayout Grid.Column="0" Spacing="2">
-                    <Label Text="Knihovna postupů" Style="{StaticResource PageTitle}" />
-                    <Label Text="Sdílená, šifrovaná příručka pro celý tým — prohledávatelná podle názvu, složky nebo štítku." FontSize="10" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
-                </VerticalStackLayout>
-                <!-- 2026-10-02 redesign: upload/"Moje koncepty"/review-queue moved to their own page
-                     (LibraryManagePage) so this browse page's results list keeps most of the screen —
-                     a real usability complaint on a phone ("na rolování souborů máš cca 1.5 cm"). One
-                     entry point instead of two separate header buttons. -->
-                <Button Grid.Column="1" Text="✏ Spravovat" Style="{StaticResource SecondaryButton}" Command="{Binding OpenManageCommand}" IsVisible="{Binding CanManageLibrary}" VerticalOptions="Start" />
-            </Grid>
+            <!-- 2026-10-02: dropped the page's own "Knihovna postupů" title + description — the
+                 Soubory tab's own menu (Knihovna/Dokumenty) already says which section this is;
+                 repeating it as a second in-page heading was pure redundancy, per the user's own
+                 catch. "Spravovat" alone, right-aligned, replaces that whole header row. -->
+            <Button Text="✏ Spravovat" Style="{StaticResource SecondaryButton}" Command="{Binding OpenManageCommand}" IsVisible="{Binding CanManageLibrary}" HorizontalOptions="End" />
 
-            <!-- Search + category — reworked 2026-09-06 from a custom search card + horizontal
-                 chip/pill row to plain native controls (SearchBar, Picker). The user's own call:
-                 this is a professional reference tool for clinicians, not a consumer app, so it
-                 should look and behave like ordinary platform-native filter controls rather than
-                 a styled "commercial app" search box and colored bubbles — a Picker also sidesteps
-                 the chip row's real layout bug, where the horizontal ScrollView wrapping it could
-                 visually overlap the field below it (especially cramped on a phone). -->
             <SearchBar Text="{Binding SearchQuery}" Placeholder="Hledat postupy, např. &quot;sepse&quot;…" SearchCommand="{Binding SearchCommand}" />
 
             <!-- Category tiles (2026-10-02 redesign, replaces the 2026-09-06 Picker) — icon + name,
-                 tap to filter. Same underlying Categories/SelectedCategory data as before, just a
-                 denser at-a-glance row instead of a dropdown. -->
-            <FlexLayout BindableLayout.ItemsSource="{Binding CategoryChips}" Wrap="Wrap" Direction="Row" JustifyContent="Start" AlignItems="Start">
-                <BindableLayout.ItemTemplate>
-                    <DataTemplate x:DataType="vm:CategoryChipItem">
-                        <Border Padding="10,6" Margin="0,0,8,8" StrokeShape="RoundRectangle 10" Stroke="Transparent"
-                                BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
-                            <Border.Triggers>
-                                <DataTrigger TargetType="Border" Binding="{Binding IsSelected}" Value="True">
-                                    <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource AccentSoft}, Dark={StaticResource AccentSoftDark}}" />
-                                    <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
-                                </DataTrigger>
-                            </Border.Triggers>
-                            <Border.GestureRecognizers>
-                                <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibraryViewModel}}, Path=SelectCategoryCommand}" CommandParameter="{Binding Name}" />
-                            </Border.GestureRecognizers>
-                            <VerticalStackLayout Spacing="2" HorizontalOptions="Center" WidthRequest="60">
-                                <Label Text="{Binding Icon}" FontSize="17" HorizontalOptions="Center" />
-                                <Label Text="{Binding Name}" FontSize="8" HorizontalOptions="Center" HorizontalTextAlignment="Center" LineBreakMode="TailTruncation" />
-                            </VerticalStackLayout>
-                        </Border>
-                    </DataTemplate>
-                </BindableLayout.ItemTemplate>
-            </FlexLayout>
+                 tap to filter. 2026-10-02 correction: one horizontally-scrolling row instead of a
+                 wrapping grid, per the user's own ask ("jen jeden posunovací řádek"). -->
+            <ScrollView Orientation="Horizontal">
+                <HorizontalStackLayout BindableLayout.ItemsSource="{Binding CategoryChips}">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="vm:CategoryChipItem">
+                            <Border Padding="10,6" Margin="0,0,8,0" StrokeShape="RoundRectangle 10" Stroke="Transparent"
+                                    BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
+                                <Border.Triggers>
+                                    <DataTrigger TargetType="Border" Binding="{Binding IsSelected}" Value="True">
+                                        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource AccentSoft}, Dark={StaticResource AccentSoftDark}}" />
+                                        <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
+                                    </DataTrigger>
+                                </Border.Triggers>
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibraryViewModel}}, Path=SelectCategoryCommand}" CommandParameter="{Binding Name}" />
+                                </Border.GestureRecognizers>
+                                <VerticalStackLayout Spacing="2" HorizontalOptions="Center" WidthRequest="60">
+                                    <Label Text="{Binding Icon}" FontSize="17" HorizontalOptions="Center" />
+                                    <Label Text="{Binding Name}" FontSize="8" HorizontalOptions="Center" HorizontalTextAlignment="Center" LineBreakMode="TailTruncation" />
+                                </VerticalStackLayout>
+                            </Border>
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </HorizontalStackLayout>
+            </ScrollView>
 
             <Entry Text="{Binding TagFilter}" Placeholder="Filtrovat podle štítku" />
 
@@ -79,56 +68,94 @@
             <ScrollView>
                 <VerticalStackLayout Spacing="10">
 
+                    <!-- 2026-10-02: the browse page's default content is sub-category cards, not a
+                         flat file list ("dole jsou soubory ty tam nechci, tam maji byt dalsi
+                         polozky") — a file list only comes back while actively text-searching, since
+                         search needs to look across every file regardless of sub-category. -->
+
                     <Label
-                        Text="Nenalezeny žádné postupy — zkuste jiné hledání, nebo jeden přidejte výše."
-                        IsVisible="{Binding IsEmpty}"
+                        Text="Vyberte kategorii nahoře."
+                        IsVisible="{Binding IsNoTopCategorySelected}"
                         Margin="0,32"
                         HorizontalOptions="Center"
                         HorizontalTextAlignment="Center"
                         TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
 
-                    <!-- 2026-10-02 correction: the reference mockup's card-GRID treatment belongs to
-                         category/topic groupings ("Quick Access"), not individual files — its own
-                         file-level list ("Featured Content") is a plain single-column row list
-                         (icon + title + chevron). The category tiles above already cover the
-                         "grid of groupings" role, so files go back to one compact row each. -->
-                    <CollectionView
-                        x:Name="ResultsView"
-                        ItemsSource="{Binding Results}"
-                        SelectionMode="Single"
-                        SelectionChanged="OnResultSelected">
-                        <CollectionView.ItemsLayout>
-                            <LinearItemsLayout Orientation="Vertical" ItemSpacing="8" />
-                        </CollectionView.ItemsLayout>
-                        <CollectionView.ItemTemplate>
-                            <DataTemplate x:DataType="vm:LibraryFileItem">
-                                <Border Style="{StaticResource CardBorder}" Margin="0" Padding="12,10">
-                                    <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="10">
+                    <VerticalStackLayout Spacing="10" IsVisible="{Binding IsTopCategorySelected}">
 
-                                        <Border Grid.Column="0" WidthRequest="32" HeightRequest="32" Padding="0" StrokeShape="RoundRectangle 8" Stroke="Transparent" BackgroundColor="{AppThemeBinding Light={StaticResource AccentSoft}, Dark={StaticResource AccentSoftDark}}" VerticalOptions="Center">
-                                            <Label Text="📄" FontSize="12" HorizontalOptions="Center" VerticalOptions="Center" />
-                                        </Border>
+                        <CollectionView ItemsSource="{Binding Subcategories}">
+                            <CollectionView.ItemsLayout>
+                                <GridItemsLayout Orientation="Vertical" Span="2" HorizontalItemSpacing="10" VerticalItemSpacing="10" />
+                            </CollectionView.ItemsLayout>
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="vm:SubcategoryItem">
+                                    <Border Style="{StaticResource CardBorder}" Margin="0">
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibraryViewModel}}, Path=OpenSubcategoryCommand}" CommandParameter="{Binding .}" />
+                                        </Border.GestureRecognizers>
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <Label Grid.Column="0" Text="{Binding Name}" FontSize="11" FontAttributes="Bold" LineBreakMode="TailTruncation" VerticalOptions="Center" />
+                                            <Button Grid.Column="1" Text="🗑" BackgroundColor="Transparent" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" Padding="4,0"
+                                                    IsVisible="{Binding CanDelete}"
+                                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibraryViewModel}}, Path=DeleteSubcategoryCommand}"
+                                                    CommandParameter="{Binding .}" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
 
-                                        <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
-                                            <Label Text="{Binding FileName}" FontSize="11" FontAttributes="Bold" LineBreakMode="TailTruncation" />
-                                            <Label Text="{Binding FolderPath}" IsVisible="{Binding HasFolder}" FontSize="9" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" LineBreakMode="TailTruncation" />
-                                            <Label Text="{Binding SizeAndDateText}" FontSize="8.5" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
-                                        </VerticalStackLayout>
+                        <Button Text="＋ Přidat podkategorii" Style="{StaticResource SecondaryButton}" Command="{Binding AddSubcategoryCommand}" IsVisible="{Binding CanModifyContent}" />
 
-                                        <!-- 2026-10-01: only the uploader can delete via the ordinary (non-admin) relay
-                                             call, so this only shows on your own uploads — see LibraryViewModel.ToItem's
-                                             own remarks. -->
-                                        <Button Grid.Column="2" Text="🗑" BackgroundColor="Transparent" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" Padding="4,0" VerticalOptions="Center"
-                                                IsVisible="{Binding IsMine}"
-                                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibraryViewModel}}, Path=DeleteCommand}"
-                                                CommandParameter="{Binding .}" />
+                    </VerticalStackLayout>
 
-                                        <Label Grid.Column="3" Text="›" FontSize="16" VerticalOptions="Center" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
-                                    </Grid>
-                                </Border>
-                            </DataTemplate>
-                        </CollectionView.ItemTemplate>
-                    </CollectionView>
+                    <!-- Search mode — a plain cross-category file list, icon + title + chevron row. -->
+                    <VerticalStackLayout Spacing="8" IsVisible="{Binding IsSearching}">
+
+                        <Label
+                            Text="Nenalezeny žádné postupy."
+                            IsVisible="{Binding IsEmpty}"
+                            Margin="0,32"
+                            HorizontalOptions="Center"
+                            HorizontalTextAlignment="Center"
+                            TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
+
+                        <CollectionView
+                            x:Name="ResultsView"
+                            ItemsSource="{Binding Results}"
+                            SelectionMode="Single"
+                            SelectionChanged="OnResultSelected">
+                            <CollectionView.ItemsLayout>
+                                <LinearItemsLayout Orientation="Vertical" ItemSpacing="8" />
+                            </CollectionView.ItemsLayout>
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="vm:LibraryFileItem">
+                                    <Border Style="{StaticResource CardBorder}" Margin="0" Padding="12,10">
+                                        <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="10">
+
+                                            <Border Grid.Column="0" WidthRequest="32" HeightRequest="32" Padding="0" StrokeShape="RoundRectangle 8" Stroke="Transparent" BackgroundColor="{AppThemeBinding Light={StaticResource AccentSoft}, Dark={StaticResource AccentSoftDark}}" VerticalOptions="Center">
+                                                <Label Text="📄" FontSize="12" HorizontalOptions="Center" VerticalOptions="Center" />
+                                            </Border>
+
+                                            <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                                                <Label Text="{Binding FileName}" FontSize="11" FontAttributes="Bold" LineBreakMode="TailTruncation" />
+                                                <Label Text="{Binding FolderPath}" IsVisible="{Binding HasFolder}" FontSize="9" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" LineBreakMode="TailTruncation" />
+                                                <Label Text="{Binding SizeAndDateText}" FontSize="8.5" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
+                                            </VerticalStackLayout>
+
+                                            <Button Grid.Column="2" Text="🗑" BackgroundColor="Transparent" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" Padding="4,0" VerticalOptions="Center"
+                                                    IsVisible="{Binding IsMine}"
+                                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibraryViewModel}}, Path=DeleteCommand}"
+                                                    CommandParameter="{Binding .}" />
+
+                                            <Label Grid.Column="3" Text="›" FontSize="16" VerticalOptions="Center" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
+
+                    </VerticalStackLayout>
 
                 </VerticalStackLayout>
             </ScrollView>

@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="SecureApp.Presentation.Views.LibrarySubcategoryDetailPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
+    x:DataType="vm:LibrarySubcategoryDetailViewModel"
+    Title="{Binding SubcategoryName}">
+
+    <RefreshView IsRefreshing="{Binding IsLoading}" Command="{Binding LoadCommand}">
+        <ScrollView>
+            <VerticalStackLayout Padding="16" Spacing="14">
+
+                <Label
+                    Text="{Binding StatusErrorMessage}"
+                    IsVisible="{Binding HasStatusError}"
+                    TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}"
+                    LineBreakMode="WordWrap" />
+
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="8" IsVisible="{Binding CanModifyContent}">
+                    <Button Grid.Column="0" Text="⬆ Přidat soubor" Style="{StaticResource SecondaryButton}" Command="{Binding UploadCommand}" />
+                    <Button Grid.Column="1" Text="🔗 Přidat odkaz" Style="{StaticResource SecondaryButton}" Command="{Binding AddLinkCommand}" />
+                </Grid>
+
+                <!-- Links -->
+                <VerticalStackLayout Spacing="8" IsVisible="{Binding HasLinks}">
+                    <Label Text="Odkazy" Style="{StaticResource SectionHeader}" Margin="0" FontSize="11" />
+                    <VerticalStackLayout BindableLayout.ItemsSource="{Binding Links}" Spacing="6">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="vm:SubcategoryLinkItem">
+                                <Border Style="{StaticResource CardBorder}" Margin="0" Padding="12,10">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                                        <Label Grid.Column="0" Text="🔗" FontSize="14" VerticalOptions="Center" />
+                                        <Label Grid.Column="1" Text="{Binding Title}" FontSize="11" FontAttributes="Bold" VerticalOptions="Center" LineBreakMode="TailTruncation">
+                                            <Label.GestureRecognizers>
+                                                <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibrarySubcategoryDetailViewModel}}, Path=OpenLinkCommand}" CommandParameter="{Binding .}" />
+                                            </Label.GestureRecognizers>
+                                        </Label>
+                                        <Button Grid.Column="2" Text="🗑" BackgroundColor="Transparent" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" Padding="4,0"
+                                                IsVisible="{Binding CanDelete}"
+                                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibrarySubcategoryDetailViewModel}}, Path=DeleteLinkCommand}"
+                                                CommandParameter="{Binding .}" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+
+                <!-- Files -->
+                <Label
+                    Text="Zatím žádný obsah — přidejte soubor nebo odkaz výše."
+                    IsVisible="{Binding IsEmpty}"
+                    Margin="0,32"
+                    HorizontalOptions="Center"
+                    HorizontalTextAlignment="Center"
+                    TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
+
+                <VerticalStackLayout Spacing="8" IsVisible="{Binding HasFiles}">
+                    <Label Text="Soubory" Style="{StaticResource SectionHeader}" Margin="0" FontSize="11" />
+                    <VerticalStackLayout BindableLayout.ItemsSource="{Binding Files}" Spacing="8">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="vm:LibraryFileItem">
+                                <Border Style="{StaticResource CardBorder}" Margin="0" Padding="12,10">
+                                    <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="10">
+                                        <Border Grid.Column="0" WidthRequest="32" HeightRequest="32" Padding="0" StrokeShape="RoundRectangle 8" Stroke="Transparent" BackgroundColor="{AppThemeBinding Light={StaticResource AccentSoft}, Dark={StaticResource AccentSoftDark}}" VerticalOptions="Center">
+                                            <Label Text="📄" FontSize="12" HorizontalOptions="Center" VerticalOptions="Center" />
+                                        </Border>
+                                        <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                                            <Label Text="{Binding FileName}" FontSize="11" FontAttributes="Bold" LineBreakMode="TailTruncation" />
+                                            <Label Text="{Binding SizeAndDateText}" FontSize="8.5" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
+                                        </VerticalStackLayout>
+                                        <Button Grid.Column="2" Text="🗑" BackgroundColor="Transparent" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" Padding="4,0" VerticalOptions="Center"
+                                                IsVisible="{Binding IsMine}"
+                                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibrarySubcategoryDetailViewModel}}, Path=DeleteFileCommand}"
+                                                CommandParameter="{Binding .}" />
+                                        <Label Grid.Column="3" Text="›" FontSize="16" VerticalOptions="Center" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}">
+                                            <Label.GestureRecognizers>
+                                                <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibrarySubcategoryDetailViewModel}}, Path=OpenFileCommand}" CommandParameter="{Binding .}" />
+                                            </Label.GestureRecognizers>
+                                        </Label>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+
+            </VerticalStackLayout>
+        </ScrollView>
+    </RefreshView>
+</ContentPage>
