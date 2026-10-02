@@ -16,6 +16,14 @@ public sealed record LibraryFileRecord(
     Guid UploadedByDeviceId,
     DateTimeOffset UploadedAtUtc);
 
+/// <summary>One library sub-category — see <c>library_subcategories</c>'s schema in <see cref="RelayDatabase.Initialize"/>.</summary>
+public sealed record LibrarySubcategoryRecord(
+    Guid Id,
+    string ParentCategory,
+    string Name,
+    Guid CreatedByDeviceId,
+    DateTimeOffset CreatedAtUtc);
+
 /// <summary>One reviewable Document Library entry — see <c>library_documents</c>'s schema in <see cref="RelayDatabase.Initialize"/>.</summary>
 public sealed record LibraryDocumentRecord(
     Guid Id, string Title, string FolderPath, string Status,
@@ -116,6 +124,24 @@ public sealed class RelayDatabase
             )
             """);
         Execute(connection, "CREATE INDEX IF NOT EXISTS ix_library_files_folder ON library_files(folder_path)");
+
+        // Library sub-categories (2026-10-02) — an explicit, admin/modifier-managed registry, unlike
+        // the top-level categories (still just distinct library_files.folder_path values, discovered
+        // from real uploads). A sub-category needs to exist and be visible BEFORE any file is in it
+        // (so there is something to tap/upload into), which plain folder-path discovery can't give —
+        // nothing to discover from an empty folder. parent_category is one of the fixed top-level
+        // names the client already knows (not a foreign key — those aren't stored anywhere server-side,
+        // same as the top-level categories themselves).
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS library_subcategories (
+                id                       TEXT PRIMARY KEY NOT NULL,
+                parent_category          TEXT NOT NULL,
+                name                     TEXT NOT NULL,
+                created_by_device_id     TEXT NOT NULL,
+                created_at_utc           TEXT NOT NULL
+            )
+            """);
+        Execute(connection, "CREATE INDEX IF NOT EXISTS ix_library_subcategories_parent ON library_subcategories(parent_category)");
         // 2026-09-14: is_listed distinguishes a real community-library file (1) from a PRIVATE chat
         // attachment (0) — same encrypted storage, but private ones are hidden from the library browser
         // and reachable only by the id carried in the E2EE chat message. Guarded ALTER (SQLite has no

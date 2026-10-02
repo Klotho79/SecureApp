@@ -70,6 +70,10 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsAdmin { get; set; }
 
+    /// <summary>Gates the "Spravovat knihovnu" entry card (2026-10-02 — consolidated here per the user's own ask, "veškerá správa do nastavení": every management surface lives in Settings, not scattered across other tabs). Admin or Modifier, same RoleAccessPolicy.UploadLibraryFile reasoning LibraryViewModel.CanModifyContent already uses — a pure Viewer-role device that's also been flagged as a document reviewer is a narrow edge case not covered here yet, deferred along with the rest of this Settings layout pass.</summary>
+    [ObservableProperty]
+    public partial bool CanManageLibrary { get; set; }
+
     /// <summary>Logbook tab show/hide (2026-09-09) — the user's own explicit ask. Stored via <c>Preferences</c> (a per-device display setting, not User data — see LoadAsync/OnIsLogbookVisibleChanged) rather than a new Domain entity/table; applies live, see <c>AppShell.RebuildTabBar</c>'s own remarks.</summary>
     [ObservableProperty]
     public partial bool IsLogbookVisible { get; set; }
@@ -275,6 +279,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         IsSaved = false;
         IsAdmin = value == Role.Admin;
+        CanManageLibrary = value != Role.Viewer;
     }
 
     partial void OnRelayErrorMessageChanged(string? value) => HasRelayError = !string.IsNullOrEmpty(value);
