@@ -87,49 +87,43 @@
                         HorizontalTextAlignment="Center"
                         TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
 
+                    <!-- 2026-10-02 correction: the reference mockup's card-GRID treatment belongs to
+                         category/topic groupings ("Quick Access"), not individual files — its own
+                         file-level list ("Featured Content") is a plain single-column row list
+                         (icon + title + chevron). The category tiles above already cover the
+                         "grid of groupings" role, so files go back to one compact row each. -->
                     <CollectionView
                         x:Name="ResultsView"
                         ItemsSource="{Binding Results}"
                         SelectionMode="Single"
                         SelectionChanged="OnResultSelected">
                         <CollectionView.ItemsLayout>
-                            <!-- 2026-10-02 redesign: a denser 2-column grid instead of one flat vertical
-                                 list, closer to the reference mockup's card-grid density. -->
-                            <GridItemsLayout Orientation="Vertical" Span="2" HorizontalItemSpacing="10" VerticalItemSpacing="10" />
+                            <LinearItemsLayout Orientation="Vertical" ItemSpacing="8" />
                         </CollectionView.ItemsLayout>
                         <CollectionView.ItemTemplate>
                             <DataTemplate x:DataType="vm:LibraryFileItem">
-                                <Border Style="{StaticResource CardBorder}" Margin="0">
-                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                                <Border Style="{StaticResource CardBorder}" Margin="0" Padding="12,10">
+                                    <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="10">
 
-                                        <Border Grid.Column="0" WidthRequest="38" HeightRequest="38" Padding="0" StrokeShape="RoundRectangle 9" Stroke="Transparent" BackgroundColor="{AppThemeBinding Light={StaticResource AccentSoft}, Dark={StaticResource AccentSoftDark}}" VerticalOptions="Start">
-                                            <Label Text="📄" FontSize="13" HorizontalOptions="Center" VerticalOptions="Center" />
+                                        <Border Grid.Column="0" WidthRequest="32" HeightRequest="32" Padding="0" StrokeShape="RoundRectangle 8" Stroke="Transparent" BackgroundColor="{AppThemeBinding Light={StaticResource AccentSoft}, Dark={StaticResource AccentSoftDark}}" VerticalOptions="Center">
+                                            <Label Text="📄" FontSize="12" HorizontalOptions="Center" VerticalOptions="Center" />
                                         </Border>
 
-                                        <VerticalStackLayout Grid.Column="1" Spacing="5">
-                                            <Label Text="{Binding FileName}" FontSize="11.5" FontAttributes="Bold" LineBreakMode="TailTruncation" />
-                                            <Label Text="{Binding FolderPath}" IsVisible="{Binding HasFolder}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
-
-                                            <FlexLayout IsVisible="{Binding HasTags}" BindableLayout.ItemsSource="{Binding Tags}" Wrap="Wrap" Direction="Row" JustifyContent="Start" AlignItems="Start">
-                                                <BindableLayout.ItemTemplate>
-                                                    <DataTemplate x:DataType="vm:LibraryTagItem">
-                                                        <Border Style="{StaticResource Chip}" Margin="0,2,6,0">
-                                                            <Label Text="{Binding Label}" Style="{StaticResource ChipLabel}" />
-                                                        </Border>
-                                                    </DataTemplate>
-                                                </BindableLayout.ItemTemplate>
-                                            </FlexLayout>
-
-                                            <Label Text="{Binding SizeAndDateText}" FontSize="9" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
+                                        <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                                            <Label Text="{Binding FileName}" FontSize="11" FontAttributes="Bold" LineBreakMode="TailTruncation" />
+                                            <Label Text="{Binding FolderPath}" IsVisible="{Binding HasFolder}" FontSize="9" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" LineBreakMode="TailTruncation" />
+                                            <Label Text="{Binding SizeAndDateText}" FontSize="8.5" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
                                         </VerticalStackLayout>
 
                                         <!-- 2026-10-01: only the uploader can delete via the ordinary (non-admin) relay
                                              call, so this only shows on your own uploads — see LibraryViewModel.ToItem's
                                              own remarks. -->
-                                        <Button Grid.Column="2" Text="🗑" BackgroundColor="Transparent" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" Padding="6,0" VerticalOptions="Start"
+                                        <Button Grid.Column="2" Text="🗑" BackgroundColor="Transparent" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" Padding="4,0" VerticalOptions="Center"
                                                 IsVisible="{Binding IsMine}"
                                                 Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibraryViewModel}}, Path=DeleteCommand}"
                                                 CommandParameter="{Binding .}" />
+
+                                        <Label Grid.Column="3" Text="›" FontSize="16" VerticalOptions="Center" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
                                     </Grid>
                                 </Border>
                             </DataTemplate>
