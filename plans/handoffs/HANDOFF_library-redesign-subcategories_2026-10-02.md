@@ -368,6 +368,6 @@ curl.exe -s -H "X-Admin-Secret: $secret" http://192.168.50.8:8080/admin/users
 ---
 
 ## Session Closed
-**Closed at:** 2026-10-02 (this session)
-**Commit:** (to be set at session close)
-**Session status:** Handed off mid-flow — `74d677a` is on `main`/pushed but not deployed or released
+**Closed at:** 2026-10-02
+**Commit:** `7edbcb5` (pushed to `pi` + `github`)
+**Session status:** Handed off mid-flow — `74d677a` (sub-categories+links feature) is on `main`/pushed but not deployed or released
