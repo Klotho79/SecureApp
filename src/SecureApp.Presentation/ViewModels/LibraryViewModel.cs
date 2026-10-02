@@ -250,12 +250,12 @@ public sealed partial class LibraryViewModel : ObservableObject
 
     /// <summary>
     /// A starting structure so the chip row isn't empty before anyone has uploaded anything — the
-    /// user's own field (anesthesiology/intensive care) plus a general announcements bucket. Not
-    /// exclusive: any other folder name typed on upload shows up as its own chip too (see
-    /// RefreshCategoriesAsync below), this is just a floor, not a ceiling. Worth making
-    /// admin-editable later rather than a hardcoded list, if the community's categories evolve.
+    /// 5 top-level sections from the reference mockup (2026-10-02). Not exclusive: any other folder
+    /// name typed on upload shows up as its own chip too (see RefreshCategoriesAsync below), this is
+    /// just a floor, not a ceiling. Worth making admin-editable later rather than a hardcoded list,
+    /// if the community's categories evolve.
     /// </summary>
-    private static readonly string[] SeedCategories = ["Anesteziologie", "Intenzivní medicína", "Oznámení"];
+    private static readonly string[] SeedCategories = ["Doporučení", "Resuscitace", "Postupy", "Výuka", "Nástroje"];
 
     /// <summary>
     /// Unfiltered fetch, deliberately separate from the (possibly filtered) Results above — the
@@ -293,9 +293,11 @@ public sealed partial class LibraryViewModel : ObservableObject
     private static string IconForCategory(string name) => name switch
     {
         "Vše" => "📚",
-        "Anesteziologie" => "💉",
-        "Intenzivní medicína" => "🏥",
-        "Oznámení" => "📢",
+        "Doporučení" => "⭐",
+        "Resuscitace" => "❤",
+        "Postupy" => "💉",
+        "Výuka" => "📖",
+        "Nástroje" => "🧮",
         _ => "📁"
     };
 
