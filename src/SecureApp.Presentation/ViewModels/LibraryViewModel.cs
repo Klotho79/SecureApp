@@ -57,9 +57,13 @@ public sealed partial class LibraryViewModel : ObservableObject
     [ObservableProperty]
     public partial ObservableCollection<string> Categories { get; set; }
 
-    /// <summary>Bound to the Picker's SelectedItem; see <see cref="OnSelectedCategoryChanged"/>.</summary>
+    /// <summary>Which category is active; see <see cref="OnSelectedCategoryChanged"/>.</summary>
     [ObservableProperty]
     public partial string? SelectedCategory { get; set; }
+
+    /// <summary>Icon-tile row shown instead of a Picker (2026-10-02 redesign) — same underlying <see cref="Categories"/> data, just a different presentation. Rebuilt alongside <see cref="Categories"/> in <see cref="RefreshCategoriesAsync"/> so each tile's highlighted state stays in sync with <see cref="SelectedCategory"/>.</summary>
+    [ObservableProperty]
+    public partial ObservableCollection<CategoryChipItem> CategoryChips { get; set; }
 
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
@@ -127,6 +131,7 @@ public sealed partial class LibraryViewModel : ObservableObject
         UploadTags = string.Empty;
         Results = [];
         Categories = [];
+        CategoryChips = [];
         SelectedCategory = "Vše";
         CanModifyContent = true;
         MyDocuments = [];
@@ -251,18 +256,34 @@ public sealed partial class LibraryViewModel : ObservableObject
         names.AddRange(distinctFolders);
         Categories = new ObservableCollection<string>(names);
 
-        // Keep the Picker's selection in sync with whatever FolderFilter already is (e.g. after a
-        // plain text search) without re-triggering OnSelectedCategoryChanged below — assigning the
-        // same string value again is a no-op per CommunityToolkit.Mvvm's generated setter.
+        // Keep the active tile in sync with whatever FolderFilter already is (e.g. after a plain
+        // text search) without re-triggering OnSelectedCategoryChanged below — assigning the same
+        // string value again is a no-op per CommunityToolkit.Mvvm's generated setter.
         SelectedCategory = string.IsNullOrEmpty(FolderFilter)
             ? "Vše"
             : names.FirstOrDefault(n => string.Equals(n, FolderFilter, StringComparison.OrdinalIgnoreCase)) ?? FolderFilter;
+
+        CategoryChips = new ObservableCollection<CategoryChipItem>(
+            names.Select(n => new CategoryChipItem(n, IconForCategory(n), string.Equals(n, SelectedCategory, StringComparison.OrdinalIgnoreCase))));
     }
 
+    private static string IconForCategory(string name) => name switch
+    {
+        "Vše" => "📚",
+        "Anesteziologie" => "💉",
+        "Intenzivní medicína" => "🏥",
+        "Oznámení" => "📢",
+        _ => "📁"
+    };
+
+    /// <summary>Tapped from a category tile — see <see cref="CategoryChips"/>. Routes through the same <see cref="SelectedCategory"/> setter a Picker selection used to.</summary>
+    [RelayCommand]
+    private void SelectCategory(string? category) => SelectedCategory = category;
+
     /// <summary>
-    /// Fires only on an actual user pick in the Picker (see the RefreshCategoriesAsync remark
-    /// above for why re-assigning the same value here is silent, avoiding a refresh↔selection
-    /// feedback loop).
+    /// Fires on any assignment to <see cref="SelectedCategory"/> — a tile tap (via <see cref="SelectCategory"/>)
+    /// or RefreshCategoriesAsync's own re-sync above (which the early-return below makes a no-op for
+    /// search purposes, avoiding a refresh↔selection feedback loop).
     /// </summary>
     partial void OnSelectedCategoryChanged(string? value)
     {
@@ -335,6 +356,9 @@ public sealed record LibraryFileItem(Guid Id, string FileName, string? FolderPat
 
 /// <summary>Wraps a plain tag string only so it has a stable reference type for BindableLayout's ItemsSource — a bare List&lt;string&gt; binds fine too, but this keeps the DataTemplate's x:DataType explicit rather than implicitly "x:String".</summary>
 public sealed record LibraryTagItem(string Label);
+
+/// <summary>One tile in the category row (2026-10-02 redesign). Deliberately plain data — no MAUI <c>Color</c>/<c>FontAttributes</c> here, matching this file's own "free of any MAUI type" rule; the selected/unselected visual difference is a XAML DataTrigger on <see cref="IsSelected"/> instead.</summary>
+public sealed record CategoryChipItem(string Name, string Icon, bool IsSelected);
 
 /// <summary>One row in "Moje koncepty" (2026-10-01) — <see cref="CanSubmit"/> gates the "Odeslat ke schválení" button, true only for Draft/Rejected (a PendingReview or already-Published document has nothing to (re)submit).</summary>
 public sealed record LibraryDocumentDraftItem(Guid Id, string Title, string StatusText, bool CanSubmit);

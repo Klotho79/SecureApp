@@ -38,10 +38,31 @@
                  visually overlap the field below it (especially cramped on a phone). -->
             <SearchBar Text="{Binding SearchQuery}" Placeholder="Hledat postupy, např. &quot;sepse&quot;…" SearchCommand="{Binding SearchCommand}" />
 
-            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10" VerticalOptions="Center">
-                <Label Grid.Column="0" Text="Kategorie" VerticalOptions="Center" FontSize="10.5" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
-                <Picker Grid.Column="1" ItemsSource="{Binding Categories}" SelectedItem="{Binding SelectedCategory}" />
-            </Grid>
+            <!-- Category tiles (2026-10-02 redesign, replaces the 2026-09-06 Picker) — icon + name,
+                 tap to filter. Same underlying Categories/SelectedCategory data as before, just a
+                 denser at-a-glance row instead of a dropdown. -->
+            <FlexLayout BindableLayout.ItemsSource="{Binding CategoryChips}" Wrap="Wrap" Direction="Row" JustifyContent="Start" AlignItems="Start">
+                <BindableLayout.ItemTemplate>
+                    <DataTemplate x:DataType="vm:CategoryChipItem">
+                        <Border Padding="10,6" Margin="0,0,8,8" StrokeShape="RoundRectangle 10" Stroke="Transparent"
+                                BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
+                            <Border.Triggers>
+                                <DataTrigger TargetType="Border" Binding="{Binding IsSelected}" Value="True">
+                                    <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource AccentSoft}, Dark={StaticResource AccentSoftDark}}" />
+                                    <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
+                                </DataTrigger>
+                            </Border.Triggers>
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibraryViewModel}}, Path=SelectCategoryCommand}" CommandParameter="{Binding Name}" />
+                            </Border.GestureRecognizers>
+                            <VerticalStackLayout Spacing="2" HorizontalOptions="Center" WidthRequest="60">
+                                <Label Text="{Binding Icon}" FontSize="17" HorizontalOptions="Center" />
+                                <Label Text="{Binding Name}" FontSize="8" HorizontalOptions="Center" HorizontalTextAlignment="Center" LineBreakMode="TailTruncation" />
+                            </VerticalStackLayout>
+                        </Border>
+                    </DataTemplate>
+                </BindableLayout.ItemTemplate>
+            </FlexLayout>
 
             <Entry Text="{Binding TagFilter}" Placeholder="Filtrovat podle štítku" />
 
@@ -114,7 +135,9 @@
                         SelectionMode="Single"
                         SelectionChanged="OnResultSelected">
                         <CollectionView.ItemsLayout>
-                            <LinearItemsLayout Orientation="Vertical" ItemSpacing="10" />
+                            <!-- 2026-10-02 redesign: a denser 2-column grid instead of one flat vertical
+                                 list, closer to the reference mockup's card-grid density. -->
+                            <GridItemsLayout Orientation="Vertical" Span="2" HorizontalItemSpacing="10" VerticalItemSpacing="10" />
                         </CollectionView.ItemsLayout>
                         <CollectionView.ItemTemplate>
                             <DataTemplate x:DataType="vm:LibraryFileItem">
