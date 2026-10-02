@@ -319,6 +319,7 @@
                 <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanManageLibrary}">
                     <VerticalStackLayout Spacing="8">
                         <Label Text="Kategorie knihovny" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Button Text="✏ Spravovat obsah (nahrát, koncepty, schvalování)" Style="{StaticResource SecondaryButton}" Command="{Binding OpenLibraryManageCommand}" />
                         <Label Text="Podkategorie se otevírají a procházejí v Knihovně — přidávání a mazání je tady." FontSize="9.5" TextColor="Gray" />
 
                         <Picker ItemsSource="{Binding LibraryTopCategories}" SelectedItem="{Binding SelectedLibraryTopCategory}" Title="Kategorie" />

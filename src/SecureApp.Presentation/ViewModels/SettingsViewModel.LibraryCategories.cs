@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SecureApp.Domain.Enums;
+using SecureApp.Presentation.Views;
 
 namespace SecureApp.Presentation.ViewModels;
 
@@ -119,6 +120,14 @@ public sealed partial class SettingsViewModel
             IsLoadingLibrarySubcategories = false;
         }
     }
+
+    /// <summary>The "✏ Spravovat" entry (upload/"Moje koncepty"/review queue) that used to sit on the
+    /// Library browse page itself — moved here, same consolidation as sub-category add/delete right
+    /// below. <c>Shell.Current</c> is already used directly elsewhere in this ViewModel's own
+    /// partials (e.g. <c>SettingsViewModel.Community.cs</c>), so no MAUI-type-isolation constraint
+    /// applies here the way it does on <see cref="LibraryViewModel"/>.</summary>
+    [RelayCommand]
+    private async Task OpenLibraryManageAsync() => await Shell.Current.GoToAsync(nameof(LibraryManagePage), animate: false);
 
     [RelayCommand]
     private void SelectLibraryTopCategory(string? category) => SelectedLibraryTopCategory = category;

@@ -22,19 +22,23 @@
             <!-- 2026-10-02: dropped the page's own "Knihovna postupů" title + description — the
                  Soubory tab's own menu (Knihovna/Dokumenty) already says which section this is;
                  repeating it as a second in-page heading was pure redundancy, per the user's own
-                 catch. "Spravovat" alone, right-aligned, replaces that whole header row. -->
-            <Button Text="✏ Spravovat" Style="{StaticResource SecondaryButton}" Command="{Binding OpenManageCommand}" IsVisible="{Binding CanManageLibrary}" HorizontalOptions="End" />
+                 catch. The "✏ Spravovat" button that used to sit here moved to Settings →
+                 Systém → "Kategorie knihovny", finishing the "veškerá správa do nastavení"
+                 consolidation the user asked for earlier. -->
 
             <SearchBar Text="{Binding SearchQuery}" Placeholder="Hledat postupy, např. &quot;sepse&quot;…" SearchCommand="{Binding SearchCommand}" />
 
             <!-- Category tiles (2026-10-02 redesign, replaces the 2026-09-06 Picker) — icon + name,
                  tap to filter. 2026-10-02 correction: one horizontally-scrolling row instead of a
-                 wrapping grid, per the user's own ask ("jen jeden posunovací řádek"). -->
+                 wrapping grid, per the user's own ask ("jen jeden posunovací řádek"). Enlarged same
+                 day, 2nd pass — user's own ask ("obtizne se trefuje... napisy... zalomene"): bigger
+                 padding/tile for an easier tap target, WordWrap (2 lines) instead of truncating
+                 longer names like "Doporučení"/"Resuscitace". -->
             <ScrollView Orientation="Horizontal">
                 <HorizontalStackLayout BindableLayout.ItemsSource="{Binding CategoryChips}">
                     <BindableLayout.ItemTemplate>
                         <DataTemplate x:DataType="vm:CategoryChipItem">
-                            <Border Padding="10,6" Margin="0,0,8,0" StrokeShape="RoundRectangle 10" Stroke="Transparent"
+                            <Border Padding="14,10" Margin="0,0,10,0" StrokeShape="RoundRectangle 12" Stroke="Transparent"
                                     BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
                                 <Border.Triggers>
                                     <DataTrigger TargetType="Border" Binding="{Binding IsSelected}" Value="True">
@@ -45,9 +49,9 @@
                                 <Border.GestureRecognizers>
                                     <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibraryViewModel}}, Path=SelectCategoryCommand}" CommandParameter="{Binding Name}" />
                                 </Border.GestureRecognizers>
-                                <VerticalStackLayout Spacing="2" HorizontalOptions="Center" WidthRequest="60">
-                                    <Label Text="{Binding Icon}" FontSize="17" HorizontalOptions="Center" />
-                                    <Label Text="{Binding Name}" FontSize="8" HorizontalOptions="Center" HorizontalTextAlignment="Center" LineBreakMode="TailTruncation" />
+                                <VerticalStackLayout Spacing="4" HorizontalOptions="Center" WidthRequest="88">
+                                    <Label Text="{Binding Icon}" FontSize="24" HorizontalOptions="Center" />
+                                    <Label Text="{Binding Name}" FontSize="11" HorizontalOptions="Center" HorizontalTextAlignment="Center" LineBreakMode="WordWrap" MaxLines="2" />
                                 </VerticalStackLayout>
                             </Border>
                         </DataTemplate>
@@ -74,8 +78,6 @@
                     </BindableLayout.ItemTemplate>
                 </HorizontalStackLayout>
             </ScrollView>
-
-            <Entry Text="{Binding TagFilter}" Placeholder="Filtrovat podle štítku" />
 
             <Label
                 Text="{Binding StatusErrorMessage}"

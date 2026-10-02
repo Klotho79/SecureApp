@@ -32,9 +32,6 @@ public sealed partial class LibraryViewModel : ObservableObject
     public partial string FolderFilter { get; set; }
 
     [ObservableProperty]
-    public partial string TagFilter { get; set; }
-
-    [ObservableProperty]
     public partial string UploadFolderPath { get; set; }
 
     [ObservableProperty]
@@ -172,7 +169,6 @@ public sealed partial class LibraryViewModel : ObservableObject
 
         SearchQuery = string.Empty;
         FolderFilter = string.Empty;
-        TagFilter = string.Empty;
         UploadFolderPath = string.Empty;
         UploadTags = string.Empty;
         Results = [];
@@ -224,8 +220,7 @@ public sealed partial class LibraryViewModel : ObservableObject
             var sw = System.Diagnostics.Stopwatch.StartNew();
             var results = await _libraryService.SearchAsync(
                 string.IsNullOrWhiteSpace(SearchQuery) ? null : SearchQuery,
-                string.IsNullOrWhiteSpace(FolderFilter) ? null : FolderFilter,
-                string.IsNullOrWhiteSpace(TagFilter) ? null : TagFilter);
+                string.IsNullOrWhiteSpace(FolderFilter) ? null : FolderFilter);
             Infrastructure.AppLog.Metric("search_latency.library", sw.Elapsed.TotalMilliseconds, "ms", ("resultCount", results.Count));
 
             var myDeviceId = (await _transportSettingsRepository.GetAsync())?.AssignedDeviceId;
