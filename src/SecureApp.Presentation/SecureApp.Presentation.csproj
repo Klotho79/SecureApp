@@ -70,7 +70,14 @@
 		     be raised or logged. Launching the real apphost avoids this entirely. -->
 		<RuntimeIdentifier Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">win-x64</RuntimeIdentifier>
 		<UseAppHost Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">true</UseAppHost>
-		<SelfContained Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">false</SelfContained>
+
+		<!-- 2026-10-02, user's own ask: a second PC needs to run this with zero installs (no admin
+		     rights to add the .NET Desktop Runtime / Windows App SDK Runtime that a framework-dependent
+		     build needs). Self-contained bundles both directly into the publish output folder, which
+		     then just gets copied and run — xcopy-deployable, no installer, no admin. Applies to every
+		     Windows build from here on (Debug included), not just Release. -->
+		<SelfContained Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">true</SelfContained>
+		<WindowsAppSDKSelfContained Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">true</WindowsAppSDKSelfContained>
 
 		<!-- Belt-and-suspenders: the RID pin above wasn't enough to stop this VS build from
 		     resolving the debug launch via "dotnet.exe exec" instead of the apphost, so

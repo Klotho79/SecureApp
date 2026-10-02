@@ -89,6 +89,20 @@ app.MapGet("/download/android", () =>
     return Results.File(path, "application/vnd.android.package-archive", "SecureApp.apk", enableRangeProcessing: true);
 });
 
+// Windows portable build (2026-10-02, user's own ask: a second PC with no admin rights can't install
+// the .NET Desktop Runtime / Windows App SDK Runtime a framework-dependent build needs — see the
+// Presentation csproj's own remarks on the matching SelfContained switch). No in-app updater for this
+// one (unlike Android) — placed here manually via scp, not /admin/upload/android's sibling, since this
+// is an occasional manual hand-off, not a routine release channel.
+app.MapGet("/download/windows", () =>
+{
+    var path = Path.Combine(downloadsDir, "secureapp-windows-portable.zip");
+    if (!File.Exists(path))
+        return Results.NotFound("Windows verze zatím není nahraná.");
+
+    return Results.File(path, "application/zip", "SecureApp-Windows-portable.zip", enableRangeProcessing: true);
+});
+
 // Self-update (2026-09-23) — the in-app update check reads this; unauthenticated, same reasoning
 // as /download itself (a device that's already this far along already has the app, but checking
 // "is there something newer" shouldn't need a device credential either — it's the same "anyone
@@ -132,6 +146,29 @@ app.MapPost("/admin/upload/android", async (HttpRequest request) =>
     await File.WriteAllTextAsync(versionPath, System.Text.Json.JsonSerializer.Serialize(manifest));
 
     return Results.Ok(new { uploaded = true, sizeBytes = file.Length, versionCode, versionName });
+});
+
+// Uploads the Windows portable build next to /download/windows above — same admin-secret gate and
+// multipart shape as /admin/upload/android, needed for the same reason: the relay container (root)
+// can write into the root-owned data/downloads volume where a plain scp as dvorakv1 cannot.
+app.MapPost("/admin/upload/windows", async (HttpRequest request) =>
+{
+    if (!IsAdminAuthorized(request, adminSecret))
+        return Results.Unauthorized();
+
+    if (!request.HasFormContentType)
+        return Results.BadRequest("Expected multipart/form-data.");
+
+    var form = await request.ReadFormAsync();
+    var file = form.Files["zip"];
+    if (file is null || file.Length == 0)
+        return Results.BadRequest("Missing 'zip' file.");
+
+    var zipPath = Path.Combine(downloadsDir, "secureapp-windows-portable.zip");
+    await using (var stream = File.Create(zipPath))
+        await file.CopyToAsync(stream);
+
+    return Results.Ok(new { uploaded = true, sizeBytes = file.Length });
 });
 
 app.MapPost("/admin/invites", (HttpRequest request, CreateInviteRequest body, RelayDatabase db) =>
