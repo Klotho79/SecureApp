@@ -124,6 +124,17 @@ public sealed partial class LibraryViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsNoTopCategorySelected { get; set; }
 
+    /// <summary>
+    /// "QUICK ACCESS: ACUTE STATES" row from the reference mockup (2026-10-02) — a fixed, static
+    /// shortcut row under the category tiles, not derived from library content like
+    /// <see cref="Categories"/> is. Tapping one is just a shortcut into the existing full-text
+    /// search (<see cref="SearchAcuteStateCommand"/>) rather than a new navigation target — there is
+    /// no dedicated protocol-detail page yet (video/diagram view explicitly deferred), so this reuses
+    /// what already exists instead of building a parallel content model for four hardcoded terms.
+    /// </summary>
+    [ObservableProperty]
+    public partial ObservableCollection<string> AcuteStates { get; set; }
+
     /// <summary>True while <see cref="SearchQuery"/> is non-empty — switches the browse page from the sub-category grid back to a flat, cross-category file list (see <see cref="Subcategories"/>'s own remarks).</summary>
     [ObservableProperty]
     public partial bool IsSearching { get; set; }
@@ -168,6 +179,7 @@ public sealed partial class LibraryViewModel : ObservableObject
         Categories = [];
         CategoryChips = [];
         Subcategories = [];
+        AcuteStates = ["DAS algoritmy (dýchací cesty)", "Protokol masivní transfuze", "Sepse", "Maligní hypertermie"];
         SelectedCategory = "Vše";
         CanModifyContent = true;
         MyDocuments = [];
@@ -301,11 +313,16 @@ public sealed partial class LibraryViewModel : ObservableObject
             .Where(f => !string.IsNullOrWhiteSpace(f))
             .Select(f => f!.Split('/', 2)[0]);
 
-        var distinctFolders = SeedCategories
-            .Concat(uploadedFolders)
+        // SeedCategories keep their own fixed mockup order (Doporučení, Resuscitace, Postupy,
+        // Výuka, Nástroje) rather than being re-sorted alphabetically — only a genuinely new,
+        // community-typed folder name (not one of the five) falls back to alphabetical, appended
+        // after them since it has no defined place in that order.
+        var extraFolders = uploadedFolders
+            .Where(f => !SeedCategories.Contains(f, StringComparer.OrdinalIgnoreCase))
             .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+            .OrderBy(f => f, StringComparer.OrdinalIgnoreCase);
+
+        var distinctFolders = SeedCategories.Concat(extraFolders).ToList();
 
         var names = new List<string> { "Vše" };
         names.AddRange(distinctFolders);
@@ -336,6 +353,15 @@ public sealed partial class LibraryViewModel : ObservableObject
     /// <summary>Tapped from a category tile — see <see cref="CategoryChips"/>. Routes through the same <see cref="SelectedCategory"/> setter a Picker selection used to.</summary>
     [RelayCommand]
     private void SelectCategory(string? category) => SelectedCategory = category;
+
+    /// <summary>Tapped from the <see cref="AcuteStates"/> row — a plain full-text search shortcut, see that property's own remarks.</summary>
+    [RelayCommand]
+    private async Task SearchAcuteStateAsync(string? term)
+    {
+        if (string.IsNullOrWhiteSpace(term)) return;
+        SearchQuery = term;
+        await SearchAsync();
+    }
 
     /// <summary>
     /// Fires on any assignment to <see cref="SelectedCategory"/> — a tile tap (via <see cref="SelectCategory"/>)

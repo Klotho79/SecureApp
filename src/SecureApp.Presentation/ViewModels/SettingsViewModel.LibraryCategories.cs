@@ -72,11 +72,14 @@ public sealed partial class SettingsViewModel
                 .Where(f => !string.IsNullOrWhiteSpace(f))
                 .Select(f => f!.Split('/', 2)[0]);
 
-            var names = LibrarySeedCategories
-                .Concat(topLevelFolders)
+            // Seed categories keep their fixed mockup order, same as LibraryViewModel's own —
+            // only a genuinely new, community-typed folder name falls back to alphabetical.
+            var extraFolders = topLevelFolders
+                .Where(f => !LibrarySeedCategories.Contains(f, StringComparer.OrdinalIgnoreCase))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
-                .ToList();
+                .OrderBy(f => f, StringComparer.OrdinalIgnoreCase);
+
+            var names = LibrarySeedCategories.Concat(extraFolders).ToList();
 
             LibraryTopCategories = new ObservableCollection<string>(names);
             SelectedLibraryTopCategory ??= names.FirstOrDefault();
