@@ -338,7 +338,12 @@ public sealed partial class SettingsViewModel : ObservableObject
         await _currentUserService.InitializeAsync();
         DisplayName = _currentUserService.Current.DisplayName;
         SelectedRole = _currentUserService.Current.Role;
+        // Both set explicitly here, not left to OnSelectedRoleChanged alone: Role.Admin is the
+        // enum's default (0), so on an Admin device the assignment above is a same-value no-op —
+        // CommunityToolkit's generated setter skips the change notification entirely when nothing
+        // actually changed, so the partial method (and anything it sets) never runs on first load.
         IsAdmin = SelectedRole == Role.Admin;
+        CanManageLibrary = SelectedRole != Role.Viewer;
         AvailableRoles = IsAdmin ? Enum.GetValues<Role>() : [Role.Modifier, Role.Viewer];
         RefreshCanPostToBoard();
         LoadThemeMode();
@@ -378,6 +383,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
 
         HasSharedLibraryKey = await _sharedLibraryService.HasSharedKeyAsync();
+        await RefreshLibraryCategoriesAsync();
 
         // Diagnostic log auto-loads here since it needs no admin secret — LoadDiagnosticLogAsync
         // already catches its own failures into DiagnosticLogErrorMessage rather than throwing, so

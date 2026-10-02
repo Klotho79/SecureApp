@@ -311,6 +311,49 @@
                     </VerticalStackLayout>
                 </Border>
 
+                <!-- Správa kategorií knihovny (2026-10-02) — moved here from the Library browse page
+                     per the user's own ask ("sprava a pridavani kategorii ma byt v nastaveni"), same
+                     consolidation as upload/review already being behind "✏ Spravovat" rather than on
+                     the browse page itself. Visible to Modifier/Admin (CanManageLibrary), same gate
+                     the browse page's own add button used to use. -->
+                <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanManageLibrary}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Kategorie knihovny" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Label Text="Podkategorie se otevírají a procházejí v Knihovně — přidávání a mazání je tady." FontSize="9.5" TextColor="Gray" />
+
+                        <Picker ItemsSource="{Binding LibraryTopCategories}" SelectedItem="{Binding SelectedLibraryTopCategory}" Title="Kategorie" />
+
+                        <controls:DelayedActivityIndicator IsBusy="{Binding IsLoadingLibrarySubcategories}" HorizontalOptions="Center" />
+                        <Label Text="Tato kategorie zatím nemá žádné podkategorie." FontSize="9.5" TextColor="Gray" IsVisible="{Binding HasNoLibrarySubcategories}" />
+
+                        <CollectionView ItemsSource="{Binding LibrarySubcategories}" IsVisible="{Binding HasLibrarySubcategories}">
+                            <CollectionView.ItemsLayout>
+                                <LinearItemsLayout Orientation="Vertical" ItemSpacing="6" />
+                            </CollectionView.ItemsLayout>
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="vm:SubcategoryItem">
+                                    <Border Style="{StaticResource CardBorder}" Margin="0" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <Label Grid.Column="0" Text="{Binding Name}" FontSize="10.5" VerticalOptions="Center" />
+                                            <Button Grid.Column="1" Text="🗑" BackgroundColor="Transparent" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" Padding="4,0"
+                                                    IsVisible="{Binding CanDelete}"
+                                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:SettingsViewModel}}, Path=DeleteLibrarySubcategoryCommand}"
+                                                    CommandParameter="{Binding .}" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
+
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <Entry Grid.Column="0" Text="{Binding NewLibrarySubcategoryNameText}" Placeholder="Název nové podkategorie" />
+                            <Button Grid.Column="1" Text="＋ Přidat" Style="{StaticResource SecondaryButton}" Command="{Binding AddLibrarySubcategoryCommand}" />
+                        </Grid>
+
+                        <Label Text="{Binding LibraryCategoriesStatusText}" FontSize="9.5" IsVisible="{Binding HasLibraryCategoriesStatus}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
+                    </VerticalStackLayout>
+                </Border>
+
                 <!-- Diagnostický log — every device still reports into it, but only the admin reads it (2026-09-26, user's call). -->
                 <Border Style="{StaticResource CardBorder}" IsVisible="{Binding IsAdmin}">
                     <VerticalStackLayout Spacing="8">

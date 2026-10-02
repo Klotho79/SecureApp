@@ -293,9 +293,13 @@ public sealed partial class LibraryViewModel : ObservableObject
     private async Task RefreshCategoriesAsync()
     {
         var all = await _libraryService.SearchAsync();
+        // Only the segment before the first '/' — a sub-category file's FolderPath is
+        // "{Top}/{Sub}" (2026-10-02), and without this split that whole two-segment string would
+        // show up as its own ad-hoc top-level chip instead of folding into its real parent.
         var uploadedFolders = all
             .Select(f => f.FolderPath)
-            .Where(f => !string.IsNullOrWhiteSpace(f));
+            .Where(f => !string.IsNullOrWhiteSpace(f))
+            .Select(f => f!.Split('/', 2)[0]);
 
         var distinctFolders = SeedCategories
             .Concat(uploadedFolders)
@@ -421,22 +425,6 @@ public sealed partial class LibraryViewModel : ObservableObject
         catch (Exception ex)
         {
             StatusErrorMessage = $"'{item.FileName}' se nepodařilo smazat: {ex.Message}";
-        }
-    }
-
-    [RelayCommand]
-    private async Task DeleteSubcategoryAsync(SubcategoryItem? item)
-    {
-        if (item is null) return;
-        try
-        {
-            await _libraryService.DeleteSubcategoryAsync(item.Id);
-            Subcategories = new ObservableCollection<SubcategoryItem>(Subcategories.Where(s => s.Id != item.Id));
-            HasSubcategories = Subcategories.Count > 0;
-        }
-        catch (Exception ex)
-        {
-            StatusErrorMessage = $"'{item.Name}' se nepodařilo smazat: {ex.Message}";
         }
     }
 

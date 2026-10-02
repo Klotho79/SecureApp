@@ -71,7 +71,11 @@
                     <!-- 2026-10-02: the browse page's default content is sub-category cards, not a
                          flat file list ("dole jsou soubory ty tam nechci, tam maji byt dalsi
                          polozky") — a file list only comes back while actively text-searching, since
-                         search needs to look across every file regardless of sub-category. -->
+                         search needs to look across every file regardless of sub-category.
+                         Browse-only here — adding/removing sub-categories moved to Settings ("sprava
+                         a pridavani kategorii ma byt v nastaveni"), matching the user's own ask to
+                         consolidate all library management there, same as upload/review already are
+                         via "✏ Spravovat". -->
 
                     <Label
                         Text="Vyberte kategorii nahoře."
@@ -93,19 +97,11 @@
                                         <Border.GestureRecognizers>
                                             <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibraryViewModel}}, Path=OpenSubcategoryCommand}" CommandParameter="{Binding .}" />
                                         </Border.GestureRecognizers>
-                                        <Grid ColumnDefinitions="*,Auto">
-                                            <Label Grid.Column="0" Text="{Binding Name}" FontSize="11" FontAttributes="Bold" LineBreakMode="TailTruncation" VerticalOptions="Center" />
-                                            <Button Grid.Column="1" Text="🗑" BackgroundColor="Transparent" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" Padding="4,0"
-                                                    IsVisible="{Binding CanDelete}"
-                                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibraryViewModel}}, Path=DeleteSubcategoryCommand}"
-                                                    CommandParameter="{Binding .}" />
-                                        </Grid>
+                                        <Label Text="{Binding Name}" FontSize="11" FontAttributes="Bold" LineBreakMode="TailTruncation" VerticalOptions="Center" />
                                     </Border>
                                 </DataTemplate>
                             </CollectionView.ItemTemplate>
                         </CollectionView>
-
-                        <Button Text="＋ Přidat podkategorii" Style="{StaticResource SecondaryButton}" Command="{Binding AddSubcategoryCommand}" IsVisible="{Binding CanModifyContent}" />
 
                     </VerticalStackLayout>
 
