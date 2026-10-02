@@ -41,6 +41,7 @@ public sealed class UpdateDownloadService : Service
     {
         var url = intent?.GetStringExtra(ExtraUrl);
         var versionName = intent?.GetStringExtra(ExtraVersionName) ?? string.Empty;
+        var versionCode = intent?.GetIntExtra(ExtraVersionCode, 0) ?? 0;
 
         if (string.IsNullOrEmpty(url))
         {
@@ -55,22 +56,34 @@ public sealed class UpdateDownloadService : Service
         if (Interlocked.CompareExchange(ref _running, 1, 0) != 0)
             return StartCommandResult.NotSticky;
 
-        _ = Task.Run(() => DownloadAsync(url, versionName));
+        _ = Task.Run(() => DownloadAsync(url, versionCode, versionName));
 
         // NotSticky: if the OS kills us mid-download it should NOT silently relaunch with a stale
         // intent — the user re-triggers from Settings, which re-checks the version first.
         return StartCommandResult.NotSticky;
     }
 
-    private async Task DownloadAsync(string url, string versionName)
+    private async Task DownloadAsync(string url, int versionCode, string versionName)
     {
         var destination = Path.Combine(CacheDir!.AbsolutePath, "secureapp-update.apk");
         // Bytes accumulate in a .partial file that deliberately SURVIVES a failure, so the next
         // attempt resumes instead of re-downloading from scratch (user's own ask: a crashed update
         // must not waste data). Only a fully-verified download is renamed to the final .apk.
         var partial = destination + ".partial";
+        // Which version `destination` actually is — a completed download that already matches
+        // what's being requested again (e.g. the install notification got dismissed/missed) needs
+        // zero network at all; only re-download when it's missing or for a different version.
+        var versionMarker = destination + ".versioncode";
         try
         {
+            if (versionCode > 0 && File.Exists(destination) && File.Exists(versionMarker) &&
+                int.TryParse(File.ReadAllText(versionMarker).Trim(), out var cachedVersionCode) &&
+                cachedVersionCode == versionCode)
+            {
+                ShowInstallReady(destination, versionName);
+                return;
+            }
+
             var have = File.Exists(partial) ? new FileInfo(partial).Length : 0;
 
             using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(20) };
@@ -126,6 +139,7 @@ public sealed class UpdateDownloadService : Service
 
             if (File.Exists(destination)) File.Delete(destination);
             File.Move(partial, destination);
+            if (versionCode > 0) File.WriteAllText(versionMarker, versionCode.ToString());
             ShowInstallReady(destination, versionName);
         }
         catch (Exception ex)
