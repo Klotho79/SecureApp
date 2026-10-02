@@ -148,27 +148,22 @@ app.MapPost("/admin/upload/android", async (HttpRequest request) =>
     return Results.Ok(new { uploaded = true, sizeBytes = file.Length, versionCode, versionName });
 });
 
-// Uploads the Windows portable build next to /download/windows above — same admin-secret gate and
-// multipart shape as /admin/upload/android, needed for the same reason: the relay container (root)
-// can write into the root-owned data/downloads volume where a plain scp as dvorakv1 cannot.
+// Uploads the Windows portable build next to /download/windows above — same admin-secret gate as
+// /admin/upload/android, needed for the same reason: the relay container (root) can write into the
+// root-owned data/downloads volume where a plain scp as dvorakv1 cannot. Raw body, not multipart,
+// unlike the APK upload above — ASP.NET Core's own default MultipartBodyLengthLimit (128MB) rejected
+// this ~170MB zip even with Kestrel's MaxRequestBodySize already raised; a raw stream only answers to
+// that larger Kestrel limit (200MB), already comfortably enough.
 app.MapPost("/admin/upload/windows", async (HttpRequest request) =>
 {
     if (!IsAdminAuthorized(request, adminSecret))
         return Results.Unauthorized();
 
-    if (!request.HasFormContentType)
-        return Results.BadRequest("Expected multipart/form-data.");
-
-    var form = await request.ReadFormAsync();
-    var file = form.Files["zip"];
-    if (file is null || file.Length == 0)
-        return Results.BadRequest("Missing 'zip' file.");
-
     var zipPath = Path.Combine(downloadsDir, "secureapp-windows-portable.zip");
     await using (var stream = File.Create(zipPath))
-        await file.CopyToAsync(stream);
+        await request.Body.CopyToAsync(stream);
 
-    return Results.Ok(new { uploaded = true, sizeBytes = file.Length });
+    return Results.Ok(new { uploaded = true, sizeBytes = new FileInfo(zipPath).Length });
 });
 
 app.MapPost("/admin/invites", (HttpRequest request, CreateInviteRequest body, RelayDatabase db) =>
