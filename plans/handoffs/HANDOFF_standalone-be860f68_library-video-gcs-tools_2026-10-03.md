@@ -498,3 +498,8 @@ Select-String -Path "H:\Visual Studio\C#\Aplikace\src\SecureApp.Presentation\Sec
 # 2) Decide Windows-portable-to-second-PC and S9+-signature-mismatch — both fully open, no progress this session
 # 3) If continuing feature work: update DEVELOPMENT_PLAN.md/IMPROVEMENT_PLAN.md for this session's shipped features before adding more on top
 ```
+
+## Session Closed
+**Closed at:** 2026-10-03
+**Commit:** `86d4213` (pushed to `pi` + `github`)
+**Session status:** Handed off to next session
