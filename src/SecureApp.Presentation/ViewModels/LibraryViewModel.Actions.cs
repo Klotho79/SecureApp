@@ -65,7 +65,16 @@ public sealed partial class LibraryViewModel
         }
     }
 
-    /// <summary>Tapped from the <see cref="AcuteStates"/> row — see that property's own remarks for the exact-tag-match-first, fall-back-to-search behavior.</summary>
+    /// <summary>
+    /// Tapped from the <see cref="AcuteStates"/> row. Three tiers, in priority order: (1) a real
+    /// uploaded-and-tagged library document — always wins when exactly one exists, see
+    /// <see cref="ISharedLibraryService.SearchAsync"/>'s tag parameter; (2) the built-in static
+    /// fallback in <see cref="Library.AcuteStateReferenceData"/>, when this exact term has an entry
+    /// there (2026-10-03 — added after the first two tiers alone left the user with nothing but an
+    /// empty "Nenalezeny žádné postupy." message, since nothing had actually been uploaded yet);
+    /// (3) the original plain full-text search, for any acute state with neither a document nor a
+    /// built-in entry (today: "Protokol masivní transfuze", "Sepse", "Maligní hypertermie").
+    /// </summary>
     [RelayCommand]
     private async Task SearchAcuteStateAsync(string? term)
     {
@@ -83,8 +92,14 @@ public sealed partial class LibraryViewModel
         }
         catch
         {
-            // Best-effort — fall through to the plain text-search shortcut below rather than
-            // leaving the tap doing nothing (e.g. a transient network blip on the tag lookup).
+            // Best-effort — fall through rather than leaving the tap doing nothing (e.g. a
+            // transient network blip on the tag lookup).
+        }
+
+        if (Library.AcuteStateReferenceData.Recommendations.ContainsKey(term))
+        {
+            await Shell.Current.GoToAsync($"{nameof(AcuteStateReferencePage)}?term={Uri.EscapeDataString(term)}", animate: false);
+            return;
         }
 
         SearchQuery = term;

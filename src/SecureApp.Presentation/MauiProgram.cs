@@ -213,6 +213,8 @@ public static class MauiProgram
 		builder.Services.AddTransient<GcsCalculatorPage>();
 		builder.Services.AddTransient<MurrayScoreCalculatorViewModel>();
 		builder.Services.AddTransient<MurrayScoreCalculatorPage>();
+		builder.Services.AddTransient<AcuteStateReferenceViewModel>();
+		builder.Services.AddTransient<AcuteStateReferencePage>();
 
 		// Document Library content-approval review queue (2026-10-01).
 		builder.Services.AddTransient<LibraryReviewQueueViewModel>();

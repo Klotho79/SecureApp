@@ -80,6 +80,7 @@ public partial class AppShell : Shell
 		Routing.RegisterRoute(nameof(LibrarySubcategoryDetailPage), typeof(LibrarySubcategoryDetailPage));
 		Routing.RegisterRoute(nameof(GcsCalculatorPage), typeof(GcsCalculatorPage));
 		Routing.RegisterRoute(nameof(MurrayScoreCalculatorPage), typeof(MurrayScoreCalculatorPage));
+		Routing.RegisterRoute(nameof(AcuteStateReferencePage), typeof(AcuteStateReferencePage));
 
 		// Reached via the '+ New Chat' button on ChatListPage.
 		Routing.RegisterRoute(nameof(NewChatPage), typeof(NewChatPage));
