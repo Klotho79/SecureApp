@@ -211,6 +211,8 @@ public static class MauiProgram
 		builder.Services.AddTransient<LibrarySubcategoryDetailPage>();
 		builder.Services.AddTransient<GcsCalculatorViewModel>();
 		builder.Services.AddTransient<GcsCalculatorPage>();
+		builder.Services.AddTransient<MurrayScoreCalculatorViewModel>();
+		builder.Services.AddTransient<MurrayScoreCalculatorPage>();
 
 		// Document Library content-approval review queue (2026-10-01).
 		builder.Services.AddTransient<LibraryReviewQueueViewModel>();

@@ -135,9 +135,13 @@ public sealed partial class LibraryViewModel
     [RelayCommand]
     private async Task OpenReviewQueueAsync() => await Shell.Current.GoToAsync(nameof(LibraryReviewQueuePage), animate: false);
 
-    /// <summary>Tapped from the built-in tools card under "Nástroje" (2026-10-03) — see <see cref="ShowNastrojeTools"/>'s own remarks.</summary>
+    /// <summary>Tapped from the built-in tools list under "Nástroje" (2026-10-03) — see <see cref="NastrojeTools"/>'s own remarks.</summary>
     [RelayCommand]
     private async Task OpenGcsCalculatorAsync() => await Shell.Current.GoToAsync(nameof(GcsCalculatorPage), animate: false);
+
+    /// <summary>Tapped from the built-in tools list under "Nástroje" (2026-10-03, second tool after GCS) — see <see cref="NastrojeTools"/>'s own remarks.</summary>
+    [RelayCommand]
+    private async Task OpenMurrayCalculatorAsync() => await Shell.Current.GoToAsync(nameof(MurrayScoreCalculatorPage), animate: false);
 
     /// <summary>Tapped from a sub-category card (2026-10-02) — see <see cref="Views.LibrarySubcategoryDetailPage"/>'s own remarks.</summary>
     [RelayCommand]

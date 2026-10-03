@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="SecureApp.Presentation.Views.MurrayScoreCalculatorPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
+    x:DataType="vm:MurrayScoreCalculatorViewModel"
+    Title="Murray score">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="16" Spacing="14">
+
+            <Label Text="Murray lung injury score" Style="{StaticResource PageTitle}" />
+            <Label
+                Text="Hodnocení tíže plicního poškození — RTG hrudníku, oxygenace (PaO₂/FiO₂), PEEP a plicní compliance. Výsledné skóre je průměr čtyř dílčích bodů (0–4)."
+                FontSize="9.5"
+                TextColor="Gray" />
+
+            <Border Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="RTG hrudníku" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Picker ItemsSource="{Binding ChestXRayOptions}" ItemDisplayBinding="{Binding Label}" SelectedItem="{Binding SelectedChestXRay}" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Border Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Oxygenace (PaO₂/FiO₂)" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Picker ItemsSource="{Binding HypoxemiaOptions}" ItemDisplayBinding="{Binding Label}" SelectedItem="{Binding SelectedHypoxemia}" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Border Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="PEEP" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Picker ItemsSource="{Binding PeepOptions}" ItemDisplayBinding="{Binding Label}" SelectedItem="{Binding SelectedPeep}" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Border Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Plicní compliance" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Picker ItemsSource="{Binding ComplianceOptions}" ItemDisplayBinding="{Binding Label}" SelectedItem="{Binding SelectedCompliance}" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Border Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="6" HorizontalOptions="Center">
+                    <Label Text="{Binding TotalScore, StringFormat='Celkové skóre: {0:0.##}/4'}" FontSize="18" FontAttributes="Bold" HorizontalOptions="Center" />
+                    <Label Text="{Binding ResultText}" FontSize="12" HorizontalTextAlignment="Center" HorizontalOptions="Center">
+                        <Label.Triggers>
+                            <DataTrigger TargetType="Label" Binding="{Binding Severity}" Value="Normal">
+                                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Label" Binding="{Binding Severity}" Value="Mild">
+                                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Warn}, Dark={StaticResource WarnDark}}" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Label" Binding="{Binding Severity}" Value="Severe">
+                                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" />
+                            </DataTrigger>
+                        </Label.Triggers>
+                    </Label>
+                </VerticalStackLayout>
+            </Border>
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

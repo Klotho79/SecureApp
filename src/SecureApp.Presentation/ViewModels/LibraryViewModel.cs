@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SecureApp.Domain.Enums;
@@ -121,9 +122,20 @@ public sealed partial class LibraryViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsNoTopCategorySelected { get; set; }
 
-    /// <summary>Gates the built-in native tools card (first one: GCS calculator, 2026-10-03) — true only when "Nástroje" is the selected top category. See <see cref="OnSelectedCategoryChanged"/>'s own remarks for why this is client-side only, never a real Subcategory.</summary>
+    /// <summary>Gates the built-in native tools list — true only when "Nástroje" is the selected top category. See <see cref="OnSelectedCategoryChanged"/>'s own remarks for why this is client-side only, never a real Subcategory.</summary>
     [ObservableProperty]
     public partial bool ShowNastrojeTools { get; set; }
+
+    /// <summary>
+    /// Built-in native tools under "Nástroje" (2026-10-03: GCS calculator; same day, second tool:
+    /// Murray lung injury score) — a fixed list, not relay/library content, built once in the
+    /// constructor (each item's <see cref="NastrojeToolItem.OpenCommand"/> is a plain
+    /// <c>[RelayCommand]</c>-generated reference that never changes at runtime). Originally a single
+    /// hardcoded card for GCS alone; promoted to a real list the moment a second tool arrived, per
+    /// this property's own prior remarks anticipating exactly that.
+    /// </summary>
+    [ObservableProperty]
+    public partial ObservableCollection<NastrojeToolItem> NastrojeTools { get; set; }
 
     /// <summary>
     /// "QUICK ACCESS: ACUTE STATES" row from the reference mockup (2026-10-02) — a fixed, static
@@ -180,6 +192,11 @@ public sealed partial class LibraryViewModel : ObservableObject
         CategoryChips = [];
         Subcategories = [];
         AcuteStates = ["DAS algoritmy (dýchací cesty)", "Protokol masivní transfuze", "Sepse", "Maligní hypertermie"];
+        NastrojeTools =
+        [
+            new("🧮", "GCS — Glasgowská stupnice vědomí", OpenGcsCalculatorCommand),
+            new("🫁", "Murray score — plicní poškození", OpenMurrayCalculatorCommand),
+        ];
         SelectedCategory = "Vše";
         CanModifyContent = true;
         MyDocuments = [];
@@ -484,3 +501,6 @@ public sealed record LibraryDocumentDraftItem(Guid Id, string Title, string Stat
 
 /// <summary>One sub-category card on the browse grid (2026-10-02). <see cref="CanDelete"/> mirrors <see cref="LibraryFileItem.IsMine"/> — only the creator can delete via the ordinary device-authed call, see RelayDatabase.TryDeleteLibrarySubcategory's own remarks.</summary>
 public sealed record SubcategoryItem(Guid Id, string ParentCategory, string Name, bool CanDelete);
+
+/// <summary>One entry in the "Nástroje" built-in tool list (2026-10-03) — plain Icon/Title/Command, same lightweight record-item shape as e.g. <c>SettingsViewModel.RegisteredDeviceItem</c>. <see cref="OpenCommand"/> is a plain <see cref="ICommand"/> (not a MAUI type), so this still respects this file's own "free of any MAUI type" rule.</summary>
+public sealed record NastrojeToolItem(string Icon, string Title, ICommand OpenCommand);

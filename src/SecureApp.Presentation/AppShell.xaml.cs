@@ -79,6 +79,7 @@ public partial class AppShell : Shell
 		// Sub-category detail, reached by tapping a card on LibraryPage's browse grid (2026-10-02).
 		Routing.RegisterRoute(nameof(LibrarySubcategoryDetailPage), typeof(LibrarySubcategoryDetailPage));
 		Routing.RegisterRoute(nameof(GcsCalculatorPage), typeof(GcsCalculatorPage));
+		Routing.RegisterRoute(nameof(MurrayScoreCalculatorPage), typeof(MurrayScoreCalculatorPage));
 
 		// Reached via the '+ New Chat' button on ChatListPage.
 		Routing.RegisterRoute(nameof(NewChatPage), typeof(NewChatPage));
