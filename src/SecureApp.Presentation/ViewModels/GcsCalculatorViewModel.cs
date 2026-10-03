@@ -88,9 +88,9 @@ public sealed partial class GcsCalculatorViewModel : ObservableObject
         (ResultText, Severity) = TotalScore switch
         {
             15 => ("GCS 15 — normální stav vědomí.", "Normal"),
-            >= 13 => ($"GCS {TotalScore} — lehké poranění mozku (13–15).", "Mild"),
-            >= 9 => ($"GCS {TotalScore} — středně těžké poranění mozku (9–12).", "Moderate"),
-            _ => ($"GCS {TotalScore} — těžké poranění mozku (3–8). Zvážit zajištění dýchacích cest.", "Severe"),
+            >= 13 => ($"GCS {TotalScore} — lehká porucha vědomí (13–15).", "Mild"),
+            >= 9 => ($"GCS {TotalScore} — středně těžká porucha vědomí (9–12).", "Moderate"),
+            _ => ($"GCS {TotalScore} — těžká porucha vědomí / kóma (3–8). Zvážit zajištění dýchacích cest.", "Severe"),
         };
     }
 }
