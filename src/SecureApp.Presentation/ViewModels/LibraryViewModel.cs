@@ -195,7 +195,7 @@ public sealed partial class LibraryViewModel : ObservableObject
         Categories = [];
         CategoryChips = [];
         Subcategories = [];
-        AcuteStates = ["DAS algoritmy (dýchací cesty)", "Protokol masivní transfuze", "Sepse", "Maligní hypertermie"];
+        AcuteStates = ["DAS algoritmy (dýchací cesty)", "Protokol masivní transfuze", "Sepse", "Maligní hypertermie", "Bronchospazmus", "Laryngospazmus"];
         NastrojeTools =
         [
             new("🧮", "GCS — Glasgowská stupnice vědomí", OpenGcsCalculatorCommand),
