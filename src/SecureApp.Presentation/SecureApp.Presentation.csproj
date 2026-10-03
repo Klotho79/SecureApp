@@ -122,6 +122,7 @@
 	</Target>
 
 	<ItemGroup>
+		<PackageReference Include="CommunityToolkit.Maui.MediaElement" Version="7.0.0" />
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
 		<PackageReference Include="HarfBuzzSharp" Version="14.2.1.2" />
 		<PackageReference Include="PDFtoImage" Version="5.4.0" />

@@ -225,6 +225,7 @@ public sealed partial class DocumentBrowserViewModel : ObservableObject
         DocumentType.Image => "🖼",
         DocumentType.Spreadsheet => "📊",
         DocumentType.PlainText => "📄",
+        DocumentType.Video => "🎬",
         _ => "📦"
     };
 }

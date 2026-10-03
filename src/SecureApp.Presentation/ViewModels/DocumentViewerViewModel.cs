@@ -1,5 +1,8 @@
+using CommunityToolkit.Maui.Views;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using SecureApp.Domain.Entities;
+using SecureApp.Domain.Enums;
 using SecureApp.Domain.Exceptions;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
@@ -71,6 +74,39 @@ public sealed partial class DocumentViewerViewModel : ObservableObject, IQueryAt
     [ObservableProperty]
     public partial bool HasDownloadError { get; set; }
 
+    /// <summary>
+    /// 2026-10-03 — video/Office documents don't fit the paginated-raster model the rest of this
+    /// viewer is built around. <see cref="IsVideo"/> swaps the pager/image for a MediaElement bound
+    /// to <see cref="VideoSource"/> (a decrypted temp file, same CacheDirectory pattern
+    /// <see cref="DownloadAsync"/> already uses). <see cref="IsExternalOnly"/> covers everything
+    /// else unrenderable (DOCX/PPTX and any other unknown type, <see cref="DocumentType.Other"/>) —
+    /// real in-app Office preview needs a commercial rendering library (Syncfusion or similar),
+    /// deferred; "open in whatever app the user already has" is the pragmatic alternative instead.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsVideo { get; set; }
+
+    [ObservableProperty]
+    public partial MediaSource? VideoSource { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsExternalOnly { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsOpeningExternally { get; set; }
+
+    public bool CanOpenExternally => !IsOpeningExternally;
+
+    partial void OnIsOpeningExternallyChanged(bool value) => OnPropertyChanged(nameof(CanOpenExternally));
+
+    /// <summary>True for the ordinary paginated Pdf/Image/PlainText/Spreadsheet path — gates the pager row (Předchozí/indikátor/Další), which has nothing to page through for <see cref="IsVideo"/>/<see cref="IsExternalOnly"/>. Computed, not a converter — same established pattern as the rest of this codebase.</summary>
+    [ObservableProperty]
+    public partial bool IsPagedDocument { get; set; } = true;
+
+    partial void OnIsVideoChanged(bool value) => IsPagedDocument = !value && !IsExternalOnly;
+
+    partial void OnIsExternalOnlyChanged(bool value) => IsPagedDocument = !value && !IsVideo;
+
     public DocumentViewerViewModel(
         IDocumentRepository documentRepository,
         IDocumentRenderingService renderingService,
@@ -111,11 +147,25 @@ public sealed partial class DocumentViewerViewModel : ObservableObject, IQueryAt
     {
         IsLoading = true;
         ErrorMessage = null;
+        IsVideo = false;
+        IsExternalOnly = false;
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             var document = await _documentRepository.GetByIdAsync(_documentId) ?? throw new DocumentNotFoundException(_documentId);
             Title = document.Title;
+
+            if (document.DocumentType == DocumentType.Video)
+            {
+                await LoadVideoAsync(document);
+                return;
+            }
+            if (document.DocumentType == DocumentType.Other)
+            {
+                IsExternalOnly = true;
+                return;
+            }
+
             var tMeta = sw.Elapsed.TotalMilliseconds;
             PageCount = await _renderingService.GetPageCountAsync(_documentId);
             var tPageCount = sw.Elapsed.TotalMilliseconds;
@@ -137,6 +187,42 @@ public sealed partial class DocumentViewerViewModel : ObservableObject, IQueryAt
         finally
         {
             IsLoading = false;
+        }
+    }
+
+    private async Task LoadVideoAsync(Document document)
+    {
+        var plaintext = await _crypto.DecryptAsync(document.EncryptedContent);
+        var path = Path.Combine(Microsoft.Maui.Storage.FileSystem.CacheDirectory, document.FileName);
+        await File.WriteAllBytesAsync(path, plaintext);
+        VideoSource = MediaSource.FromFile(path);
+        IsVideo = true;
+    }
+
+    /// <summary>DOCX/PPTX and anything else <see cref="DocumentType.Other"/> — decrypt to a temp file (same CacheDirectory pattern as <see cref="DownloadAsync"/>/<see cref="LoadVideoAsync"/>) and hand it to the OS to open in whatever app the device already has, rather than attempting an in-app preview.</summary>
+    [RelayCommand]
+    private async Task OpenExternallyAsync()
+    {
+        ErrorMessage = null;
+        IsOpeningExternally = true;
+        try
+        {
+            var document = await _documentRepository.GetByIdAsync(_documentId) ?? throw new DocumentNotFoundException(_documentId);
+            var plaintext = await _crypto.DecryptAsync(document.EncryptedContent);
+
+            var path = Path.Combine(Microsoft.Maui.Storage.FileSystem.CacheDirectory, document.FileName);
+            await File.WriteAllBytesAsync(path, plaintext);
+
+            await Microsoft.Maui.ApplicationModel.Launcher.Default.OpenAsync(
+                new Microsoft.Maui.ApplicationModel.OpenFileRequest("Otevřít dokument", new Microsoft.Maui.Storage.ReadOnlyFile(path)));
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Nepodařilo se otevřít dokument: {ex.Message}";
+        }
+        finally
+        {
+            IsOpeningExternally = false;
         }
     }
 

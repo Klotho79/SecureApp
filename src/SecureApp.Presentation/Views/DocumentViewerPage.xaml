@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
     xmlns:controls="clr-namespace:SecureApp.Presentation.Controls"
+    xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
     x:DataType="vm:DocumentViewerViewModel"
     Title="{Binding Title}">
 
@@ -52,6 +53,25 @@
                     <TapGestureRecognizer NumberOfTapsRequired="2" Tapped="OnDoubleTapped" />
                 </Image.GestureRecognizers>
             </Image>
+
+            <!-- Video (2026-10-03) — local playback only, decrypted to a temp file first (see
+                 DocumentViewerViewModel.LoadVideoAsync); nothing streams, nothing leaves the device. -->
+            <toolkit:MediaElement
+                Source="{Binding VideoSource}"
+                IsVisible="{Binding IsVideo}"
+                ShouldAutoPlay="False"
+                ShouldShowPlaybackControls="True"
+                HorizontalOptions="Fill"
+                VerticalOptions="Fill" />
+
+            <!-- Open externally (2026-10-03) — DOCX/PPTX and anything else with no in-app renderer. -->
+            <VerticalStackLayout IsVisible="{Binding IsExternalOnly}" HorizontalOptions="Center" VerticalOptions="Center" Spacing="12">
+                <Label
+                    Text="Tento typ dokumentu nelze zobrazit přímo v appce."
+                    HorizontalTextAlignment="Center"
+                    TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
+                <Button Text="📤 Otevřít v jiné appce" Command="{Binding OpenExternallyCommand}" IsEnabled="{Binding CanOpenExternally}" />
+            </VerticalStackLayout>
         </Grid>
 
         <!-- Stáhnout (2026-09-30, user's own ask): saves the original decrypted file outside the app
@@ -67,14 +87,15 @@
             TranslationY="-28" />
 
         <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto,Auto">
-            <Button Grid.Column="0" Text="⬅ Předchozí" Command="{Binding PreviousPageCommand}" IsEnabled="{Binding CanGoToPreviousPage}" />
+            <Button Grid.Column="0" Text="⬅ Předchozí" Command="{Binding PreviousPageCommand}" IsEnabled="{Binding CanGoToPreviousPage}" IsVisible="{Binding IsPagedDocument}" />
             <Label
                 Grid.Column="1"
                 Text="{Binding PageIndicatorText}"
                 HorizontalOptions="Center"
-                VerticalOptions="Center" />
+                VerticalOptions="Center"
+                IsVisible="{Binding IsPagedDocument}" />
             <Button Grid.Column="2" Text="⬇ Stáhnout" Style="{StaticResource SecondaryButton}" Command="{Binding DownloadCommand}" IsEnabled="{Binding CanDownload}" />
-            <Button Grid.Column="3" Text="Další ➡" Command="{Binding NextPageCommand}" IsEnabled="{Binding CanGoToNextPage}" />
+            <Button Grid.Column="3" Text="Další ➡" Command="{Binding NextPageCommand}" IsEnabled="{Binding CanGoToNextPage}" IsVisible="{Binding IsPagedDocument}" />
         </Grid>
     </Grid>
 </ContentPage>

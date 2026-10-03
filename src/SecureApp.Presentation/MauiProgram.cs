@@ -1,3 +1,4 @@
+using CommunityToolkit.Maui;
 using Microsoft.Extensions.Logging;
 using Microsoft.Maui.Devices;
 using Microsoft.Maui.Storage;
@@ -29,6 +30,7 @@ public static class MauiProgram
 			.UseMauiApp<App>()
 			.UseSkiaSharp() // Registers SkiaSharp/HarfBuzz rendering handlers for the in-app document/image viewer.
 			.UseBarcodeReader() // ZXing.Net.MAUI — QR generate (BarcodeGeneratorView) + camera scan (CameraBarcodeReaderView) for chat pairing.
+			.UseMauiCommunityToolkitMediaElement() // In-app video playback for the document viewer (2026-10-03).
 			.ConfigureFonts(fonts =>
 			{
 				fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
