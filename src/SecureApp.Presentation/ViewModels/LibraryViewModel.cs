@@ -140,10 +140,14 @@ public sealed partial class LibraryViewModel : ObservableObject
     /// <summary>
     /// "QUICK ACCESS: ACUTE STATES" row from the reference mockup (2026-10-02) — a fixed, static
     /// shortcut row under the category tiles, not derived from library content like
-    /// <see cref="Categories"/> is. Tapping one is just a shortcut into the existing full-text
-    /// search (<see cref="SearchAcuteStateCommand"/>) rather than a new navigation target — there is
-    /// no dedicated protocol-detail page yet (video/diagram view explicitly deferred), so this reuses
-    /// what already exists instead of building a parallel content model for four hardcoded terms.
+    /// <see cref="Categories"/> is. Tapping one (<see cref="SearchAcuteStateCommand"/>, in
+    /// <c>LibraryViewModel.Actions.cs</c> since it navigates) opens the single uploaded library
+    /// document TAGGED with this exact string directly in the document viewer, when exactly one
+    /// exists (2026-10-03, user's own ask: "po kliknuti na DAS zobraz posledni doporuceni") — falls
+    /// back to the original plain full-text search shortcut when zero or more than one file carries
+    /// that tag, so an acute state with nothing uploaded for it yet behaves exactly as before. No
+    /// dedicated protocol-detail page of its own; content comes from a real uploaded document (the
+    /// team's own source, not anything baked into the app), reusing the existing document viewer.
     /// </summary>
     [ObservableProperty]
     public partial ObservableCollection<string> AcuteStates { get; set; }
@@ -369,15 +373,6 @@ public sealed partial class LibraryViewModel : ObservableObject
     /// <summary>Tapped from a category tile — see <see cref="CategoryChips"/>. Routes through the same <see cref="SelectedCategory"/> setter a Picker selection used to.</summary>
     [RelayCommand]
     private void SelectCategory(string? category) => SelectedCategory = category;
-
-    /// <summary>Tapped from the <see cref="AcuteStates"/> row — a plain full-text search shortcut, see that property's own remarks.</summary>
-    [RelayCommand]
-    private async Task SearchAcuteStateAsync(string? term)
-    {
-        if (string.IsNullOrWhiteSpace(term)) return;
-        SearchQuery = term;
-        await SearchAsync();
-    }
 
     /// <summary>
     /// Fires on any assignment to <see cref="SelectedCategory"/> — a tile tap (via <see cref="SelectCategory"/>)

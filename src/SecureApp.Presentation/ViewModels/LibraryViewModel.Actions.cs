@@ -65,6 +65,32 @@ public sealed partial class LibraryViewModel
         }
     }
 
+    /// <summary>Tapped from the <see cref="AcuteStates"/> row — see that property's own remarks for the exact-tag-match-first, fall-back-to-search behavior.</summary>
+    [RelayCommand]
+    private async Task SearchAcuteStateAsync(string? term)
+    {
+        if (string.IsNullOrWhiteSpace(term)) return;
+
+        try
+        {
+            var tagged = await _libraryService.SearchAsync(tag: term);
+            if (tagged.Count == 1)
+            {
+                var document = await _libraryService.DownloadAndImportAsync(tagged[0].Id);
+                await Shell.Current.GoToAsync($"{nameof(DocumentViewerPage)}?documentId={document.Id}", animate: false);
+                return;
+            }
+        }
+        catch
+        {
+            // Best-effort — fall through to the plain text-search shortcut below rather than
+            // leaving the tap doing nothing (e.g. a transient network blip on the tag lookup).
+        }
+
+        SearchQuery = term;
+        await SearchAsync();
+    }
+
     /// <summary>
     /// 2026-10-01, the content-approval workflow: a Modifier uploads a Draft instead of publishing
     /// directly. Reuses the exact same private (listed:false) upload <see cref="UploadAsync"/> already
