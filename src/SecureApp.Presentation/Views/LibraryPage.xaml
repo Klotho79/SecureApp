@@ -76,7 +76,16 @@
                                 <Border.GestureRecognizers>
                                     <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibraryViewModel}}, Path=SearchAcuteStateCommand}" CommandParameter="{Binding .}" />
                                 </Border.GestureRecognizers>
-                                <VerticalStackLayout HorizontalOptions="Center" VerticalOptions="Center" WidthRequest="72">
+                                <!-- WidthRequest=92 (2026-10-03, measured live: the single longest
+                                     unbreakable word here, "Bronchospazmus"/"Laryngospazmus" at
+                                     FontSize 9.5 Bold, renders ~78-80px wide on one line — below 72px
+                                     WordWrap had no space to break on within that single word and fell
+                                     back to splitting it mid-letter on at least one device. 92px gives
+                                     margin for cross-device font-metric variance while staying well
+                                     above every OTHER individual word's own width in the multi-word
+                                     entries (~50-60px), so those still always wrap at a real space,
+                                     never mid-word. -->
+                                <VerticalStackLayout HorizontalOptions="Center" VerticalOptions="Center" WidthRequest="92">
                                     <Label Text="{Binding .}" FontSize="9.5" FontAttributes="Bold"
                                            HorizontalOptions="Center" HorizontalTextAlignment="Center"
                                            LineBreakMode="WordWrap" />
