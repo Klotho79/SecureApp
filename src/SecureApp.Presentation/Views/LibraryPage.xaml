@@ -61,18 +61,24 @@
 
             <!-- "QUICK ACCESS: ACUTE STATES" z referenčního mockupu (2026-10-02) — pevná řada zkratek
                  pod kategoriemi, ťuknutí jen spustí fulltextové hledání daného stavu napříč celou
-                 knihovnou (viz LibraryViewModel.AcuteStates). -->
+                 knihovnou (viz LibraryViewModel.AcuteStates). Stejný dlaždicový vzor jako kategorie
+                 nad tím (2026-10-03, user's own ask) — pevná šířka + WordWrap namísto jednořádkové
+                 bubliny, jen užší, protože tu žádná ikona nad textem není. -->
             <ScrollView Orientation="Horizontal">
                 <HorizontalStackLayout BindableLayout.ItemsSource="{Binding AcuteStates}">
                     <BindableLayout.ItemTemplate>
                         <DataTemplate x:DataType="x:String">
-                            <Border Padding="10,6" Margin="0,0,8,0" StrokeShape="RoundRectangle 10" Stroke="Transparent"
+                            <Border Padding="8,8" Margin="0,0,8,0" StrokeShape="RoundRectangle 10" Stroke="Transparent"
                                     BackgroundColor="{AppThemeBinding Light={StaticResource DangerSoft}, Dark={StaticResource DangerSoftDark}}">
                                 <Border.GestureRecognizers>
                                     <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibraryViewModel}}, Path=SearchAcuteStateCommand}" CommandParameter="{Binding .}" />
                                 </Border.GestureRecognizers>
-                                <Label Text="{Binding .}" FontSize="9" FontAttributes="Bold" VerticalOptions="Center"
-                                       TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" />
+                                <VerticalStackLayout HorizontalOptions="Center" VerticalOptions="Center" WidthRequest="72">
+                                    <Label Text="{Binding .}" FontSize="9.5" FontAttributes="Bold"
+                                           HorizontalOptions="Center" HorizontalTextAlignment="Center"
+                                           LineBreakMode="WordWrap"
+                                           TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" />
+                                </VerticalStackLayout>
                             </Border>
                         </DataTemplate>
                     </BindableLayout.ItemTemplate>
