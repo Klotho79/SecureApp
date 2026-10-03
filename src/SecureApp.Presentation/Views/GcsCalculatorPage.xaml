@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="SecureApp.Presentation.Views.GcsCalculatorPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
+    x:DataType="vm:GcsCalculatorViewModel"
+    Title="GCS kalkulátor">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="16" Spacing="14">
+
+            <Label Text="Glasgow Coma Scale" Style="{StaticResource PageTitle}" />
+            <Label
+                Text="Hodnocení stavu vědomí — otevření očí (E), slovní reakce (V) a motorická reakce (M). Celkové skóre 3–15."
+                FontSize="9.5"
+                TextColor="Gray" />
+
+            <Border Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Otevření očí (E)" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Picker ItemsSource="{Binding EyeOptions}" ItemDisplayBinding="{Binding Label}" SelectedItem="{Binding SelectedEye}" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Border Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Slovní reakce (V)" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Picker ItemsSource="{Binding VerbalOptions}" ItemDisplayBinding="{Binding Label}" SelectedItem="{Binding SelectedVerbal}" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Border Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Motorická reakce (M)" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Picker ItemsSource="{Binding MotorOptions}" ItemDisplayBinding="{Binding Label}" SelectedItem="{Binding SelectedMotor}" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Border Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="6" HorizontalOptions="Center">
+                    <Label Text="{Binding TotalScore, StringFormat='Celkové skóre: {0}/15'}" FontSize="18" FontAttributes="Bold" HorizontalOptions="Center" />
+                    <Label Text="{Binding ResultText}" FontSize="12" HorizontalTextAlignment="Center" HorizontalOptions="Center">
+                        <Label.Triggers>
+                            <DataTrigger TargetType="Label" Binding="{Binding Severity}" Value="Normal">
+                                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Label" Binding="{Binding Severity}" Value="Mild">
+                                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Label" Binding="{Binding Severity}" Value="Moderate">
+                                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Warn}, Dark={StaticResource WarnDark}}" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Label" Binding="{Binding Severity}" Value="Severe">
+                                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" />
+                            </DataTrigger>
+                        </Label.Triggers>
+                    </Label>
+                </VerticalStackLayout>
+            </Border>
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

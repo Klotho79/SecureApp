@@ -115,6 +115,20 @@
 
                     <VerticalStackLayout Spacing="10" IsVisible="{Binding IsTopCategorySelected}">
 
+                        <!-- Vestavěné nástroje appky (2026-10-03) — klientský výpočet, žádný relay/
+                             knihovna; vidí jen "Nástroje" (viz LibraryViewModel.ShowNastrojeTools).
+                             Zatím jediná položka: GCS kalkulátor. -->
+                        <Border Style="{StaticResource CardBorder}" Margin="0" IsVisible="{Binding ShowNastrojeTools}">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding OpenGcsCalculatorCommand}" />
+                            </Border.GestureRecognizers>
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                                <Label Grid.Column="0" Text="🧮" FontSize="20" VerticalOptions="Center" />
+                                <Label Grid.Column="1" Text="GCS — Glasgowská stupnice vědomí" FontSize="11" FontAttributes="Bold" VerticalOptions="Center" LineBreakMode="WordWrap" />
+                                <Label Grid.Column="2" Text="›" FontSize="16" VerticalOptions="Center" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
+                            </Grid>
+                        </Border>
+
                         <CollectionView ItemsSource="{Binding Subcategories}">
                             <CollectionView.ItemsLayout>
                                 <GridItemsLayout Orientation="Vertical" Span="2" HorizontalItemSpacing="10" VerticalItemSpacing="10" />

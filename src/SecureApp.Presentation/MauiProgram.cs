@@ -209,6 +209,8 @@ public static class MauiProgram
 		// Sub-category detail (files + links), reached by tapping a card on the browse grid (2026-10-02).
 		builder.Services.AddTransient<LibrarySubcategoryDetailViewModel>();
 		builder.Services.AddTransient<LibrarySubcategoryDetailPage>();
+		builder.Services.AddTransient<GcsCalculatorViewModel>();
+		builder.Services.AddTransient<GcsCalculatorPage>();
 
 		// Document Library content-approval review queue (2026-10-01).
 		builder.Services.AddTransient<LibraryReviewQueueViewModel>();

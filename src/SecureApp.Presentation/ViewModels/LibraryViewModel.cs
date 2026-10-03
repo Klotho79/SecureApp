@@ -121,6 +121,10 @@ public sealed partial class LibraryViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsNoTopCategorySelected { get; set; }
 
+    /// <summary>Gates the built-in native tools card (first one: GCS calculator, 2026-10-03) — true only when "Nástroje" is the selected top category. See <see cref="OnSelectedCategoryChanged"/>'s own remarks for why this is client-side only, never a real Subcategory.</summary>
+    [ObservableProperty]
+    public partial bool ShowNastrojeTools { get; set; }
+
     /// <summary>
     /// "QUICK ACCESS: ACUTE STATES" row from the reference mockup (2026-10-02) — a fixed, static
     /// shortcut row under the category tiles, not derived from library content like
@@ -372,6 +376,10 @@ public sealed partial class LibraryViewModel : ObservableObject
 
         IsTopCategorySelected = value != "Vše";
         IsNoTopCategorySelected = !IsTopCategorySelected;
+        // Built-in native tools (2026-10-03, first one: GCS calculator) are a client-side feature,
+        // not community-created library content — shown only under "Nástroje", never fetched from
+        // the relay, never mixed into the real Subcategories grid below.
+        ShowNastrojeTools = value == "Nástroje";
         _ = RefreshSubcategoriesAsync();
 
         var target = value == "Vše" ? string.Empty : value;
