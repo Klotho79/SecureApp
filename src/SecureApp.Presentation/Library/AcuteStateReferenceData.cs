@@ -30,7 +30,7 @@ public static class AcuteStateReferenceData
         ["DAS algoritmy (dýchací cesty)"] =
             "Obtížná/neúspěšná tracheální intubace u dospělého — podle DAS 2025 guidelines (BJA, leden 2026; aktualizace oproti dřívější verzi 2015), lineární algoritmus Plán A→D s důrazem na úspěch na první pokus, ne jen na zvládnutí selhání:\n\n" +
             "Plán A — tracheální intubace. 2025 novinka: videolaryngoskopie jako METODA PRVNÍ VOLBY (dříve jen záložní řešení při selhání přímé laryngoskopie), cílem je úspěch na první pokus. Jasně definovaný počet pokusů/čas, poté přechod na Plán B — nečekat na vyčerpání všech možností.\n\n" +
-            "Plán B — zavedení supraglotické pomůcku (SAD) a ověření ventilace.\n\n" +
+            "Plán B — zavedení supraglotické pomůcky (SAD) a ověření ventilace.\n\n" +
             "Plán C — při neúspěchu SAD obličejová maska; zvážit probuzení pacienta, pokud to stav dovoluje.\n\n" +
             "Plán D — eFONA (emergentní přístup k dýchacím cestám přední plochou krku) BEZ ODKLADU při CICO (nelze intubovat, nelze oxygenovat) — vyžaduje předchozí nácvik a připravený set.\n\n" +
             "Po zajištění — potvrdit polohu kapnografií, zdokumentovat postup a plán extubace, týmový debrief.\n\n" +
