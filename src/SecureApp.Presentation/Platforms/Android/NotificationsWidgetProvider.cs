@@ -134,11 +134,15 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
         Resource.Id.widget_duty5_text, Resource.Id.widget_duty6_text, Resource.Id.widget_duty7_text, Resource.Id.widget_duty8_text,
         Resource.Id.widget_duty9_text, Resource.Id.widget_duty10_text,
     ];
+    // 2026-10-04, user's own ask: the bare 20dp icon was too small/imprecise to reliably tap — these
+    // now point at the surrounding widget_duty{N}_phone_tap FrameLayout (widget_notifications.xml),
+    // sized to match the row's own height (no visual change) with generous horizontal padding around
+    // the same 20dp icon, so the real tap target is the whole cell, not just the icon's own pixels.
     private static readonly int[] DutyPhoneIds =
     [
-        Resource.Id.widget_duty1_phone, Resource.Id.widget_duty2_phone, Resource.Id.widget_duty3_phone, Resource.Id.widget_duty4_phone,
-        Resource.Id.widget_duty5_phone, Resource.Id.widget_duty6_phone, Resource.Id.widget_duty7_phone, Resource.Id.widget_duty8_phone,
-        Resource.Id.widget_duty9_phone, Resource.Id.widget_duty10_phone,
+        Resource.Id.widget_duty1_phone_tap, Resource.Id.widget_duty2_phone_tap, Resource.Id.widget_duty3_phone_tap, Resource.Id.widget_duty4_phone_tap,
+        Resource.Id.widget_duty5_phone_tap, Resource.Id.widget_duty6_phone_tap, Resource.Id.widget_duty7_phone_tap, Resource.Id.widget_duty8_phone_tap,
+        Resource.Id.widget_duty9_phone_tap, Resource.Id.widget_duty10_phone_tap,
     ];
     private const int MaxDutyRows = 10;
 

@@ -87,43 +87,63 @@
         <LinearLayout android:id="@+id/widget_duty_list" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
             <LinearLayout android:id="@+id/widget_duty1" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="5dp" android:paddingEnd="5dp" android:paddingTop="3dp" android:paddingBottom="3dp">
                 <TextView android:id="@+id/widget_duty1_text" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="" android:textColor="@color/widgetCardText" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" />
-                <ImageView android:id="@+id/widget_duty1_phone" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginStart="6dp" android:src="@drawable/widget_ic_phone" android:visibility="gone" />
+                <FrameLayout android:id="@+id/widget_duty1_phone_tap" android:layout_width="wrap_content" android:layout_height="wrap_content" android:paddingStart="10dp" android:paddingEnd="4dp" android:paddingTop="6dp" android:paddingBottom="6dp" android:visibility="gone">
+                    <ImageView android:id="@+id/widget_duty1_phone" android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center" android:src="@drawable/widget_ic_phone" />
+                </FrameLayout>
             </LinearLayout>
             <LinearLayout android:id="@+id/widget_duty2" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="5dp" android:paddingEnd="5dp" android:paddingTop="3dp" android:paddingBottom="3dp">
                 <TextView android:id="@+id/widget_duty2_text" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="" android:textColor="@color/widgetCardText" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" />
-                <ImageView android:id="@+id/widget_duty2_phone" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginStart="6dp" android:src="@drawable/widget_ic_phone" android:visibility="gone" />
+                <FrameLayout android:id="@+id/widget_duty2_phone_tap" android:layout_width="wrap_content" android:layout_height="wrap_content" android:paddingStart="10dp" android:paddingEnd="4dp" android:paddingTop="6dp" android:paddingBottom="6dp" android:visibility="gone">
+                    <ImageView android:id="@+id/widget_duty2_phone" android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center" android:src="@drawable/widget_ic_phone" />
+                </FrameLayout>
             </LinearLayout>
             <LinearLayout android:id="@+id/widget_duty3" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="5dp" android:paddingEnd="5dp" android:paddingTop="3dp" android:paddingBottom="3dp">
                 <TextView android:id="@+id/widget_duty3_text" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="" android:textColor="@color/widgetCardText" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" />
-                <ImageView android:id="@+id/widget_duty3_phone" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginStart="6dp" android:src="@drawable/widget_ic_phone" android:visibility="gone" />
+                <FrameLayout android:id="@+id/widget_duty3_phone_tap" android:layout_width="wrap_content" android:layout_height="wrap_content" android:paddingStart="10dp" android:paddingEnd="4dp" android:paddingTop="6dp" android:paddingBottom="6dp" android:visibility="gone">
+                    <ImageView android:id="@+id/widget_duty3_phone" android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center" android:src="@drawable/widget_ic_phone" />
+                </FrameLayout>
             </LinearLayout>
             <LinearLayout android:id="@+id/widget_duty4" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="5dp" android:paddingEnd="5dp" android:paddingTop="3dp" android:paddingBottom="3dp">
                 <TextView android:id="@+id/widget_duty4_text" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="" android:textColor="@color/widgetCardText" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" />
-                <ImageView android:id="@+id/widget_duty4_phone" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginStart="6dp" android:src="@drawable/widget_ic_phone" android:visibility="gone" />
+                <FrameLayout android:id="@+id/widget_duty4_phone_tap" android:layout_width="wrap_content" android:layout_height="wrap_content" android:paddingStart="10dp" android:paddingEnd="4dp" android:paddingTop="6dp" android:paddingBottom="6dp" android:visibility="gone">
+                    <ImageView android:id="@+id/widget_duty4_phone" android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center" android:src="@drawable/widget_ic_phone" />
+                </FrameLayout>
             </LinearLayout>
             <LinearLayout android:id="@+id/widget_duty5" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="5dp" android:paddingEnd="5dp" android:paddingTop="3dp" android:paddingBottom="3dp">
                 <TextView android:id="@+id/widget_duty5_text" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="" android:textColor="@color/widgetCardText" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" />
-                <ImageView android:id="@+id/widget_duty5_phone" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginStart="6dp" android:src="@drawable/widget_ic_phone" android:visibility="gone" />
+                <FrameLayout android:id="@+id/widget_duty5_phone_tap" android:layout_width="wrap_content" android:layout_height="wrap_content" android:paddingStart="10dp" android:paddingEnd="4dp" android:paddingTop="6dp" android:paddingBottom="6dp" android:visibility="gone">
+                    <ImageView android:id="@+id/widget_duty5_phone" android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center" android:src="@drawable/widget_ic_phone" />
+                </FrameLayout>
             </LinearLayout>
             <LinearLayout android:id="@+id/widget_duty6" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="5dp" android:paddingEnd="5dp" android:paddingTop="3dp" android:paddingBottom="3dp">
                 <TextView android:id="@+id/widget_duty6_text" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="" android:textColor="@color/widgetCardText" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" />
-                <ImageView android:id="@+id/widget_duty6_phone" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginStart="6dp" android:src="@drawable/widget_ic_phone" android:visibility="gone" />
+                <FrameLayout android:id="@+id/widget_duty6_phone_tap" android:layout_width="wrap_content" android:layout_height="wrap_content" android:paddingStart="10dp" android:paddingEnd="4dp" android:paddingTop="6dp" android:paddingBottom="6dp" android:visibility="gone">
+                    <ImageView android:id="@+id/widget_duty6_phone" android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center" android:src="@drawable/widget_ic_phone" />
+                </FrameLayout>
             </LinearLayout>
             <LinearLayout android:id="@+id/widget_duty7" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="5dp" android:paddingEnd="5dp" android:paddingTop="3dp" android:paddingBottom="3dp">
                 <TextView android:id="@+id/widget_duty7_text" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="" android:textColor="@color/widgetCardText" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" />
-                <ImageView android:id="@+id/widget_duty7_phone" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginStart="6dp" android:src="@drawable/widget_ic_phone" android:visibility="gone" />
+                <FrameLayout android:id="@+id/widget_duty7_phone_tap" android:layout_width="wrap_content" android:layout_height="wrap_content" android:paddingStart="10dp" android:paddingEnd="4dp" android:paddingTop="6dp" android:paddingBottom="6dp" android:visibility="gone">
+                    <ImageView android:id="@+id/widget_duty7_phone" android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center" android:src="@drawable/widget_ic_phone" />
+                </FrameLayout>
             </LinearLayout>
             <LinearLayout android:id="@+id/widget_duty8" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="5dp" android:paddingEnd="5dp" android:paddingTop="3dp" android:paddingBottom="3dp">
                 <TextView android:id="@+id/widget_duty8_text" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="" android:textColor="@color/widgetCardText" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" />
-                <ImageView android:id="@+id/widget_duty8_phone" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginStart="6dp" android:src="@drawable/widget_ic_phone" android:visibility="gone" />
+                <FrameLayout android:id="@+id/widget_duty8_phone_tap" android:layout_width="wrap_content" android:layout_height="wrap_content" android:paddingStart="10dp" android:paddingEnd="4dp" android:paddingTop="6dp" android:paddingBottom="6dp" android:visibility="gone">
+                    <ImageView android:id="@+id/widget_duty8_phone" android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center" android:src="@drawable/widget_ic_phone" />
+                </FrameLayout>
             </LinearLayout>
             <LinearLayout android:id="@+id/widget_duty9" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="5dp" android:paddingEnd="5dp" android:paddingTop="3dp" android:paddingBottom="3dp">
                 <TextView android:id="@+id/widget_duty9_text" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="" android:textColor="@color/widgetCardText" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" />
-                <ImageView android:id="@+id/widget_duty9_phone" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginStart="6dp" android:src="@drawable/widget_ic_phone" android:visibility="gone" />
+                <FrameLayout android:id="@+id/widget_duty9_phone_tap" android:layout_width="wrap_content" android:layout_height="wrap_content" android:paddingStart="10dp" android:paddingEnd="4dp" android:paddingTop="6dp" android:paddingBottom="6dp" android:visibility="gone">
+                    <ImageView android:id="@+id/widget_duty9_phone" android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center" android:src="@drawable/widget_ic_phone" />
+                </FrameLayout>
             </LinearLayout>
             <LinearLayout android:id="@+id/widget_duty10" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="5dp" android:paddingEnd="5dp" android:paddingTop="3dp" android:paddingBottom="3dp">
                 <TextView android:id="@+id/widget_duty10_text" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="" android:textColor="@color/widgetCardText" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" />
-                <ImageView android:id="@+id/widget_duty10_phone" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginStart="6dp" android:src="@drawable/widget_ic_phone" android:visibility="gone" />
+                <FrameLayout android:id="@+id/widget_duty10_phone_tap" android:layout_width="wrap_content" android:layout_height="wrap_content" android:paddingStart="10dp" android:paddingEnd="4dp" android:paddingTop="6dp" android:paddingBottom="6dp" android:visibility="gone">
+                    <ImageView android:id="@+id/widget_duty10_phone" android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center" android:src="@drawable/widget_ic_phone" />
+                </FrameLayout>
             </LinearLayout>
         </LinearLayout>
 
