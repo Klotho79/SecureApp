@@ -54,13 +54,6 @@ public sealed partial class ChatListViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsEmpty { get; set; }
 
-    /// <summary>Pairing invites from peers the user previously REMOVED, awaiting explicit consent (2.2, 2026-09-14) — shown as a banner; accepting re-establishes the chat, declining keeps the peer removed.</summary>
-    [ObservableProperty]
-    public partial ObservableCollection<PendingInviteItem> PendingInvites { get; set; }
-
-    [ObservableProperty]
-    public partial bool HasPendingInvites { get; set; }
-
     // Archive section (2.3, 2026-09-14) — chats/groups that lost all users, kept read-only and out of
     // the main list; the section is collapsed by default and expands on tap.
     [ObservableProperty]
@@ -103,14 +96,12 @@ public sealed partial class ChatListViewModel : ObservableObject
         _contactDirectoryService = contactDirectoryService ?? throw new ArgumentNullException(nameof(contactDirectoryService));
         Sessions = [];
         Groups = [];
-        PendingInvites = [];
         ArchivedSessions = [];
         ArchivedGroups = [];
         HasNoGroups = true;
     }
 
     partial void OnHasNoGroupsChanged(bool value) => HasGroups = !value;
-    partial void OnPendingInvitesChanged(ObservableCollection<PendingInviteItem> value) => HasPendingInvites = value.Count > 0;
 
     /// <summary>
     /// Quiet reload used on appear (2026-09-11) — builds the lists from the LAST-KNOWN directory
@@ -196,12 +187,6 @@ public sealed partial class ChatListViewModel : ObservableObject
             groups.Where(g => archived.Contains(g.Id)).OrderByDescending(g => g.ModifiedAtUtc).Select(ToGroupItem));
         ArchivedCount = ArchivedSessions.Count + ArchivedGroups.Count;
         HasArchivedChats = ArchivedCount > 0;
-
-        // Consent banner (2.2): pairing invites from removed peers, held for the user to accept/decline.
-        PendingInvites = new ObservableCollection<PendingInviteItem>(
-            PendingInvitesStore.GetAll()
-                .OrderByDescending(i => i.ReceivedAtUtc)
-                .Select(i => new PendingInviteItem(i.InitiatorDisplayName, i.InitiatorPublicKeyHex)));
     }
 
     /// <summary>Fetches current names from the relay AFTER the list is already shown, and rebuilds only if they differ — same no-flicker pattern as the chat threads.</summary>
@@ -289,10 +274,10 @@ public sealed partial class ChatListViewModel : ObservableObject
         DeleteErrorMessage = null;
         try
         {
-            // Remember the peer as user-removed BEFORE deleting the row (2.2, 2026-09-14) so the
-            // automatic recreate paths won't silently resurrect this chat — it returns only via an
-            // explicit re-invite the user consents to (see RemovedPeersStore). Best-effort lookup: even
-            // if the session is already gone, the delete itself is idempotent.
+            // Remember the peer as user-removed BEFORE deleting the row — RemovedPeersStore itself
+            // (2026-10-04: no longer blocks 1:1 re-pairing at all, see that class' own remarks; still
+            // read by group-member filtering). Best-effort lookup: even if the session is already
+            // gone, the delete itself is idempotent.
             var session = await _sessionRepository.GetByIdAsync(item.Id);
             if (session is not null) RemovedPeersStore.Add(session.PeerIdentityPublicKey);
 
@@ -335,55 +320,6 @@ public sealed partial class ChatListViewModel : ObservableObject
         }
     }
 
-    /// <summary>Accepts a held pairing invite from a previously-removed peer (2.2, 2026-09-14) — clears the removal, completes the handshake, and the chat re-appears. This is the "consent" half of the removed-chat policy.</summary>
-    [RelayCommand]
-    private async Task AcceptInviteAsync(PendingInviteItem? item)
-    {
-        if (item is null) return;
-        var stored = PendingInvitesStore.GetAll().FirstOrDefault(i => i.InitiatorPublicKeyHex == item.InitiatorPublicKeyHex);
-        if (stored is null) { PendingInvitesStore.Remove(item.InitiatorPublicKeyHex); await LoadAsync(); return; }
-
-        try
-        {
-            var invite = ContactCardCodec.Decode<ChatInviteBlob>(stored.InviteBlob);
-            RemovedPeersStore.Remove(invite.InitiatorPublicKey); // consent clears the removal
-
-            var existing = await _messagingService.FindExistingSessionAsync(invite.InitiatorPublicKey);
-            if (existing is not null)
-                await _messagingService.CloseSessionAsync(existing.Id);
-            var accepted = await _messagingService.AcceptSessionAsync(invite.InitiatorDisplayName, invite.InitiatorPublicKey, invite.InitiatorRelayDeviceId, invite.HandshakeCipherText);
-            AppLog.Event("pairing.consent-accepted", ("peer", invite.InitiatorDisplayName));
-
-            // Same history migration + resend as App.OnPairingInviteReceived's ordinary auto-accept
-            // path — see its own remarks. A removed-then-reinvited peer can just as easily be a resync
-            // of a peer whose session broke before the removal, not only a first-ever re-add.
-            if (existing is not null)
-            {
-                await SessionRecoveryHelper.ReassignAllHistoryAsync(_sessionRepository, _messageRepository, invite.InitiatorPublicKey, accepted.Id);
-                await SessionRecoveryHelper.ResendUndeliveredAsync(_messagingService, _messageRepository, _messageTransport, accepted.Id);
-            }
-        }
-        catch (Exception ex)
-        {
-            AppLog.Error("ChatList.AcceptInvite", "accepting held invite failed", ex);
-        }
-        finally
-        {
-            PendingInvitesStore.Remove(item.InitiatorPublicKeyHex);
-            await LoadAsync();
-        }
-    }
-
-    /// <summary>Declines a held invite (2.2) — discards it and keeps the peer removed, so it won't return until they invite again and the user accepts.</summary>
-    [RelayCommand]
-    private async Task DeclineInviteAsync(PendingInviteItem? item)
-    {
-        if (item is null) return;
-        PendingInvitesStore.Remove(item.InitiatorPublicKeyHex);
-        AppLog.Event("pairing.consent-declined", ("peer", item.InitiatorDisplayName));
-        await LoadAsync();
-    }
-
     private static string DescribeLastActivity(ChatSession session) => session.State switch
     {
         ChatSessionState.Closed => "Uzavřeno",
@@ -406,6 +342,3 @@ public sealed partial class ChatListViewModel : ObservableObject
 public sealed record ChatSessionItem(Guid Id, string PeerDisplayName, ChatSessionState State, string LastActivityText, string Initials, bool IsUnavailable = false);
 
 public sealed record GroupChatListItem(Guid Id, string Name, string Initials);
-
-/// <summary>A pending re-invite from a removed peer shown in the consent banner (2.2, 2026-09-14).</summary>
-public sealed record PendingInviteItem(string InitiatorDisplayName, string InitiatorPublicKeyHex);

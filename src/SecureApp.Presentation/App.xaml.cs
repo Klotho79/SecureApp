@@ -451,19 +451,17 @@ public partial class App : Application
 
 		ReportChatHealth(sessions);
 
+		// 2026-10-04: no longer excludes a peer in RemovedPeersStore — see OnPairingInviteReceived's
+		// own remarks on why that gate is gone entirely (closed, personally-vetted community; nothing
+		// requires manual consent to resume talking to someone already in it).
 		var stalePeers = sessions
 			.GroupBy(s => Convert.ToHexStringLower(s.PeerIdentityPublicKey))
 			.Where(group => group.All(s => s.State == ChatSessionState.Closed))
 			.Select(group => group.OrderByDescending(s => s.ModifiedAtUtc).First())
-					// 2.2 (2026-09-14): never auto-resurrect a chat the user removed (RemovedPeersStore).
-					.Where(s => !RemovedPeersStore.Contains(s.PeerIdentityPublicKey))
-				.ToList();
+			.ToList();
 
-			if (stalePeers.Count > 0)
-				AppLog.Event("sweep.stale-peers-resyncing", ("count", stalePeers.Count));
-			// NOTE: this sweep is the path that kept recreating the ghost "Local User" — logging it is
-			// exactly the visibility 2.5 is about; 2.2 will add a suppression so a user-removed peer
-			// isn't auto-resynced here at all.
+		if (stalePeers.Count > 0)
+			AppLog.Event("sweep.stale-peers-resyncing", ("count", stalePeers.Count));
 
 		foreach (var stale in stalePeers)
 		{
@@ -494,15 +492,16 @@ public partial class App : Application
 	/// transport, just a signal that was missing. Before this, diagnosing a stuck pairing meant
 	/// grepping raw session.resync.* lines by hand across both devices' uploaded logs and reconstructing
 	/// the timeline (exactly what surfaced the real 16+-hour stuck-pairing bug this method exists to
-	/// make visible going forward); now "chat.health" alone tells the whole story every ~3 minutes:
-	/// how many sessions are Active, how many are PendingHandshake (and for how long the oldest one has
+	/// make visible going forward); now "chat.health" alone tells the whole story every ~3 minutes: how
+	/// many sessions are Active, how many are PendingHandshake, and for how long the oldest one has
 	/// been stuck there without ever reaching Active — a healthy handshake settles in seconds, so
-	/// anything still pending after several sweeps is a real signal), and how many pairing invites are
-	/// sitting in THIS device's own <see cref="PendingInvitesStore"/> waiting on the user's explicit
-	/// consent (see RemovedPeersStore's own remarks) — including each one's peer name and how long it's
-	/// actually been waiting (<see cref="PendingInvitesStore.Add"/> now preserves the original
-	/// ReceivedAtUtc across repeated re-invites from the same peer specifically so this number stays
-	/// honest instead of resetting to "just now" every time the other side's own sweep resends).
+	/// anything still pending after several sweeps is a real signal.
+	///
+	/// Originally also reported <c>PendingInvitesStore</c>'s own consent-pending queue — removed the
+	/// same day this was written, once that store itself became permanently empty: the "hold a
+	/// removed peer's re-invite for consent" behavior it backed was the actual root cause of the real
+	/// stuck pairing that motivated this diagnostic in the first place, and is now gone entirely (see
+	/// <c>App.OnPairingInviteReceived</c>'s own remarks) rather than something to keep reporting on.
 	/// </summary>
 	private static void ReportChatHealth(IReadOnlyList<ChatSession> sessions)
 	{
@@ -516,19 +515,11 @@ public partial class App : Application
 				? (int)(now - pending.Min(s => s.ModifiedAtUtc)).TotalMinutes
 				: 0;
 
-			var awaitingConsent = PendingInvitesStore.GetAll();
-			var tags = new List<(string Key, object? Value)>
-			{
+			AppLog.Event("chat.health",
 				("active", active),
 				("pendingHandshake", pending.Count),
 				("pendingHandshakeOldestMinutes", oldestPendingMinutes),
-				("closedOnly", closed),
-				("awaitingConsent", awaitingConsent.Count),
-			};
-			foreach (var invite in awaitingConsent)
-				tags.Add(("awaitingConsentPeer", $"{invite.InitiatorDisplayName} ({(int)(now - invite.ReceivedAtUtc).TotalMinutes}min)"));
-
-			AppLog.Event("chat.health", tags.ToArray());
+				("closedOnly", closed));
 		}
 		catch
 		{
@@ -959,19 +950,20 @@ public partial class App : Application
 			// (The old behavior assumed "already paired" could only mean a redundant duplicate scan
 			// of the initiator's own QR — accepting-and-replacing is harmless in that case too, just
 			// a wasted extra handshake.)
-			// 2.2 (2026-09-14): if the user REMOVED this peer, do NOT auto-accept a fresh invite. Hold it
-			// for explicit consent (a banner in the chat list) — the chat returns only when the user
-			// accepts. Accepting clears the removal; declining keeps it. See PendingInvitesStore.
-			if (RemovedPeersStore.Contains(invite.InitiatorPublicKey))
-			{
-				PendingInvitesStore.Add(new PendingInvite(
-					invite.InitiatorDisplayName,
-					Convert.ToHexStringLower(invite.InitiatorPublicKey),
-					inviteBlob,
-					DateTimeOffset.UtcNow));
-				AppLog.Event("pairing.held-for-consent", ("peer", invite.InitiatorDisplayName));
-				return;
-			}
+			//
+			// 2026-10-04 — the 2.2 (2026-09-14) "hold a removed peer's re-invite for explicit consent"
+			// behavior is REMOVED, per the user's own explicit, direct reversal of that earlier policy:
+			// this is a closed community where every member is personally vetted before joining at
+			// all, so there is no scenario where a fresh invite from someone already IN the community
+			// needs a second manual gate — it directly contradicted this project's own standing
+			// "nothing requires the user to manually approve anything" rule (see the
+			// secureapp-self-healing-requirement memory) and was the root cause of a real, found-live
+			// bug: a message to a peer the user had locally deleted the chat with silently went
+			// nowhere for 16+ hours because nobody ever saw (or thought to look for) the consent
+			// banner this used to create. RemovedPeersStore.Add from deleting a chat still runs (see
+			// ChatListViewModel.DeleteSessionAsync) — it only ever did LOCAL declutter housekeeping
+			// elsewhere (group-member filtering); it just no longer blocks 1:1 re-pairing here.
+			RemovedPeersStore.Remove(invite.InitiatorPublicKey);
 
 			var existingSession = await messagingService.FindExistingSessionAsync(invite.InitiatorPublicKey);
 			byte[]? historySourceKey = null;
