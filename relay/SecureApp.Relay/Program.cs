@@ -829,7 +829,7 @@ app.MapPost("/diagnostics/applog", (HttpRequest request, AppLogUploadRequest bod
 
     var lines = body.Lines.Select(l => l.Length > 4000 ? l[..4000] : l).ToList();
     if (lines.Count > 0)
-        db.AppendAppLogLines(deviceId, body.Kind, lines);
+        db.AppendAppLogLines(deviceId, body.Kind, lines, body.AppVersion);
     return Results.Ok();
 });
 

@@ -374,6 +374,14 @@ public sealed class RelayDatabase
             """);
         Execute(connection, "CREATE INDEX IF NOT EXISTS ix_device_app_logs_device ON device_app_logs(device_id, kind, id)");
 
+        // app_version (2026-10-04, user's own ask: errors must be compared against which app version
+        // was actually running when they happened, not just the device's CURRENT version — directory_
+        // entries.app_version only ever holds the latest publish, so it can't answer "was this specific
+        // error occurrence from before or after the fix shipped"). Same guarded-ALTER + nullable
+        // tolerance as every other column added to an existing table in this file.
+        if (!ColumnExists(connection, "device_app_logs", "app_version"))
+            Execute(connection, "ALTER TABLE device_app_logs ADD COLUMN app_version TEXT NULL");
+
         // Logbook catalog sync (2026-09-10) — see ILogbookCatalogSyncService's own remarks for why
         // this is plaintext (reference/protocol content, not patient data) and device-authenticated
         // rather than admin-gated. Upsert-by-id (see UpsertLogbookChecklist/UpsertLogbookProcedureType)
@@ -1414,8 +1422,14 @@ public sealed class RelayDatabase
 
     private const int AppLogMaxLinesPerDeviceKind = 5000;
 
-    /// <summary>Appends a batch of one device's AppLog lines ("errors" or "metrics"), then trims that device+kind to its newest <see cref="AppLogMaxLinesPerDeviceKind"/> lines.</summary>
-    public void AppendAppLogLines(Guid deviceId, string kind, IReadOnlyList<string> lines)
+    /// <summary>
+    /// Appends a batch of one device's AppLog lines ("errors" or "metrics"), then trims that
+    /// device+kind to its newest <see cref="AppLogMaxLinesPerDeviceKind"/> lines.
+    /// <paramref name="appVersion"/> (2026-10-04) is stamped onto every line in this batch — see
+    /// <see cref="AppLogUploadRequest"/>'s own remarks on why that's "version at upload time", not a
+    /// per-line guarantee.
+    /// </summary>
+    public void AppendAppLogLines(Guid deviceId, string kind, IReadOnlyList<string> lines, string? appVersion = null)
     {
         using var connection = OpenConnection();
         using var transaction = connection.BeginTransaction();
@@ -1423,11 +1437,12 @@ public sealed class RelayDatabase
         using (var insert = connection.CreateCommand())
         {
             insert.Transaction = transaction;
-            insert.CommandText = "INSERT INTO device_app_logs (device_id, kind, line, received_at_utc) VALUES (@device, @kind, @line, @at)";
+            insert.CommandText = "INSERT INTO device_app_logs (device_id, kind, line, received_at_utc, app_version) VALUES (@device, @kind, @line, @at, @version)";
             var pDevice = insert.Parameters.AddWithValue("@device", deviceId.ToString());
             var pKind = insert.Parameters.AddWithValue("@kind", kind);
             var pLine = insert.Parameters.AddWithValue("@line", "");
             var pAt = insert.Parameters.AddWithValue("@at", now);
+            var pVersion = insert.Parameters.AddWithValue("@version", (object?)appVersion ?? DBNull.Value);
             foreach (var line in lines)
             {
                 pLine.Value = line;
@@ -1449,18 +1464,29 @@ public sealed class RelayDatabase
         transaction.Commit();
     }
 
-    /// <summary>The newest <paramref name="limit"/> lines of one device's log, returned oldest-first (reading order).</summary>
+    /// <summary>
+    /// The newest <paramref name="limit"/> lines of one device's log, returned oldest-first (reading
+    /// order). Each line is prefixed with its stored <c>app_version</c> (2026-10-04), e.g.
+    /// <c>"[1.43 (46)] 2026-10-04 10:01:30...	session.resync.start	..."</c>, or <c>"[?] "</c> for a
+    /// line from before this column existed — kept as plain text, not a new DTO field, so the
+    /// existing admin viewer (<c>HttpRelayAdminService.GetDeviceAppLogAsync</c>, still just
+    /// <c>List&lt;string&gt;</c>) shows it with no client-side change at all.
+    /// </summary>
     public IReadOnlyList<string> GetAppLogLines(Guid deviceId, string kind, int limit)
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT line FROM device_app_logs WHERE device_id = @device AND kind = @kind ORDER BY id DESC LIMIT @limit";
+        command.CommandText = "SELECT line, app_version FROM device_app_logs WHERE device_id = @device AND kind = @kind ORDER BY id DESC LIMIT @limit";
         command.Parameters.AddWithValue("@device", deviceId.ToString());
         command.Parameters.AddWithValue("@kind", kind);
         command.Parameters.AddWithValue("@limit", limit);
         var lines = new List<string>();
         using var reader = command.ExecuteReader();
-        while (reader.Read()) lines.Add(reader.GetString(0));
+        while (reader.Read())
+        {
+            var version = reader.IsDBNull(1) ? "?" : reader.GetString(1);
+            lines.Add($"[{version}] {reader.GetString(0)}");
+        }
         lines.Reverse();
         return lines;
     }

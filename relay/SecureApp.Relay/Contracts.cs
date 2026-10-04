@@ -74,8 +74,19 @@ public sealed record WrappedKeyResponse(string WrappedBlob);
 
 public sealed record ReportDiagnosticLogRequest(string Level, string Message, string? Context, string? ExceptionDetails);
 
-/// <summary>A batch of raw AppLog lines from one device (2026-09-26) — Kind is "errors" or "metrics".</summary>
-public sealed record AppLogUploadRequest(string Kind, List<string> Lines);
+/// <summary>
+/// A batch of raw AppLog lines from one device (2026-09-26) — Kind is "errors" or "metrics".
+/// <c>AppVersion</c> (2026-10-04, same "1.29 (32)" display+build shape as
+/// <c>HttpContactDirectoryService.PublishSelfAsync</c>'s own field) is the version running RIGHT NOW,
+/// at upload time — not necessarily the version active when every line in this batch was actually
+/// logged (a device that was offline for a while can upload a backlog spanning an update it
+/// installed in between). Good enough for the actual need (comparing when an error type was LAST
+/// seen against what version introduced a fix for it): an upload batch straddling an update is rare
+/// and self-corrects within one more upload cycle. Nullable so an older client that predates this
+/// field is simply recorded with an unknown version, same tolerance as every other optional field
+/// here.
+/// </summary>
+public sealed record AppLogUploadRequest(string Kind, List<string> Lines, string? AppVersion = null);
 
 /// <summary><c>DeviceDisplayName</c> is resolved server-side against the CURRENT member directory, not stored at report time — see <c>RelayDatabase.GetRecentDiagnosticLogs</c>'s own remarks.</summary>
 public sealed record DiagnosticLogEntryDto(Guid Id, string DeviceDisplayName, string Level, string Message, string? Context, string? ExceptionDetails, DateTimeOffset CreatedAtUtc);

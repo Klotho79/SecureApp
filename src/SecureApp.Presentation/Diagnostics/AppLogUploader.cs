@@ -38,8 +38,15 @@ public static class AppLogUploader
             var scheme = wsEndpoint.Scheme switch { "ws" => "http", "wss" => "https", _ => wsEndpoint.Scheme };
             var uri = new Uri(new UriBuilder(wsEndpoint) { Scheme = scheme, Port = wsEndpoint.Port }.Uri, "diagnostics/applog");
 
+            // AppVersion (2026-10-04, user's own ask: an error must be checkable against which app
+            // version was actually running when it happened, not just "sometime before now" — so a
+            // fix's claimed version can be verified against whether the same error signature really
+            // stopped appearing afterward, instead of assumed). Same "1.29 (32)" shape as
+            // HttpContactDirectoryService.PublishSelfAsync's own AppVersion field.
+            var appVersion = $"{Microsoft.Maui.ApplicationModel.AppInfo.Current.VersionString} ({Microsoft.Maui.ApplicationModel.AppInfo.Current.BuildString})";
+
             foreach (var kind in new[] { "errors", "metrics" })
-                await UploadKindAsync(kind, uri, deviceId, Encoding.UTF8.GetString(secret), ct);
+                await UploadKindAsync(kind, uri, deviceId, Encoding.UTF8.GetString(secret), appVersion, ct);
         }
         catch (Exception ex)
         {
@@ -52,7 +59,7 @@ public static class AppLogUploader
         }
     }
 
-    private static async Task UploadKindAsync(string kind, Uri uri, Guid deviceId, string secret, CancellationToken ct)
+    private static async Task UploadKindAsync(string kind, Uri uri, Guid deviceId, string secret, string appVersion, CancellationToken ct)
     {
         var prefs = Microsoft.Maui.Storage.Preferences.Default;
         var offsetKey = $"applog_uploaded_bytes_{kind}";
@@ -92,7 +99,7 @@ public static class AppLogUploader
             var batch = lines.Skip(i).Take(MaxLinesPerRequest).ToList();
             using var request = new HttpRequestMessage(HttpMethod.Post, uri)
             {
-                Content = JsonContent.Create(new { Kind = kind, Lines = batch }, options: HttpJsonOptions)
+                Content = JsonContent.Create(new { Kind = kind, Lines = batch, AppVersion = appVersion }, options: HttpJsonOptions)
             };
             request.Headers.Add("X-Device-Id", deviceId.ToString());
             request.Headers.Add("X-Device-Secret", secret);

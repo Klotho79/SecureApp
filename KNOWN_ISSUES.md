@@ -16,6 +16,34 @@ FROM device_app_logs WHERE kind='errors' GROUP BY sig ORDER BY COUNT(*) DESC;
 Each item below: what it is, how often/where it's actually been seen, current status, and the real
 log line that proves it (not a paraphrase).
 
+## Verifying a fix actually worked (don't just assume it from the diff)
+
+**2026-10-04, user's own requirement:** every error occurrence must be checkable against which app
+version was actually running at the time, and marking an issue "fixed" must never rest on "I changed
+the code" alone — only on real field evidence that the signature actually stopped recurring on
+versions at or after the fix. Two things make this checkable now:
+
+- Every row in `device_app_logs` carries an `app_version` column (added 2026-10-04 — rows from
+  before that date are `NULL`, i.e. "unknown version"; see `RelayDatabase.AppendAppLogLines`'s own
+  remarks for why it's "version at upload time", not a per-line timestamp-matched guarantee). This is
+  DIFFERENT from `directory_entries.app_version` (added 2026-10-01), which only ever holds a device's
+  CURRENT version — it cannot answer "what version was this device running when THIS specific error
+  happened three days ago."
+- Once an issue below is marked **"Fixed in version: X (commit `abc1234`)"**, re-run its query but add
+  `AND app_version IS NOT NULL AND app_version NOT LIKE 'X (%'` (adjust the comparison to "versions at
+  or after X" using the version's own build number if several builds need excluding) — any row that
+  still comes back means the fix did **not** actually work and the entry must be reopened, not left
+  marked fixed. Example, once §2 (media3 crash) is believed fixed in, say, 1.44 (build 47):
+  ```sql
+  SELECT device_id, received_at_utc, app_version FROM device_app_logs
+  WHERE kind='errors' AND line LIKE '%AbstractMethodError%onAudioSessionIdChanged%'
+    AND app_version IS NOT NULL
+  ORDER BY received_at_utc DESC LIMIT 20;
+  -- if the newest row's app_version build number is >= 47, the fix did not hold.
+  ```
+- None of the issues below are marked fixed yet — none of them have shipped a fix. The first one that
+  does should get this treatment immediately, not retroactively once someone wonders if it recurred.
+
 ---
 
 ## 1. Relay reconnect fails — `WebSocketException: net_webstatus_ConnectFailure`
@@ -137,4 +165,6 @@ ERROR	App.TryConnect	silent re-activation failed	ArgumentException: ... (Paramet
 Re-run the query at the top of this file against the relay (`ssh` + `sqlite3` against
 `relay/SecureApp.Relay/data/relay.db3`'s `device_app_logs` table, `kind='errors'`) — it returns every
 distinct error type that exists, with counts and real timestamps, with no need to pull any specific
-device's log by hand first.
+device's log by hand first. Include `app_version` in the SELECT (it's a real column now, see "Verifying
+a fix actually worked" above) whenever the question is "did this stop happening after a specific
+release," not just "does this still happen at all."
