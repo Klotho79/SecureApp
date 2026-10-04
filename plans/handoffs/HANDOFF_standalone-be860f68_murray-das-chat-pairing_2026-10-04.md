@@ -598,3 +598,8 @@ Get-Content "H:\Visual Studio\C#\Aplikace\src\SecureApp.Presentation\Chat\Sessio
 # 2) If so: start on KNOWN_ISSUES.md item #1 (the 1957x WebSocketException) or item #2 (the media3 crash)
 #    — #2 is the one with a known, scoped fix path (MediaElement version) and a confirmed real victim
 ```
+
+## Session Closed
+**Closed at:** 2026-10-04
+**Commit:** `cacf604` (pushed to `pi` and `github`)
+**Session status:** Handed off to next session
