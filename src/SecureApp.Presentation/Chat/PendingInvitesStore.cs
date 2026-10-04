@@ -35,13 +35,24 @@ public static class PendingInvitesStore
         catch { return []; }
     }
 
-    /// <summary>Adds a pending invite, replacing any earlier one from the same peer (only the latest handshake is worth keeping).</summary>
+    /// <summary>
+    /// Adds a pending invite, replacing any earlier one from the same peer — only the latest
+    /// handshake blob is worth keeping (an old one can't complete a session against a since-moved-on
+    /// ratchet state). <see cref="PendingInvite.ReceivedAtUtc"/> is the exception: preserved from the
+    /// EARLIER entry if there was one (2026-10-04, added once a real stuck pairing made this matter —
+    /// a peer whose own automatic resync sweep keeps re-sending every few minutes was overwriting this
+    /// with "just now" on every single re-send, making an invite stuck for hours look freshly arrived
+    /// to anything reading it later, e.g. a diagnostic). Reports how long this has ACTUALLY been
+    /// sitting unaccepted, not just when the latest resend happened to land.
+    /// </summary>
     public static void Add(PendingInvite invite)
     {
         lock (_gate)
         {
-            var list = GetAll().Where(i => i.InitiatorPublicKeyHex != invite.InitiatorPublicKeyHex).ToList();
-            list.Add(invite);
+            var all = GetAll();
+            var prior = all.FirstOrDefault(i => i.InitiatorPublicKeyHex == invite.InitiatorPublicKeyHex);
+            var list = all.Where(i => i.InitiatorPublicKeyHex != invite.InitiatorPublicKeyHex).ToList();
+            list.Add(prior is null ? invite : invite with { ReceivedAtUtc = prior.ReceivedAtUtc });
             Save(list);
         }
     }

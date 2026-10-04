@@ -449,6 +449,8 @@ public partial class App : Application
 		try { sessions = await sessionRepository.GetAllAsync(); }
 		catch { return; }
 
+		ReportChatHealth(sessions);
+
 		var stalePeers = sessions
 			.GroupBy(s => Convert.ToHexStringLower(s.PeerIdentityPublicKey))
 			.Where(group => group.All(s => s.State == ChatSessionState.Closed))
@@ -480,6 +482,58 @@ public partial class App : Application
 				// this is an expected, self-correcting retry loop, not a surprise.
 				ReportFireAndForget(DiagnosticLogLevel.Warning, $"Pozadí: obnovení relace s {stale.PeerDisplayName} se nepodařilo, zkusí se znovu při dalším průchodu.", nameof(RunStaleSessionSweepAsync), ex);
 			}
+		}
+	}
+
+	/// <summary>
+	/// Structured chat-pairing health, emitted every stale-sweep tick (2026-10-04, user's own ask: "aby
+	/// server vedel ze je vse ok a funguje bez nutnosti sahat do ciziho telefonu" — the admin/server
+	/// should be able to tell whether 1:1 pairing is actually healthy without needing physical access
+	/// to a peer's phone). Reuses the exact pipeline that already carries every other AppLog.Event to
+	/// the relay (Diagnostics.AppLogUploader.UploadAsync, called right after this sweep) — no new
+	/// transport, just a signal that was missing. Before this, diagnosing a stuck pairing meant
+	/// grepping raw session.resync.* lines by hand across both devices' uploaded logs and reconstructing
+	/// the timeline (exactly what surfaced the real 16+-hour stuck-pairing bug this method exists to
+	/// make visible going forward); now "chat.health" alone tells the whole story every ~3 minutes:
+	/// how many sessions are Active, how many are PendingHandshake (and for how long the oldest one has
+	/// been stuck there without ever reaching Active — a healthy handshake settles in seconds, so
+	/// anything still pending after several sweeps is a real signal), and how many pairing invites are
+	/// sitting in THIS device's own <see cref="PendingInvitesStore"/> waiting on the user's explicit
+	/// consent (see RemovedPeersStore's own remarks) — including each one's peer name and how long it's
+	/// actually been waiting (<see cref="PendingInvitesStore.Add"/> now preserves the original
+	/// ReceivedAtUtc across repeated re-invites from the same peer specifically so this number stays
+	/// honest instead of resetting to "just now" every time the other side's own sweep resends).
+	/// </summary>
+	private static void ReportChatHealth(IReadOnlyList<ChatSession> sessions)
+	{
+		try
+		{
+			var now = DateTimeOffset.UtcNow;
+			var active = sessions.Count(s => s.State == ChatSessionState.Active);
+			var pending = sessions.Where(s => s.State == ChatSessionState.PendingHandshake).ToList();
+			var closed = sessions.Count(s => s.State == ChatSessionState.Closed);
+			var oldestPendingMinutes = pending.Count > 0
+				? (int)(now - pending.Min(s => s.ModifiedAtUtc)).TotalMinutes
+				: 0;
+
+			var awaitingConsent = PendingInvitesStore.GetAll();
+			var tags = new List<(string Key, object? Value)>
+			{
+				("active", active),
+				("pendingHandshake", pending.Count),
+				("pendingHandshakeOldestMinutes", oldestPendingMinutes),
+				("closedOnly", closed),
+				("awaitingConsent", awaitingConsent.Count),
+			};
+			foreach (var invite in awaitingConsent)
+				tags.Add(("awaitingConsentPeer", $"{invite.InitiatorDisplayName} ({(int)(now - invite.ReceivedAtUtc).TotalMinutes}min)"));
+
+			AppLog.Event("chat.health", tags.ToArray());
+		}
+		catch
+		{
+			// Best-effort — a diagnostics signal failing to compute must never block the real
+			// resync work right after it.
 		}
 	}
 

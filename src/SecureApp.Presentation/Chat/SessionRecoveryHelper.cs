@@ -38,8 +38,23 @@ public static class SessionRecoveryHelper
     /// stabilize and every single message kept failing the same way forever. This is a simple,
     /// process-wide cooldown, not per-caller: whichever trigger gets there first for a given peer
     /// wins, and every other trigger for that same peer is a silent no-op until the cooldown lapses.
+    ///
+    /// 2026-10-04 — raised from 15 seconds after finding a REAL instance live via the shared
+    /// diagnostics log: a peer the receiving side had marked removed (so every fresh invite just gets
+    /// held for that user's explicit consent, never auto-accepted — see RemovedPeersStore/
+    /// PendingInvitesStore) kept getting a brand new handshake-close-then-recreate from this device's
+    /// own App.RunStaleSessionSweepAsync every single 3-minute sweep tick, for 16+ hours straight,
+    /// because 15 seconds is nowhere near that sweep's own interval — the OLD cooldown only ever
+    /// protected against several triggers firing within the same few seconds, never against the
+    /// periodic sweep finding the exact same still-unresolved peer "stale" again next cycle and
+    /// next cycle after that. Resyncing more aggressively can't make the OTHER side's consent-gate
+    /// resolve any faster — the only thing the old cooldown bought here was pure noise (a fresh
+    /// handshake + full history re-migration, every 3 minutes, for nothing). 20 minutes is still far
+    /// short of ever delaying a genuinely NEW break from healing at human-noticeable speed, but long
+    /// enough that a peer stuck exactly like this one generates a small, countable number of attempts
+    /// instead of an unbounded one.
     /// </summary>
-    private static readonly TimeSpan _cooldown = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan _cooldown = TimeSpan.FromMinutes(20);
 
     private static readonly ConcurrentDictionary<string, DateTimeOffset> _lastResyncAttemptUtc = new();
 
