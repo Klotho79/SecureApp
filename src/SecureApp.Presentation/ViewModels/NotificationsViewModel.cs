@@ -64,10 +64,6 @@ public sealed partial class NotificationsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsChatFilterActive { get; set; }
 
-    /// <summary>True while the "Knihovna" filter chip is the active one — gates the three quick-link buttons below (2026-09-20, user's own ask, after two earlier misses at this: "dej tam jen zalozky knihovna dokumenty a pridej postupy" — just the Knihovna/Dokumenty tab links, plus a shortcut to add a new postup, no file listing here).</summary>
-    [ObservableProperty]
-    public partial bool IsLibraryFilterActive { get; set; }
-
     /// <summary>Raised so the Page (which alone can push a MAUI navigation) opens the tapped chat/group or jumps to a full browsing tab — same MAUI-free-ViewModel split this codebase already established elsewhere.</summary>
     public event Action<string>? RequestNavigate;
 
@@ -97,7 +93,6 @@ public sealed partial class NotificationsViewModel : ObservableObject
             new NotificationFilterChip("Nepřečtené", NotificationFilter.Default with { OnlyUnread = true }, SelectFilterCommand),
             new NotificationFilterChip("Chat", NotificationFilter.Default with { Category = NotificationCategory.Chat }, SelectFilterCommand),
             new NotificationFilterChip("Rozpis", NotificationFilter.Default with { Category = NotificationCategory.Schedule }, SelectFilterCommand),
-            new NotificationFilterChip("Knihovna", NotificationFilter.Default with { Category = NotificationCategory.Library }, SelectFilterCommand),
             new NotificationFilterChip("Systém", NotificationFilter.Default with { Category = NotificationCategory.System }, SelectFilterCommand),
             new NotificationFilterChip("Archiv", NotificationFilter.Default with { ArchivedOnly = true }, SelectFilterCommand),
         ];
@@ -134,7 +129,6 @@ public sealed partial class NotificationsViewModel : ObservableObject
                 HasChatQuickAccess = false;
             }
 
-            IsLibraryFilterActive = activeChip?.Filter.Category == NotificationCategory.Library;
         }
         finally
         {
@@ -174,23 +168,6 @@ public sealed partial class NotificationsViewModel : ObservableObject
         if (item is null) return;
         RequestNavigate?.Invoke(item.Route);
     }
-
-    [RelayCommand]
-    private void OpenLibraryTab() => RequestNavigate?.Invoke("//LibraryTab");
-
-    [RelayCommand]
-    private void OpenDocumentsTab() => RequestNavigate?.Invoke("//DocumentBrowser");
-
-    /// <summary>
-    /// "Přidat postup" (2026-09-20, user's explicit ask) — the upload form lives inline on
-    /// LibraryPage itself (folder/tags fields + native file picker, RBAC-gated to
-    /// Admin/Modifier — see LibraryViewModel.UploadCommand), not a separate route, so this jumps to
-    /// the same Knihovna tab as <see cref="OpenLibraryTabCommand"/>. Kept as its own distinct button
-    /// anyway — same destination, but a different, more specific INTENT ("go add something" vs. "go
-    /// browse") — matching the user's own explicit "přidej postupy" as its own separate ask.
-    /// </summary>
-    [RelayCommand]
-    private void OpenAddProcedure() => RequestNavigate?.Invoke("//LibraryTab");
 
     [RelayCommand]
     private async Task SelectFilterAsync(NotificationFilterChip? chip)

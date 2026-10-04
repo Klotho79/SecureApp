@@ -389,9 +389,13 @@ public sealed partial class WorkplaceViewModel : ObservableObject
         // every no-op sync. NotConfigured is only ever returned as this exact static instance.
         if (ReferenceEquals(result, OpicentrumSyncResult.NotConfigured)) return null; // not set up yet — nothing to report
         if (!result.Success) return $"Synchronizace s Opicentrem selhala: {result.ErrorMessage}";
+
+        // 2026-10-04, user's own ask — the time itself was missing entirely; now shown inline next
+        // to "Dnes" (see WorkplacePage.xaml's own remarks on why it moved there).
+        var now = DateTime.Now.ToString("HH:mm", CultureInfo.InvariantCulture);
         return result.CreatedCount == 0 && result.UpdatedCount == 0
-            ? "Synchronizováno s Opicentrem — beze změn."
-            : $"Synchronizováno s Opicentrem — nové: {result.CreatedCount}, aktualizované: {result.UpdatedCount}.";
+            ? $"Synchronizováno v {now} — beze změn."
+            : $"Synchronizováno v {now} — nové: {result.CreatedCount}, aktualizované: {result.UpdatedCount}.";
     }
 
     private static DateOnly StartOfWeek(DateOnly date)

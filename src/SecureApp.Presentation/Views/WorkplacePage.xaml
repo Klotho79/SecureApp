@@ -12,16 +12,22 @@
         <VerticalStackLayout Padding="16" Spacing="12">
 
             <controls:DelayedActivityIndicator IsBusy="{Binding IsLoading}" HorizontalOptions="Center" />
-            <Label Text="{Binding SyncStatusText}" IsVisible="{Binding HasSyncStatus}" FontSize="9" TextColor="Gray" HorizontalOptions="Center" />
 
             <!-- Dnes (spec §6 TODAY block) — always today's own status, independent of which week the
-                 strip below is currently showing. -->
+                 strip below is currently showing. SyncStatusText (2026-10-04, user's own ask) sits
+                 inline in this SAME header row, not as its own standalone line above the card — a
+                 separate line appearing/disappearing as a sync starts/finishes pushed the whole Dnes
+                 card (and everything below it) up and down, which read as distracting. Inline here,
+                 only the text within this one fixed-position row changes. -->
             <Border Style="{StaticResource CardBorder}" BackgroundColor="{Binding Today.SoftColor}">
                 <Border.GestureRecognizers>
                     <TapGestureRecognizer Command="{Binding Today.OpenCommand}" CommandParameter="{Binding Today}" />
                 </Border.GestureRecognizers>
                 <VerticalStackLayout Spacing="6">
-                    <Label Text="Dnes" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Grid ColumnDefinitions="Auto,*,Auto">
+                        <Label Grid.Column="0" Text="Dnes" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Label Grid.Column="2" Text="{Binding SyncStatusText}" IsVisible="{Binding HasSyncStatus}" FontSize="9" TextColor="Gray" VerticalOptions="Center" />
+                    </Grid>
                     <Label Text="{Binding Today.EmptyTodayText}" FontSize="10.5" TextColor="Gray" IsVisible="{Binding Today.HasNoAssignment}" />
                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10" IsVisible="{Binding Today.HasAssignment}">
                         <Label Grid.Column="0" Text="{Binding Today.Glyph}" FontSize="22.5" VerticalOptions="Center" />
