@@ -114,6 +114,22 @@ public sealed partial class SettingsViewModel
 
     partial void OnWireGuardQrImageChanged(Microsoft.Maui.Controls.ImageSource? value) => OnPropertyChanged(nameof(HasWireGuardQrImage));
 
+    /// <summary>
+    /// Raw .conf text alongside the QR (2026-10-04, user's own ask) — the official WireGuard
+    /// MOBILE app can scan the QR directly, but the Windows/desktop client has no camera/QR import at
+    /// all; it only accepts a plain .conf file or pasted text. Same underlying wg-easy peer/config
+    /// the QR above already encodes — this just also exposes it as copyable text so a PC target
+    /// doesn't need the wg-easy web UI at all, only Notepad + the WireGuard client's own file import.
+    /// A NEW peer per target device, same as the phones already get one each (never reused across
+    /// multiple devices) — see this property's own CreateWireGuardAccessAsync for why.
+    /// </summary>
+    [ObservableProperty]
+    public partial string? WireGuardConfigText { get; set; }
+
+    public bool HasWireGuardConfigText => !string.IsNullOrEmpty(WireGuardConfigText);
+
+    partial void OnWireGuardConfigTextChanged(string? value) => OnPropertyChanged(nameof(HasWireGuardConfigText));
+
     [ObservableProperty]
     public partial bool IsCreatingWireGuardAccess { get; set; }
 
@@ -127,6 +143,7 @@ public sealed partial class SettingsViewModel
     {
         WireGuardStatusText = null;
         WireGuardQrImage = null;
+        WireGuardConfigText = null;
 
         if (string.IsNullOrWhiteSpace(NewMemberNameText))
         {
@@ -157,6 +174,7 @@ public sealed partial class SettingsViewModel
             var configText = await _relayAdminService.CreateWireGuardClientAsync(endpoint, adminSecret, NewMemberNameText);
             var png = QrImageGenerator.GeneratePng(configText);
             WireGuardQrImage = Microsoft.Maui.Controls.ImageSource.FromStream(() => new MemoryStream(png));
+            WireGuardConfigText = configText;
             WireGuardStatusText = $"Hotovo — ukažte tenhle QR novému členovi ({NewMemberNameText}), naskenuje ho v appce WireGuard.";
             NewMemberNameText = string.Empty;
         }
@@ -168,6 +186,15 @@ public sealed partial class SettingsViewModel
         {
             IsCreatingWireGuardAccess = false;
         }
+    }
+
+    /// <summary>For a PC target (no camera/QR import) — copies the same raw config the QR above encodes, so a desktop WireGuard client can import it via a plain .conf file instead.</summary>
+    [RelayCommand]
+    private async Task CopyWireGuardConfigAsync()
+    {
+        if (!HasWireGuardConfigText) return;
+        await Microsoft.Maui.ApplicationModel.DataTransfer.Clipboard.Default.SetTextAsync(WireGuardConfigText);
+        WireGuardStatusText = "Konfigurace zkopírována — vložte do textového editoru, uložte jako .conf a naimportujte do WireGuard klienta.";
     }
 
     [RelayCommand]
