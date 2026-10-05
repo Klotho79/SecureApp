@@ -51,6 +51,9 @@ var deployMarkerPath = Path.Combine(
 
 builder.Services.AddSingleton<RelayDatabase>();
 builder.Services.AddSingleton<ConnectionRegistry>();
+// Only does anything once wg-easy is actually configured (same tolerance as /admin/wireguard/clients
+// itself) — see WireGuardOnboardingSweepService's own remarks.
+builder.Services.AddHostedService(sp => new WireGuardOnboardingSweepService(sp.GetRequiredService<RelayDatabase>(), wgEasyUrl, wgEasyPassword));
 
 var app = builder.Build();
 
@@ -180,7 +183,7 @@ app.MapPost("/admin/invites", (HttpRequest request, CreateInviteRequest body, Re
 // its Server.js, so no cookie/session juggling needed here) and returns the raw .conf text so the app
 // can render its own QR from it (ZXing, already used for the SecureApp-download QR) — never proxying
 // through wg-easy's own SVG QR endpoint, one fewer format to round-trip.
-app.MapPost("/admin/wireguard/clients", async (HttpRequest request, CreateWireGuardClientRequest body) =>
+app.MapPost("/admin/wireguard/clients", async (HttpRequest request, CreateWireGuardClientRequest body, RelayDatabase db) =>
 {
     if (!IsAdminAuthorized(request, adminSecret))
         return Results.Unauthorized();
@@ -205,6 +208,12 @@ app.MapPost("/admin/wireguard/clients", async (HttpRequest request, CreateWireGu
         return Results.Problem("wg-easy created the client but it couldn't be found afterward.", statusCode: 502);
 
     var configText = await wg.GetStringAsync($"api/wireguard/client/{newest.Id}/configuration");
+
+    // 2026-10-05, user's own ask — see pending_wireguard_peers' own schema remarks: this peer is
+    // real network access as of right now, tracked here so WireGuardOnboardingSweepService can
+    // revoke it if nobody ever actually finishes onboarding with it.
+    db.AddPendingWireGuardPeer(newest.Id, body.Name);
+
     return Results.Ok(new WireGuardClientResponse(configText));
 });
 

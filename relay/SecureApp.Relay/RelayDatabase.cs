@@ -110,6 +110,19 @@ public sealed class RelayDatabase
                 consumed_at_utc     TEXT NULL
             )
             """);
+        // 2026-10-05, user's own ask: a WireGuard peer created for a new member's onboarding (see
+        // /admin/wireguard/clients) is real network access the instant it's created — if the person
+        // never actually finishes installing/registering the app, that access sits open indefinitely
+        // with nothing else tracking it (wg-easy itself has no concept of "unused"). Tracked here so
+        // WireGuardOnboardingSweepService can delete it from wg-easy if no new device shows up within
+        // an hour — see that class's own remarks for the full matching logic.
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS pending_wireguard_peers (
+                wg_client_id      TEXT PRIMARY KEY NOT NULL,
+                name              TEXT NOT NULL,
+                created_at_utc    TEXT NOT NULL
+            )
+            """);
         Execute(connection, """
             CREATE TABLE IF NOT EXISTS outbox (
                 id                    TEXT PRIMARY KEY NOT NULL,
@@ -501,6 +514,46 @@ public sealed class RelayDatabase
         command.Parameters.AddWithValue("@code", code);
         command.Parameters.AddWithValue("@now", Format(DateTimeOffset.UtcNow));
         return command.ExecuteNonQuery() > 0;
+    }
+
+    /// <summary>Records a freshly-created wg-easy peer as unconfirmed — see <c>pending_wireguard_peers</c>'s own schema remarks.</summary>
+    public void AddPendingWireGuardPeer(string wgClientId, string name)
+    {
+        using var connection = OpenConnection();
+        Execute(connection,
+            "INSERT OR REPLACE INTO pending_wireguard_peers (wg_client_id, name, created_at_utc) VALUES (@id, @name, @now)",
+            ("@id", wgClientId), ("@name", name), ("@now", Format(DateTimeOffset.UtcNow)));
+    }
+
+    public void RemovePendingWireGuardPeer(string wgClientId)
+    {
+        using var connection = OpenConnection();
+        Execute(connection, "DELETE FROM pending_wireguard_peers WHERE wg_client_id = @id", ("@id", wgClientId));
+    }
+
+    /// <summary>Every pending peer older than <paramref name="olderThanUtc"/> — <see cref="WireGuardOnboardingSweepService"/> decides per-entry whether a matching device actually showed up before deleting it from wg-easy.</summary>
+    public IReadOnlyList<(string WgClientId, string Name, DateTimeOffset CreatedAtUtc)> GetStalePendingWireGuardPeers(DateTimeOffset olderThanUtc)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT wg_client_id, name, created_at_utc FROM pending_wireguard_peers WHERE created_at_utc < @cutoff";
+        command.Parameters.AddWithValue("@cutoff", Format(olderThanUtc));
+        var results = new List<(string, string, DateTimeOffset)>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            results.Add((reader.GetString(0), reader.GetString(1), DateTimeOffset.Parse(reader.GetString(2), CultureInfo.InvariantCulture)));
+        return results;
+    }
+
+    /// <summary>Whether any device was registered in the given window — the onboarding-succeeded signal <see cref="WireGuardOnboardingSweepService"/> checks before deleting an unconfirmed peer.</summary>
+    public bool AnyDeviceCreatedBetween(DateTimeOffset fromUtc, DateTimeOffset toUtc)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM devices WHERE created_at_utc >= @from AND created_at_utc <= @to";
+        command.Parameters.AddWithValue("@from", Format(fromUtc));
+        command.Parameters.AddWithValue("@to", Format(toUtc));
+        return Convert.ToInt64(command.ExecuteScalar()) > 0;
     }
 
     /// <summary>
