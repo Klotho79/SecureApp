@@ -296,43 +296,56 @@ Příkazy `git push pi`, SSH do Pi a `docker compose` jsou rutinně blokované s
 - [ ] User-facing theming/settings (accent, density, font size, tab visibility)
       without code changes; persisted per device.
 
-## Phase 6 — Local AI document translation (2026-10-05, user's ask)
-Translate an inserted PDF/other document in-app without sending content to a 3rd-party
-cloud AI — same "nothing leaves the LAN/VPN" principle the relay/E2EE design already
-holds to everywhere else.
-- [ ] **Design decision needed first: where the model runs.** Two real options, not yet
-      chosen:
-      - *On-device* (e.g. Android ML Kit's offline translate models) — content never
-        leaves the phone, but needs real extracted text first (OCR for a scanned page,
-        or a text-layer extraction for a born-digital PDF) since documents today are
-        rasterized to flat PNGs with no text layer at all (`DocumentRenderingService`).
-        Model quality/language-pair coverage is also more limited on-device.
-      - *Self-hosted on the Pi* (a small NMT/LLM model behind a new relay endpoint,
-        same trust boundary as `library_files`/`outbox`) — reuses the existing
-        architecture pattern, but the Pi 5 is modest hardware; multi-page documents
-        would be slow, and this is the relay's first-ever compute-heavy endpoint (vs.
-        today's pure store/forward role).
-- [ ] Text extraction/OCR step — currently does not exist at all (`DocumentRenderingService`
-      only ever produces PNGs for display, never extracts text). Needed regardless of
-      which option above is chosen.
-- [ ] Depends on Phase 7 below for actually displaying the translated result — a
-      translation with nowhere nice to render it just becomes a wall of overlaid text on
-      the original image.
+## Phase 6 — Local AI document translation (2026-10-05, user's ask) — ✅ v1 DONE, same day
+Translate an existing Library PDF in-app without sending content to a 3rd-party cloud AI
+— same "nothing leaves the LAN" principle the relay/E2EE design already holds to
+everywhere else. Resolved design decision: model runs on the **admin's own PC**
+(Ollama/LM Studio, RTX 5060 16GB) — not on-device, not Pi-hosted (the Pi 5 was correctly
+flagged above as too weak; the admin's own hardware makes that moot).
+- [x] Text extraction — **no OCR needed after all**: the user corrected mid-planning that
+      these are electronic/born-digital PDFs, not scans, so **PdfPig** (new dependency,
+      MIT) reads the real embedded text layer directly, page by page. OCR/vision-model
+      fallback for a genuinely scanned page is explicitly deferred (not built), handled
+      gracefully as a placeholder note rather than an error.
+- [x] Translation call: plain OpenAI-compatible `/v1/chat/completions` against a
+      Settings-configured local base URL + model name (`LocalAiTranslationSettings`,
+      `ILibraryTranslationService`/`LocalAiLibraryTranslationService`) — works unchanged
+      against either Ollama or LM Studio.
+- [x] Gated Admin-only (direct `Role == Role.Admin` check — `RbacAction`/`RoleAccessPolicy`
+      structurally can't express "Admin but not Modifier") + Windows-only (`DeviceInfo`
+      runtime check, the local AI only ever runs on the admin's own PC).
+- [x] Output lands in the **existing** Document Library content-approval workflow
+      (`ILibraryReviewService.CreateDraftAsync` → `SubmitForReviewAsync`) as a brand-new
+      `LibraryDocument` (not a new version of the original — versioning would unlist/
+      replace it on approval) — reviewed via the **unmodified** `LibraryReviewQueuePage`.
+      Zero relay changes, zero new review UI.
+- [x] Depended on Phase 7 below for display — resolved together with it, see Phase 7.
+- [ ] **Not yet live-verified** — builds clean (Windows + Android, 0 errors) but no real
+      Ollama/LM Studio run has been done yet. Next step: set the Settings card, "Testovat
+      připojení", then translate a real short PDF and check the review queue.
+- [ ] All-or-nothing failure policy (a mid-document AI outage aborts the whole
+      translation, nothing partial uploaded) — flagged as a v1 design choice, not
+      re-confirmed with the user after building; revisit if it turns out annoying.
 
 ## Phase 7 — Document reformatting for in-app display (2026-10-05, user's ask —
-"uprava dokumentu aby byla pekna v apce")
-The real gating piece for Phase 6: there is no text-reflow renderer today, only flat
-page-image PNGs (`DocumentRenderingService`, PDFtoImage + SkiaSharp). A translated (or
-otherwise reformatted) document can't just be painted over the original image — it needs
-a real generated page layout.
-- [ ] Design a SkiaSharp-drawn page-layout renderer (same toolkit already used for the
-      Milestone 4 moving watermark) that can lay out plain extracted/translated text as
-      its own clean page, independent of the original document's visual layout.
-- [ ] Decide scope: replace the original page view entirely for a translated document, or
-      offer a toggle (original scan vs. reformatted translation) — not yet decided with
-      the user.
-- [ ] Biggest single piece of work of the three new items raised 2026-10-05 — not a side
-      effect of Phase 6, budget it as its own pass.
+"uprava dokumentu aby byla pekna v apce") — ✅ v1 DONE, same day
+Resolved differently than originally scoped above: instead of a bespoke SkiaSharp
+page-layout renderer reused by the EXISTING viewer, the translated result is authored as
+a **real new PDF** (via **QuestPDF**, new dependency, Community license) — so it flows
+through `DocumentRenderingService`'s already-existing PDF rasterization path with **zero
+viewer code changes** at all. Simpler than the originally-planned approach once PDF
+output was on the table.
+- [x] Per original page: the original page's own rendered image (pixel-identical —
+      trivially satisfies "visually close to original" for every graph/diagram/table),
+      immediately followed by its own translated-text page (plain QuestPDF `Text()` flow,
+      not a ported `WrapText`/SkiaSharp layout — QuestPDF's own word-wrap/overflow
+      handles it, with a "strana n/N originálu" header stamped on every translated page
+      so the pairing survives even if one overflows onto extra physical pages).
+- [x] Scope decision resolved: **interleaved pages** (original, then its translation,
+      repeated), not a toggle and not in-place text replacement — the original is always
+      one page-turn away for comparison during review.
+- [ ] **Not yet live-verified** — same standing item as Phase 6 above; the two were built
+      and need checking together.
 
 ## Phase 5 — Document Library telemetry (2026-10-01, adapted from a pasted AIM-spec requirement)
 - [x] TTI (time-to-interactive) logged for `LibraryPage` and `LibraryReviewQueuePage`
@@ -427,3 +440,11 @@ the actual draft→submit→review→approve/reject→publish flow yet — next 
   document translation — on-device vs. Pi-hosted model, undecided) and Phase 7 (document
   reformatting/page-layout renderer, the real gating piece Phase 6 depends on). None
   started — planning only, no code changed.
+- 2026-10-05, same day — Phases 6+7 built end-to-end (user: "muzeme zacit fazi 2"): admin
+  picks a Library PDF, the app extracts its real text via PdfPig (user corrected the plan
+  mid-flight — these are electronic documents, no OCR needed), translates each page via
+  the admin's own local Ollama/LM Studio model, and builds a new interleaved PDF (original
+  page image + translated-text page per page) via QuestPDF — uploaded straight into the
+  existing 2026-10-01 content-approval workflow, zero relay/review-UI changes. Planned via
+  EnterPlanMode with 3 Explore agents + 1 Plan agent mapping the real codebase first.
+  Builds clean (Windows + Android). Not yet live-verified against a real local model.
