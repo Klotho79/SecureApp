@@ -23,6 +23,26 @@
       supported way to customize it, not a hack.
     -->
     <style name="Maui.MainTheme" parent="Maui.MainTheme.Base">
-        <item name="bottomNavigationViewStyle">@style/Widget.MaterialComponents.BottomNavigationView</item>
+        <item name="bottomNavigationViewStyle">@style/SecureApp.BottomNavigationView</item>
+    </style>
+
+    <!--
+      2026-10-05, user's own report: the bottom tab labels ("Nástěnka", "Nastavení", ...) wrap
+      letter-by-letter on some phones but not others (fine on Petr Faltus's device, broken on the
+      user's own) — same "no word-boundary to wrap at, container too narrow" class of bug already
+      fixed once for the Akutní-stavy tiles. Root cause here: BottomNavigationView's default item
+      text size is in sp, which scales with the DEVICE's own system font-size/accessibility setting
+      (completely separate from this app's own in-app "Velikost písma", which doesn't touch native
+      Shell tab labels at all) — on a phone with a larger system font scale, 5-6 Czech tab labels
+      sharing the screen width no longer fit on one line. Fixing the text size in dp instead of sp
+      makes it immune to that device setting entirely, matching this project's own established
+      pattern of overriding Maui.MainTheme for the SAME widget (see the style above).
+    -->
+    <style name="SecureApp.BottomNavigationView" parent="Widget.MaterialComponents.BottomNavigationView">
+        <item name="itemTextAppearanceActive">@style/SecureApp.BottomNavigationView.TextAppearance</item>
+        <item name="itemTextAppearanceInactive">@style/SecureApp.BottomNavigationView.TextAppearance</item>
+    </style>
+    <style name="SecureApp.BottomNavigationView.TextAppearance" parent="TextAppearance.MaterialComponents.Caption">
+        <item name="android:textSize">10dp</item>
     </style>
 </resources>
