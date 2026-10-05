@@ -170,8 +170,11 @@ public sealed partial class ContactsViewModel : ObservableObject
         IEnumerable<SharedContact> source = _allArimContacts;
         if (query.Length > 0)
         {
+            // 2026-10-05, user's own ask: narrow by name STARTING WITH what's typed so far (each
+            // further letter narrows the same list), not a substring match anywhere in the name —
+            // phone numbers still match anywhere, since you don't necessarily dial from the first digit.
             source = source.Where(c =>
-                c.DisplayName.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                c.DisplayName.StartsWith(query, StringComparison.OrdinalIgnoreCase) ||
                 (c.Phone?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false));
             if (!ArimContactsGroup.IsExpanded) ArimContactsGroup.IsExpanded = true;
         }
@@ -303,8 +306,11 @@ public sealed partial class ContactsViewModel : ObservableObject
         IEnumerable<PhoneDirectoryEntry> source = ContactDirectoryData.PhoneDirectory;
         if (isSearching)
         {
+            // 2026-10-05, user's own ask: narrow by name STARTING WITH what's typed so far (each
+            // further letter narrows the same list), not a substring match anywhere in the name —
+            // number/section still match anywhere, since those aren't typed the same way names are.
             source = source.Where(e =>
-                e.Name.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                e.Name.StartsWith(query, StringComparison.OrdinalIgnoreCase) ||
                 e.Number.Contains(query, StringComparison.OrdinalIgnoreCase) ||
                 e.Section.Contains(query, StringComparison.OrdinalIgnoreCase));
         }
