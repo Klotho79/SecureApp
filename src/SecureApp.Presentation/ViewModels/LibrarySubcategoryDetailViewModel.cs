@@ -23,6 +23,7 @@ public sealed partial class LibrarySubcategoryDetailViewModel : ObservableObject
     private readonly ICurrentUserService _currentUserService;
     private readonly ITransportSettingsRepository _transportSettingsRepository;
     private readonly IDiagnosticsReporter _diagnosticsReporter;
+    private readonly ILibraryTranslationService _libraryTranslationService;
 
     private Guid _subcategoryId;
     private string _parentCategory = string.Empty;
@@ -51,6 +52,19 @@ public sealed partial class LibrarySubcategoryDetailViewModel : ObservableObject
     [ObservableProperty]
     public partial bool CanModifyContent { get; set; }
 
+    /// <summary>Admin-only, Windows-only local-AI PDF translation (2026-10-05) — see <see cref="LibraryViewModel.Actions.ComputeCanTranslateDocuments"/>'s own remarks for the exact gate; duplicated here rather than shared since this ViewModel has no MAUI-free/MAUI-touching split to push it into.</summary>
+    [ObservableProperty]
+    public partial bool CanTranslateDocuments { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsTranslating { get; set; }
+
+    [ObservableProperty]
+    public partial double TranslationProgress { get; set; }
+
+    [ObservableProperty]
+    public partial string? TranslationStatusText { get; set; }
+
     [ObservableProperty]
     public partial string? StatusErrorMessage { get; set; }
 
@@ -61,12 +75,14 @@ public sealed partial class LibrarySubcategoryDetailViewModel : ObservableObject
         ISharedLibraryService libraryService,
         ICurrentUserService currentUserService,
         ITransportSettingsRepository transportSettingsRepository,
-        IDiagnosticsReporter diagnosticsReporter)
+        IDiagnosticsReporter diagnosticsReporter,
+        ILibraryTranslationService libraryTranslationService)
     {
         _libraryService = libraryService ?? throw new ArgumentNullException(nameof(libraryService));
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         _transportSettingsRepository = transportSettingsRepository ?? throw new ArgumentNullException(nameof(transportSettingsRepository));
         _diagnosticsReporter = diagnosticsReporter ?? throw new ArgumentNullException(nameof(diagnosticsReporter));
+        _libraryTranslationService = libraryTranslationService ?? throw new ArgumentNullException(nameof(libraryTranslationService));
     }
 
     public void ApplyQueryAttributes(IDictionary<string, object> query)
@@ -91,13 +107,15 @@ public sealed partial class LibrarySubcategoryDetailViewModel : ObservableObject
         IsLoading = true;
         StatusErrorMessage = null;
         CanModifyContent = RoleAccessPolicy.IsAllowed(_currentUserService.Current.Role, RbacAction.UploadLibraryFile);
+        CanTranslateDocuments = _currentUserService.Current.Role == Role.Admin
+            && Microsoft.Maui.Devices.DeviceInfo.Current.Platform == Microsoft.Maui.Devices.DevicePlatform.WinUI;
         try
         {
             var myDeviceId = (await _transportSettingsRepository.GetAsync())?.AssignedDeviceId;
             var folderPath = $"{_parentCategory}/{SubcategoryName}";
 
             var files = await _libraryService.SearchAsync(folderPath: folderPath);
-            Files = new ObservableCollection<LibraryFileItem>(files.Select(f => ToFileItem(f, myDeviceId)));
+            Files = new ObservableCollection<LibraryFileItem>(files.Select(f => ToFileItem(f, myDeviceId, CanTranslateDocuments)));
             HasFiles = Files.Count > 0;
 
             var links = await _libraryService.ListLinksAsync(_subcategoryId);
@@ -161,6 +179,40 @@ public sealed partial class LibrarySubcategoryDetailViewModel : ObservableObject
         catch (Exception ex)
         {
             StatusErrorMessage = $"Nepodařilo se otevřít '{item.FileName}': {ex.Message}";
+        }
+    }
+
+    /// <summary>Admin-only, Windows-only local-AI PDF translation (2026-10-05) — see <see cref="Translation.ILibraryTranslationService"/>'s own remarks for the full pipeline.</summary>
+    [RelayCommand]
+    private async Task TranslateAsync(LibraryFileItem? item)
+    {
+        if (item is null || !item.CanTranslate || IsTranslating) return;
+
+        var targetLanguage = await (Shell.Current?.CurrentPage?.DisplayPromptAsync(
+            "Přeložit dokument", "Cílový jazyk:", initialValue: "čeština") ?? Task.FromResult<string?>(null));
+        if (string.IsNullOrWhiteSpace(targetLanguage)) return;
+
+        IsTranslating = true;
+        TranslationProgress = 0;
+        TranslationStatusText = "Spouštím překlad…";
+        StatusErrorMessage = null;
+        try
+        {
+            var progress = new Progress<double>(p => TranslationProgress = p);
+            var status = new Progress<string>(s => TranslationStatusText = s);
+            var created = await _libraryTranslationService.TranslateAndSubmitAsync(
+                item.Id, System.IO.Path.GetFileNameWithoutExtension(item.FileName),
+                $"{_parentCategory}/{SubcategoryName}", targetLanguage.Trim(), progress, status);
+            TranslationStatusText = $"Hotovo — koncept '{created.Title}' odeslán ke schválení.";
+        }
+        catch (Exception ex)
+        {
+            StatusErrorMessage = $"Překlad '{item.FileName}' se nezdařil: {ex.Message}";
+            TranslationStatusText = null;
+        }
+        finally
+        {
+            IsTranslating = false;
         }
     }
 
@@ -236,11 +288,12 @@ public sealed partial class LibrarySubcategoryDetailViewModel : ObservableObject
         }
     }
 
-    private static LibraryFileItem ToFileItem(SharedLibraryFileSummary summary, Guid? myDeviceId)
+    private static LibraryFileItem ToFileItem(SharedLibraryFileSummary summary, Guid? myDeviceId, bool canTranslateDocuments)
     {
         var sizeAndDate = $"{FormatSize(summary.SizeBytes)} · Aktualizováno {summary.UploadedAtUtc.LocalDateTime:g}";
         var isMine = myDeviceId is { } id && string.Equals(summary.UploadedByDeviceId, id.ToString(), StringComparison.OrdinalIgnoreCase);
-        return new LibraryFileItem(summary.Id, summary.FileName, null, false, [], false, sizeAndDate, isMine);
+        var canTranslate = canTranslateDocuments && summary.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
+        return new LibraryFileItem(summary.Id, summary.FileName, null, false, [], false, sizeAndDate, isMine, canTranslate);
     }
 
     private static SubcategoryLinkItem ToLinkItem(LibraryLinkSummary summary, Guid? myDeviceId) => new(

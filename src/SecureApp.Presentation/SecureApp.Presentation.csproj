@@ -126,6 +126,13 @@
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
 		<PackageReference Include="HarfBuzzSharp" Version="14.2.1.2" />
 		<PackageReference Include="PDFtoImage" Version="5.4.0" />
+		<!-- Admin-only local-AI PDF translation (2026-10-05): PdfPig reads the real text layer out of
+		     an existing (born-digital) PDF, pure extraction, not OCR, MIT-licensed. QuestPDF authors
+		     the new translated PDF (original page image plus a page of translated text, repeated),
+		     Community license, free for this app's non-commercial internal team use; the matching
+		     QuestPDF.Settings.License = LicenseType.Community call lives in MauiProgram.cs. -->
+		<PackageReference Include="PdfPig" Version="0.1.9" />
+		<PackageReference Include="QuestPDF" Version="2024.12.3" />
 		<PackageReference Include="Microsoft.Maui.Controls" Version="10.0.30" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
 		<PackageReference Include="SkiaSharp.Views.Maui.Controls" Version="4.151.1" />

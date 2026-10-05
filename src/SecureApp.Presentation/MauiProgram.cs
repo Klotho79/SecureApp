@@ -25,6 +25,11 @@ public static class MauiProgram
 	{
 		FontScaling.Register();
 
+		// Admin-only local-AI PDF translation (2026-10-05) — QuestPDF requires this exact one-time
+		// call before its first use or it throws at runtime. Community license: free for this app's
+		// non-commercial internal team use (see SecureApp.Presentation.csproj's own remarks).
+		QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
+
 		var builder = MauiApp.CreateBuilder();
 		builder
 			.UseMauiApp<App>()
@@ -177,6 +182,13 @@ public static class MauiProgram
 		// Document Library content-approval workflow (2026-10-01 — see ILibraryReviewService's own
 		// remarks). Same registration shape as ISharedLibraryService, which it's layered alongside.
 		builder.Services.AddSingleton<ILibraryReviewService, SecureApp.Presentation.Library.HttpLibraryReviewService>();
+
+		// Admin-only, Windows-only local-AI PDF translation (2026-10-05 — see ILibraryTranslationService's
+		// own remarks). AddScoped, mirroring IDocumentRenderingService's own registration (which this
+		// service itself depends on); injected directly into the Transient LibraryViewModel/
+		// LibrarySubcategoryDetailViewModel/SettingsViewModel, same direct-injection pattern
+		// DocumentViewerViewModel already uses for IDocumentRenderingService.
+		builder.Services.AddScoped<ILibraryTranslationService, SecureApp.Presentation.Translation.LocalAiLibraryTranslationService>();
 
 		// Shared company workplace catalog (2026-09-20, Phase 5 — see IWorkplaceCatalogService's own remarks).
 		builder.Services.AddSingleton<IWorkplaceCatalogService, HttpWorkplaceCatalogService>();

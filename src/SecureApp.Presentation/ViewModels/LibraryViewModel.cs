@@ -25,6 +25,7 @@ public sealed partial class LibraryViewModel : ObservableObject
     private readonly ILibraryReviewService _libraryReviewService;
     private readonly IDevicePolicyService _devicePolicyService;
     private readonly ITransportSettingsRepository _transportSettingsRepository;
+    private readonly ILibraryTranslationService _libraryTranslationService;
 
     [ObservableProperty]
     public partial string SearchQuery { get; set; }
@@ -172,13 +173,27 @@ public sealed partial class LibraryViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsDocumentReviewer { get; set; }
 
+    /// <summary>Admin-only, Windows-only local-AI PDF translation (2026-10-05) — gates the 🌐 action on a PDF library item. Computed in <see cref="LibraryViewModel.Actions.ComputeCanTranslateDocuments"/> (the MAUI-touching partial, for the DeviceInfo check), recomputed alongside <see cref="CanModifyContent"/> every <see cref="SearchAsync"/>.</summary>
+    [ObservableProperty]
+    public partial bool CanTranslateDocuments { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsTranslating { get; set; }
+
+    [ObservableProperty]
+    public partial double TranslationProgress { get; set; }
+
+    [ObservableProperty]
+    public partial string? TranslationStatusText { get; set; }
+
     public LibraryViewModel(
         ISharedLibraryService libraryService,
         ICurrentUserService currentUserService,
         IDiagnosticsReporter diagnosticsReporter,
         ILibraryReviewService libraryReviewService,
         IDevicePolicyService devicePolicyService,
-        ITransportSettingsRepository transportSettingsRepository)
+        ITransportSettingsRepository transportSettingsRepository,
+        ILibraryTranslationService libraryTranslationService)
     {
         _libraryService = libraryService ?? throw new ArgumentNullException(nameof(libraryService));
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
@@ -186,6 +201,7 @@ public sealed partial class LibraryViewModel : ObservableObject
         _libraryReviewService = libraryReviewService ?? throw new ArgumentNullException(nameof(libraryReviewService));
         _devicePolicyService = devicePolicyService ?? throw new ArgumentNullException(nameof(devicePolicyService));
         _transportSettingsRepository = transportSettingsRepository ?? throw new ArgumentNullException(nameof(transportSettingsRepository));
+        _libraryTranslationService = libraryTranslationService ?? throw new ArgumentNullException(nameof(libraryTranslationService));
 
         SearchQuery = string.Empty;
         FolderFilter = string.Empty;
@@ -235,6 +251,7 @@ public sealed partial class LibraryViewModel : ObservableObject
         IsLoading = true;
         StatusErrorMessage = null;
         CanModifyContent = RoleAccessPolicy.IsAllowed(_currentUserService.Current.Role, RbacAction.UploadLibraryFile);
+        CanTranslateDocuments = ComputeCanTranslateDocuments();
         try
         {
             // Search-latency telemetry (2026-10-01, the AIM-spec-derived requirement adapted to this
@@ -249,7 +266,7 @@ public sealed partial class LibraryViewModel : ObservableObject
             Infrastructure.AppLog.Metric("search_latency.library", sw.Elapsed.TotalMilliseconds, "ms", ("resultCount", results.Count));
 
             var myDeviceId = (await _transportSettingsRepository.GetAsync())?.AssignedDeviceId;
-            Results = new ObservableCollection<LibraryFileItem>(results.Select(r => ToItem(r, myDeviceId)));
+            Results = new ObservableCollection<LibraryFileItem>(results.Select(r => ToItem(r, myDeviceId, CanTranslateDocuments)));
             IsEmpty = Results.Count == 0;
 
             await RefreshCategoriesAsync();
@@ -433,7 +450,7 @@ public sealed partial class LibraryViewModel : ObservableObject
         summary.Name,
         myDeviceId is { } id && string.Equals(summary.CreatedByDeviceId, id.ToString(), StringComparison.OrdinalIgnoreCase));
 
-    private static LibraryFileItem ToItem(SharedLibraryFileSummary summary, Guid? myDeviceId)
+    private static LibraryFileItem ToItem(SharedLibraryFileSummary summary, Guid? myDeviceId, bool canTranslateDocuments)
     {
         var hasFolder = !string.IsNullOrWhiteSpace(summary.FolderPath);
         var sizeAndDate = $"{FormatSize(summary.SizeBytes)} · Aktualizováno {summary.UploadedAtUtc.LocalDateTime:g}";
@@ -450,7 +467,8 @@ public sealed partial class LibraryViewModel : ObservableObject
             summary.Tags.Select(t => new LibraryTagItem(t)).ToList(),
             summary.Tags.Count > 0,
             sizeAndDate,
-            isMine);
+            isMine,
+            canTranslateDocuments && summary.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase));
     }
 
     [RelayCommand]
@@ -483,7 +501,7 @@ public sealed partial class LibraryViewModel : ObservableObject
 /// accent-colored category line and the tags as individual chips, matching the redesign mockup
 /// (https://claude.ai/code/artifact/7a7bebe1-6ea6-4df1-9908-b9bbdc900ccf) instead of one flat gray line.
 /// </summary>
-public sealed record LibraryFileItem(Guid Id, string FileName, string? FolderPath, bool HasFolder, IReadOnlyList<LibraryTagItem> Tags, bool HasTags, string SizeAndDateText, bool IsMine);
+public sealed record LibraryFileItem(Guid Id, string FileName, string? FolderPath, bool HasFolder, IReadOnlyList<LibraryTagItem> Tags, bool HasTags, string SizeAndDateText, bool IsMine, bool CanTranslate = false);
 
 /// <summary>Wraps a plain tag string only so it has a stable reference type for BindableLayout's ItemsSource — a bare List&lt;string&gt; binds fine too, but this keeps the DataTemplate's x:DataType explicit rather than implicitly "x:String".</summary>
 public sealed record LibraryTagItem(string Label);

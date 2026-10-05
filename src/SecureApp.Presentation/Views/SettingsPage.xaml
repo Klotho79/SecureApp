@@ -608,6 +608,21 @@
                     </VerticalStackLayout>
                 </Border>
 
+                <!-- Admin-only local-AI PDF translation (2026-10-05) — only ever visible on Windows, since Ollama/LM Studio run on the admin's own PC. -->
+                <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanConfigureLocalAiTranslation}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Admin: Místní AI překlad" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Label Text="Adresa a model místního AI serveru (Ollama/LM Studio) běžícího na tomto PC — použije se při překladu dokumentů v Knihovně. Nic odtud nikdy neopustí tento počítač." FontSize="9.5" TextColor="Gray" />
+                        <Entry Placeholder="http://localhost:11434" Text="{Binding LocalAiBaseUrlText}" />
+                        <Entry Placeholder="Název modelu (např. qwen2.5:7b)" Text="{Binding LocalAiModelNameText}" />
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                            <Button Grid.Column="0" Text="Uložit" Style="{StaticResource SecondaryButton}" Command="{Binding SaveLocalAiTranslationSettingsCommand}" />
+                            <Button Grid.Column="1" Text="Testovat připojení" Style="{StaticResource SecondaryButton}" Command="{Binding TestLocalAiConnectionCommand}" IsEnabled="{Binding CanTestLocalAiConnection}" />
+                        </Grid>
+                        <Label Text="{Binding LocalAiTranslationStatusText}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding HasLocalAiTranslationStatus}" LineBreakMode="WordWrap" />
+                    </VerticalStackLayout>
+                </Border>
+
                 <Border Style="{StaticResource CardBorder}">
                     <VerticalStackLayout Spacing="8">
                         <Label Text="Přidat nového člena" Style="{StaticResource SectionHeader}" Margin="0" />

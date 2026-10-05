@@ -36,6 +36,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly INativeAppInstaller? _nativeAppInstaller;
     private readonly INativeUpdateDownloader? _nativeUpdateDownloader;
     private readonly IIdentityBackupService _identityBackupService;
+    private readonly ILibraryTranslationService _libraryTranslationService;
 
     private EventHandler<TransportConnectionState>? _connectionStateHandler;
     private IDispatcherTimer? _activationPollTimer;
@@ -234,6 +235,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         IUpdateService updateService,
         ICommunityBoardService communityBoardService,
         IIdentityBackupService identityBackupService,
+        ILibraryTranslationService libraryTranslationService,
         INativeAppInstaller? nativeAppInstaller = null,
         INativeUpdateDownloader? nativeUpdateDownloader = null)
     {
@@ -250,6 +252,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         _updateService = updateService ?? throw new ArgumentNullException(nameof(updateService));
         _communityBoardService = communityBoardService ?? throw new ArgumentNullException(nameof(communityBoardService));
         _identityBackupService = identityBackupService ?? throw new ArgumentNullException(nameof(identityBackupService));
+        _libraryTranslationService = libraryTranslationService ?? throw new ArgumentNullException(nameof(libraryTranslationService));
         _nativeAppInstaller = nativeAppInstaller;
         _nativeUpdateDownloader = nativeUpdateDownloader;
 
@@ -269,6 +272,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         HasNoRegisteredDevices = true;
         WorkplaceColorItems = [];
         InitializeUpdatesSection();
+        InitializeLocalAiTranslationSection();
     }
 
     partial void OnErrorMessageChanged(string? value) => HasErrorMessage = !string.IsNullOrEmpty(value);

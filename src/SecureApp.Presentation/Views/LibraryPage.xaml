@@ -209,7 +209,7 @@
                             <CollectionView.ItemTemplate>
                                 <DataTemplate x:DataType="vm:LibraryFileItem">
                                     <Border Style="{StaticResource CardBorder}" Margin="0" Padding="12,10">
-                                        <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="10">
+                                        <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="10">
 
                                             <Border Grid.Column="0" WidthRequest="32" HeightRequest="32" Padding="0" StrokeShape="RoundRectangle 8" Stroke="Transparent" BackgroundColor="{AppThemeBinding Light={StaticResource AccentSoft}, Dark={StaticResource AccentSoftDark}}" VerticalOptions="Center">
                                                 <Label Text="📄" FontSize="12" HorizontalOptions="Center" VerticalOptions="Center" />
@@ -221,17 +221,29 @@
                                                 <Label Text="{Binding SizeAndDateText}" FontSize="8.5" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
                                             </VerticalStackLayout>
 
-                                            <Button Grid.Column="2" Text="🗑" BackgroundColor="Transparent" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" Padding="4,0" VerticalOptions="Center"
+                                            <!-- Admin-only local-AI PDF translation (2026-10-05). -->
+                                            <Button Grid.Column="2" Text="🌐" BackgroundColor="Transparent" Padding="4,0" VerticalOptions="Center"
+                                                    IsVisible="{Binding CanTranslate}"
+                                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibraryViewModel}}, Path=TranslateCommand}"
+                                                    CommandParameter="{Binding .}" />
+
+                                            <Button Grid.Column="3" Text="🗑" BackgroundColor="Transparent" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" Padding="4,0" VerticalOptions="Center"
                                                     IsVisible="{Binding IsMine}"
                                                     Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibraryViewModel}}, Path=DeleteCommand}"
                                                     CommandParameter="{Binding .}" />
 
-                                            <Label Grid.Column="3" Text="›" FontSize="16" VerticalOptions="Center" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
+                                            <Label Grid.Column="4" Text="›" FontSize="16" VerticalOptions="Center" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
                                         </Grid>
                                     </Border>
                                 </DataTemplate>
                             </CollectionView.ItemTemplate>
                         </CollectionView>
+
+                        <!-- Translation progress (2026-10-05) — a real fractional progress, not the generic DelayedActivityIndicator spinner, mirroring IUpdateService.DownloadUpdateAsync's own precedent. -->
+                        <VerticalStackLayout Spacing="4" IsVisible="{Binding IsTranslating}">
+                            <ProgressBar Progress="{Binding TranslationProgress}" />
+                            <Label Text="{Binding TranslationStatusText}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
+                        </VerticalStackLayout>
 
                     </VerticalStackLayout>
 
