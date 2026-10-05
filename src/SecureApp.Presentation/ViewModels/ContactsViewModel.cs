@@ -107,11 +107,19 @@ public sealed partial class ContactsViewModel : ObservableObject
         return new CancellationTokenSource();
     }
 
+    // 2026-10-05 — 250ms (the original value) made a single keystroke followed by a pause visibly
+    // feel broken/unresponsive (the user's own report: "works on 2 letters but not 1" — in reality
+    // every keystroke waited the same 250ms, it's just that typing a SECOND character usually takes
+    // longer than that, so the delay was already over by the time anyone looked; one character and
+    // stopping makes the same delay obvious). 120ms is short enough to feel instant for a single
+    // keystroke while still collapsing genuinely fast multi-character typing into one rebuild.
+    private const int SearchDebounceMilliseconds = 120;
+
     private static async Task DebounceAsync(CancellationTokenSource cts, Action action)
     {
         try
         {
-            await Task.Delay(250, cts.Token);
+            await Task.Delay(SearchDebounceMilliseconds, cts.Token);
             action();
         }
         catch (TaskCanceledException)
