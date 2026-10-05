@@ -75,7 +75,11 @@ app.MapGet("/download", () =>
     var androidAvailable = File.Exists(androidPath);
     var androidSize = androidAvailable ? $"{new FileInfo(androidPath).Length / 1024.0 / 1024.0:F0} MB" : null;
 
-    return Results.Content(DownloadPageHtml(androidAvailable, androidSize), "text/html; charset=utf-8");
+    var windowsPath = Path.Combine(downloadsDir, "secureapp-windows-portable.zip");
+    var windowsAvailable = File.Exists(windowsPath);
+    var windowsSize = windowsAvailable ? $"{new FileInfo(windowsPath).Length / 1024.0 / 1024.0:F0} MB" : null;
+
+    return Results.Content(DownloadPageHtml(androidAvailable, androidSize, windowsAvailable, windowsSize), "text/html; charset=utf-8");
 });
 
 app.MapGet("/download/android", () =>
@@ -1203,11 +1207,22 @@ static bool TryGetDeviceAuth(HttpRequest request, RelayDatabase db, out Guid dev
 }
 
 /// <summary>Plain, dependency-free HTML — no static-file middleware/Razor set up in this minimal-API project, and this is one small page, so an inline string is the simplest honest option.</summary>
-static string DownloadPageHtml(bool androidAvailable, string? androidSize)
+static string DownloadPageHtml(bool androidAvailable, string? androidSize, bool windowsAvailable, string? windowsSize)
 {
     var androidSection = androidAvailable
         ? $"""<a class="btn" href="/download/android">Stáhnout pro Android ({androidSize})</a>"""
         : """<p class="muted">Android verze zatím není nahraná — zkuste to prosím později.</p>""";
+
+    var windowsSection = windowsAvailable
+        ? $$"""
+            <a class="btn" href="/download/windows">Stáhnout pro Windows ({{windowsSize}})</a>
+            <h2>Jak nainstalovat (Windows)</h2>
+            <ol>
+                <li>Stáhněte .zip tlačítkem výše a celý rozbalte (pravým tlačítkem → Extrahovat vše).</li>
+                <li>Ve vybalené složce spusťte <strong>SecureApp.Presentation.exe</strong> — instalace ani admin práva nejsou potřeba.</li>
+            </ol>
+            """
+        : "";
 
     return $$"""
         <!doctype html>
@@ -1236,6 +1251,7 @@ static string DownloadPageHtml(bool androidAvailable, string? androidSize)
             <li>Po nainstalování otevřete appku → Nastavení → Relay.</li>
             <li>Zadejte jméno a e-mail a stiskněte <strong>Aktivovat</strong> — registrace proběhne rovnou, bez čekání.</li>
         </ol>
+        {{windowsSection}}
         <p class="muted">Tato stránka je dostupná jen v domácí síti / přes VPN, ne z veřejného internetu.</p>
         </body>
         </html>
