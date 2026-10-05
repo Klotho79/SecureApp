@@ -34,7 +34,13 @@
                  day, 2nd pass — user's own ask ("obtizne se trefuje... napisy... zalomene"): bigger
                  padding/tile for an easier tap target, WordWrap (2 lines) instead of truncating
                  longer names like "Doporučení"/"Resuscitace". -->
-            <ScrollView Orientation="Horizontal">
+            <!-- HeightRequest (2026-10-05, user's own report: tiles cut off at the bottom) — a
+                 horizontal ScrollView on Android doesn't reliably auto-size its height to content
+                 that varies (icon + up to 2 text lines here), so it was clipping the taller chips
+                 instead of growing to fit them. Fixed, generous value instead of relying on that
+                 auto-sizing: icon(~30dp) + spacing(4dp) + 2 text lines(~26dp) + border padding
+                 (20dp) ≈ 80dp content, 100dp leaves real margin. -->
+            <ScrollView Orientation="Horizontal" HeightRequest="100">
                 <HorizontalStackLayout BindableLayout.ItemsSource="{Binding CategoryChips}">
                     <BindableLayout.ItemTemplate>
                         <DataTemplate x:DataType="vm:CategoryChipItem">
@@ -76,7 +82,9 @@
                  nadpis nad řádkem + červený text na červeném pozadí nahrazen běžnou barvou textu
                  (jen pozadí zůstává červeně tónované jako vizuální odlišení, ne text i pozadí). -->
             <Label Text="Akutní stavy" FontSize="10.5" FontAttributes="Bold" />
-            <ScrollView Orientation="Horizontal">
+            <!-- HeightRequest (2026-10-05) — same horizontal-ScrollView auto-height fix as the
+                 category row above; these entries can also wrap to 2 lines (DAS/Protokol/Maligní). -->
+            <ScrollView Orientation="Horizontal" HeightRequest="50">
                 <HorizontalStackLayout BindableLayout.ItemsSource="{Binding AcuteStates}">
                     <BindableLayout.ItemTemplate>
                         <DataTemplate x:DataType="x:String">
