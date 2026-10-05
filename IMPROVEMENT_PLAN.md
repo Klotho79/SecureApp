@@ -286,10 +286,53 @@ Příkazy `git push pi`, SSH do Pi a `docker compose` jsou rutinně blokované s
 ## Phase 3 — Nice UI (deliberate visual design)
 - [ ] Design system review (spacing, type scale, color, dark/light), consistent
       components, empty/loading/error states.
+- [ ] **New visual design pass (2026-10-05, user's ask — "novy design, ocenil bych
+      navrhy")**: same precedent as the 2026-09-06 redesign, which was built off a
+      Claude-generated mockup Artifact *before* any code changed — do that again. Produce
+      2-3 concrete visual directions (palette/type/layout/component shapes) as an Artifact
+      for the user to react to; only implement the one picked. Not started.
 
 ## Phase 4 — Easy customization
 - [ ] User-facing theming/settings (accent, density, font size, tab visibility)
       without code changes; persisted per device.
+
+## Phase 6 — Local AI document translation (2026-10-05, user's ask)
+Translate an inserted PDF/other document in-app without sending content to a 3rd-party
+cloud AI — same "nothing leaves the LAN/VPN" principle the relay/E2EE design already
+holds to everywhere else.
+- [ ] **Design decision needed first: where the model runs.** Two real options, not yet
+      chosen:
+      - *On-device* (e.g. Android ML Kit's offline translate models) — content never
+        leaves the phone, but needs real extracted text first (OCR for a scanned page,
+        or a text-layer extraction for a born-digital PDF) since documents today are
+        rasterized to flat PNGs with no text layer at all (`DocumentRenderingService`).
+        Model quality/language-pair coverage is also more limited on-device.
+      - *Self-hosted on the Pi* (a small NMT/LLM model behind a new relay endpoint,
+        same trust boundary as `library_files`/`outbox`) — reuses the existing
+        architecture pattern, but the Pi 5 is modest hardware; multi-page documents
+        would be slow, and this is the relay's first-ever compute-heavy endpoint (vs.
+        today's pure store/forward role).
+- [ ] Text extraction/OCR step — currently does not exist at all (`DocumentRenderingService`
+      only ever produces PNGs for display, never extracts text). Needed regardless of
+      which option above is chosen.
+- [ ] Depends on Phase 7 below for actually displaying the translated result — a
+      translation with nowhere nice to render it just becomes a wall of overlaid text on
+      the original image.
+
+## Phase 7 — Document reformatting for in-app display (2026-10-05, user's ask —
+"uprava dokumentu aby byla pekna v apce")
+The real gating piece for Phase 6: there is no text-reflow renderer today, only flat
+page-image PNGs (`DocumentRenderingService`, PDFtoImage + SkiaSharp). A translated (or
+otherwise reformatted) document can't just be painted over the original image — it needs
+a real generated page layout.
+- [ ] Design a SkiaSharp-drawn page-layout renderer (same toolkit already used for the
+      Milestone 4 moving watermark) that can lay out plain extracted/translated text as
+      its own clean page, independent of the original document's visual layout.
+- [ ] Decide scope: replace the original page view entirely for a translated document, or
+      offer a toggle (original scan vs. reformatted translation) — not yet decided with
+      the user.
+- [ ] Biggest single piece of work of the three new items raised 2026-10-05 — not a side
+      effect of Phase 6, budget it as its own pass.
 
 ## Phase 5 — Document Library telemetry (2026-10-01, adapted from a pasted AIM-spec requirement)
 - [x] TTI (time-to-interactive) logged for `LibraryPage` and `LibraryReviewQueuePage`
@@ -378,3 +421,9 @@ the actual draft→submit→review→approve/reject→publish flow yet — next 
 - 2026-09-17: **Phase 2.1 done** — founder transfer/claim, "nedostupný" badges on both 1:1 and
   group member rows, and relay-side admin device management (list + deregister, purging a dead
   device's stuck outbox). See Phase 2's own entry above for full detail.
+- 2026-10-05: Three new backlog items added, user's own ask ("do developer planu 3 velke
+  veci"): fleshed out Phase 3 with a concrete "AI-mockup-first" design-pass plan (same
+  precedent as 2026-09-06's Claude-generated mockup Artifact); new Phase 6 (local AI
+  document translation — on-device vs. Pi-hosted model, undecided) and Phase 7 (document
+  reformatting/page-layout renderer, the real gating piece Phase 6 depends on). None
+  started — planning only, no code changed.
