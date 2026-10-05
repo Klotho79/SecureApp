@@ -86,8 +86,39 @@ public sealed partial class ContactsViewModel : ObservableObject
         ApplyFilter();
     }
 
-    partial void OnSearchQueryChanged(string value) => ApplyFilter();
-    partial void OnArimSearchQueryChanged(string value) => ApplyArimFilter();
+    // 2026-10-05, user's own report: typing into either search box could make the whole window
+    // disappear after a few characters, before ever pressing anything. Root cause: ApplyFilter/
+    // ApplyArimFilter ran synchronously on EVERY keystroke, and each one that matched anything
+    // auto-expanded the matching section(s) (initiallyExpanded: isSearching) — which, combined with
+    // BindableLayout never virtualizing (see ContactSectionGroup's own remarks on the exact same
+    // eager-build cost, fixed once already for the collapsed-by-default case but reintroduced here
+    // by the search auto-expand), meant fast typing could fire several full native-row rebuilds a
+    // second, overlapping each other. Debouncing means the expensive rebuild only happens once
+    // typing actually pauses, not once per character.
+    private CancellationTokenSource? _searchDebounceCts;
+    private CancellationTokenSource? _arimSearchDebounceCts;
+
+    partial void OnSearchQueryChanged(string value) => _ = DebounceAsync(_searchDebounceCts = Renew(_searchDebounceCts), ApplyFilter);
+    partial void OnArimSearchQueryChanged(string value) => _ = DebounceAsync(_arimSearchDebounceCts = Renew(_arimSearchDebounceCts), ApplyArimFilter);
+
+    private static CancellationTokenSource Renew(CancellationTokenSource? previous)
+    {
+        previous?.Cancel();
+        return new CancellationTokenSource();
+    }
+
+    private static async Task DebounceAsync(CancellationTokenSource cts, Action action)
+    {
+        try
+        {
+            await Task.Delay(250, cts.Token);
+            action();
+        }
+        catch (TaskCanceledException)
+        {
+            // Superseded by a later keystroke — the newer debounce call is the one that matters.
+        }
+    }
     partial void OnCompanyContactsErrorMessageChanged(string? value) => HasCompanyContactsError = !string.IsNullOrEmpty(value);
 
     /// <summary>Called from the page's OnAppearing — refreshes both the static directory filter and (2026-09-20) the shared company contact list.</summary>
