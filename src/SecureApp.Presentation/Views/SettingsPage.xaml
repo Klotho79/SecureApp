@@ -604,7 +604,7 @@
                         <Entry Placeholder="Jméno nového člena/zařízení" Text="{Binding NewMemberNameText}" />
                         <Button Text="Vytvořit WireGuard přístup" Style="{StaticResource SecondaryButton}" Command="{Binding CreateWireGuardAccessCommand}" IsEnabled="{Binding CanCreateWireGuardAccess}" />
                         <Image Source="{Binding WireGuardQrImage}" HeightRequest="180" WidthRequest="180" HorizontalOptions="Center" IsVisible="{Binding HasWireGuardQrImage}" />
-                        <Button Text="📋 Zkopírovat .conf (pro PC)" Style="{StaticResource SecondaryButton}" Command="{Binding CopyWireGuardConfigCommand}" IsVisible="{Binding HasWireGuardConfigText}" />
+                        <Button Text="⬇ Stáhnout .conf (pro PC)" Style="{StaticResource SecondaryButton}" Command="{Binding DownloadWireGuardConfigCommand}" IsVisible="{Binding HasWireGuardConfigText}" />
                         <Label Text="{Binding WireGuardStatusText}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding HasWireGuardStatus}" />
 
                         <BoxView HeightRequest="1" BackgroundColor="Gray" Opacity="0.3" Margin="0,6" />

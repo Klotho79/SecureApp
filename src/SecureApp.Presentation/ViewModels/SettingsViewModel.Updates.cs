@@ -188,13 +188,41 @@ public sealed partial class SettingsViewModel
         }
     }
 
-    /// <summary>For a PC target (no camera/QR import) — copies the same raw config the QR above encodes, so a desktop WireGuard client can import it via a plain .conf file instead.</summary>
+    /// <summary>
+    /// For a PC target (no camera/QR import) — the same raw config the QR above encodes, so a
+    /// desktop WireGuard client can import it via a plain .conf file instead.
+    ///
+    /// 2026-10-05, user's own correction: this used to copy the text to the clipboard, leaving the
+    /// user to paste it into Notepad, save as, and rename to .conf by hand — "potřebuju fakt stáhnout
+    /// soubor, ne kopírovat" (I actually need to download the file, not copy it). Switched to the
+    /// exact same write-to-cache-then-Share pattern <see cref="DocumentViewerViewModel.DownloadAsync"/>
+    /// already uses for "Stáhnout" elsewhere in this app — the OS's own Save/Share sheet hands back a
+    /// real .conf file with no manual renaming step.
+    /// </summary>
     [RelayCommand]
-    private async Task CopyWireGuardConfigAsync()
+    private async Task DownloadWireGuardConfigAsync()
     {
         if (!HasWireGuardConfigText) return;
-        await Microsoft.Maui.ApplicationModel.DataTransfer.Clipboard.Default.SetTextAsync(WireGuardConfigText);
-        WireGuardStatusText = "Konfigurace zkopírována — vložte do textového editoru, uložte jako .conf a naimportujte do WireGuard klienta.";
+        try
+        {
+            var safeName = string.Join("_", NewMemberNameText.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries));
+            var fileName = (string.IsNullOrWhiteSpace(safeName) ? "wireguard" : safeName) + ".conf";
+            var path = Path.Combine(Microsoft.Maui.Storage.FileSystem.CacheDirectory, fileName);
+            await File.WriteAllTextAsync(path, WireGuardConfigText);
+
+            await Microsoft.Maui.ApplicationModel.DataTransfer.Share.Default.RequestAsync(
+                new Microsoft.Maui.ApplicationModel.DataTransfer.ShareFileRequest
+                {
+                    Title = "Uložit konfiguraci WireGuard",
+                    File = new Microsoft.Maui.ApplicationModel.DataTransfer.ShareFile(path),
+                });
+
+            WireGuardStatusText = $"Soubor {fileName} připraven k uložení — naimportujte ho do WireGuard klienta.";
+        }
+        catch (Exception ex)
+        {
+            WireGuardStatusText = $"Stažení konfigurace se nezdařilo: {ex.Message}";
+        }
     }
 
     [RelayCommand]
