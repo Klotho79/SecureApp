@@ -46,7 +46,7 @@
             </Grid>
 
             <!-- ============================ UŽIVATEL ============================ -->
-            <VerticalStackLayout Spacing="12" IsVisible="{Binding IsUserSettingsTab}">
+            <VerticalStackLayout x:Name="UserTabContent" Spacing="12" IsVisible="{Binding IsUserSettingsTab}">
 
                 <Border Style="{StaticResource CardBorder}">
                     <VerticalStackLayout Spacing="8">
@@ -188,7 +188,7 @@
             </VerticalStackLayout>
 
             <!-- ============================ SYSTÉM ============================ -->
-            <VerticalStackLayout Spacing="12" IsVisible="{Binding IsSystemSettingsTab}">
+            <VerticalStackLayout x:Name="SystemTabContent" Spacing="12" IsVisible="{Binding IsSystemSettingsTab}">
 
                 <!-- Zprávy na pozadí (2026-09-26) — Android only. -->
                 <Border Style="{StaticResource CardBorder}" IsVisible="{Binding IsBackgroundRunSupported}">
