@@ -24,7 +24,9 @@ namespace SecureApp.Presentation.Chat;
 /// </summary>
 public static class RemovedPeersStore
 {
-    private const string Key = "removed_peers_v1";
+    // 2026-10-05 — Windows multi-profile login: prefixed per-profile, see ArchivedChatsStore's own
+    // identical remarks and Profiles.ActiveProfile.
+    private static string Key => Profiles.ActiveProfile.PrefKey("removed_peers_v1");
 
     private static HashSet<string> Load()
     {

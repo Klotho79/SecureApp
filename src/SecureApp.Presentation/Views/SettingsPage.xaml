@@ -224,6 +224,17 @@
                     </VerticalStackLayout>
                 </Border>
 
+                <!-- Profil (2026-10-05, Windows multi-profile login — Profiles.ActiveProfile's own
+                     remarks): this PC is shared by several people, each with their own profile. Only
+                     shown when a profile is actually active (i.e. on Windows, logged in). -->
+                <Border Style="{StaticResource CardBorder}" IsVisible="{Binding HasActiveProfile}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Profil" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Label Text="{Binding ActiveProfileNameText}" FontSize="11" />
+                        <Button Text="Odhlásit se" Style="{StaticResource SecondaryButton}" Command="{Binding LogOutCommand}" />
+                    </VerticalStackLayout>
+                </Border>
+
                 <!-- Identita: zálohovat/obnovit (2026-09-29, disaster recovery po skutečné ztrátě
                      identity na S23+ tuhle session) — "Zálohovat" jen když je zařízení zaregistrované
                      (je co zálohovat), "Obnovit" jen dokud NENÍ (jinak by to přepsalo živou identitu —

@@ -15,7 +15,9 @@ namespace SecureApp.Presentation.Contacts;
 /// </summary>
 public static class ContactPhoneCache
 {
-    private const string PreferenceKey = "shared_contact_phone_cache";
+    // 2026-10-05 — Windows multi-profile login: prefixed per-profile (no-op on Android, where the
+    // widget this exists for actually runs — see Profiles.ActiveProfile.PrefKey's own remarks).
+    private static string PreferenceKey => Profiles.ActiveProfile.PrefKey("shared_contact_phone_cache");
 
     public static async Task RefreshAsync(ISharedContactService service)
     {

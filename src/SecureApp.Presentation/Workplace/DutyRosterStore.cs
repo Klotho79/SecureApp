@@ -14,7 +14,8 @@ public sealed record DutyEntry(string Position, string Name);
 /// </summary>
 public static class DutyRosterStore
 {
-    private const string PreferenceKey = "opicentrum_duty_roster";
+    // 2026-10-05 — Windows multi-profile login: prefixed per-profile, see ArchivedChatsStore's own remarks.
+    private static string PreferenceKey => Profiles.ActiveProfile.PrefKey("opicentrum_duty_roster");
     private const int KeepPastDays = 7;
 
     public static IReadOnlyList<DutyEntry> Get(DateOnly date)

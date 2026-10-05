@@ -22,7 +22,8 @@ namespace SecureApp.Presentation.Workplace;
 /// </summary>
 internal static class AssignmentColorCatalog
 {
-    private const string PreferenceKeyPrefix = "workplace.color.";
+    // 2026-10-05 — Windows multi-profile login: prefixed per-profile, see ArchivedChatsStore's own remarks.
+    private static string PreferenceKeyPrefix => Profiles.ActiveProfile.PrefKey("workplace.color.");
     private const float SoftAlpha = 0.18f;
 
     private static readonly Dictionary<AssignmentType, Color> Defaults = new()

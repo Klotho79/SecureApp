@@ -7,8 +7,10 @@ namespace SecureApp.Presentation.Infrastructure;
 /// </summary>
 public static class ChatAppearance
 {
-    public const string FontSizePreferenceKey = "chat_font_size_index";
-    public const string BubbleColorPreferenceKey = "chat_bubble_hex";
+    // 2026-10-05 — Windows multi-profile login: prefixed per-profile, see ArchivedChatsStore's own
+    // identical remarks and Profiles.ActiveProfile.
+    public static string FontSizePreferenceKey => Profiles.ActiveProfile.PrefKey("chat_font_size_index");
+    public static string BubbleColorPreferenceKey => Profiles.ActiveProfile.PrefKey("chat_bubble_hex");
 
     public static IReadOnlyList<string> FontSizeChoices { get; } = ["Menší", "Normální", "Větší", "Největší"];
     private static readonly double[] FontSizes = [8, 9, 10.5, 12];

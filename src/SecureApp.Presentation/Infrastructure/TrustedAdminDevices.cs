@@ -25,7 +25,17 @@ internal static class TrustedAdminDevices
         "DESKTOP-F8AS2U6",
     };
 
+    /// <summary>
+    /// 2026-10-05 — Windows multi-profile login changes what "this device" means on a trusted PC:
+    /// several people can now log into the SAME machine (see <c>Profiles.ActiveProfile</c>), and only
+    /// ONE of them (the machine's own "owner" profile — the first one ever created there) should
+    /// inherit this always-Admin bootstrap. Every other profile on the same trusted PC falls through
+    /// to the normal relay-assigned role, same as any other device. On a Windows launch with no
+    /// profile system in play at all (<c>ActiveProfile.Current</c> null — e.g. the dev-testing
+    /// <c>SECUREAPP_DATA_DIR</c> override, or before this feature existed), the machine-name check
+    /// alone still decides it, unchanged.
+    /// </summary>
     public static bool IsThisDevice() => DeviceInfo.Current.Platform == DevicePlatform.WinUI
-        ? TrustedWindowsMachineNames.Contains(Environment.MachineName)
+        ? TrustedWindowsMachineNames.Contains(Environment.MachineName) && (Profiles.ActiveProfile.Current is null || Profiles.ActiveProfile.IsOwnerProfile)
         : TrustedAndroidModels.Contains(DeviceInfo.Current.Model);
 }

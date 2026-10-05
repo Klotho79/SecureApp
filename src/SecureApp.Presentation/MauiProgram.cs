@@ -71,7 +71,10 @@ public static class MauiProgram
 		// MauiSecureVaultKeyStore's keyPrefix remarks), so the two never collide. Empty/unset
 		// in the normal single-identity case, which is still the only thing any real device
 		// needs.
-		var dataDirOverride = Environment.GetEnvironmentVariable("SECUREAPP_DATA_DIR");
+		// 2026-10-05 — Windows multi-profile login (Profiles.ActiveProfile) reuses this exact same
+		// override mechanism, just sourced from the logged-in profile's own folder instead of this
+		// env var; the env var still wins when set, so manual multi-identity dev testing is unaffected.
+		var dataDirOverride = Environment.GetEnvironmentVariable("SECUREAPP_DATA_DIR") ?? SecureApp.Presentation.Profiles.ActiveProfile.DataDirectoryOverride;
 		var vaultKeyPrefix = string.IsNullOrWhiteSpace(dataDirOverride) ? "" : "test:" + Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(dataDirOverride)))[..12];
 
 		// --- Core infrastructure registration (Step 2) ---

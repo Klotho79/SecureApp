@@ -11,11 +11,14 @@ public partial class AppShell : Shell
 	public static readonly CachedRouteFactory GroupChatPageFactory = new(typeof(Views.GroupChatPage));
 
 	/// <summary>Shared with <c>SettingsViewModel</c>'s own show/hide toggles — see <see cref="RebuildTabBar"/>'s own remarks. Key spelling kept unchanged from before this was generalized (2026-09-16) so an existing install's already-stored preference still applies.</summary>
-	public const string LogbookVisibilityPreferenceKey = "logbook_visible";
-	public const string ChatsTabVisibilityPreferenceKey = "tab_chaty_visible";
-	public const string FilesTabVisibilityPreferenceKey = "tab_soubory_visible";
-	public const string ContactsTabVisibilityPreferenceKey = "tab_kontakty_visible";
-	public const string NotificationsTabVisibilityPreferenceKey = "tab_oznameni_visible";
+	// 2026-10-05 — Windows multi-profile login: prefixed per-profile (properties instead of consts —
+	// transparent to every existing caller of these), see ArchivedChatsStore's own identical remarks
+	// and Profiles.ActiveProfile.
+	public static string LogbookVisibilityPreferenceKey => Profiles.ActiveProfile.PrefKey("logbook_visible");
+	public static string ChatsTabVisibilityPreferenceKey => Profiles.ActiveProfile.PrefKey("tab_chaty_visible");
+	public static string FilesTabVisibilityPreferenceKey => Profiles.ActiveProfile.PrefKey("tab_soubory_visible");
+	public static string ContactsTabVisibilityPreferenceKey => Profiles.ActiveProfile.PrefKey("tab_kontakty_visible");
+	public static string NotificationsTabVisibilityPreferenceKey => Profiles.ActiveProfile.PrefKey("tab_oznameni_visible");
 
 	/// <summary>
 	/// Every tab that can be hidden (2026-09-16, user's own ask: "chci mít možnost schovávat

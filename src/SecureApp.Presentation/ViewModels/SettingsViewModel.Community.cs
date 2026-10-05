@@ -17,6 +17,17 @@ public sealed partial class SettingsViewModel
 {
     private readonly ICommunityBoardService _communityBoardService;
 
+    // --- Profil (2026-10-05, Windows multi-profile login) — Profiles.ActiveProfile's own remarks.
+    // HasActiveProfile is false on every platform except a logged-in Windows session, so this card
+    // simply doesn't render anywhere else — no separate platform check needed in the ViewModel.
+
+    public bool HasActiveProfile => Profiles.ActiveProfile.Current is not null;
+
+    public string ActiveProfileNameText => Profiles.ActiveProfile.Current is { } profile ? $"Přihlášen jako: {profile.Name}" : string.Empty;
+
+    [RelayCommand]
+    private void LogOut() => Profiles.ActiveProfile.ClearAndRestart();
+
     // --- Settings sub-tabs (2026-09-24) — the page had grown to ~15 stacked cards in one scroll,
     // which the user found cluttered ("nepřehledné"). Grouped into Uživatel / Systém / Admin, one
     // shown at a time. Plain int + derived bools + a select command, converter-free (the tab

@@ -17,7 +17,10 @@ namespace SecureApp.Presentation.Chat;
 /// </summary>
 public static class ArchivedChatsStore
 {
-    private const string Key = "archived_chats_v1";
+    // 2026-10-05 — Windows multi-profile login: prefixed per-profile (no-op/unchanged everywhere
+    // else) so one PC's several profiles don't see each other's archived chats. See
+    // Profiles.ActiveProfile's own remarks.
+    private static string Key => Profiles.ActiveProfile.PrefKey("archived_chats_v1");
     private static readonly object _gate = new();
 
     private static HashSet<string> Load()

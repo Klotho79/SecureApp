@@ -14,7 +14,10 @@ namespace SecureApp.Presentation;
 public partial class App : Application
 {
 	/// <summary>Preference key for the user-chosen theme mode (2026-09-24, Phase 4 — easy customization). 0 = follow system, 1 = light, 2 = dark. Applied via <see cref="ApplySavedThemeMode"/> at startup and live from Settings.</summary>
-	public const string ThemeModePreferenceKey = "app_theme_mode";
+	// 2026-10-05 — Windows multi-profile login: prefixed per-profile (property instead of const —
+	// transparent to every existing App.ThemeModePreferenceKey caller), see ArchivedChatsStore's own
+	// identical remarks and Profiles.ActiveProfile.
+	public static string ThemeModePreferenceKey => Profiles.ActiveProfile.PrefKey("app_theme_mode");
 
 	/// <summary>Maps the stored theme-mode preference onto MAUI's <see cref="Application.UserAppTheme"/>, which re-evaluates every AppThemeBinding live. Safe to call anytime (startup and on change).</summary>
 	public static void ApplyThemeMode(int mode)
@@ -32,7 +35,7 @@ public partial class App : Application
 	}
 
 	/// <summary>Preference key for the user-chosen font-size scale (2026-09-24, Phase 4). 0 = normal; see the choices in SettingsViewModel.</summary>
-	public const string FontScalePreferenceKey = "app_font_scale";
+	public static string FontScalePreferenceKey => Profiles.ActiveProfile.PrefKey("app_font_scale");
 
 	private const double BaseFontSize = 11.0;
 
@@ -58,6 +61,16 @@ public partial class App : Application
 	public App()
 	{
 		InitializeComponent();
+
+		// 2026-10-05, Windows multi-profile login (Profiles.ActiveProfile) — while no profile has
+		// been chosen yet, CreateWindow below shows ONLY the login/picker page, never AppShell, so
+		// none of this constructor's own background work (connection supervisor, DB warm-up, etc.)
+		// has anything real to operate on yet — it would just touch the default/un-profiled data
+		// directory for a session that's about to restart the moment a profile IS chosen anyway.
+		// Skipped entirely in that case; once a profile is active (the normal case on every other
+		// platform, and on Windows after login), everything below runs exactly as before this
+		// feature existed.
+		if (Profiles.ActiveProfile.RequiresLogin) return;
 
 		// Phase 4 (easy customization) — apply the user's saved light/dark/system choice AND their
 		// chosen accent colour before any window is built, so the app opens already themed rather
@@ -1214,6 +1227,13 @@ public partial class App : Application
 
 	protected override Window CreateWindow(IActivationState? activationState)
 	{
+		// 2026-10-05, Windows multi-profile login — see this class' own constructor remarks. The
+		// rest of this method's window-event wiring (DLP, notification/widget routing, background-
+		// run prompt) all assume a real, profile-backed session, so none of it applies to the login
+		// page either; it's a plain page with nothing pushed onto it.
+		if (Profiles.ActiveProfile.RequiresLogin)
+			return new Window(new Views.ProfileLoginPage());
+
 		var window = new Window(new AppShell());
 
 		// Backgrounded with a chat still open must still notify; returning to it clears what's now seen.

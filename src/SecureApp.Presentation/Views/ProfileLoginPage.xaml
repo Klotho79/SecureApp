@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="SecureApp.Presentation.Views.ProfileLoginPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
+    x:DataType="vm:ProfileLoginViewModel"
+    Shell.NavBarIsVisible="False">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="24" Spacing="16" MaximumWidthRequest="360" HorizontalOptions="Center" VerticalOptions="Center">
+
+            <Label Text="SecureApp" Style="{StaticResource PageTitle}" HorizontalOptions="Center" />
+            <Label Text="Toto PC sdílí víc lidí — vyberte svůj profil." FontSize="10.5" TextColor="Gray" HorizontalOptions="Center" HorizontalTextAlignment="Center" />
+
+            <!-- Existing-profile picker (2026-10-05) — hidden once "Nový profil" is open, same
+                 either/or convention the Identity backup/restore cards already use. -->
+            <VerticalStackLayout Spacing="10" IsVisible="{Binding IsSelectingExistingProfile}">
+                <Label Text="Zatím tu nejsou žádné profily — založte první." FontSize="10.5" TextColor="Gray" IsVisible="{Binding HasNoProfiles}" />
+
+                <CollectionView ItemsSource="{Binding Profiles}" SelectionMode="Single" SelectedItem="{Binding SelectedProfile}" IsVisible="{Binding HasProfiles}">
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate x:DataType="{x:Null}">
+                            <Border Style="{StaticResource CardBorder}" Margin="0,4">
+                                <Label Text="{Binding Name}" FontSize="13" Padding="4" />
+                            </Border>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+
+                <Entry Placeholder="Heslo" IsPassword="True" Text="{Binding PasswordText}" IsVisible="{Binding HasProfiles}" />
+                <Button Text="Přihlásit se" Command="{Binding LogInCommand}" IsVisible="{Binding HasProfiles}" />
+                <Button Text="+ Nový profil" Style="{StaticResource SecondaryButton}" Command="{Binding ShowCreateNewProfileCommand}" />
+            </VerticalStackLayout>
+
+            <!-- New-profile creation (2026-10-05). -->
+            <VerticalStackLayout Spacing="10" IsVisible="{Binding IsCreatingNewProfile}">
+                <Label Text="Jméno" FontAttributes="Bold" FontSize="11" />
+                <Entry Placeholder="Vaše jméno" Text="{Binding NewProfileNameText}" />
+                <Label Text="Heslo" FontAttributes="Bold" FontSize="11" />
+                <Entry Placeholder="Nové heslo" IsPassword="True" Text="{Binding NewPasswordText}" />
+                <Entry Placeholder="Heslo znovu" IsPassword="True" Text="{Binding NewPasswordConfirmText}" />
+                <Button Text="Vytvořit profil a přihlásit se" Command="{Binding CreateAndLogInCommand}" />
+                <Button Text="Zpět" Style="{StaticResource SecondaryButton}" Command="{Binding CancelCreateNewProfileCommand}" />
+            </VerticalStackLayout>
+
+            <Label Text="{Binding ErrorText}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" FontSize="10.5" IsVisible="{Binding HasError}" HorizontalTextAlignment="Center" />
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

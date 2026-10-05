@@ -11,7 +11,9 @@ namespace SecureApp.Presentation.Infrastructure;
 /// </summary>
 public static class AccentPalette
 {
-    public const string PreferenceKey = "app_accent_hex";
+    // 2026-10-05 — Windows multi-profile login: prefixed per-profile, see ArchivedChatsStore's own
+    // identical remarks and Profiles.ActiveProfile.
+    public static string PreferenceKey => Profiles.ActiveProfile.PrefKey("app_accent_hex");
 
     /// <summary>Preset accents offered in Settings: display name + base hex. The first is the app's original teal, so "default" is just the first preset.</summary>
     public static IReadOnlyList<(string Name, string Hex)> Presets { get; } =
