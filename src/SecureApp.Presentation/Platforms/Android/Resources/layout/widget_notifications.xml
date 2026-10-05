@@ -153,28 +153,39 @@
 
         <LinearLayout android:id="@+id/widget_day1" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:padding="2dp">
             <TextView android:id="@+id/widget_day1_color" android:layout_width="16dp" android:layout_height="16dp" android:text="" android:background="@drawable/widget_dot_accent" />
-            <TextView android:id="@+id/widget_day1_label" android:layout_width="64dp" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:text="" android:textColor="@color/widgetCardText" android:textSize="12sp" android:textStyle="bold" />
+            <TextView android:id="@+id/widget_day1_label" android:layout_width="78dp" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:text="" android:textColor="@color/widgetCardText" android:textSize="12sp" android:textStyle="bold" android:singleLine="true" android:ellipsize="end" />
             <TextView android:id="@+id/widget_day1_text" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="" android:textColor="@color/widgetCardTextMuted" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" />
         </LinearLayout>
         <LinearLayout android:id="@+id/widget_day2" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:padding="2dp">
             <TextView android:id="@+id/widget_day2_color" android:layout_width="16dp" android:layout_height="16dp" android:text="" android:background="@drawable/widget_dot_accent" />
-            <TextView android:id="@+id/widget_day2_label" android:layout_width="64dp" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:text="" android:textColor="@color/widgetCardText" android:textSize="12sp" android:textStyle="bold" />
+            <TextView android:id="@+id/widget_day2_label" android:layout_width="78dp" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:text="" android:textColor="@color/widgetCardText" android:textSize="12sp" android:textStyle="bold" android:singleLine="true" android:ellipsize="end" />
             <TextView android:id="@+id/widget_day2_text" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="" android:textColor="@color/widgetCardTextMuted" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" />
         </LinearLayout>
         <LinearLayout android:id="@+id/widget_day3" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:padding="2dp">
             <TextView android:id="@+id/widget_day3_color" android:layout_width="16dp" android:layout_height="16dp" android:text="" android:background="@drawable/widget_dot_accent" />
-            <TextView android:id="@+id/widget_day3_label" android:layout_width="64dp" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:text="" android:textColor="@color/widgetCardText" android:textSize="12sp" android:textStyle="bold" />
+            <TextView android:id="@+id/widget_day3_label" android:layout_width="78dp" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:text="" android:textColor="@color/widgetCardText" android:textSize="12sp" android:textStyle="bold" android:singleLine="true" android:ellipsize="end" />
             <TextView android:id="@+id/widget_day3_text" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="" android:textColor="@color/widgetCardTextMuted" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" />
         </LinearLayout>
         <LinearLayout android:id="@+id/widget_day4" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:padding="2dp">
             <TextView android:id="@+id/widget_day4_color" android:layout_width="16dp" android:layout_height="16dp" android:text="" android:background="@drawable/widget_dot_accent" />
-            <TextView android:id="@+id/widget_day4_label" android:layout_width="64dp" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:text="" android:textColor="@color/widgetCardText" android:textSize="12sp" android:textStyle="bold" />
+            <TextView android:id="@+id/widget_day4_label" android:layout_width="78dp" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:text="" android:textColor="@color/widgetCardText" android:textSize="12sp" android:textStyle="bold" android:singleLine="true" android:ellipsize="end" />
             <TextView android:id="@+id/widget_day4_text" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="" android:textColor="@color/widgetCardTextMuted" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" />
         </LinearLayout>
         <LinearLayout android:id="@+id/widget_day5" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:padding="2dp">
             <TextView android:id="@+id/widget_day5_color" android:layout_width="16dp" android:layout_height="16dp" android:text="" android:background="@drawable/widget_dot_accent" />
-            <TextView android:id="@+id/widget_day5_label" android:layout_width="64dp" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:text="" android:textColor="@color/widgetCardText" android:textSize="12sp" android:textStyle="bold" />
+            <TextView android:id="@+id/widget_day5_label" android:layout_width="78dp" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:text="" android:textColor="@color/widgetCardText" android:textSize="12sp" android:textStyle="bold" android:singleLine="true" android:ellipsize="end" />
             <TextView android:id="@+id/widget_day5_text" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="" android:textColor="@color/widgetCardTextMuted" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" />
+        </LinearLayout>
+        <!-- 2026-10-05, user's own ask: 7 days (a full week) instead of 5. -->
+        <LinearLayout android:id="@+id/widget_day6" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:padding="2dp">
+            <TextView android:id="@+id/widget_day6_color" android:layout_width="16dp" android:layout_height="16dp" android:text="" android:background="@drawable/widget_dot_accent" />
+            <TextView android:id="@+id/widget_day6_label" android:layout_width="78dp" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:text="" android:textColor="@color/widgetCardText" android:textSize="12sp" android:textStyle="bold" android:singleLine="true" android:ellipsize="end" />
+            <TextView android:id="@+id/widget_day6_text" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="" android:textColor="@color/widgetCardTextMuted" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/widget_day7" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:padding="2dp">
+            <TextView android:id="@+id/widget_day7_color" android:layout_width="16dp" android:layout_height="16dp" android:text="" android:background="@drawable/widget_dot_accent" />
+            <TextView android:id="@+id/widget_day7_label" android:layout_width="78dp" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:text="" android:textColor="@color/widgetCardText" android:textSize="12sp" android:textStyle="bold" android:singleLine="true" android:ellipsize="end" />
+            <TextView android:id="@+id/widget_day7_text" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="" android:textColor="@color/widgetCardTextMuted" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" />
         </LinearLayout>
     </LinearLayout>
 </LinearLayout>

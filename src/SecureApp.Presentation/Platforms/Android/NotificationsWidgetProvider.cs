@@ -97,27 +97,28 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
         _ = RefreshAsync(context, appWidgetManager, appWidgetIds, pendingResult);
     }
 
+    // 2026-10-05, user's own ask: 7 days (a full week) instead of 5.
     private static readonly int[] DayRowIds =
     [
         Resource.Id.widget_day1, Resource.Id.widget_day2, Resource.Id.widget_day3, Resource.Id.widget_day4,
-        Resource.Id.widget_day5,
+        Resource.Id.widget_day5, Resource.Id.widget_day6, Resource.Id.widget_day7,
     ];
     private static readonly int[] DayColorIds =
     [
         Resource.Id.widget_day1_color, Resource.Id.widget_day2_color, Resource.Id.widget_day3_color, Resource.Id.widget_day4_color,
-        Resource.Id.widget_day5_color,
+        Resource.Id.widget_day5_color, Resource.Id.widget_day6_color, Resource.Id.widget_day7_color,
     ];
     private static readonly int[] DayLabelIds =
     [
         Resource.Id.widget_day1_label, Resource.Id.widget_day2_label, Resource.Id.widget_day3_label, Resource.Id.widget_day4_label,
-        Resource.Id.widget_day5_label,
+        Resource.Id.widget_day5_label, Resource.Id.widget_day6_label, Resource.Id.widget_day7_label,
     ];
     private static readonly int[] DayTextIds =
     [
         Resource.Id.widget_day1_text, Resource.Id.widget_day2_text, Resource.Id.widget_day3_text, Resource.Id.widget_day4_text,
-        Resource.Id.widget_day5_text,
+        Resource.Id.widget_day5_text, Resource.Id.widget_day6_text, Resource.Id.widget_day7_text,
     ];
-    private const int DayCount = 5;
+    private const int DayCount = 7;
     private static readonly string[] CzechDayAbbreviations = ["Po", "Út", "St", "Čt", "Pá", "So", "Ne"];
 
     // Duty-roster rows (2026-09-29) — see widget_notifications.xml's own remarks on why this is a
