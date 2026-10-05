@@ -49,9 +49,18 @@
                                 <Border.GestureRecognizers>
                                     <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibraryViewModel}}, Path=SelectCategoryCommand}" CommandParameter="{Binding Name}" />
                                 </Border.GestureRecognizers>
+                                <!-- FontAutoScalingEnabled="False" on both labels (2026-10-05, user's own
+                                     report: wraps letter-by-letter on some phones, fine on others — e.g.
+                                     Petr Faltus's device) — a plain MAUI Label scales with the DEVICE's
+                                     own system accessibility font-size setting by default, completely
+                                     separate from this app's own in-app "Velikost písma" slider. The
+                                     92px/88px WidthRequest budgets measured live on 2026-10-03 only
+                                     accounted for minor cross-device font-METRIC variance, not a whole
+                                     accessibility-scale multiplier — fixing the rendered size instead of
+                                     padding the width budget removes the actual source of variance. -->
                                 <VerticalStackLayout Spacing="4" HorizontalOptions="Center" WidthRequest="88">
-                                    <Label Text="{Binding Icon}" FontSize="24" HorizontalOptions="Center" />
-                                    <Label Text="{Binding Name}" FontSize="11" HorizontalOptions="Center" HorizontalTextAlignment="Center" LineBreakMode="WordWrap" MaxLines="2" />
+                                    <Label Text="{Binding Icon}" FontSize="24" FontAutoScalingEnabled="False" HorizontalOptions="Center" />
+                                    <Label Text="{Binding Name}" FontSize="11" FontAutoScalingEnabled="False" HorizontalOptions="Center" HorizontalTextAlignment="Center" LineBreakMode="WordWrap" MaxLines="2" />
                                 </VerticalStackLayout>
                             </Border>
                         </DataTemplate>
@@ -85,8 +94,13 @@
                                      above every OTHER individual word's own width in the multi-word
                                      entries (~50-60px), so those still always wrap at a real space,
                                      never mid-word. -->
+                                <!-- FontAutoScalingEnabled="False" (2026-10-05, same fix/reasoning as the
+                                     category chips above — this label's own fixed-width mid-word-split
+                                     bug was measured and fixed once already on 2026-10-03, but that fix
+                                     didn't account for the device's OWN accessibility font-scale
+                                     setting, a much larger source of cross-device variance). -->
                                 <VerticalStackLayout HorizontalOptions="Center" VerticalOptions="Center" WidthRequest="92">
-                                    <Label Text="{Binding .}" FontSize="9.5" FontAttributes="Bold"
+                                    <Label Text="{Binding .}" FontSize="9.5" FontAttributes="Bold" FontAutoScalingEnabled="False"
                                            HorizontalOptions="Center" HorizontalTextAlignment="Center"
                                            LineBreakMode="WordWrap" />
                                 </VerticalStackLayout>
