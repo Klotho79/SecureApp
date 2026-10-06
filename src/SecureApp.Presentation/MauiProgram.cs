@@ -26,10 +26,18 @@ public static class MauiProgram
 		FontScaling.Register();
 		InputFocusCrashGuard.Register();
 
+#if WINDOWS
 		// Admin-only local-AI PDF translation (2026-10-05) — QuestPDF requires this exact one-time
 		// call before its first use or it throws at runtime. Community license: free for this app's
 		// non-commercial internal team use (see SecureApp.Presentation.csproj's own remarks).
+		//
+		// Windows-only guard (2026-10-06, real crash fix): this used to run unconditionally on every
+		// platform. QuestPDF's native libQuestPdfSkia.so got bundled into the Android APK too (the
+		// PackageReference had no platform Condition either — now fixed in the .csproj) and needs
+		// libstdc++.so.6, which modern Android no longer ships — touching QuestPDF.Settings at all
+		// forced that native load and crashed the app at startup, on every launch, on every screen.
 		QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
+#endif
 
 		var builder = MauiApp.CreateBuilder();
 		builder
@@ -189,7 +197,16 @@ public static class MauiProgram
 		// service itself depends on); injected directly into the Transient LibraryViewModel/
 		// LibrarySubcategoryDetailViewModel/SettingsViewModel, same direct-injection pattern
 		// DocumentViewerViewModel already uses for IDocumentRenderingService.
+		//
+		// Split by platform (2026-10-06, real crash fix): the real implementation references
+		// QuestPDF/PdfPig, which must never be referenced on Android/iOS at all (see the #if WINDOWS
+		// guard above and the .csproj's own remarks) — but ILibraryTranslationService is a required
+		// constructor parameter on every platform, so a throwing stub is registered everywhere else.
+#if WINDOWS
 		builder.Services.AddScoped<ILibraryTranslationService, SecureApp.Presentation.Translation.LocalAiLibraryTranslationService>();
+#else
+		builder.Services.AddScoped<ILibraryTranslationService, SecureApp.Presentation.Translation.UnsupportedLibraryTranslationService>();
+#endif
 
 		// Shared company workplace catalog (2026-09-20, Phase 5 — see IWorkplaceCatalogService's own remarks).
 		builder.Services.AddSingleton<IWorkplaceCatalogService, HttpWorkplaceCatalogService>();

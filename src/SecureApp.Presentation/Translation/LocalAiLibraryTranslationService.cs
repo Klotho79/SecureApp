@@ -1,3 +1,9 @@
+// Windows-only (2026-10-06, real crash fix): this type references QuestPDF/PdfPig directly, and
+// those packages must never be referenced on Android/iOS at all — their native libraries crashed
+// the whole app at startup on Android before this guard (see MauiProgram.cs's and the .csproj's own
+// remarks). The whole file compiles out on every other platform; UnsupportedLibraryTranslationService
+// is what's registered there instead.
+#if WINDOWS
 using System.Net.Http.Json;
 using System.Text.Json;
 using QuestPDF.Fluent;
@@ -269,3 +275,4 @@ public sealed class LocalAiLibraryTranslationService : ILibraryTranslationServic
     private sealed record ChatChoice(ChatResponseMessage Message);
     private sealed record ChatResponseMessage(string Content);
 }
+#endif

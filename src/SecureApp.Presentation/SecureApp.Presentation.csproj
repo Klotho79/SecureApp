@@ -130,9 +130,16 @@
 		     an existing (born-digital) PDF, pure extraction, not OCR, MIT-licensed. QuestPDF authors
 		     the new translated PDF (original page image plus a page of translated text, repeated),
 		     Community license, free for this app's non-commercial internal team use; the matching
-		     QuestPDF.Settings.License = LicenseType.Community call lives in MauiProgram.cs. -->
-		<PackageReference Include="PdfPig" Version="0.1.9" />
-		<PackageReference Include="QuestPDF" Version="2024.12.3" />
+		     QuestPDF.Settings.License = LicenseType.Community call lives in MauiProgram.cs.
+		     Windows-only Condition (2026-10-06, real crash found live): the feature is already gated
+		     Windows-only everywhere else (DeviceInfo.Current.Platform == WinUI), but these
+		     PackageReferences had no such Condition, so QuestPDF's native libQuestPdfSkia.so still got
+		     bundled into the Android APK — and MauiProgram.cs's unconditional
+		     QuestPDF.Settings.License call tried to load it on every launch. That .so needs
+		     libstdc++.so.6, which modern Android no longer ships, crashing the app at startup on
+		     every device, not just during translation. -->
+		<PackageReference Include="PdfPig" Version="0.1.9" Condition="'$(TargetFramework)'=='net10.0-windows10.0.19041.0'" />
+		<PackageReference Include="QuestPDF" Version="2024.12.3" Condition="'$(TargetFramework)'=='net10.0-windows10.0.19041.0'" />
 		<PackageReference Include="Microsoft.Maui.Controls" Version="10.0.30" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
 		<PackageReference Include="SkiaSharp.Views.Maui.Controls" Version="4.151.1" />
