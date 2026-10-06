@@ -117,16 +117,57 @@ ERROR	App.Receive	decrypt failed; auto-healing session	RatchetStateException: Me
 
 ---
 
+## 0. App failed to start AT ALL on Android — `TypeInitializationException: QuestPDF.Settings`
+
+- **Seen:** every single launch on Vilém's S23+ after updating to 1.52 (55), 2026-10-06. Never
+  reached `device_app_logs` at all (the app crashed before any diagnostics infrastructure could
+  initialize) — found only by live `adb logcat` while reproducing in real time, not from the relay's
+  log table. Caught before any other device self-updated to the broken build.
+- **Status:** Fixed, verified live on-device same day — see commit `c2e93dd`. Rebuilt (APK dropped
+  from 82MB to 70MB), reinstalled on the S23+ as an in-place upgrade (data preserved), launched via
+  `adb shell am start`, confirmed `topResumedActivity`/foreground with zero `FATAL`/`AndroidRuntime`
+  lines in logcat.
+- **Real nature:** a packaging mistake from the local-AI PDF translation feature (2026-10-05/06
+  session) — that feature is admin-only AND Windows-only by design, gated everywhere in the UI via
+  `DeviceInfo.Current.Platform == WinUI`, but the `PdfPig`/`QuestPDF` `PackageReference`s had no
+  platform `Condition`, and `MauiProgram.cs` set `QuestPDF.Settings.License` unconditionally on every
+  platform. QuestPDF's native `libQuestPdfSkia.so` got bundled into the Android APK and needs
+  `libstdc++.so.6`, a library modern Android no longer ships — merely touching `QuestPDF.Settings`
+  forced that native load and crashed the whole process at the very first line of
+  `MauiProgram.CreateMauiApp()`, before anything else (including diagnostics) could run.
+- **Fix:** `PdfPig`/`QuestPDF` `PackageReference`s conditioned to `net10.0-windows10.0.19041.0` only;
+  `QuestPDF.Settings.License` call and the whole `LocalAiLibraryTranslationService.cs` file wrapped
+  in `#if WINDOWS`; new `UnsupportedLibraryTranslationService` (throws
+  `PlatformNotSupportedException`) registered on every other platform so DI still resolves
+  `ILibraryTranslationService`, a required constructor parameter in several ViewModels everywhere.
+- **Why this matters for every future native dependency:** a `PackageReference` with no platform
+  `Condition`, in a multi-targeted MAUI project, ships to every platform regardless of whether the
+  C#-level feature gating ever lets that platform use it. The UI gate alone is not enough.
+
+```
+E monodroid-assembly: Could not load library '.../lib/arm64/libQuestPdfSkia.so'. dlopen failed:
+    library "libstdc++.so.6" not found: needed by .../libQuestPdfSkia.so in namespace clns-9
+E AndroidRuntime: FATAL EXCEPTION: main
+E AndroidRuntime: android.runtime.JavaProxyThrowable: [System.TypeInitializationException]:
+    TypeInitialization_Type, QuestPDF.Settings
+E AndroidRuntime: 	at SecureApp.Presentation.MauiProgram.CreateMauiApp + 0x16(Unknown Source)
+E AndroidRuntime: 	at SecureApp.Presentation.MainApplication.CreateMauiApp + 0x0(Unknown Source)
+```
+
+---
+
 ## 4. Search bar crashes the app — `ObjectDisposedException` on a disposed `IServiceProvider`
 
 - **Seen:** 8×, 2 devices (Petr's S25, Vilém's S23+), 2026-09-29 → 2026-10-06. (Reported live
   2026-10-06 — the S23+'s 2 most recent occurrences, 2026-10-05T19:58 and 2026-10-06T16:25 local,
   are what prompted the fix below; confirmed via direct `device_app_logs` query, not from the report
   alone.)
-- **Status:** Fix attempted, NOT yet verified in the field — see `InputFocusCrashGuard.cs`,
-  committed but not yet released. Per this file's own rule (see "Verifying a fix actually worked"
-  above): do not mark this row Fixed until a build at or after the shipping version has gone by with
-  zero new occurrences of this signature.
+- **Status:** Fix attempted, NOT yet verified in the field — see `InputFocusCrashGuard.cs`, released
+  in 1.52 (55) but verification was blocked: that exact build also had issue #0 above (an unrelated,
+  far more severe startup crash), so the app couldn't launch at all to exercise this one until #0's
+  own fix shipped in the same version. Per this file's own rule (see "Verifying a fix actually
+  worked" above): do not mark this row Fixed until a build at or after the shipping version has gone
+  by with zero new occurrences of this signature.
 - **Real nature (confirmed by stack trace, not just "likely"):** every occurrence is a MAUI/Android
   framework timing race, not anything about this app's own search content — a native
   `View.OnFocusChange` callback lands on the UI thread AFTER Shell has already navigated away from
