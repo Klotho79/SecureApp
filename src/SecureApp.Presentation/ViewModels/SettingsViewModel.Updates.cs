@@ -47,6 +47,9 @@ public sealed partial class SettingsViewModel
     private int _latestVersionCode;
     private string _latestVersionName = string.Empty;
 
+    /// <summary>Captured from <see cref="NewMemberNameText"/> right before <see cref="CreateWireGuardAccessAsync"/> clears it — see <see cref="DownloadWireGuardConfigAsync"/>'s own remarks for the real bug this fixes.</summary>
+    private string _lastWireGuardMemberName = string.Empty;
+
     partial void OnUpdateStatusTextChanged(string? value) => HasUpdateStatus = !string.IsNullOrEmpty(value);
     partial void OnIsCheckingForUpdateChanged(bool value) => OnPropertyChanged(nameof(CanCheckForUpdate));
     partial void OnIsDownloadingUpdateChanged(bool value) => OnPropertyChanged(nameof(CanDownloadUpdate));
@@ -176,6 +179,7 @@ public sealed partial class SettingsViewModel
             WireGuardQrImage = Microsoft.Maui.Controls.ImageSource.FromStream(() => new MemoryStream(png));
             WireGuardConfigText = configText;
             WireGuardStatusText = $"Hotovo — ukažte tenhle QR novému členovi ({NewMemberNameText}), naskenuje ho v appce WireGuard.";
+            _lastWireGuardMemberName = NewMemberNameText;
             NewMemberNameText = string.Empty;
         }
         catch (Exception ex)
@@ -198,6 +202,17 @@ public sealed partial class SettingsViewModel
     /// exact same write-to-cache-then-Share pattern <see cref="DocumentViewerViewModel.DownloadAsync"/>
     /// already uses for "Stáhnout" elsewhere in this app — the OS's own Save/Share sheet hands back a
     /// real .conf file with no manual renaming step.
+    ///
+    /// 2026-10-06, real bug found live: this used to read <see cref="NewMemberNameText"/> for the
+    /// filename, but <see cref="CreateWireGuardAccessAsync"/>'s own success path clears that field
+    /// right after creating the client — by the time this command ran, it was always empty, so every
+    /// single download fell back to the literal "wireguard.conf" name, regardless of which member it
+    /// was actually for. Importing a second/third such identically-named file into the Windows
+    /// WireGuard client made it auto-suggest a deduplicated tunnel name like "wireguard[1]" to avoid
+    /// colliding with the first import — which then failed the client's OWN tunnel/adapter-name
+    /// validation (square brackets aren't a valid character there), surfacing as "wireguard[1]:
+    /// neplatný název". Fixed by capturing the name into <see cref="_lastWireGuardMemberName"/> before
+    /// it gets cleared, instead of re-reading the now-empty bound property here.
     /// </summary>
     [RelayCommand]
     private async Task DownloadWireGuardConfigAsync()
@@ -205,7 +220,7 @@ public sealed partial class SettingsViewModel
         if (!HasWireGuardConfigText) return;
         try
         {
-            var safeName = string.Join("_", NewMemberNameText.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries));
+            var safeName = string.Join("_", _lastWireGuardMemberName.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries));
             var fileName = (string.IsNullOrWhiteSpace(safeName) ? "wireguard" : safeName) + ".conf";
             var path = Path.Combine(Microsoft.Maui.Storage.FileSystem.CacheDirectory, fileName);
             await File.WriteAllTextAsync(path, WireGuardConfigText);
