@@ -33,7 +33,13 @@ public static class InputFocusCrashGuard
     {
         try
         {
-            baseAction(handler, view);
+            // Real regression found live (2026-10-06, same day): ModifyMapping hands back null here
+            // for Entry/Editor/SearchBar's "IsFocused" key — it's inherited from InputView's own base
+            // mapper, not present directly in each handler's own dictionary, so there is no "previous
+            // action" to capture. Calling a null delegate threw NullReferenceException on every
+            // single focus change (i.e. on every page with any text field), which is strictly worse
+            // than the rare race this was meant to fix.
+            baseAction?.Invoke(handler, view);
         }
         catch (ObjectDisposedException)
         {
