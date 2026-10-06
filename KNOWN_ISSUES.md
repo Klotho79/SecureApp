@@ -119,13 +119,29 @@ ERROR	App.Receive	decrypt failed; auto-healing session	RatchetStateException: Me
 
 ## 4. Search bar crashes the app — `ObjectDisposedException` on a disposed `IServiceProvider`
 
-- **Seen:** 6×, 2 devices (Petr's S25, one of Vilém's S23+ registrations), 2026-09-29 → 2026-10-03.
-- **Status:** OPEN — not yet investigated.
-- **Likely nature:** a MAUI `SearchBar`'s focus-change handler (`SearchBarHandler.FocusChangeListener`)
-  fires AFTER its page's DI scope has already been disposed (e.g. navigating away from a search page
-  the instant it loses focus) — a timing/lifecycle race, not anything about search content itself.
-- **Next step:** find which page(s) have a `SearchBar` that can lose focus during navigation away
-  from itself, and guard the focus-change path against a disposed scope.
+- **Seen:** 8×, 2 devices (Petr's S25, Vilém's S23+), 2026-09-29 → 2026-10-06. (Reported live
+  2026-10-06 — the S23+'s 2 most recent occurrences, 2026-10-05T19:58 and 2026-10-06T16:25 local,
+  are what prompted the fix below; confirmed via direct `device_app_logs` query, not from the report
+  alone.)
+- **Status:** Fix attempted, NOT yet verified in the field — see `InputFocusCrashGuard.cs`,
+  committed but not yet released. Per this file's own rule (see "Verifying a fix actually worked"
+  above): do not mark this row Fixed until a build at or after the shipping version has gone by with
+  zero new occurrences of this signature.
+- **Real nature (confirmed by stack trace, not just "likely"):** every occurrence is a MAUI/Android
+  framework timing race, not anything about this app's own search content — a native
+  `View.OnFocusChange` callback lands on the UI thread AFTER Shell has already navigated away from
+  the page and torn down its handler's own DI scope; `InputView.MapIsFocused` then calls
+  `handler.GetService<HideSoftInputOnTappedChangedManager>()` against the already-disposed
+  `IServiceProvider`. The actual control involved is a plain `Entry` (this app has no real
+  `SearchBar` control anywhere — confirmed by a full-codebase grep; every "search bar" here is an
+  `Entry` bound to a search/filter query), so the stack goes through `IEntryHandler`, not
+  `SearchBarHandler.FocusChangeListener` as originally guessed.
+- **Fix:** `Infrastructure/InputFocusCrashGuard.cs`, registered from `MauiProgram.CreateMauiApp()` —
+  `ModifyMapping("IsFocused", ...)` on `EntryHandler`/`EditorHandler`/`SearchBarHandler` (Android
+  only), wrapping the base mapping and swallowing `ObjectDisposedException`: by the time this fires
+  the page is already gone, so there's nothing left to focus anyway. This is the standard MAUI
+  handler-customization pattern this codebase already uses for `FontScaling` — just `ModifyMapping`
+  instead of `AppendToMapping`, since here the BASE mapping itself is what throws.
 
 ```
 ERROR	OnUnhandledException	[Error] Neošetřená výjimka — aplikace se ukončuje.	ObjectDisposedException:

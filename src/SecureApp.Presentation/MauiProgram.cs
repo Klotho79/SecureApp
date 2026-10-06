@@ -24,6 +24,7 @@ public static class MauiProgram
 	public static MauiApp CreateMauiApp()
 	{
 		FontScaling.Register();
+		InputFocusCrashGuard.Register();
 
 		// Admin-only local-AI PDF translation (2026-10-05) — QuestPDF requires this exact one-time
 		// call before its first use or it throws at runtime. Community license: free for this app's
