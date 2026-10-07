@@ -213,6 +213,14 @@ public sealed partial class SettingsViewModel
     /// validation (square brackets aren't a valid character there), surfacing as "wireguard[1]:
     /// neplatný název". Fixed by capturing the name into <see cref="_lastWireGuardMemberName"/> before
     /// it gets cleared, instead of re-reading the now-empty bound property here.
+    ///
+    /// 2026-10-07, second real bug found live, same symptom: a member name with a space (e.g. "PC v
+    /// praci") sanitized fine as a FILENAME — <see cref="Path.GetInvalidFileNameChars"/> doesn't
+    /// consider a space invalid — but the Windows WireGuard client derives its internal tunnel name
+    /// from that filename and validates it against its OWN much stricter charset
+    /// (`^[a-zA-Z0-9_=+.-]{1,32}$`, no spaces, no diacritics), so "PC v praci.conf" still failed with
+    /// the exact same "Název tunelu je neplatný" error, for a different reason than the first bug.
+    /// Switched the sanitizer to WireGuard's own allowed charset directly, not the OS's.
     /// </summary>
     [RelayCommand]
     private async Task DownloadWireGuardConfigAsync()
@@ -220,7 +228,8 @@ public sealed partial class SettingsViewModel
         if (!HasWireGuardConfigText) return;
         try
         {
-            var safeName = string.Join("_", _lastWireGuardMemberName.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries));
+            var safeName = System.Text.RegularExpressions.Regex.Replace(_lastWireGuardMemberName, "[^a-zA-Z0-9_=+.-]", "_");
+            if (safeName.Length > 32) safeName = safeName[..32];
             var fileName = (string.IsNullOrWhiteSpace(safeName) ? "wireguard" : safeName) + ".conf";
             var path = Path.Combine(Microsoft.Maui.Storage.FileSystem.CacheDirectory, fileName);
             await File.WriteAllTextAsync(path, WireGuardConfigText);

@@ -164,6 +164,33 @@ The **running** container still has the correct value (it predates the edit), so
 right now — but any restart, planned or not, would apply the corrupt one and break address
 assignment for new clients. Fix the line before restarting wg-easy for any reason.
 
+# New PC onboarding — WireGuard client + SecureApp in one script
+
+`new-pc-onboarding.ps1` (2026-10-07, user's own ask, after repeatedly fighting the WireGuard GUI's
+"Import tunnel from file" dialog setting up a new work PC — "PC v praci" was the real case that
+prompted this). One idempotent script instead of the previous fully-manual flow:
+
+```powershell
+# run from the repo root, or copy the script anywhere on the target PC
+.\relay\ops\new-pc-onboarding.ps1 -ConfigPath "C:\Users\you\Downloads\PC_v_praci.conf"
+```
+
+It self-elevates, then: (1) installs the official WireGuard client if missing, (2) downloads +
+unpacks the SecureApp Windows portable build into `C:\SecureApp` (override with `-InstallDir`) if
+missing, and (3) if `-ConfigPath` is given, installs that `.conf` directly as a Windows service
+tunnel via `wireguard /installtunnelservice <path>` — a real, documented WireGuard CLI command
+(confirmed against `git.zx2c4.com/wireguard-windows/tree/docs/enterprise.md`) that **bypasses the
+GUI import dialog entirely**, so its interactive tunnel-name validation (which rejects spaces —
+see the WireGuard fix in `SettingsViewModel.Updates.cs`'s `DownloadWireGuardConfigAsync`) never
+runs at all. The script re-sanitizes the filename to the same WireGuard-safe charset first anyway,
+as defense-in-depth for a config from an older build or one renamed by hand.
+
+Not fully silent: WireGuard's own docs only document an unattended install via the raw MSI +
+`msiexec`, not the bootstrapper `.exe` this script downloads — expect one UAC prompt and the
+installer's own short progress UI, not a single headless command. `-RelayBaseUrl` defaults to
+`http://192.168.50.8:8080`; override it if the target PC reaches the relay by a different address
+(e.g. over the WireGuard tunnel itself, once that part is already up).
+
 # Backup — Pi data to the dev PC
 
 `backup-from-pi.ps1` (2026-09-23, user's own ask: don't lose community data or admin access if a
