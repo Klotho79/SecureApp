@@ -175,6 +175,13 @@ prompted this). One idempotent script instead of the previous fully-manual flow:
 .\relay\ops\new-pc-onboarding.ps1 -ConfigPath "C:\Users\you\Downloads\PC_v_praci.conf"
 ```
 
+**`new-pc-onboarding.bat`** is a double-click launcher for people who don't want a PowerShell
+command line (a `.ps1` doesn't run on double-click by default — it opens in a text editor, real
+friction on a brand-new PC). Copy both files into the same folder (e.g. a USB stick) alongside the
+downloaded `.conf`, then just double-click the `.bat` — it auto-detects a `.conf` sitting next to
+it (newest wins if there's more than one) with no typing needed, or accepts one dragged onto its
+icon. Verified both paths (auto-detect and drag-and-drop) against a dummy script before trusting it.
+
 It self-elevates, then: (1) installs the official WireGuard client if missing, (2) downloads +
 unpacks the SecureApp Windows portable build into `C:\SecureApp` (override with `-InstallDir`) if
 missing, and (3) if `-ConfigPath` is given, installs that `.conf` directly as a Windows service
