@@ -11,7 +11,16 @@ public sealed record UpdateManifest(int VersionCode, string VersionName, DateTim
 
 /// <summary>New-member WireGuard onboarding (2026-09-23) — see /admin/wireguard/clients' own remarks.</summary>
 public sealed record CreateWireGuardClientRequest(string Name);
-public sealed record WireGuardClientResponse(string ConfigurationText);
+
+/// <summary>
+/// PickupCode (2026-10-07) is additive, default-valued so the one existing call site didn't need
+/// updating for its own sake — a short-lived, one-time code redeemable at
+/// GET /onboarding/pickup/{code} with NO admin secret at all, so a non-admin colleague can fetch
+/// this exact same ConfigurationText themselves via new-pc-onboarding.bat without ever holding
+/// admin credentials or being handed a .conf file directly. Null only if wireguard_pickup_codes
+/// insertion somehow failed without throwing - never expected in practice.
+/// </summary>
+public sealed record WireGuardClientResponse(string ConfigurationText, string? PickupCode = null);
 
 /// <summary>Shape of wg-easy's own GET /api/wireguard/client response — only the fields this relay actually reads (id, to fetch the configuration afterward; createdAt, to identify the just-created client). Not the full wg-easy client shape.</summary>
 public sealed record WgEasyClient(string Id, string Name, DateTimeOffset CreatedAt);

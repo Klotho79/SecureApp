@@ -270,7 +270,31 @@ app.MapPost("/admin/wireguard/clients", async (HttpRequest request, CreateWireGu
     // revoke it if nobody ever actually finishes onboarding with it.
     db.AddPendingWireGuardPeer(newest.Id, body.Name);
 
-    return Results.Ok(new WireGuardClientResponse(configText));
+    // 2026-10-07, user's own ask: let a non-admin colleague self-onboard with new-pc-onboarding.bat
+    // and ONLY this short code, never the admin secret or a .conf file handed over directly. 24h is
+    // generous for "hand someone a code today or tomorrow" without leaving it valid indefinitely —
+    // see wireguard_pickup_codes' own schema remarks for why this is a separate table from `invites`.
+    var pickupCode = db.CreateWireGuardPickupCode(configText, body.Name, TimeSpan.FromHours(24));
+
+    return Results.Ok(new WireGuardClientResponse(configText, pickupCode));
+});
+
+// Public, deliberately unauthenticated (2026-10-07) — the ENTIRE POINT is that a non-admin colleague
+// redeems this with nothing but the short code an admin told them, never the admin secret. Same
+// "anyone already on the network" exposure class as /download/* already accept (this relay is never
+// reachable outside the LAN/VPN at all — see docker-compose.yml). A wrong/expired/already-used code
+// just 404s; TryConsumeWireGuardPickupCode is the one place that actually enforces one-time-use,
+// race-safe via its own atomic UPDATE.
+app.MapGet("/onboarding/pickup/{code}", (string code, RelayDatabase db) =>
+{
+    var result = db.TryConsumeWireGuardPickupCode(code);
+    if (result is null)
+        return Results.NotFound("Kód je neplatný, již použitý nebo vypršel.");
+
+    // JSON, not plain .conf text - new-pc-onboarding.ps1 needs MemberName too, to name the tunnel
+    // the same way an admin-handed .conf file's own filename would (see
+    // SettingsViewModel.Updates.cs's DownloadWireGuardConfigAsync for the matching sanitizer).
+    return Results.Ok(new { configText = result.Value.ConfigText, memberName = result.Value.MemberName });
 });
 
 app.MapPost("/admin/devices", (HttpRequest request, CreateDeviceRequest body, RelayDatabase db) =>

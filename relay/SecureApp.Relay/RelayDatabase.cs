@@ -123,6 +123,27 @@ public sealed class RelayDatabase
                 created_at_utc    TEXT NOT NULL
             )
             """);
+
+        // WireGuard pickup codes (2026-10-07, user's own ask: a non-admin colleague should be able
+        // to self-onboard a brand-new PC with ONLY new-pc-onboarding.bat and a short code — never the
+        // admin secret, never a .conf file handed over separately). Same one-time-use shape as
+        // `invites` above (code/expires/consumed), deliberately a SEPARATE table rather than reusing
+        // `invites` itself — that one is specifically for SecureApp's own device-activation flow
+        // (/register reads it), and conflating two different "what does this code unlock" semantics
+        // in one table risks a future bug more than a few duplicate columns costs. config_text is the
+        // already-created WireGuard client's real .conf content (admin already paid wg-easy's own
+        // "create a client" cost via /admin/wireguard/clients; this table just lets ONE later
+        // unauthenticated GET hand that same content back exactly once).
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS wireguard_pickup_codes (
+                code              TEXT PRIMARY KEY NOT NULL,
+                config_text       TEXT NOT NULL,
+                member_name       TEXT NOT NULL,
+                created_at_utc    TEXT NOT NULL,
+                expires_at_utc    TEXT NOT NULL,
+                consumed_at_utc   TEXT NULL
+            )
+            """);
         Execute(connection, """
             CREATE TABLE IF NOT EXISTS outbox (
                 id                    TEXT PRIMARY KEY NOT NULL,
@@ -514,6 +535,45 @@ public sealed class RelayDatabase
         command.Parameters.AddWithValue("@code", code);
         command.Parameters.AddWithValue("@now", Format(DateTimeOffset.UtcNow));
         return command.ExecuteNonQuery() > 0;
+    }
+
+    /// <summary>Stores an already-created WireGuard client's config behind a one-time pickup code — see <c>wireguard_pickup_codes</c>'s own schema remarks.</summary>
+    public string CreateWireGuardPickupCode(string configText, string memberName, TimeSpan validFor)
+    {
+        var code = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(12));
+        var expiresAtUtc = DateTimeOffset.UtcNow.Add(validFor);
+
+        using var connection = OpenConnection();
+        Execute(connection,
+            "INSERT INTO wireguard_pickup_codes (code, config_text, member_name, created_at_utc, expires_at_utc, consumed_at_utc) VALUES (@code, @config, @name, @now, @expires, NULL)",
+            ("@code", code), ("@config", configText), ("@name", memberName),
+            ("@now", Format(DateTimeOffset.UtcNow)), ("@expires", Format(expiresAtUtc)));
+
+        return code;
+    }
+
+    /// <summary>Validates and atomically consumes a WireGuard pickup code (same race-safe single-UPDATE shape as <see cref="TryConsumeInvite"/>). Returns the stored .conf content + the member name it was created for if valid, or null if the code doesn't exist, is already used, or has expired.</summary>
+    public (string ConfigText, string MemberName)? TryConsumeWireGuardPickupCode(string code)
+    {
+        using var connection = OpenConnection();
+        using var selectCommand = connection.CreateCommand();
+        selectCommand.CommandText = "SELECT config_text, member_name FROM wireguard_pickup_codes WHERE code = @code AND consumed_at_utc IS NULL AND expires_at_utc > @now";
+        selectCommand.Parameters.AddWithValue("@code", code);
+        selectCommand.Parameters.AddWithValue("@now", Format(DateTimeOffset.UtcNow));
+        using var reader = selectCommand.ExecuteReader();
+        if (!reader.Read()) return null;
+        var configText = reader.GetString(0);
+        var memberName = reader.GetString(1);
+        reader.Close();
+
+        using var updateCommand = connection.CreateCommand();
+        updateCommand.CommandText = "UPDATE wireguard_pickup_codes SET consumed_at_utc = @now WHERE code = @code AND consumed_at_utc IS NULL";
+        updateCommand.Parameters.AddWithValue("@code", code);
+        updateCommand.Parameters.AddWithValue("@now", Format(DateTimeOffset.UtcNow));
+        // A second concurrent request for the same code lost the race to claim it - never hand out
+        // the same real WireGuard identity twice, even if both requests read the config in the tiny
+        // window before either one's UPDATE committed.
+        return updateCommand.ExecuteNonQuery() > 0 ? (configText, memberName) : null;
     }
 
     /// <summary>Records a freshly-created wg-easy peer as unconfirmed — see <c>pending_wireguard_peers</c>'s own schema remarks.</summary>

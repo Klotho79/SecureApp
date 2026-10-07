@@ -198,7 +198,7 @@ public sealed class HttpRelayAdminService : IRelayAdminService
         return new UriBuilder(wsEndpoint) { Scheme = scheme, Port = wsEndpoint.Port }.Uri;
     }
 
-    public async Task<string> CreateWireGuardClientAsync(Uri endpoint, string adminSecret, string memberName, CancellationToken ct = default)
+    public async Task<(string ConfigurationText, string? PickupCode)> CreateWireGuardClientAsync(Uri endpoint, string adminSecret, string memberName, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
         ArgumentException.ThrowIfNullOrWhiteSpace(adminSecret);
@@ -220,10 +220,10 @@ public sealed class HttpRelayAdminService : IRelayAdminService
 
         var result = await response.Content.ReadFromJsonAsync<WireGuardClientResult>(HttpJsonOptions, ct)
             ?? throw new InvalidOperationException("Relay vrátil prázdnou odpověď na vytvoření WireGuard přístupu.");
-        return result.ConfigurationText;
+        return (result.ConfigurationText, result.PickupCode);
     }
 
-    private sealed record WireGuardClientResult(string ConfigurationText);
+    private sealed record WireGuardClientResult(string ConfigurationText, string? PickupCode);
 
     private sealed record InviteResponse(string Code, DateTimeOffset ExpiresAtUtc);
 

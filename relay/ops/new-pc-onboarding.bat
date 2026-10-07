@@ -1,11 +1,10 @@
 @echo off
-rem Self-fetching double-click installer (2026-10-07, user's own ask: wanted ONE file that
-rem downloads everything it needs itself, not a .bat+.ps1 pair that has to travel together).
-rem Downloads the real onboarding logic fresh from the relay every run, so this one already-
-rem distributed file stays current forever - any future fix to new-pc-onboarding.ps1 just needs
-rem re-uploading to the relay (see relay/ops/README.md), never a new copy of this launcher.
-rem Needs network/VPN access to the relay for this one step; everything after that (the actual
-rem WireGuard/SecureApp installs) works exactly like the local-pair version did.
+rem Self-fetching double-click installer (2026-10-07, user's own ask: wanted a non-admin colleague
+rem to self-onboard a brand-new PC with ONLY this one file - no .conf to transfer, no admin secret,
+rem nothing else to explain beyond "run this and type the code I give you"). Downloads the real
+rem onboarding logic fresh from the relay every run, so this one already-distributed file stays
+rem current forever - any future fix to new-pc-onboarding.ps1 just needs re-uploading to the relay
+rem (see relay/ops/README.md), never a new copy of this launcher.
 setlocal enabledelayedexpansion
 
 set "RELAY=http://192.168.50.8:8080"
@@ -21,25 +20,32 @@ if errorlevel 1 (
     exit /b 1
 )
 
-rem Same local .conf auto-detection as before - looks next to THIS .bat, not next to the
-rem downloaded .ps1 (which lands in %TEMP%, unrelated to where the user's own config file is).
-set "CONF=%~1"
-if "%CONF%"=="" (
-    rem %CONF% inside a for loop's own block is expanded once at PARSE time, not per iteration -
-    rem it would always see the ORIGINAL empty value and let every file in the loop overwrite the
-    rem last one's result. !CONF! (delayed expansion) re-reads it live each iteration, so the
-    rem newest (first, since dir is sorted descending) match actually wins.
+rem Primary path: a short pickup code the admin told/sent you (SecureApp Settings -> WireGuard
+rem card shows it right after creating a new member's access). Nothing else needed - no file,
+rem no password. Pass it as an argument to skip the prompt (useful if you're scripting this).
+set "CODE=%~1"
+if "%CODE%"=="" (
+    set /p "CODE=Zadejte kod od administratora (Enter pro preskoceni, pokud zatim WireGuard tunel nepotrebujete): "
+)
+
+rem Fallback for an admin's own direct use: a .conf file already sitting next to this .bat (or
+rem dragged onto it) still works, same as before, if no code was given at all.
+set "CONF="
+if "%CODE%"=="" (
     for /f "delims=" %%f in ('dir "%~dp0*.conf" /b /o-d 2^>nul') do (
         if "!CONF!"=="" set "CONF=%~dp0%%f"
     )
 )
 
-if "%CONF%"=="" (
-    echo Zadny .conf soubor nenalezen vedle tohoto .bat - instaluji jen WireGuard klienta a SecureApp, bez tunelu.
-    powershell -NoProfile -ExecutionPolicy Bypass -File "%PS1_TEMP%"
-) else (
+if not "%CODE%"=="" (
+    echo Pouzivam kod: %CODE%
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%PS1_TEMP%" -Code "%CODE%"
+) else if not "%CONF%"=="" (
     echo Pouzivam konfiguraci: %CONF%
     powershell -NoProfile -ExecutionPolicy Bypass -File "%PS1_TEMP%" -ConfigPath "%CONF%"
+) else (
+    echo Zadny kod ani .conf soubor - instaluji jen WireGuard klienta a SecureApp, bez tunelu.
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%PS1_TEMP%"
 )
 
 echo.

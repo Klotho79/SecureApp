@@ -133,6 +133,27 @@ public sealed partial class SettingsViewModel
 
     partial void OnWireGuardConfigTextChanged(string? value) => OnPropertyChanged(nameof(HasWireGuardConfigText));
 
+    /// <summary>
+    /// 2026-10-07, user's own ask: a non-admin colleague should be able to self-onboard a brand-new
+    /// PC with ONLY relay/ops/new-pc-onboarding.bat and this short code — never this device's admin
+    /// secret, never a .conf file handed over directly. Redeemable exactly once at the relay's
+    /// public <c>GET /onboarding/pickup/{code}</c>, good for 24h (see RelayDatabase.CreateWireGuardPickupCode).
+    /// </summary>
+    [ObservableProperty]
+    public partial string? WireGuardPickupCode { get; set; }
+
+    public bool HasWireGuardPickupCode => !string.IsNullOrEmpty(WireGuardPickupCode);
+
+    partial void OnWireGuardPickupCodeChanged(string? value) => OnPropertyChanged(nameof(HasWireGuardPickupCode));
+
+    [RelayCommand]
+    private async Task CopyWireGuardPickupCodeAsync()
+    {
+        if (!HasWireGuardPickupCode) return;
+        await Microsoft.Maui.ApplicationModel.DataTransfer.Clipboard.SetTextAsync(WireGuardPickupCode);
+        WireGuardStatusText = "Kód zkopírován — pošlete ho kolegovi (např. zprávou), spolu s odkazem na stažení .bat.";
+    }
+
     [ObservableProperty]
     public partial bool IsCreatingWireGuardAccess { get; set; }
 
@@ -147,6 +168,7 @@ public sealed partial class SettingsViewModel
         WireGuardStatusText = null;
         WireGuardQrImage = null;
         WireGuardConfigText = null;
+        WireGuardPickupCode = null;
 
         if (string.IsNullOrWhiteSpace(NewMemberNameText))
         {
@@ -174,11 +196,14 @@ public sealed partial class SettingsViewModel
         IsCreatingWireGuardAccess = true;
         try
         {
-            var configText = await _relayAdminService.CreateWireGuardClientAsync(endpoint, adminSecret, NewMemberNameText);
+            var (configText, pickupCode) = await _relayAdminService.CreateWireGuardClientAsync(endpoint, adminSecret, NewMemberNameText);
             var png = QrImageGenerator.GeneratePng(configText);
             WireGuardQrImage = Microsoft.Maui.Controls.ImageSource.FromStream(() => new MemoryStream(png));
             WireGuardConfigText = configText;
-            WireGuardStatusText = $"Hotovo — ukažte tenhle QR novému členovi ({NewMemberNameText}), naskenuje ho v appce WireGuard.";
+            WireGuardPickupCode = pickupCode;
+            WireGuardStatusText = pickupCode is not null
+                ? $"Hotovo — ukažte QR novému členovi ({NewMemberNameText}), NEBO mu pošlete kód níže + odkaz na new-pc-onboarding.bat (relay /download/onboarding) pro samoobslužnou instalaci na PC."
+                : $"Hotovo — ukažte tenhle QR novému členovi ({NewMemberNameText}), naskenuje ho v appce WireGuard.";
             _lastWireGuardMemberName = NewMemberNameText;
             NewMemberNameText = string.Empty;
         }

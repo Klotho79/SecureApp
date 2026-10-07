@@ -13,13 +13,21 @@
 #      the relay's /download/windows portable zip and extracts it there. No installer needed - it's
 #      a self-contained portable build, no admin rights required for this part (see Program.cs's own
 #      remarks above the /download/windows route).
-#   4. If -ConfigPath points at a WireGuard .conf file (e.g. one just transferred from a phone after
-#      generating it in SecureApp's own Settings → WireGuard card), installs it as a Windows service
-#      tunnel directly via the documented `wireguard /installtunnelservice <path>` command - this
-#      bypasses the GUI's "Import tunnel" dialog entirely, so the interactive tunnel-name validation
-#      that kept rejecting names with spaces never even runs. Re-sanitizes the filename first anyway
-#      (the same WireGuard-safe charset the app itself now uses) as defense-in-depth against a config
-#      from an older APK build or one renamed by hand.
+#   4. Gets a WireGuard .conf one of two ways, then installs it as a Windows service tunnel directly
+#      via the documented `wireguard /installtunnelservice <path>` command - this bypasses the GUI's
+#      "Import tunnel" dialog entirely, so the interactive tunnel-name validation that kept rejecting
+#      names with spaces never even runs:
+#        - -Code (2026-10-07, the real point of this script for a non-admin colleague): redeems a
+#          short-lived, one-time pickup code at the relay's PUBLIC /onboarding/pickup/{code} - no
+#          admin secret involved at all, not here and not anywhere the colleague can see. An admin
+#          mints this code from SecureApp's own Settings → WireGuard card (it shows up right next to
+#          the existing QR/.conf download once a client is created) and just tells/sends it to the
+#          colleague - no file to transfer, nothing to explain beyond "run this and type this code".
+#        - -ConfigPath: the older path, for a .conf file already on disk (e.g. the admin's own use).
+#      Either way the resulting filename is re-sanitized against WireGuard's own tunnel-name charset
+#      (the same one SettingsViewModel.Updates.cs's DownloadWireGuardConfigAsync already uses) as
+#      defense-in-depth, since a member name can contain spaces or other characters WireGuard itself
+#      rejects for a tunnel name even though they're perfectly valid in a filename or a person's name.
 #
 # Verified against WireGuard's own documentation (git.zx2c4.com/wireguard-windows, checked 2026-10-07)
 # before writing this, not guessed:
@@ -33,7 +41,8 @@
 param(
     [string]$RelayBaseUrl = "http://192.168.50.8:8080",
     [string]$InstallDir = "C:\SecureApp",
-    [string]$ConfigPath = ""
+    [string]$ConfigPath = "",
+    [string]$Code = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -93,6 +102,23 @@ else {
 }
 
 # --- 3. WireGuard tunnel import (optional) ---------------------------------------
+if ($Code) {
+    Write-Output "Vyzvedávám WireGuard konfiguraci pomocí kódu..."
+    try {
+        $pickup = Invoke-RestMethod -Uri "$RelayBaseUrl/onboarding/pickup/$Code" -UseBasicParsing
+    }
+    catch {
+        Write-Error "Kód se nepodařilo vyzvednout: $($_.Exception.Message) (je neplatný, již použitý, nebo vypršel - vyžádejte si nový)."
+        $pickup = $null
+    }
+    if ($pickup) {
+        $pickupConfigPath = Join-Path $env:TEMP "$($pickup.memberName -replace '[^a-zA-Z0-9_ -]','_').conf"
+        Set-Content -Path $pickupConfigPath -Value $pickup.configText -Encoding ascii
+        $ConfigPath = $pickupConfigPath
+        Write-Output "Konfigurace vyzvednuta pro '$($pickup.memberName)'."
+    }
+}
+
 if ($ConfigPath) {
     if (-not (Test-Path $ConfigPath)) {
         Write-Error "ConfigPath '$ConfigPath' neexistuje."
@@ -122,7 +148,7 @@ if ($ConfigPath) {
     }
 }
 else {
-    Write-Output "Žádný -ConfigPath nezadán - krok s instalací tunelu vynechán."
+    Write-Output "Žádný -Code ani -ConfigPath nezadán - krok s instalací tunelu vynechán."
 }
 
 Write-Output ""

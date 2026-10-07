@@ -43,8 +43,15 @@ public interface IRelayAdminService
     /// renders its own QR from it (same <c>QrImageGenerator</c> already used for the SecureApp-
     /// download QR), never round-tripping wg-easy's own SVG QR format. The relay's own wg-easy
     /// credential never reaches this device at all — only the resulting config text does.
+    ///
+    /// 2026-10-07: also returns a short-lived, one-time <c>PickupCode</c> (null only if the relay
+    /// somehow failed to mint one without erroring) redeemable at the relay's public
+    /// <c>GET /onboarding/pickup/{code}</c> with NO admin secret at all — see
+    /// <c>relay/ops/new-pc-onboarding.bat</c>'s own remarks. Lets a non-admin colleague self-onboard
+    /// a brand-new PC with just that code, never this device's admin secret and never a .conf file
+    /// handed over directly.
     /// </summary>
-    Task<string> CreateWireGuardClientAsync(Uri endpoint, string adminSecret, string memberName, CancellationToken ct = default);
+    Task<(string ConfigurationText, string? PickupCode)> CreateWireGuardClientAsync(Uri endpoint, string adminSecret, string memberName, CancellationToken ct = default);
 
     /// <summary>Every member with their admin-assigned role + hidden tabs (2026-09-24) — the data behind the "Správa členů" screen.</summary>
     Task<IReadOnlyList<ManagedDevice>> GetManagedDevicesAsync(Uri endpoint, string adminSecret, CancellationToken ct = default);
