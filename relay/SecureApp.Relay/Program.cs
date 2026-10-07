@@ -79,7 +79,15 @@ app.MapGet("/download", () =>
     var windowsAvailable = File.Exists(windowsPath);
     var windowsSize = windowsAvailable ? $"{new FileInfo(windowsPath).Length / 1024.0 / 1024.0:F0} MB" : null;
 
-    return Results.Content(DownloadPageHtml(androidAvailable, androidSize, windowsAvailable, windowsSize), "text/html; charset=utf-8");
+    // New-PC onboarding (2026-10-07, user's own ask after fighting the WireGuard GUI's tunnel-name
+    // validation on "PC v praci") — one .bat someone can download and double-click; it self-fetches
+    // new-pc-onboarding.ps1 from /download/onboarding.ps1 every run, so re-uploading the .ps1 here
+    // alone (same manual scp hand-off as the Windows zip, no redeploy needed) keeps every already-
+    // distributed copy of the .bat current without re-sending it. See relay/ops/README.md.
+    var onboardingBatPath = Path.Combine(downloadsDir, "new-pc-onboarding.bat");
+    var onboardingAvailable = File.Exists(onboardingBatPath) && File.Exists(Path.Combine(downloadsDir, "new-pc-onboarding.ps1"));
+
+    return Results.Content(DownloadPageHtml(androidAvailable, androidSize, windowsAvailable, windowsSize, onboardingAvailable), "text/html; charset=utf-8");
 });
 
 app.MapGet("/download/android", () =>
@@ -108,6 +116,50 @@ app.MapGet("/download/windows", () =>
         return Results.NotFound("Windows verze zatím není nahraná.");
 
     return Results.File(path, "application/zip", "SecureApp-Windows-portable.zip", enableRangeProcessing: true);
+});
+
+// New-PC onboarding (2026-10-07) — same manual-scp hand-off as /download/windows above, not a
+// routine release channel. Two files: the .bat someone actually downloads/runs, and the .ps1 it
+// self-fetches from the SIBLING route below every time it runs, so a single already-distributed
+// copy of the .bat always picks up whatever's newest here without being re-sent.
+app.MapGet("/download/onboarding", () =>
+{
+    var path = Path.Combine(downloadsDir, "new-pc-onboarding.bat");
+    if (!File.Exists(path))
+        return Results.NotFound("Onboarding skript zatím není nahraný.");
+
+    return Results.File(path, "application/octet-stream", "new-pc-onboarding.bat");
+});
+
+app.MapGet("/download/onboarding.ps1", () =>
+{
+    var path = Path.Combine(downloadsDir, "new-pc-onboarding.ps1");
+    if (!File.Exists(path))
+        return Results.NotFound("Onboarding skript zatím není nahraný.");
+
+    return Results.File(path, "application/octet-stream", "new-pc-onboarding.ps1");
+});
+
+// Generic ops-file upload (2026-10-07) — downloadsDir is root-owned (the container writes it, same
+// as data/ generally), so a plain `scp` as dvorakv1 gets "Permission denied"; this lets the
+// CONTAINER itself (running as root) write there instead, same admin-secret gate as every other
+// /admin/* route. `name` is a bare filename only — never a path, no traversal — written directly
+// under downloadsDir. Used for new-pc-onboarding.bat/.ps1 and anything similar in the future, so
+// this doesn't need a dedicated endpoint per file the way Android/Windows already have.
+app.MapPost("/admin/upload/ops", async (HttpRequest request, string name) =>
+{
+    if (!IsAdminAuthorized(request, adminSecret))
+        return Results.Unauthorized();
+
+    if (string.IsNullOrWhiteSpace(name) || name.Contains("..") || name.Contains('/') || name.Contains('\\')
+        || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+        return Results.BadRequest("Invalid 'name'.");
+
+    var path = Path.Combine(downloadsDir, name);
+    await using (var stream = File.Create(path))
+        await request.Body.CopyToAsync(stream);
+
+    return Results.Ok(new { uploaded = true, name, sizeBytes = new FileInfo(path).Length });
 });
 
 // Self-update (2026-09-23) — the in-app update check reads this; unauthenticated, same reasoning
@@ -1207,7 +1259,7 @@ static bool TryGetDeviceAuth(HttpRequest request, RelayDatabase db, out Guid dev
 }
 
 /// <summary>Plain, dependency-free HTML — no static-file middleware/Razor set up in this minimal-API project, and this is one small page, so an inline string is the simplest honest option.</summary>
-static string DownloadPageHtml(bool androidAvailable, string? androidSize, bool windowsAvailable, string? windowsSize)
+static string DownloadPageHtml(bool androidAvailable, string? androidSize, bool windowsAvailable, string? windowsSize, bool onboardingAvailable)
 {
     var androidSection = androidAvailable
         ? $"""<a class="btn" href="/download/android">Stáhnout pro Android ({androidSize})</a>"""
@@ -1220,6 +1272,18 @@ static string DownloadPageHtml(bool androidAvailable, string? androidSize, bool 
             <ol>
                 <li>Stáhněte .zip tlačítkem výše a celý rozbalte (pravým tlačítkem → Extrahovat vše).</li>
                 <li>Ve vybalené složce spusťte <strong>SecureApp.Presentation.exe</strong> — instalace ani admin práva nejsou potřeba.</li>
+            </ol>
+            """
+        : "";
+
+    var onboardingSection = onboardingAvailable
+        ? $$"""
+            <h2>Nové PC (WireGuard + SecureApp najednou)</h2>
+            <p class="muted">Pro nový/firemní počítač, který ještě nemá ani WireGuard, ani SecureApp.</p>
+            <a class="btn" href="/download/onboarding">Stáhnout instalační .bat</a>
+            <ol>
+                <li>Stáhněte .bat tlačítkem výše a uložte ho do stejné složky jako staženou WireGuard konfiguraci (.conf).</li>
+                <li>Dvakrát klikněte na stažený .bat — vyžádá si práva správce a sám doinstaluje, co chybí.</li>
             </ol>
             """
         : "";
@@ -1252,6 +1316,7 @@ static string DownloadPageHtml(bool androidAvailable, string? androidSize, bool 
             <li>Zadejte jméno a e-mail a stiskněte <strong>Aktivovat</strong> — registrace proběhne rovnou, bez čekání.</li>
         </ol>
         {{windowsSection}}
+        {{onboardingSection}}
         <p class="muted">Tato stránka je dostupná jen v domácí síti / přes VPN, ne z veřejného internetu.</p>
         </body>
         </html>
