@@ -576,6 +576,25 @@ public sealed class RelayDatabase
         return updateCommand.ExecuteNonQuery() > 0 ? (configText, memberName) : null;
     }
 
+    /// <summary>
+    /// Read-only check for a pickup code's validity (2026-10-08, user's own ask: a single clickable
+    /// link that serves a pre-filled .bat instead of making someone type a 20-char code by hand).
+    /// Unlike <see cref="TryConsumeWireGuardPickupCode"/>, this never consumes the code — it only lets
+    /// the download route decide whether to hand out a customized .bat or a 404, so a stale/expired
+    /// link fails immediately instead of silently serving a script that will fail later when it
+    /// actually tries to redeem the code.
+    /// </summary>
+    public bool IsWireGuardPickupCodeValid(string code)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT 1 FROM wireguard_pickup_codes WHERE code = @code AND consumed_at_utc IS NULL AND expires_at_utc > @now";
+        command.Parameters.AddWithValue("@code", code);
+        command.Parameters.AddWithValue("@now", Format(DateTimeOffset.UtcNow));
+        using var reader = command.ExecuteReader();
+        return reader.Read();
+    }
+
     /// <summary>Records a freshly-created wg-easy peer as unconfirmed — see <c>pending_wireguard_peers</c>'s own schema remarks.</summary>
     public void AddPendingWireGuardPeer(string wgClientId, string name)
     {

@@ -631,13 +631,15 @@
                         <Button Text="Vytvořit WireGuard přístup" Style="{StaticResource SecondaryButton}" Command="{Binding CreateWireGuardAccessCommand}" IsEnabled="{Binding CanCreateWireGuardAccess}" />
                         <Image Source="{Binding WireGuardQrImage}" HeightRequest="180" WidthRequest="180" HorizontalOptions="Center" IsVisible="{Binding HasWireGuardQrImage}" />
                         <Button Text="⬇ Stáhnout .conf (pro PC)" Style="{StaticResource SecondaryButton}" Command="{Binding DownloadWireGuardConfigCommand}" IsVisible="{Binding HasWireGuardConfigText}" />
-                        <!-- 2026-10-07: samoobslužná instalace pro ne-admin kolegu - kód + odkaz na new-pc-onboarding.bat, bez admin hesla a bez předávání .conf souboru. -->
-                        <Border IsVisible="{Binding HasWireGuardPickupCode}" Stroke="Gray" StrokeThickness="1" Padding="10" Margin="0,4,0,0">
+                        <!-- 2026-10-08: samoobslužná instalace pro ne-admin kolegu - JEDEN odkaz (kód zabudovaný
+                             uvnitř staženého .bat, viz /download/onboarding/{code} v relay Program.cs), bez
+                             opisování kódu, bez admin hesla a bez předávání .conf souboru. -->
+                        <Border IsVisible="{Binding HasWireGuardPickupLink}" Stroke="Gray" StrokeThickness="1" Padding="10" Margin="0,4,0,0">
                             <VerticalStackLayout Spacing="4">
-                                <Label Text="Kód pro samoobslužnou instalaci (24h, jen jednou):" FontSize="9" TextColor="Gray" />
-                                <Label Text="{Binding WireGuardPickupCode}" FontSize="16" FontAttributes="Bold" />
-                                <Button Text="Kopírovat kód" Style="{StaticResource SecondaryButton}" Command="{Binding CopyWireGuardPickupCodeCommand}" />
-                                <Label Text="Kolegovi pošlete tento kód + odkaz: relay-adresa/download/onboarding (stáhne new-pc-onboarding.bat, spustí, zadá kód)." FontSize="9" TextColor="Gray" LineBreakMode="WordWrap" />
+                                <Label Text="Odkaz pro samoobslužnou instalaci (24h, jen jednou):" FontSize="9" TextColor="Gray" />
+                                <Label Text="{Binding WireGuardPickupLink}" FontSize="12" FontAttributes="Bold" LineBreakMode="WordWrap" />
+                                <Button Text="Kopírovat odkaz" Style="{StaticResource SecondaryButton}" Command="{Binding CopyWireGuardPickupCodeCommand}" />
+                                <Label Text="Kolegovi pošlete jen tento odkaz — klikne, stáhne se new-pc-onboarding.bat s kódem už uvnitř, spustí, nic neopisuje." FontSize="9" TextColor="Gray" LineBreakMode="WordWrap" />
                             </VerticalStackLayout>
                         </Border>
                         <Label Text="{Binding WireGuardStatusText}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding HasWireGuardStatus}" />

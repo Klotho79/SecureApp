@@ -140,6 +140,38 @@ app.MapGet("/download/onboarding.ps1", () =>
     return Results.File(path, "application/octet-stream", "new-pc-onboarding.ps1");
 });
 
+// Code-prefilled onboarding .bat (2026-10-08, user's own ask: "to fakt nebude nikdo dělat opisovat
+// 20 mistny kod do pocitace" — nobody will actually type a 20-char code into a PC). One link does
+// everything the plain /download/onboarding + typed-code flow used to need two steps for: this
+// serves the SAME .bat template with the pickup code already baked in as a default, so a
+// double-click needs zero typing. Public, same exposure class as every other /download/* route —
+// it doesn't expose anything a holder of the code couldn't already get via the typed-code path,
+// since the code itself (not this route) is still the only thing that's one-time/expiring; this
+// route only PEEKS validity (IsWireGuardPickupCodeValid, never consumes) so a stale/already-used
+// link fails immediately with a clear message instead of silently handing out a .bat that would
+// only fail later when new-pc-onboarding.ps1 actually tries to redeem the code.
+app.MapGet("/download/onboarding/{code}", (string code, RelayDatabase db) =>
+{
+    if (!db.IsWireGuardPickupCodeValid(code))
+        return Results.NotFound("Odkaz už není platný (kód byl použitý nebo mu vypršela platnost).");
+
+    var path = Path.Combine(downloadsDir, "new-pc-onboarding.bat");
+    if (!File.Exists(path))
+        return Results.NotFound("Onboarding skript zatím není nahraný.");
+
+    // Inject right after the existing `set "CODE=%~1"` line: a CLI-arg override (power-user/admin
+    // use) still wins since it runs first; this only fills CODE when no arg was given, which also
+    // means the existing interactive `set /p` prompt further down never fires (CODE is non-empty).
+    var template = File.ReadAllText(path);
+    const string anchor = "set \"CODE=%~1\"";
+    if (!template.Contains(anchor))
+        return Results.Problem("Onboarding .bat šablona neobsahuje očekávaný CODE marker — nelze vložit kód.", statusCode: 500);
+
+    var customized = template.Replace(anchor, $"{anchor}\nif \"%CODE%\"==\"\" set \"CODE={code}\"");
+    var bytes = System.Text.Encoding.UTF8.GetBytes(customized);
+    return Results.File(bytes, "application/octet-stream", "new-pc-onboarding.bat");
+});
+
 // Generic ops-file upload (2026-10-07) — downloadsDir is root-owned (the container writes it, same
 // as data/ generally), so a plain `scp` as dvorakv1 gets "Permission denied"; this lets the
 // CONTAINER itself (running as root) write there instead, same admin-secret gate as every other

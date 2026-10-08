@@ -138,20 +138,34 @@ public sealed partial class SettingsViewModel
     /// PC with ONLY relay/ops/new-pc-onboarding.bat and this short code — never this device's admin
     /// secret, never a .conf file handed over directly. Redeemable exactly once at the relay's
     /// public <c>GET /onboarding/pickup/{code}</c>, good for 24h (see RelayDatabase.CreateWireGuardPickupCode).
+    ///
+    /// 2026-10-08, user's own pushback: "to fakt nebude nikdo dělat opisovat 20 mistny kod do
+    /// pocitace" (nobody will actually type a 20-char code into a PC) — kept as the thing the LINK
+    /// below is built from, but no longer shown/copied on its own; see WireGuardPickupLink.
     /// </summary>
     [ObservableProperty]
     public partial string? WireGuardPickupCode { get; set; }
 
-    public bool HasWireGuardPickupCode => !string.IsNullOrEmpty(WireGuardPickupCode);
+    /// <summary>
+    /// 2026-10-08: a single clickable link — <c>{relay}/download/onboarding/{code}</c> — that serves
+    /// the SAME onboarding .bat with the pickup code already baked in, so a colleague never types
+    /// anything. Built the same ws://→http(s):// scheme-swap as <see cref="UpdateDownloadShareUrl"/>,
+    /// just from the <see cref="Uri"/> already resolved in <see cref="CreateWireGuardAccessAsync"/>
+    /// rather than re-parsing RelayEndpointText.
+    /// </summary>
+    [ObservableProperty]
+    public partial string? WireGuardPickupLink { get; set; }
 
-    partial void OnWireGuardPickupCodeChanged(string? value) => OnPropertyChanged(nameof(HasWireGuardPickupCode));
+    public bool HasWireGuardPickupLink => !string.IsNullOrEmpty(WireGuardPickupLink);
+
+    partial void OnWireGuardPickupLinkChanged(string? value) => OnPropertyChanged(nameof(HasWireGuardPickupLink));
 
     [RelayCommand]
     private async Task CopyWireGuardPickupCodeAsync()
     {
-        if (!HasWireGuardPickupCode) return;
-        await Microsoft.Maui.ApplicationModel.DataTransfer.Clipboard.SetTextAsync(WireGuardPickupCode);
-        WireGuardStatusText = "Kód zkopírován — pošlete ho kolegovi (např. zprávou), spolu s odkazem na stažení .bat.";
+        if (!HasWireGuardPickupLink) return;
+        await Microsoft.Maui.ApplicationModel.DataTransfer.Clipboard.SetTextAsync(WireGuardPickupLink);
+        WireGuardStatusText = "Odkaz zkopírován — pošlete ho kolegovi (např. zprávou). Stačí na něj kliknout a spustit stažený .bat, nic neopisuje.";
     }
 
     [ObservableProperty]
@@ -169,6 +183,7 @@ public sealed partial class SettingsViewModel
         WireGuardQrImage = null;
         WireGuardConfigText = null;
         WireGuardPickupCode = null;
+        WireGuardPickupLink = null;
 
         if (string.IsNullOrWhiteSpace(NewMemberNameText))
         {
@@ -201,8 +216,11 @@ public sealed partial class SettingsViewModel
             WireGuardQrImage = Microsoft.Maui.Controls.ImageSource.FromStream(() => new MemoryStream(png));
             WireGuardConfigText = configText;
             WireGuardPickupCode = pickupCode;
+            WireGuardPickupLink = pickupCode is not null
+                ? new UriBuilder(endpoint) { Scheme = endpoint.Scheme == "wss" ? "https" : "http", Port = endpoint.Port, Path = $"/download/onboarding/{pickupCode}" }.Uri.ToString()
+                : null;
             WireGuardStatusText = pickupCode is not null
-                ? $"Hotovo — ukažte QR novému členovi ({NewMemberNameText}), NEBO mu pošlete kód níže + odkaz na new-pc-onboarding.bat (relay /download/onboarding) pro samoobslužnou instalaci na PC."
+                ? $"Hotovo — ukažte QR novému členovi ({NewMemberNameText}), NEBO mu pošlete odkaz níže pro samoobslužnou instalaci na PC (stačí na něj kliknout a spustit stažený .bat, nic neopisuje)."
                 : $"Hotovo — ukažte tenhle QR novému členovi ({NewMemberNameText}), naskenuje ho v appce WireGuard.";
             _lastWireGuardMemberName = NewMemberNameText;
             NewMemberNameText = string.Empty;
