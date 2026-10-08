@@ -11,4 +11,7 @@ namespace SecureApp.Domain.ValueObjects;
 /// permanently queued for a device that never came back) instead of it only being discoverable by
 /// SSHing into the relay and querying SQLite by hand.
 /// </summary>
-public sealed record RegisteredDevice(Guid Id, string DisplayName, DateTimeOffset CreatedAtUtc, string? DirectoryDisplayName, DateTimeOffset? LastActiveAtUtc, int PendingOutboxCount);
+/// <param name="Platform">2026-10-08 — the OS-reported <c>DeviceInfo.Current.Platform</c> string (Android/iOS/WinUI/MacCatalyst), null for a device on an older build that never published it.</param>
+/// <param name="ArimContactId">2026-10-08 — the "Soukromé kontakty ARIM" row this device reconciled against (<c>SettingsViewModel</c>'s Save flow), null if never reconciled. Lets the admin list GROUP devices by person instead of listing unrelated rows.</param>
+/// <param name="ArimContactName">Denormalized alongside <see cref="ArimContactId"/> purely so the admin UI can group/label without a second lookup.</param>
+public sealed record RegisteredDevice(Guid Id, string DisplayName, DateTimeOffset CreatedAtUtc, string? DirectoryDisplayName, DateTimeOffset? LastActiveAtUtc, int PendingOutboxCount, string? Platform = null, Guid? ArimContactId = null, string? ArimContactName = null);

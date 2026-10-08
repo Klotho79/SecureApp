@@ -52,8 +52,27 @@
                     <VerticalStackLayout Spacing="8">
                         <Label Text="Účet" Style="{StaticResource SectionHeader}" Margin="0" />
 
-                        <Label Text="Zobrazované jméno" FontAttributes="Bold" />
-                        <Entry Text="{Binding DisplayName}" Placeholder="Vaše jméno" />
+                        <!-- 2026-10-08: nudge pro existující zařízení, co mají jen starý Nick/Role pár,
+                             ať doplní Jméno/Příjmení (jinak porovnání s kontakty ARIM níže nemá proti
+                             čemu srovnávat). Mizí samo, jakmile jsou obě pole vyplněná a uložená. -->
+                        <Border IsVisible="{Binding HasIncompleteProfile}" Stroke="Gray" StrokeThickness="1" Padding="10" Margin="0,0,0,4">
+                            <Label Text="Nová verze přidala pole Jméno, Příjmení a Telefon — vyplňte je prosím níže a uložte, ať vás appka umí spárovat s kontaktem ARIM." FontSize="10" LineBreakMode="WordWrap" />
+                        </Border>
+
+                        <Label Text="Jméno" FontAttributes="Bold" />
+                        <Entry Text="{Binding ProfileFirstName}" Placeholder="Jméno" />
+
+                        <Label Text="Příjmení" FontAttributes="Bold" Margin="0,6,0,0" />
+                        <Entry Text="{Binding ProfileLastName}" Placeholder="Příjmení" />
+
+                        <Label Text="Telefon" FontAttributes="Bold" Margin="0,6,0,0" />
+                        <Entry Text="{Binding ProfilePhone}" Placeholder="Telefon" Keyboard="Telephone" />
+
+                        <Label Text="E-mail" FontAttributes="Bold" Margin="0,6,0,0" />
+                        <Entry Text="{Binding ProfileEmail}" Placeholder="E-mail" Keyboard="Email" />
+
+                        <Label Text="Nick v chatu (volitelné)" FontAttributes="Bold" Margin="0,6,0,0" />
+                        <Entry Text="{Binding DisplayName}" Placeholder="Přezdívka pro chat — necháte-li prázdné, zobrazí se Jméno Příjmení" />
 
                         <Label Text="Role" FontAttributes="Bold" Margin="0,8,0,0" />
                         <Label Text="{Binding SelectedRole}" FontSize="13" />
@@ -65,6 +84,7 @@
                         <Button Text="Uložit" Command="{Binding SaveCommand}" />
                         <Label Text="Uloženo." IsVisible="{Binding IsSaved}" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" />
                         <Label Text="{Binding ErrorMessage}" IsVisible="{Binding HasErrorMessage}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
+                        <Label Text="{Binding ArimReconciliationStatusText}" IsVisible="{Binding HasArimReconciliationStatus}" FontSize="9.5" TextColor="Gray" LineBreakMode="WordWrap" />
                     </VerticalStackLayout>
                 </Border>
 

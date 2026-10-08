@@ -58,10 +58,21 @@ public sealed class HttpContactDirectoryService : IContactDirectoryService
         // like the shared-library-key auto-sync behaves differently on an old build.
         var appVersion = $"{Microsoft.Maui.ApplicationModel.AppInfo.Current.VersionString} ({Microsoft.Maui.ApplicationModel.AppInfo.Current.BuildString})";
 
+        // FormalName (2026-10-08) — Jméno+Příjmení, null until the device has both set (see User's
+        // own remarks). Platform — DeviceInfo.Current.Platform's string form (Android/iOS/WinUI/
+        // MacCatalyst), for the admin device list's per-platform coverage view.
+        var formalName = _currentUserService.Current.FormalName;
         using var request = new HttpRequestMessage(HttpMethod.Post, uri)
         {
             Content = JsonContent.Create(
-                new { DisplayName = _currentUserService.Current.DisplayName, PublicKeyBase64 = Convert.ToBase64String(publicKey), AppVersion = appVersion },
+                new
+                {
+                    DisplayName = _currentUserService.Current.DisplayName,
+                    PublicKeyBase64 = Convert.ToBase64String(publicKey),
+                    AppVersion = appVersion,
+                    FormalName = string.IsNullOrWhiteSpace(formalName) ? null : formalName,
+                    Platform = Microsoft.Maui.Devices.DeviceInfo.Current.Platform.ToString(),
+                },
                 options: HttpJsonOptions)
         };
         await AddDeviceAuthAsync(request, ct);
@@ -80,7 +91,19 @@ public sealed class HttpContactDirectoryService : IContactDirectoryService
         response.EnsureSuccessStatusCode();
 
         var dtos = await response.Content.ReadFromJsonAsync<List<DirectoryMemberDto>>(HttpJsonOptions, ct) ?? [];
-        return dtos.Select(d => new DirectoryMember(d.DeviceId, d.DisplayName, Convert.FromBase64String(d.PublicKeyBase64))).ToList();
+        return dtos.Select(d => new DirectoryMember(d.DeviceId, d.DisplayName, Convert.FromBase64String(d.PublicKeyBase64), d.FormalName)).ToList();
+    }
+
+    public async Task LinkArimContactAsync(Guid arimContactId, CancellationToken ct = default)
+    {
+        var endpoint = await GetHttpEndpointAsync(ct);
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(endpoint, "directory/link-arim-contact"))
+        {
+            Content = JsonContent.Create(new { ArimContactId = arimContactId }, options: HttpJsonOptions)
+        };
+        await AddDeviceAuthAsync(request, ct);
+        using var response = await _httpClient.SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
     }
 
     private async Task<Uri> GetHttpEndpointAsync(CancellationToken ct)
@@ -110,5 +133,5 @@ public sealed class HttpContactDirectoryService : IContactDirectoryService
         request.Headers.Add("X-Device-Secret", Encoding.UTF8.GetString(secretBytes));
     }
 
-    private sealed record DirectoryMemberDto(Guid DeviceId, string DisplayName, string PublicKeyBase64);
+    private sealed record DirectoryMemberDto(Guid DeviceId, string DisplayName, string PublicKeyBase64, string? FormalName = null);
 }

@@ -12,4 +12,5 @@ namespace SecureApp.Domain.ValueObjects;
 /// for the Logbook's own shared reference catalogs — plain reference data, not a clinical/personal
 /// document, so it doesn't need the shared library's own encryption key.
 /// </summary>
-public sealed record SharedContact(Guid Id, string DisplayName, string? Phone, string? Note, int SortOrder, DateTimeOffset CreatedAtUtc);
+/// <param name="Email">2026-10-08 — used alongside Name/Phone to reconcile a device's own profile against this list (<c>SettingsViewModel</c>'s ARIM-matching save flow); null for every pre-existing row.</param>
+public sealed record SharedContact(Guid Id, string DisplayName, string? Phone, string? Note, int SortOrder, DateTimeOffset CreatedAtUtc, string? Email = null);

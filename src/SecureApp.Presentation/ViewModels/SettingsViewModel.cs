@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -29,6 +30,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly ISharedLibraryService _sharedLibraryService;
     private readonly IRelayAdminService _relayAdminService;
     private readonly IContactDirectoryService _contactDirectoryService;
+    private readonly ISharedContactService _sharedContactService;
     private readonly IChatSessionRepository _chatSessionRepository;
     private readonly IDiagnosticsReporter _diagnosticsReporter;
     private readonly IOpicentrumSyncService _opicentrumSyncService;
@@ -55,6 +57,44 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     public partial string DisplayName { get; set; }
+
+    /// <summary>
+    /// 2026-10-08, user's own ask: reconcile this device's own identity against "Soukromé kontakty
+    /// ARIM" on every profile Save. ProfileFirstName/ProfileLastName/ProfilePhone/ProfileEmail are
+    /// NEW fields (User.FirstName/LastName/Phone/Email) — <see cref="DisplayName"/> above stays
+    /// exactly what it always was (the optional chat nick; User.DisplayName itself now falls back to
+    /// FirstName+LastName when the nick is empty, see User's own remarks, so this page's existing
+    /// DisplayName field needs zero behavior change).
+    /// </summary>
+    [ObservableProperty]
+    public partial string ProfileFirstName { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string ProfileLastName { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string ProfilePhone { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string ProfileEmail { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 2026-10-08 — shown once this build ships, for every device that only ever had the old
+    /// DisplayName/Role pair: a nudge to fill in the new profile fields so ARIM reconciliation
+    /// (<see cref="SaveAsync"/>) has something to match against. Recomputed in LoadAsync; clears
+    /// itself the moment both Jméno and Příjmení are filled in (no separate "dismiss" state needed —
+    /// filling the fields in and saving IS the dismissal).
+    /// </summary>
+    [ObservableProperty]
+    public partial bool HasIncompleteProfile { get; set; }
+
+    [ObservableProperty]
+    public partial string? ArimReconciliationStatusText { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasArimReconciliationStatus { get; set; }
+
+    partial void OnArimReconciliationStatusTextChanged(string? value) => HasArimReconciliationStatus = !string.IsNullOrEmpty(value);
 
     [ObservableProperty]
     public partial Role SelectedRole { get; set; }
@@ -229,6 +269,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         ISharedLibraryService sharedLibraryService,
         IRelayAdminService relayAdminService,
         IContactDirectoryService contactDirectoryService,
+        ISharedContactService sharedContactService,
         IDiagnosticsReporter diagnosticsReporter,
         IChatSessionRepository chatSessionRepository,
         IOpicentrumSyncService opicentrumSyncService,
@@ -246,6 +287,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         _sharedLibraryService = sharedLibraryService ?? throw new ArgumentNullException(nameof(sharedLibraryService));
         _relayAdminService = relayAdminService ?? throw new ArgumentNullException(nameof(relayAdminService));
         _contactDirectoryService = contactDirectoryService ?? throw new ArgumentNullException(nameof(contactDirectoryService));
+        _sharedContactService = sharedContactService ?? throw new ArgumentNullException(nameof(sharedContactService));
         _diagnosticsReporter = diagnosticsReporter ?? throw new ArgumentNullException(nameof(diagnosticsReporter));
         _chatSessionRepository = chatSessionRepository ?? throw new ArgumentNullException(nameof(chatSessionRepository));
         _opicentrumSyncService = opicentrumSyncService ?? throw new ArgumentNullException(nameof(opicentrumSyncService));
@@ -340,7 +382,12 @@ public sealed partial class SettingsViewModel : ObservableObject
     private async Task LoadAsync()
     {
         await _currentUserService.InitializeAsync();
-        DisplayName = _currentUserService.Current.DisplayName;
+        DisplayName = _currentUserService.Current.Nick;
+        ProfileFirstName = _currentUserService.Current.FirstName ?? string.Empty;
+        ProfileLastName = _currentUserService.Current.LastName ?? string.Empty;
+        ProfilePhone = _currentUserService.Current.Phone ?? string.Empty;
+        ProfileEmail = _currentUserService.Current.Email ?? string.Empty;
+        HasIncompleteProfile = string.IsNullOrWhiteSpace(ProfileFirstName) || string.IsNullOrWhiteSpace(ProfileLastName);
         SelectedRole = _currentUserService.Current.Role;
         // Both set explicitly here, not left to OnSelectedRoleChanged alone: Role.Admin is the
         // enum's default (0), so on an Admin device the assignment above is a same-value no-op —
@@ -618,6 +665,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         try
         {
             await _currentUserService.SetCurrentUserAsync(DisplayName, SelectedRole);
+            await _currentUserService.UpdateProfileAsync(ProfileFirstName, ProfileLastName, ProfilePhone, ProfileEmail);
+            HasIncompleteProfile = string.IsNullOrWhiteSpace(ProfileFirstName) || string.IsNullOrWhiteSpace(ProfileLastName);
             IsSaved = true;
 
             // 2026-09-09: a real, repeatedly-reported bug — PublishSelfAsync (what actually pushes
@@ -634,10 +683,111 @@ public sealed partial class SettingsViewModel : ObservableObject
                 try { await _contactDirectoryService.PublishSelfAsync(); }
                 catch { /* best-effort — the next reconnect's own PublishSelfAsync call is a safety net */ }
             }
+
+            await ReconcileArimContactAsync();
         }
         catch (Exception ex)
         {
             ErrorMessage = $"Nepodařilo se uložit: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// 2026-10-08, user's own ask: reconcile this device's own profile against "Soukromé kontakty
+    /// ARIM" on every Save. Match = formal name ("Příjmení Jméno", ARIM's own convention) OR phone
+    /// OR email — any one hit counts. Deliberately NOT gated by RbacAction.EditContact (every role
+    /// reconciles its own identity; that RBAC gate is only for manually editing OTHER people's
+    /// contacts in the Kontakty tab). Ambiguous (>1 match) is deliberately left alone rather than
+    /// guessing which one is "really" this device — rare enough (two ARIM rows sharing a phone/email)
+    /// not to warrant its own UI.
+    ///
+    /// Uses <c>Shell.Current.CurrentPage.DisplayAlert</c> directly rather than this ViewModel's usual
+    /// MAUI-free-with-an-event split (see this class's own remarks) — a deliberate scope call: adding
+    /// a whole new event/page-code-behind round trip just for two confirm dialogs, for a ViewModel
+    /// that already isn't fully MAUI-free (see OnIsLogbookVisibleChanged et al.), wasn't worth it here.
+    /// </summary>
+    private async Task ReconcileArimContactAsync()
+    {
+        ArimReconciliationStatusText = null;
+        if (string.IsNullOrWhiteSpace(ProfileFirstName) || string.IsNullOrWhiteSpace(ProfileLastName))
+            return;
+
+        var formalName = $"{ProfileLastName.Trim()} {ProfileFirstName.Trim()}";
+        try
+        {
+            var all = await _sharedContactService.FetchAsync();
+            var arimMatches = all
+                .Where(c => string.Equals(c.Note, "ARIM", StringComparison.Ordinal))
+                .Where(c =>
+                    string.Equals(c.DisplayName, formalName, StringComparison.OrdinalIgnoreCase) ||
+                    (!string.IsNullOrWhiteSpace(ProfilePhone) && string.Equals(c.Phone, ProfilePhone, StringComparison.OrdinalIgnoreCase)) ||
+                    (!string.IsNullOrWhiteSpace(ProfileEmail) && string.Equals(c.Email, ProfileEmail, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+
+            var page = Shell.Current?.CurrentPage;
+            if (arimMatches.Count == 1)
+            {
+                var match = arimMatches[0];
+
+                // Links this device to the matched contact regardless of whether anything else needs
+                // fixing (2026-10-08, user's own ask: "je treba aby bylo jasno jaky uzivatel apku
+                // pouziva... uz je na mobilu neni na pc" — an admin overview grouping devices by
+                // person). Best-effort, same tolerance PublishSelfAsync's own callers already use.
+                try { await _contactDirectoryService.LinkArimContactAsync(match.Id); } catch { /* best-effort */ }
+
+                var alreadyInSync =
+                    string.Equals(match.DisplayName, formalName, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(match.Phone ?? string.Empty, ProfilePhone, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(match.Email ?? string.Empty, ProfileEmail, StringComparison.OrdinalIgnoreCase);
+                if (alreadyInSync || page is null) return;
+
+                var useMyProfile = await page.DisplayAlert(
+                    "Neshoda s kontaktem ARIM",
+                    $"Váš profil: {formalName}, {ProfilePhone}, {ProfileEmail}\nKontakt ARIM: {match.DisplayName}, {match.Phone}, {match.Email}\n\nKterý je správně?",
+                    "Můj profil", "Kontakt ARIM");
+
+                if (useMyProfile)
+                {
+                    var updated = match with { DisplayName = formalName, Phone = ProfilePhone, Email = ProfileEmail };
+                    ArimReconciliationStatusText = await _sharedContactService.PublishAsync(updated)
+                        ? "Kontakt ARIM aktualizován podle vašeho profilu."
+                        : "Nepodařilo se aktualizovat kontakt ARIM.";
+                }
+                else
+                {
+                    // Splitting match.DisplayName back into First/Last reliably isn't safe (multi-word
+                    // surnames etc.) — only Phone/Email, which ARE single unambiguous fields, get
+                    // adopted locally. Jméno/Příjmení stay as the user typed them.
+                    await _currentUserService.UpdateProfileAsync(null, null, match.Phone, match.Email);
+                    ProfilePhone = match.Phone ?? string.Empty;
+                    ProfileEmail = match.Email ?? string.Empty;
+                    ArimReconciliationStatusText = "Telefon/e-mail převzaty z kontaktu ARIM.";
+                }
+            }
+            else if (arimMatches.Count == 0 && page is not null)
+            {
+                var create = await page.DisplayAlert(
+                    "Nenalezen kontakt ARIM",
+                    $"Přidat se do Soukromých kontaktů ARIM jako '{formalName}'?",
+                    "Přidat", "Ne");
+                if (create)
+                {
+                    var created = new SharedContact(Guid.NewGuid(), formalName, ProfilePhone, "ARIM", 0, DateTimeOffset.UtcNow, ProfileEmail);
+                    if (await _sharedContactService.PublishAsync(created))
+                    {
+                        ArimReconciliationStatusText = "Přidáno do Soukromých kontaktů ARIM.";
+                        try { await _contactDirectoryService.LinkArimContactAsync(created.Id); } catch { /* best-effort */ }
+                    }
+                    else
+                    {
+                        ArimReconciliationStatusText = "Nepodařilo se přidat kontakt ARIM.";
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ArimReconciliationStatusText = $"Porovnání s kontakty ARIM se nezdařilo: {ex.Message}";
         }
     }
 
@@ -660,6 +810,12 @@ public sealed partial class SettingsViewModel : ObservableObject
         try
         {
             _pendingActivationRequestId = await _messageTransport.RequestActivationAsync(endpoint, _currentUserService.Current.DisplayName, ActivationEmailText);
+            // 2026-10-08, user's own ask: this is the one place a device's email is already typed
+            // in locally (previously sent to the relay's activation_requests table but never kept
+            // here) — persist it onto the profile now so ARIM reconciliation has it to match against
+            // without needing any new relay round-trip.
+            await _currentUserService.UpdateProfileAsync(null, null, null, ActivationEmailText);
+            ProfileEmail = ActivationEmailText;
             ActivationStatusText = "Aktivace probíhá…";
             StartActivationPolling(endpoint);
         }

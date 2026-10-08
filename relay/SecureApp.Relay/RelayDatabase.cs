@@ -63,7 +63,10 @@ public sealed record RegisteredDeviceRecord(
     DateTimeOffset CreatedAtUtc,
     string? DirectoryDisplayName,
     DateTimeOffset? LastActiveAtUtc,
-    int PendingOutboxCount);
+    int PendingOutboxCount,
+    string? Platform = null,
+    Guid? ArimContactId = null,
+    string? ArimContactName = null);
 
 /// <summary>
 /// Plain SQLite storage (not SQLCipher) for the relay's own bookkeeping — devices, invites, and
@@ -286,6 +289,26 @@ public sealed class RelayDatabase
         if (!ColumnExists(connection, "directory_entries", "app_version"))
             Execute(connection, "ALTER TABLE directory_entries ADD COLUMN app_version TEXT NULL");
 
+        // formal_name (2026-10-08) — Jméno+Příjmení, published alongside display_name (the nick-or-
+        // fallback string) so a peer's chat-list row can reveal it on long-press without touching the
+        // QR/contact-card handshake, which is already at capacity (see QrBlobCodec's own remarks).
+        // Null for a device that hasn't set Jméno/Příjmení yet (pre-2026-10-08 profile).
+        if (!ColumnExists(connection, "directory_entries", "formal_name"))
+            Execute(connection, "ALTER TABLE directory_entries ADD COLUMN formal_name TEXT NULL");
+
+        // platform + arim_contact_id (2026-10-08, user's own ask: "je treba aby bylo jasno jaky
+        // uzivatel apku pouziva... uz je na mobilu neni na pc ci iphone" — an admin overview of which
+        // PLATFORMS a known person already has the app on). platform is the OS-reported
+        // DeviceInfo.Current.Platform string (Android/iOS/WinUI/MacCatalyst); arim_contact_id links
+        // this device to the "Soukromé kontakty ARIM" row it successfully reconciled against
+        // (SettingsViewModel's Save flow), so the admin device list can GROUP devices by person
+        // instead of listing them as unrelated rows. Both null until a device running this build (or
+        // later) actually publishes/reconciles.
+        if (!ColumnExists(connection, "directory_entries", "platform"))
+            Execute(connection, "ALTER TABLE directory_entries ADD COLUMN platform TEXT NULL");
+        if (!ColumnExists(connection, "directory_entries", "arim_contact_id"))
+            Execute(connection, "ALTER TABLE directory_entries ADD COLUMN arim_contact_id TEXT NULL");
+
         // Document Library content-approval workflow (2026-10-01) — layered ALONGSIDE library_files,
         // never migrating it: an existing library_files row with no matching row here simply has no
         // review history, still found the normal way via GET /library/files. Each version's actual
@@ -454,6 +477,11 @@ public sealed class RelayDatabase
                 updated_at_utc    TEXT NOT NULL
             )
             """);
+        // email (2026-10-08) — used alongside display_name/phone to let a device reconcile its own
+        // profile against this list (SettingsViewModel's ARIM-matching save flow). Same guarded-ALTER
+        // pattern as device_policy.document_reviewer above (SQLite has no ADD COLUMN IF NOT EXISTS).
+        if (!ColumnExists(connection, "shared_contacts", "email"))
+            Execute(connection, "ALTER TABLE shared_contacts ADD COLUMN email TEXT NULL");
         // Identity backup (2026-09-29, disaster recovery — see IIdentityBackupService's own remarks).
         // lookup_key is SHA-256(email+passphrase), computed CLIENT-SIDE only — this relay never sees
         // the email or passphrase themselves, just this derived key and an envelope it cannot decrypt
@@ -651,9 +679,11 @@ public sealed class RelayDatabase
         command.CommandText = """
             SELECT d.id, d.display_name, d.created_at_utc,
                    dir.display_name AS directory_display_name, dir.updated_at_utc AS last_active_at_utc,
+                   dir.platform AS platform, dir.arim_contact_id AS arim_contact_id, sc.display_name AS arim_contact_name,
                    (SELECT COUNT(*) FROM outbox o WHERE o.recipient_device_id = d.id) AS pending_outbox_count
             FROM devices d
             LEFT JOIN directory_entries dir ON dir.device_id = d.id
+            LEFT JOIN shared_contacts sc ON sc.id = dir.arim_contact_id
             ORDER BY d.created_at_utc DESC
             """;
 
@@ -667,7 +697,10 @@ public sealed class RelayDatabase
                 DateTimeOffset.Parse((string)reader["created_at_utc"], CultureInfo.InvariantCulture),
                 reader["directory_display_name"] is DBNull ? null : (string)reader["directory_display_name"],
                 reader["last_active_at_utc"] is DBNull ? null : DateTimeOffset.Parse((string)reader["last_active_at_utc"], CultureInfo.InvariantCulture),
-                Convert.ToInt32((long)reader["pending_outbox_count"])));
+                Convert.ToInt32((long)reader["pending_outbox_count"]),
+                reader["platform"] is DBNull ? null : (string)reader["platform"],
+                reader["arim_contact_id"] is DBNull ? null : Guid.Parse((string)reader["arim_contact_id"]),
+                reader["arim_contact_name"] is DBNull ? null : (string)reader["arim_contact_name"]));
         }
         return results;
     }
@@ -1328,15 +1361,26 @@ public sealed class RelayDatabase
         DateTimeOffset.Parse((string)reader["created_at_utc"], CultureInfo.InvariantCulture),
         reader["assigned_device_id"] is DBNull ? null : Guid.Parse((string)reader["assigned_device_id"]));
 
-    public void UpsertDirectoryEntry(Guid deviceId, string displayName, byte[] publicKey, string? appVersion)
+    public void UpsertDirectoryEntry(Guid deviceId, string displayName, byte[] publicKey, string? appVersion, string? formalName = null, string? platform = null)
     {
         using var connection = OpenConnection();
+        // Deliberately does NOT touch arim_contact_id — that's set once, separately, by
+        // SetDirectoryArimLink right after a successful reconciliation, and must survive every
+        // ordinary republish (every reconnect) in between.
         Execute(connection,
             """
-            INSERT INTO directory_entries (device_id, display_name, public_key, updated_at_utc, app_version) VALUES (@id, @name, @key, @now, @version)
-            ON CONFLICT(device_id) DO UPDATE SET display_name = @name, public_key = @key, updated_at_utc = @now, app_version = @version
+            INSERT INTO directory_entries (device_id, display_name, public_key, updated_at_utc, app_version, formal_name, platform) VALUES (@id, @name, @key, @now, @version, @formal, @platform)
+            ON CONFLICT(device_id) DO UPDATE SET display_name = @name, public_key = @key, updated_at_utc = @now, app_version = @version, formal_name = @formal, platform = @platform
             """,
-            ("@id", deviceId.ToString()), ("@name", displayName), ("@key", publicKey), ("@now", Format(DateTimeOffset.UtcNow)), ("@version", (object?)appVersion ?? DBNull.Value));
+            ("@id", deviceId.ToString()), ("@name", displayName), ("@key", publicKey), ("@now", Format(DateTimeOffset.UtcNow)), ("@version", (object?)appVersion ?? DBNull.Value), ("@formal", (object?)formalName ?? DBNull.Value), ("@platform", (object?)platform ?? DBNull.Value));
+    }
+
+    /// <summary>Links a device to the "Soukromé kontakty ARIM" row it successfully reconciled against (2026-10-08) — see directory_entries.arim_contact_id's own schema remarks for why this is separate from the ordinary UpsertDirectoryEntry republish path.</summary>
+    public void SetDirectoryArimLink(Guid deviceId, Guid arimContactId)
+    {
+        using var connection = OpenConnection();
+        Execute(connection, "UPDATE directory_entries SET arim_contact_id = @arim WHERE device_id = @id",
+            ("@arim", arimContactId.ToString()), ("@id", deviceId.ToString()));
     }
 
     // --- Admin-assigned device policy (2026-09-24) — see the device_policy table's own remarks.
@@ -1490,20 +1534,20 @@ public sealed class RelayDatabase
     private static readonly TimeSpan DirectoryActiveWindow = TimeSpan.FromDays(2);
 
     /// <summary>Every ACTIVE published member except the caller — a device never needs to "start a chat" with its own identity, and inactive/dead identities are filtered out (see <see cref="DirectoryActiveWindow"/>) so they never clutter the picker or get re-paired to.</summary>
-    public IReadOnlyList<(Guid DeviceId, string DisplayName, byte[] PublicKey)> GetDirectoryMembers(Guid excludingDeviceId)
+    public IReadOnlyList<(Guid DeviceId, string DisplayName, byte[] PublicKey, string? FormalName)> GetDirectoryMembers(Guid excludingDeviceId)
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
         // updated_at_utc is stored in ISO-8601 "O" format at UTC (+00:00), so lexicographic string
         // comparison is chronological — a plain >= cutoff filter selects only recently-seen devices.
-        command.CommandText = "SELECT device_id, display_name, public_key FROM directory_entries WHERE device_id != @excluded AND updated_at_utc >= @cutoff ORDER BY display_name COLLATE NOCASE";
+        command.CommandText = "SELECT device_id, display_name, public_key, formal_name FROM directory_entries WHERE device_id != @excluded AND updated_at_utc >= @cutoff ORDER BY display_name COLLATE NOCASE";
         command.Parameters.AddWithValue("@excluded", excludingDeviceId.ToString());
         command.Parameters.AddWithValue("@cutoff", Format(DateTimeOffset.UtcNow - DirectoryActiveWindow));
 
-        var results = new List<(Guid, string, byte[])>();
+        var results = new List<(Guid, string, byte[], string?)>();
         using var reader = command.ExecuteReader();
         while (reader.Read())
-            results.Add((Guid.Parse((string)reader["device_id"]), (string)reader["display_name"], (byte[])reader["public_key"]));
+            results.Add((Guid.Parse((string)reader["device_id"]), (string)reader["display_name"], (byte[])reader["public_key"], reader["formal_name"] is DBNull ? null : (string)reader["formal_name"]));
         return results;
     }
 
@@ -1728,25 +1772,25 @@ public sealed class RelayDatabase
         Execute(connection, "DELETE FROM logbook_procedure_types WHERE id = @id", ("@id", id.ToString()));
     }
 
-    public void UpsertSharedContact(Guid id, string displayName, string? phone, string? note, int sortOrder, DateTimeOffset createdAtUtc)
+    public void UpsertSharedContact(Guid id, string displayName, string? phone, string? note, int sortOrder, DateTimeOffset createdAtUtc, string? email = null)
     {
         using var connection = OpenConnection();
         Execute(connection,
             """
-            INSERT INTO shared_contacts (id, display_name, phone, note, sort_order, created_at_utc, updated_at_utc) VALUES (@id, @name, @phone, @note, @sort, @created, @now)
-            ON CONFLICT(id) DO UPDATE SET display_name = @name, phone = @phone, note = @note, sort_order = @sort, updated_at_utc = @now
+            INSERT INTO shared_contacts (id, display_name, phone, note, sort_order, created_at_utc, updated_at_utc, email) VALUES (@id, @name, @phone, @note, @sort, @created, @now, @email)
+            ON CONFLICT(id) DO UPDATE SET display_name = @name, phone = @phone, note = @note, sort_order = @sort, updated_at_utc = @now, email = @email
             """,
             ("@id", id.ToString()), ("@name", displayName), ("@phone", (object?)phone ?? DBNull.Value), ("@note", (object?)note ?? DBNull.Value),
-            ("@sort", sortOrder), ("@created", Format(createdAtUtc)), ("@now", Format(DateTimeOffset.UtcNow)));
+            ("@sort", sortOrder), ("@created", Format(createdAtUtc)), ("@now", Format(DateTimeOffset.UtcNow)), ("@email", (object?)email ?? DBNull.Value));
     }
 
-    public IReadOnlyList<(Guid Id, string DisplayName, string? Phone, string? Note, int SortOrder, DateTimeOffset CreatedAtUtc)> GetSharedContacts()
+    public IReadOnlyList<(Guid Id, string DisplayName, string? Phone, string? Note, int SortOrder, DateTimeOffset CreatedAtUtc, string? Email)> GetSharedContacts()
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT id, display_name, phone, note, sort_order, created_at_utc FROM shared_contacts ORDER BY sort_order";
+        command.CommandText = "SELECT id, display_name, phone, note, sort_order, created_at_utc, email FROM shared_contacts ORDER BY sort_order";
 
-        var results = new List<(Guid, string, string?, string?, int, DateTimeOffset)>();
+        var results = new List<(Guid, string, string?, string?, int, DateTimeOffset, string?)>();
         using var reader = command.ExecuteReader();
         while (reader.Read())
         {
@@ -1756,7 +1800,8 @@ public sealed class RelayDatabase
                 reader["phone"] is DBNull ? null : (string)reader["phone"],
                 reader["note"] is DBNull ? null : (string)reader["note"],
                 Convert.ToInt32(reader["sort_order"]),
-                DateTimeOffset.Parse((string)reader["created_at_utc"], CultureInfo.InvariantCulture)));
+                DateTimeOffset.Parse((string)reader["created_at_utc"], CultureInfo.InvariantCulture),
+                reader["email"] is DBNull ? null : (string)reader["email"]));
         }
         return results;
     }

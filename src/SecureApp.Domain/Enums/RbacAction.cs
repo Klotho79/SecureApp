@@ -41,5 +41,16 @@ public enum RbacAction
     /// action at all (see <c>AddAssignmentViewModel</c>'s own remarks) — every role, Viewer included,
     /// may always annotate a day.
     /// </summary>
-    EditWorkAssignment
+    EditWorkAssignment,
+
+    /// <summary>
+    /// Add/edit/delete a shared Contact (Firemní kontakty or Soukromé kontakty ARIM) — 2026-10-08,
+    /// real gap found live: there was no RBAC gate here at all, so even Viewer could edit the
+    /// company-wide contact list. Default-deny for Viewer (like every other unlisted action) now
+    /// actually applies; Modifier/Admin unaffected (already fully equivalent for everything not
+    /// explicitly carved out above). Does NOT gate a device's own profile self-reconciliation
+    /// against ARIM (<c>SettingsViewModel</c>'s Save flow) — that's every role's own identity, not
+    /// general contact-list editing, so it's deliberately a separate, ungated code path.
+    /// </summary>
+    EditContact
 }

@@ -3,7 +3,9 @@ using System.Globalization;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using SecureApp.Domain.Enums;
 using SecureApp.Domain.Interfaces.Services;
+using SecureApp.Domain.Policies;
 using SecureApp.Domain.ValueObjects;
 using SecureApp.Presentation.Contacts;
 
@@ -37,7 +39,19 @@ public sealed partial class ContactsViewModel : ObservableObject
     private static readonly StringComparer CzechNameComparer = StringComparer.Create(CultureInfo.GetCultureInfo("cs-CZ"), ignoreCase: true);
 
     private readonly ISharedContactService _sharedContactService;
+    private readonly ICurrentUserService _currentUserService;
     private List<SharedContact> _allArimContacts = [];
+
+    /// <summary>
+    /// 2026-10-08, real gap found live: there was no RBAC gate on Contacts at all — even Viewer
+    /// could add/delete/reorder. New <see cref="RbacAction.EditContact"/>, same
+    /// CanModifyContent-style derived property DocumentBrowserViewModel already established, gates
+    /// Add/Delete/Reorder on BOTH "Firemní kontakty" and "Soukromé kontakty ARIM". Deliberately does
+    /// NOT gate the self-service profile-vs-ARIM reconciliation in Settings — that's every role's
+    /// own identity, a separate code path (see SettingsViewModel's own remarks).
+    /// </summary>
+    [ObservableProperty]
+    public partial bool CanEditContacts { get; set; }
 
     [ObservableProperty]
     public partial string SearchQuery { get; set; }
@@ -66,6 +80,21 @@ public sealed partial class ContactsViewModel : ObservableObject
     /// <summary>"Soukromé kontakty ARIM" — same shape/behavior (call, delete, PC drag-reorder) as "Firemní kontakty", just its own collapsed-by-default section (2026-09-29: 71 rows is too long to show open by default). Collapsed via <see cref="SharedContactSectionGroup.VisibleEntries"/>, same BindableLayout-doesn't-virtualize reasoning as <see cref="ContactSectionGroup"/>.</summary>
     public SharedContactSectionGroup ArimContactsGroup { get; }
 
+    /// <summary>
+    /// 2026-10-08, real crash-looking bug found live: the ARIM card's own <c>IsVisible</c> used to
+    /// bind directly to <see cref="SharedContactSectionGroup.HasEntries"/> — fine for "no ARIM data
+    /// loaded at all yet", but <see cref="ApplyArimFilter"/> also calls <c>SetEntries</c> with an
+    /// EMPTY list whenever a search query matches nobody (e.g. "r" - genuinely no surname in this
+    /// list starts with R), which made the SAME property go false and hide the ENTIRE card —
+    /// including its own search box — making the search bar itself look like it had "disappeared"
+    /// (user's own report: "ono skutecne zmizi to pole pro vyhledavani"). This property tracks
+    /// whether ANY ARIM contact was ever loaded from the relay, independent of the current filter, so
+    /// the card (and its search box) stays visible through a zero-match search; <see cref="SharedContactSectionGroup.ShowNoResults"/>
+    /// is what tells the user the search itself came up empty.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool HasAnyArimContacts { get; set; }
+
     /// <summary>2026-09-30, user's own ask — searching by name or number over the 71-row ARIM list. Auto-expands the section on a non-empty query (same "search reveals its own results" convention <see cref="ApplyFilter"/>'s static phone directory already follows), but doesn't force it back closed when the query is cleared — the user's own manual toggle wins at that point.</summary>
     [ObservableProperty]
     public partial string ArimSearchQuery { get; set; } = string.Empty;
@@ -75,9 +104,11 @@ public sealed partial class ContactsViewModel : ObservableObject
     /// <summary>Raised so the Page (which alone can push a MAUI navigation) opens the add-contact form — same MAUI-free-ViewModel split this codebase already established elsewhere.</summary>
     public event Action? RequestAddContact;
 
-    public ContactsViewModel(ISharedContactService sharedContactService)
+    public ContactsViewModel(ISharedContactService sharedContactService, ICurrentUserService currentUserService)
     {
         _sharedContactService = sharedContactService ?? throw new ArgumentNullException(nameof(sharedContactService));
+        _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
+        CanEditContacts = true;
         SearchQuery = string.Empty;
         PhoneSections = [];
         CompanyContacts = [];
@@ -133,6 +164,7 @@ public sealed partial class ContactsViewModel : ObservableObject
     [RelayCommand]
     private async Task LoadAsync()
     {
+        CanEditContacts = RoleAccessPolicy.IsAllowed(_currentUserService.Current.Role, RbacAction.EditContact);
         ApplyFilter();
         await LoadCompanyContactsAsync();
     }
@@ -151,6 +183,7 @@ public sealed partial class ContactsViewModel : ObservableObject
             HasNoCompanyContacts = CompanyContacts.Count == 0;
 
             _allArimContacts = ordered.Where(c => string.Equals(c.Note, ArimNoteTag, StringComparison.Ordinal)).ToList();
+            HasAnyArimContacts = _allArimContacts.Count > 0;
             ApplyArimFilter();
         }
         catch (Exception ex)
@@ -188,12 +221,16 @@ public sealed partial class ContactsViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void AddContact() => RequestAddContact?.Invoke();
+    private void AddContact()
+    {
+        if (!CanEditContacts) return;
+        RequestAddContact?.Invoke();
+    }
 
     [RelayCommand]
     private async Task DeleteContactAsync(SharedContactItem? item)
     {
-        if (item is null) return;
+        if (item is null || !CanEditContacts) return;
         try
         {
             var ok = await _sharedContactService.DeleteAsync(item.Id);
@@ -212,6 +249,7 @@ public sealed partial class ContactsViewModel : ObservableObject
                 // Keep _allArimContacts in sync too — ApplyArimFilter re-derives from it on every
                 // search keystroke, and would otherwise resurrect a just-deleted contact.
                 _allArimContacts = _allArimContacts.Where(c => c.Id != item.Id).ToList();
+                HasAnyArimContacts = _allArimContacts.Count > 0;
                 ApplyArimFilter();
             }
         }
@@ -230,7 +268,7 @@ public sealed partial class ContactsViewModel : ObservableObject
     /// </summary>
     public async Task ReorderAsync(Guid draggedId, Guid targetId)
     {
-        if (draggedId == targetId) return;
+        if (draggedId == targetId || !CanEditContacts) return;
 
         // Dragged and target must be in the SAME section — reordering only ever happens within
         // "Firemní kontakty" or within "Soukromé kontakty ARIM", never between them.
@@ -390,6 +428,17 @@ public sealed partial class SharedContactSectionGroup : ObservableObject
     public bool HasEntries => Entries.Count > 0;
     public IReadOnlyList<SharedContactItem> VisibleEntries => IsExpanded ? Entries : [];
 
+    /// <summary>
+    /// 2026-10-08, real user report ("vyhledavani zmizi" - the search seems to disappear): a non-empty
+    /// <see cref="ContactsViewModel.ArimSearchQuery"/> that matches nobody (e.g. "r" - genuinely no
+    /// surname in this 71-row list starts with R) auto-expands this section (see ApplyArimFilter) into
+    /// an empty list with zero visual feedback, unlike the static "Telefonní seznam" card's own
+    /// "Nic nenalezeno." label - looked exactly like a crash/disappearance from the outside, even
+    /// though nothing was actually broken. Only true once actually expanded, so the normal
+    /// collapsed-and-untouched state never shows it.
+    /// </summary>
+    public bool ShowNoResults => IsExpanded && !HasEntries;
+
     [ObservableProperty]
     public partial bool IsExpanded { get; set; }
 
@@ -406,9 +455,14 @@ public sealed partial class SharedContactSectionGroup : ObservableObject
         OnPropertyChanged(nameof(Count));
         OnPropertyChanged(nameof(HasEntries));
         OnPropertyChanged(nameof(VisibleEntries));
+        OnPropertyChanged(nameof(ShowNoResults));
     }
 
-    partial void OnIsExpandedChanged(bool value) => OnPropertyChanged(nameof(VisibleEntries));
+    partial void OnIsExpandedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(VisibleEntries));
+        OnPropertyChanged(nameof(ShowNoResults));
+    }
 
     [RelayCommand]
     private void ToggleExpanded() => IsExpanded = !IsExpanded;

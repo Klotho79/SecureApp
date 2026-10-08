@@ -26,4 +26,12 @@ public interface IContactDirectoryService
 
     /// <summary>Every other community member currently published — used by "New Chat" to list people who can be messaged with a single tap, no contact card required.</summary>
     Task<IReadOnlyList<DirectoryMember>> ListMembersAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// 2026-10-08 — records which "Soukromé kontakty ARIM" row this device successfully reconciled
+    /// against (<c>SettingsViewModel</c>'s Save flow), so the admin device list can group devices by
+    /// person instead of listing unrelated rows. Best-effort: callers should swallow a failure the
+    /// same way <see cref="PublishSelfAsync"/>'s own callers already do.
+    /// </summary>
+    Task LinkArimContactAsync(Guid arimContactId, CancellationToken ct = default);
 }

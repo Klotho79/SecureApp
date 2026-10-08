@@ -37,12 +37,16 @@ public sealed class UserRepository : IUserRepository
         var connection = await _connectionFactory.GetConnectionAsync(ct);
         await connection.ExecuteAsync("DELETE FROM users");
         await connection.ExecuteAsync(
-            "INSERT INTO users (id, display_name, role, created_at_utc, modified_at_utc) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO users (id, display_name, role, created_at_utc, modified_at_utc, first_name, last_name, phone, email) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             user.Id.ToString(),
-            user.DisplayName,
+            user.Nick,
             (int)user.Role,
             Format(user.CreatedAtUtc),
-            Format(user.ModifiedAtUtc));
+            Format(user.ModifiedAtUtc),
+            user.FirstName,
+            user.LastName,
+            user.Phone,
+            user.Email);
     }
 
     private static User ToEntity(UserRow row)
@@ -51,8 +55,12 @@ public sealed class UserRepository : IUserRepository
         EntityMaterializer.Set(entity, nameof(Entity.Id), Guid.Parse(row.Id));
         EntityMaterializer.Set(entity, nameof(Entity.CreatedAtUtc), Parse(row.CreatedAtUtc));
         EntityMaterializer.Set(entity, nameof(Entity.ModifiedAtUtc), Parse(row.ModifiedAtUtc));
-        EntityMaterializer.Set(entity, nameof(User.DisplayName), row.DisplayName);
+        EntityMaterializer.Set(entity, nameof(User.Nick), row.DisplayName);
         EntityMaterializer.Set(entity, nameof(User.Role), (Role)row.Role);
+        EntityMaterializer.Set(entity, nameof(User.FirstName), row.FirstName);
+        EntityMaterializer.Set(entity, nameof(User.LastName), row.LastName);
+        EntityMaterializer.Set(entity, nameof(User.Phone), row.Phone);
+        EntityMaterializer.Set(entity, nameof(User.Email), row.Email);
         return entity;
     }
 

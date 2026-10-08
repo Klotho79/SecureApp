@@ -38,7 +38,7 @@ public sealed class HttpSharedContactService : ISharedContactService
         response.EnsureSuccessStatusCode();
 
         var dtos = await response.Content.ReadFromJsonAsync<List<SharedContactDto>>(HttpJsonOptions, ct) ?? [];
-        return dtos.Select(d => new SharedContact(d.Id, d.DisplayName, d.Phone, d.Note, d.SortOrder, d.CreatedAtUtc)).ToList();
+        return dtos.Select(d => new SharedContact(d.Id, d.DisplayName, d.Phone, d.Note, d.SortOrder, d.CreatedAtUtc, d.Email)).ToList();
     }
 
     public async Task<bool> PublishAsync(SharedContact contact, CancellationToken ct = default)
@@ -48,7 +48,7 @@ public sealed class HttpSharedContactService : ISharedContactService
             var endpoint = await GetHttpEndpointAsync(ct);
             using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(endpoint, "contacts"))
             {
-                Content = JsonContent.Create(new SharedContactDto(contact.Id, contact.DisplayName, contact.Phone, contact.Note, contact.SortOrder, contact.CreatedAtUtc), options: HttpJsonOptions)
+                Content = JsonContent.Create(new SharedContactDto(contact.Id, contact.DisplayName, contact.Phone, contact.Note, contact.SortOrder, contact.CreatedAtUtc, contact.Email), options: HttpJsonOptions)
             };
             await AddDeviceAuthAsync(request, ct);
             using var response = await _httpClient.SendAsync(request, ct);
@@ -103,5 +103,5 @@ public sealed class HttpSharedContactService : ISharedContactService
         request.Headers.Add("X-Device-Secret", Encoding.UTF8.GetString(secretBytes));
     }
 
-    private sealed record SharedContactDto(Guid Id, string DisplayName, string? Phone, string? Note, int SortOrder, DateTimeOffset CreatedAtUtc);
+    private sealed record SharedContactDto(Guid Id, string DisplayName, string? Phone, string? Note, int SortOrder, DateTimeOffset CreatedAtUtc, string? Email = null);
 }

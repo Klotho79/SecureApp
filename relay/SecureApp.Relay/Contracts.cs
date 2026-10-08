@@ -50,7 +50,7 @@ public sealed record ActivationRequestSummary(Guid Id, string DisplayName, strin
 // mid-incident (SSH + manual SQLite queries, see RelayDatabase.GetAllDevicesWithStatus's own remarks).
 
 /// <summary>One registered device in the admin's device-management list. <c>DirectoryDisplayName</c>/<c>LastActiveAtUtc</c> are null if the device has never published to the directory (or its entry is old enough that <c>RelayDatabase.DirectoryActiveWindow</c> would already hide it from the member picker) — that's the actual "is this a ghost" signal, not <c>CreatedAtUtc</c>.</summary>
-public sealed record RegisteredDeviceSummary(Guid Id, string DisplayName, DateTimeOffset CreatedAtUtc, string? DirectoryDisplayName, DateTimeOffset? LastActiveAtUtc, int PendingOutboxCount);
+public sealed record RegisteredDeviceSummary(Guid Id, string DisplayName, DateTimeOffset CreatedAtUtc, string? DirectoryDisplayName, DateTimeOffset? LastActiveAtUtc, int PendingOutboxCount, string? Platform = null, Guid? ArimContactId = null, string? ArimContactName = null);
 
 // --- Member directory (2026-09-06) — replaces manual contact-card generate/paste for starting a
 // chat with someone already on this relay. Only makes sense BECAUSE activation above already had
@@ -58,10 +58,13 @@ public sealed record RegisteredDeviceSummary(Guid Id, string DisplayName, DateTi
 // directory_entries for the trust-model note this relies on.
 
 /// <summary>Upserts the CALLING (device-authenticated) device's own entry — carries no device id, since the relay already knows which device is asking from the X-Device-Id/X-Device-Secret headers, same auth as the /library/files endpoints.</summary>
-public sealed record PublishDirectoryEntryRequest(string DisplayName, string PublicKeyBase64, string? AppVersion = null);
+public sealed record PublishDirectoryEntryRequest(string DisplayName, string PublicKeyBase64, string? AppVersion = null, string? FormalName = null, string? Platform = null);
+
+/// <summary>See <c>RelayDatabase.SetDirectoryArimLink</c>'s own remarks.</summary>
+public sealed record LinkArimContactRequest(Guid ArimContactId);
 
 /// <summary>One other community member, resolvable straight into a chat session with no QR/paste step — <c>PublicKeyBase64</c> is the same chat-identity key a manually-shared contact card would have carried.</summary>
-public sealed record DirectoryMemberSummary(Guid DeviceId, string DisplayName, string PublicKeyBase64);
+public sealed record DirectoryMemberSummary(Guid DeviceId, string DisplayName, string PublicKeyBase64, string? FormalName = null);
 
 // --- Shared-library-key escrow (2026-09-11) — see the wrapped_library_keys table's own remarks. A
 // device that HAS the key uploads it wrapped (ML-KEM to each recipient's public identity key) via
@@ -111,7 +114,7 @@ public sealed record LogbookProcedureTypeDto(Guid Id, string Name, string Abbrev
 // table and SharedContact's own remarks. Same device-authenticated, not-admin-gated shape as the
 // Logbook catalog sync above.
 
-public sealed record SharedContactDto(Guid Id, string DisplayName, string? Phone, string? Note, int SortOrder, DateTimeOffset CreatedAtUtc);
+public sealed record SharedContactDto(Guid Id, string DisplayName, string? Phone, string? Note, int SortOrder, DateTimeOffset CreatedAtUtc, string? Email = null);
 
 /// <summary>One row of an admin-only bulk import (2026-09-29, "Telefonní seznam ARIM.xlsx" one-off) — server assigns Id/SortOrder/CreatedAtUtc, same as <see cref="SharedContactDto"/> minus the fields a fresh import never carries in from a spreadsheet.</summary>
 public sealed record SharedContactImportRow(string DisplayName, string? Phone, string? Note);

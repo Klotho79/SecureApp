@@ -110,4 +110,11 @@ public sealed class CurrentUserService : ICurrentUserService
         await _userRepository.SaveCurrentUserAsync(_current, ct);
         CurrentUserChanged?.Invoke(this, EventArgs.Empty);
     }
+
+    public async Task UpdateProfileAsync(string? firstName, string? lastName, string? phone, string? email, CancellationToken ct = default)
+    {
+        _current.UpdateProfile(firstName, lastName, phone, email);
+        await _userRepository.SaveCurrentUserAsync(_current, ct);
+        CurrentUserChanged?.Invoke(this, EventArgs.Empty);
+    }
 }

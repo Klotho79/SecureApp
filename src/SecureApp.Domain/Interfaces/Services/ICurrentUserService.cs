@@ -25,4 +25,11 @@ public interface ICurrentUserService
     Task InitializeAsync(CancellationToken ct = default);
 
     Task SetCurrentUserAsync(string displayName, Role role, CancellationToken ct = default);
+
+    /// <summary>
+    /// 2026-10-08 — the new ARIM-reconciliation profile fields (Jméno/Příjmení/Telefon/Email), kept
+    /// separate from <see cref="SetCurrentUserAsync"/> since it never touches Nick/Role. Each
+    /// parameter null leaves that field unchanged.
+    /// </summary>
+    Task UpdateProfileAsync(string? firstName, string? lastName, string? phone, string? email, CancellationToken ct = default);
 }

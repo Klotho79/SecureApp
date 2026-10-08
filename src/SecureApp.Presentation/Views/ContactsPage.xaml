@@ -23,7 +23,7 @@
                 <VerticalStackLayout Spacing="8">
                     <Grid ColumnDefinitions="*,Auto">
                         <Label Grid.Column="0" Text="Firemní kontakty" Style="{StaticResource SectionHeader}" Margin="0" />
-                        <Button Grid.Column="1" Text="➕" Style="{StaticResource SecondaryButton}" WidthRequest="44" Padding="0" Command="{Binding AddContactCommand}" />
+                        <Button Grid.Column="1" Text="➕" Style="{StaticResource SecondaryButton}" WidthRequest="44" Padding="0" Command="{Binding AddContactCommand}" IsVisible="{Binding CanEditContacts}" />
                     </Grid>
                     <Label Text="Sdílený seznam pro celou komunitu — změna se projeví u všech. Na PC můžete pořadí měnit přetažením." FontSize="9.5" TextColor="Gray" />
                     <Label Text="{Binding CompanyContactsErrorMessage}" IsVisible="{Binding HasCompanyContactsError}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
@@ -42,8 +42,8 @@
                             <DataTemplate x:DataType="vm:SharedContactItem">
                                 <Border Style="{StaticResource CardBorder}" Margin="0" Padding="10,8" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
                                     <Border.GestureRecognizers>
-                                        <DragGestureRecognizer CanDrag="True" DragStarting="OnContactDragStarting" />
-                                        <DropGestureRecognizer AllowDrop="True" Drop="OnContactDrop" />
+                                        <DragGestureRecognizer CanDrag="{Binding Source={RelativeSource AncestorType={x:Type vm:ContactsViewModel}}, Path=CanEditContacts}" DragStarting="OnContactDragStarting" />
+                                        <DropGestureRecognizer AllowDrop="{Binding Source={RelativeSource AncestorType={x:Type vm:ContactsViewModel}}, Path=CanEditContacts}" Drop="OnContactDrop" />
                                     </Border.GestureRecognizers>
                                     <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
                                         <VerticalStackLayout Grid.Column="0" Spacing="2">
@@ -52,7 +52,7 @@
                                         </VerticalStackLayout>
                                         <!-- Only for a complete number (mob./tel.), never a bare extension. -->
                                         <Button Grid.Column="1" Text="📞" BackgroundColor="Transparent" Padding="6,0" IsVisible="{Binding CanCall}" Command="{Binding CallCommand}" CommandParameter="{Binding Phone}" />
-                                        <Button Grid.Column="2" Text="🗑" BackgroundColor="Transparent" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" Padding="6,0" Command="{Binding DeleteCommand}" CommandParameter="{Binding .}" />
+                                        <Button Grid.Column="2" Text="🗑" BackgroundColor="Transparent" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" Padding="6,0" IsVisible="{Binding Source={RelativeSource AncestorType={x:Type vm:ContactsViewModel}}, Path=CanEditContacts}" Command="{Binding DeleteCommand}" CommandParameter="{Binding .}" />
                                     </Grid>
                                 </Border>
                             </DataTemplate>
@@ -73,7 +73,7 @@
                  (ArimSearchQuery/ApplyArimFilter) — no drag-reorder handle here any more, since a
                  manual order would just get overwritten by the very next alphabetical re-sort; only
                  Firemní kontakty above still supports it. -->
-            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding ArimContactsGroup.HasEntries}">
+            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding HasAnyArimContacts}">
                 <VerticalStackLayout Spacing="8">
                     <Grid ColumnDefinitions="*,Auto" Padding="0,2">
                         <Grid.GestureRecognizers>
@@ -90,6 +90,8 @@
                     </Grid>
                     <Label Text="Sdílený seznam pro celou komunitu — změna se projeví u všech." FontSize="9.5" TextColor="Gray" />
                     <SearchBar Text="{Binding ArimSearchQuery}" Placeholder="Hledat jméno nebo číslo…" />
+
+                    <Label Text="Nic nenalezeno." FontSize="9.5" TextColor="Gray" IsVisible="{Binding ArimContactsGroup.ShowNoResults}" />
 
                     <!-- HeightRequest is load-bearing, not cosmetic (2026-09-30 — user still hit the
                          slow expand even with a CollectionView: "otevření... trvá neskutečně dlouho"):
@@ -115,7 +117,7 @@
                                         </VerticalStackLayout>
                                         <!-- Only for a complete number (mob./tel.), never a bare extension. -->
                                         <Button Grid.Column="1" Text="📞" BackgroundColor="Transparent" Padding="6,0" IsVisible="{Binding CanCall}" Command="{Binding CallCommand}" CommandParameter="{Binding Phone}" />
-                                        <Button Grid.Column="2" Text="🗑" BackgroundColor="Transparent" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" Padding="6,0" Command="{Binding DeleteCommand}" CommandParameter="{Binding .}" />
+                                        <Button Grid.Column="2" Text="🗑" BackgroundColor="Transparent" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" Padding="6,0" IsVisible="{Binding Source={RelativeSource AncestorType={x:Type vm:ContactsViewModel}}, Path=CanEditContacts}" Command="{Binding DeleteCommand}" CommandParameter="{Binding .}" />
                                     </Grid>
                                 </Border>
                             </DataTemplate>

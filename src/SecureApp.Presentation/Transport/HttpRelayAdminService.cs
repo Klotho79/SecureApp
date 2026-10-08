@@ -71,7 +71,7 @@ public sealed class HttpRelayAdminService : IRelayAdminService
         response.EnsureSuccessStatusCode();
 
         var results = await response.Content.ReadFromJsonAsync<List<RegisteredDeviceSummary>>(HttpJsonOptions, ct) ?? [];
-        return results.Select(d => new RegisteredDevice(d.Id, d.DisplayName, d.CreatedAtUtc, d.DirectoryDisplayName, d.LastActiveAtUtc, d.PendingOutboxCount)).ToList();
+        return results.Select(d => new RegisteredDevice(d.Id, d.DisplayName, d.CreatedAtUtc, d.DirectoryDisplayName, d.LastActiveAtUtc, d.PendingOutboxCount, d.Platform, d.ArimContactId, d.ArimContactName)).ToList();
     }
 
     public async Task DeregisterDeviceAsync(Uri endpoint, string adminSecret, Guid deviceId, CancellationToken ct = default)
@@ -228,5 +228,5 @@ public sealed class HttpRelayAdminService : IRelayAdminService
     private sealed record InviteResponse(string Code, DateTimeOffset ExpiresAtUtc);
 
     /// <summary>Mirrors the relay's own <c>SecureApp.Relay.Contracts.RegisteredDeviceSummary</c> (2.1, 2026-09-17) — duplicated rather than shared, since this Presentation-layer client has no project reference to the Relay's own assembly (same reasoning as <see cref="InviteResponse"/> already established for the invite-code response shape).</summary>
-    private sealed record RegisteredDeviceSummary(Guid Id, string DisplayName, DateTimeOffset CreatedAtUtc, string? DirectoryDisplayName, DateTimeOffset? LastActiveAtUtc, int PendingOutboxCount);
+    private sealed record RegisteredDeviceSummary(Guid Id, string DisplayName, DateTimeOffset CreatedAtUtc, string? DirectoryDisplayName, DateTimeOffset? LastActiveAtUtc, int PendingOutboxCount, string? Platform = null, Guid? ArimContactId = null, string? ArimContactName = null);
 }

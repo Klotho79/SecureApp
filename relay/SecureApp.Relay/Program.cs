@@ -482,7 +482,19 @@ app.MapGet("/admin/devices", (HttpRequest request, RelayDatabase db) =>
 
     var devices = db.GetAllDevicesWithStatus();
     return Results.Ok(devices.Select(d => new RegisteredDeviceSummary(
-        d.Id, d.DisplayName, d.CreatedAtUtc, d.DirectoryDisplayName, d.LastActiveAtUtc, d.PendingOutboxCount)).ToList());
+        d.Id, d.DisplayName, d.CreatedAtUtc, d.DirectoryDisplayName, d.LastActiveAtUtc, d.PendingOutboxCount, d.Platform, d.ArimContactId, d.ArimContactName)).ToList());
+});
+
+// Links a device to the ARIM contact it successfully reconciled against (2026-10-08) — device-
+// authenticated like /directory/publish, not admin-gated, since it's the device reporting its OWN
+// reconciliation result, not an admin assigning anything.
+app.MapPost("/directory/link-arim-contact", (HttpRequest request, LinkArimContactRequest body, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+
+    db.SetDirectoryArimLink(deviceId, body.ArimContactId);
+    return Results.Ok();
 });
 
 app.MapPost("/admin/devices/{id:guid}/deregister", (Guid id, HttpRequest request, RelayDatabase db) =>
@@ -800,7 +812,7 @@ app.MapPost("/directory/publish", (HttpRequest request, PublishDirectoryEntryReq
         return Results.BadRequest("PublicKeyBase64 is not valid base64.");
     }
 
-    db.UpsertDirectoryEntry(deviceId, body.DisplayName, publicKey, body.AppVersion);
+    db.UpsertDirectoryEntry(deviceId, body.DisplayName, publicKey, body.AppVersion, body.FormalName, body.Platform);
     return Results.Ok();
 });
 
@@ -810,7 +822,7 @@ app.MapGet("/directory/members", (HttpRequest request, RelayDatabase db) =>
         return Results.Unauthorized();
 
     var members = db.GetDirectoryMembers(deviceId);
-    return Results.Ok(members.Select(m => new DirectoryMemberSummary(m.DeviceId, m.DisplayName, Convert.ToBase64String(m.PublicKey))).ToList());
+    return Results.Ok(members.Select(m => new DirectoryMemberSummary(m.DeviceId, m.DisplayName, Convert.ToBase64String(m.PublicKey), m.FormalName)).ToList());
 });
 
 // --- Admin-assigned device policy + notice board (2026-09-24) — see the device_policy/board_posts
@@ -1040,7 +1052,7 @@ app.MapPost("/contacts", (HttpRequest request, SharedContactDto body, RelayDatab
     if (string.IsNullOrWhiteSpace(body.DisplayName))
         return Results.BadRequest("DisplayName is required.");
 
-    db.UpsertSharedContact(body.Id, body.DisplayName, body.Phone, body.Note, body.SortOrder, body.CreatedAtUtc);
+    db.UpsertSharedContact(body.Id, body.DisplayName, body.Phone, body.Note, body.SortOrder, body.CreatedAtUtc, body.Email);
     return Results.Ok();
 });
 
@@ -1050,7 +1062,7 @@ app.MapGet("/contacts", (HttpRequest request, RelayDatabase db) =>
         return Results.Unauthorized();
 
     var entries = db.GetSharedContacts();
-    return Results.Ok(entries.Select(e => new SharedContactDto(e.Id, e.DisplayName, e.Phone, e.Note, e.SortOrder, e.CreatedAtUtc)).ToList());
+    return Results.Ok(entries.Select(e => new SharedContactDto(e.Id, e.DisplayName, e.Phone, e.Note, e.SortOrder, e.CreatedAtUtc, e.Email)).ToList());
 });
 
 app.MapDelete("/contacts/{id:guid}", (Guid id, HttpRequest request, RelayDatabase db) =>

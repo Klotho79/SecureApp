@@ -20,7 +20,7 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
 {
     private const string DatabaseKeyVaultName = "sqlcipher:database-key";
     private const int DatabaseKeySizeBytes = 32; // 256-bit, used as a raw SQLCipher key (not a passphrase put through PBKDF2)
-    private const int CurrentSchemaVersion = 16;
+    private const int CurrentSchemaVersion = 17;
 
     private readonly DataStorageOptions _options;
     private readonly ISecureVaultKeyStore _vault;
@@ -156,6 +156,9 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
 
         if (schemaVersion < 16)
             await ApplyV16SchemaAsync(connection);
+
+        if (schemaVersion < 17)
+            await ApplyV17SchemaAsync(connection);
 
         await connection.ExecuteAsync($"PRAGMA user_version = {CurrentSchemaVersion}");
     }
@@ -603,6 +606,20 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
     private static async Task ApplyV16SchemaAsync(SQLiteAsyncConnection connection)
     {
         await connection.ExecuteAsync("ALTER TABLE work_assignments ADD COLUMN on_call_workplace_name TEXT NULL");
+    }
+
+    /// <summary>
+    /// 2026-10-08 — the device's own profile gains Jméno/Příjmení/Telefon/Email, used to reconcile
+    /// against the shared "Soukromé kontakty ARIM" list (<c>SettingsViewModel</c>'s Save flow). The
+    /// pre-existing <c>display_name</c> column keeps its name/meaning (now <see cref="User.Nick"/>,
+    /// optional) — see <see cref="User"/>'s own remarks.
+    /// </summary>
+    private static async Task ApplyV17SchemaAsync(SQLiteAsyncConnection connection)
+    {
+        await connection.ExecuteAsync("ALTER TABLE users ADD COLUMN first_name TEXT NULL");
+        await connection.ExecuteAsync("ALTER TABLE users ADD COLUMN last_name TEXT NULL");
+        await connection.ExecuteAsync("ALTER TABLE users ADD COLUMN phone TEXT NULL");
+        await connection.ExecuteAsync("ALTER TABLE users ADD COLUMN email TEXT NULL");
     }
 
     /// <summary>
