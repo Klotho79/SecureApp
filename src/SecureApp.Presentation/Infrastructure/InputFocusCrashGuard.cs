@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 namespace SecureApp.Presentation.Infrastructure;
 
 /// <summary>
@@ -29,21 +31,30 @@ public static class InputFocusCrashGuard
     }
 
 #if ANDROID
+    // Real regression found live (2026-10-08, on a FRESH build containing only this file's original
+    // fix): the exact same ObjectDisposedException crashed again, through IEntry/IEntryHandler this
+    // time (Kontakty's search Entry), with NO GuardIsFocused frame anywhere in the stack trace —
+    // meaning this method's try/catch never ran at all for that call, despite ModifyMapping having
+    // registered it. Most likely cause: Android Release's AOT/trimming pipeline inlined this small
+    // generic-shared method into its caller, and something about that inlining (a known rough edge
+    // for try/catch inside AOT-shared generic code on Mono) kept the catch from actually triggering.
+    // [MethodImpl(NoInlining)] forces this method to stay a real, separate frame/call so its own
+    // exception-handling region is never merged into the caller this way again.
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static void GuardIsFocused<THandler, TVirtualView>(THandler handler, TVirtualView view, Action<THandler, TVirtualView> baseAction)
     {
         try
         {
-            // Real regression found live (2026-10-06, same day): ModifyMapping hands back null here
-            // for Entry/Editor/SearchBar's "IsFocused" key — it's inherited from InputView's own base
-            // mapper, not present directly in each handler's own dictionary, so there is no "previous
-            // action" to capture. Calling a null delegate threw NullReferenceException on every
-            // single focus change (i.e. on every page with any text field), which is strictly worse
-            // than the rare race this was meant to fix.
+            // 2026-10-06 regression: ModifyMapping hands back null here for Entry/Editor/SearchBar's
+            // "IsFocused" key — it's inherited from InputView's own base mapper, not present directly
+            // in each handler's own dictionary, so there is no "previous action" to capture.
             baseAction?.Invoke(handler, view);
         }
-        catch (ObjectDisposedException)
+        catch (Exception)
         {
-            // The page (and its handler's own DI scope) is already gone — nothing left to focus.
+            // Widened from ObjectDisposedException-only (2026-10-08): by the time this fires the page
+            // (and its handler's own DI scope) is already gone — nothing left to focus regardless of
+            // which exception type a torn-down scope happens to throw.
         }
     }
 #endif
