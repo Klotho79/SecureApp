@@ -639,7 +639,11 @@
                 <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanConfigureLocalAiTranslation}">
                     <VerticalStackLayout Spacing="8">
                         <Label Text="Admin: Místní AI překlad" Style="{StaticResource SectionHeader}" Margin="0" />
-                        <Label Text="Adresa a model místního AI serveru (Ollama/LM Studio) běžícího na tomto PC — použije se při překladu dokumentů v Knihovně. Nic odtud nikdy neopustí tento počítač." FontSize="9.5" TextColor="Gray" />
+                        <Label Text="Model místního AI (Ollama/LM Studio) běžícího na tomto PC — použije se při překladu dokumentů v Knihovně. Nic odtud nikdy neopustí tento počítač." FontSize="9.5" TextColor="Gray" />
+                        <!-- 2026-10-09: vyber ze stažených modelů místo opisování adresy a názvu - viz LocalAiModelDiscovery. -->
+                        <Button Text="🔍 Najít stažené modely" Style="{StaticResource SecondaryButton}" Command="{Binding FindLocalAiModelsCommand}" IsEnabled="{Binding CanTestLocalAiConnection}" />
+                        <Picker Title="Vyberte model" ItemsSource="{Binding LocalAiModels}" ItemDisplayBinding="{Binding Label}" SelectedItem="{Binding SelectedLocalAiModel}" IsVisible="{Binding HasLocalAiModels}" />
+                        <Label Text="Ruční nastavení (není potřeba, když vyberete model výše):" FontSize="9" TextColor="Gray" Margin="0,4,0,0" />
                         <Entry Placeholder="http://localhost:11434" Text="{Binding LocalAiBaseUrlText}" />
                         <Entry Placeholder="Název modelu (např. qwen2.5:7b)" Text="{Binding LocalAiModelNameText}" />
                         <Grid ColumnDefinitions="*,*" ColumnSpacing="8">

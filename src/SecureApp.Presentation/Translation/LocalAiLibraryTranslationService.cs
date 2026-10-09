@@ -47,8 +47,10 @@ public sealed class LocalAiLibraryTranslationService : ILibraryTranslationServic
     private readonly ICryptoService _crypto;
 
     // One vision-free text call per page on a local GPU; generous per-call budget since the user's
-    // own model/hardware choice (not this app's) determines actual latency.
-    private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromMinutes(3) };
+    // own model/hardware choice (not this app's) determines actual latency. 3 → 10 min (2026-10-09):
+    // measured on the admin's PC, gemma-4-26b took ~2 min just to load on the first call and ~30 s
+    // per short paragraph after that — a full dense page could blow a 3-minute budget.
+    private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromMinutes(10) };
 
     public LocalAiLibraryTranslationService(
         IDocumentRenderingService renderingService,
@@ -103,7 +105,7 @@ public sealed class LocalAiLibraryTranslationService : ILibraryTranslationServic
 
         var modelName = LocalAiTranslationSettings.GetModelName();
         if (string.IsNullOrWhiteSpace(modelName))
-            throw new InvalidOperationException("Nejprve v Nastavení (Admin: Místní AI překlad) vyplňte název modelu.");
+            throw new InvalidOperationException("Nejprve v Nastavení (Admin: Místní AI překlad) klikněte na „Najít stažené modely“ a vyberte model.");
         var baseUrl = GetConfiguredBaseUrl();
 
         onStatusText?.Report("Kontroluji dostupnost místního AI modelu…");
@@ -222,7 +224,24 @@ public sealed class LocalAiLibraryTranslationService : ILibraryTranslationServic
             ?? throw new InvalidOperationException("Místní AI model vrátil prázdnou odpověď.");
         if (dto.Choices.Count == 0)
             throw new InvalidOperationException("Místní AI model vrátil odpověď bez žádného výsledku.");
-        return dto.Choices[0].Message.Content;
+        // Empty answer seen live (gemma-4-12b, 2026-10-09) — throwing lets the retry loop try again
+        // instead of silently producing a blank translated page.
+        var translated = StripModelArtifacts(dto.Choices[0].Message.Content ?? string.Empty);
+        if (translated.Length == 0)
+            throw new InvalidOperationException("Místní AI model vrátil prázdný překlad.");
+        return translated;
+    }
+
+    /// <summary>
+    /// Removes what some local models leak into the content (2026-10-09, seen live): reasoning
+    /// models' <c>&lt;think&gt;…&lt;/think&gt;</c> block, and raw chat-template tokens like aya's
+    /// <c>&lt;|END_OF_TURN_TOKEN|&gt;</c> — neither belongs in the translated PDF.
+    /// </summary>
+    private static string StripModelArtifacts(string content)
+    {
+        content = System.Text.RegularExpressions.Regex.Replace(content, @"<think>.*?</think>", string.Empty, System.Text.RegularExpressions.RegexOptions.Singleline);
+        content = System.Text.RegularExpressions.Regex.Replace(content, @"<\|[A-Za-z_]+\|>", string.Empty);
+        return content.Trim();
     }
 
     private static Uri GetConfiguredBaseUrl()
