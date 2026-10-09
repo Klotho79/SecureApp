@@ -31,23 +31,22 @@ public static class InputFocusCrashGuard
     }
 
 #if ANDROID
-    // Real regression found live (2026-10-08, on a FRESH build containing only this file's original
-    // fix): the exact same ObjectDisposedException crashed again, through IEntry/IEntryHandler this
-    // time (Kontakty's search Entry), with NO GuardIsFocused frame anywhere in the stack trace —
-    // meaning this method's try/catch never ran at all for that call, despite ModifyMapping having
-    // registered it. Most likely cause: Android Release's AOT/trimming pipeline inlined this small
-    // generic-shared method into its caller, and something about that inlining (a known rough edge
-    // for try/catch inside AOT-shared generic code on Mono) kept the catch from actually triggering.
-    // [MethodImpl(NoInlining)] forces this method to stay a real, separate frame/call so its own
-    // exception-handling region is never merged into the caller this way again.
+    // Recurrence 2026-10-08 (1.54, and AGAIN on 1.55 at 18:42 after the NoInlining "fix" below):
+    // same ObjectDisposedException, NO GuardIsFocused frame in the stack. The 10-08 theory (AOT
+    // inlining swallowed the EH region) was wrong — NoInlining is harmless and kept, but didn't help.
+    // Real cause, read off the stack (2026-10-09): MapIsFocused is called from
+    // PropertyMapperExtensions.<AppendToMapping>b__0, i.e. MAUI Controls' own AppendToMapping, which
+    // runs inside UseMauiApp. Register() used to run BEFORE UseMauiApp, so at that point the key
+    // didn't exist yet (hence the null baseAction below) and Controls' append then wrapped THIS guard
+    // and called MapIsFocused after it, outside the try. Register() now runs after UseMauiApp
+    // (MauiProgram.cs), so this guard wraps the whole chain.
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void GuardIsFocused<THandler, TVirtualView>(THandler handler, TVirtualView view, Action<THandler, TVirtualView> baseAction)
     {
         try
         {
-            // 2026-10-06 regression: ModifyMapping hands back null here for Entry/Editor/SearchBar's
-            // "IsFocused" key — it's inherited from InputView's own base mapper, not present directly
-            // in each handler's own dictionary, so there is no "previous action" to capture.
+            // Null only if registered before MAUI Controls added its own IsFocused mapping (the
+            // pre-2026-10-09 ordering bug above) — kept null-safe anyway.
             baseAction?.Invoke(handler, view);
         }
         catch (Exception)

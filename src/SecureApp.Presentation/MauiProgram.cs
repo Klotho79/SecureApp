@@ -24,7 +24,6 @@ public static class MauiProgram
 	public static MauiApp CreateMauiApp()
 	{
 		FontScaling.Register();
-		InputFocusCrashGuard.Register();
 
 #if WINDOWS
 		// Admin-only local-AI PDF translation (2026-10-05) — QuestPDF requires this exact one-time
@@ -72,6 +71,13 @@ public static class MauiProgram
 				// weight files and point this alias at them — just keep it static, not variable.
 				fonts.AddFont("OpenSans-Regular.ttf", "PlexSans");
 			});
+
+		// MUST run after UseMauiApp (2026-10-09, real root cause of the 1.55 recurrence): UseMauiApp
+		// is where MAUI Controls appends its own InputView.MapIsFocused to the Entry/Editor/SearchBar
+		// mappers. Registered before it (as it used to be, next to FontScaling), the guard was the
+		// thing being wrapped — Controls' append then ran MapIsFocused OUTSIDE our try/catch. See
+		// InputFocusCrashGuard's own remarks.
+		InputFocusCrashGuard.Register();
 
 #if DEBUG
 		builder.Logging.AddDebug();
