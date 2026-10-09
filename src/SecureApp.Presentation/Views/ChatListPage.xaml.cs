@@ -94,10 +94,46 @@ public partial class ChatListPage : ContentPage
     /// handle (this view is never a Page, so it never gets that callback). Narrow layout: unchanged
     /// push-navigation to ChatPage, same as before this pass.
     /// </summary>
+    // Press-and-hold name reveal (2026-10-09). MAUI has no built-in long-press, so a pointer press
+    // arms a short timer; if the pointer is still down when it fires, the row shows the peer's
+    // Jméno Příjmení until release. A scroll that starts on a row ends in PointerExited/Released
+    // (or never reaches the timer), so the nick always comes back.
+    private static readonly TimeSpan _revealHoldDelay = TimeSpan.FromMilliseconds(450);
+    private static readonly TimeSpan _revealTapSuppression = TimeSpan.FromMilliseconds(400);
+    private ChatSessionItem? _pressedItem;
+    private ChatSessionItem? _revealedItem;
+    private DateTime _lastRevealEndedUtc = DateTime.MinValue;
+
+    private void OnSessionPointerPressed(object? sender, PointerEventArgs e)
+    {
+        if (sender is not BindableObject { BindingContext: ChatSessionItem item } || item.FormalName is null) return;
+        _pressedItem = item;
+        Dispatcher.DispatchDelayed(_revealHoldDelay, () =>
+        {
+            if (!ReferenceEquals(_pressedItem, item)) return;
+            item.RevealFormalName(true);
+            _revealedItem = item;
+        });
+    }
+
+    private void OnSessionPointerReleased(object? sender, PointerEventArgs e)
+    {
+        _pressedItem = null;
+        if (_revealedItem is null) return;
+        _revealedItem.RevealFormalName(false);
+        _revealedItem = null;
+        _lastRevealEndedUtc = DateTime.UtcNow;
+    }
+
     private void OnSessionSelected(object? sender, SelectionChangedEventArgs e)
     {
         SessionsView.SelectedItem = null;
         if (e.CurrentSelection.FirstOrDefault() is not ChatSessionItem session) return;
+
+        // Lifting the finger after a press-and-hold reveal still counts as a tap on Android (the
+        // click fires on ACTION_UP) — swallow that one so peeking at a name doesn't open the chat.
+        // Checks both orders, since which of the two events fires first on ACTION_UP isn't guaranteed.
+        if (_revealedItem is not null || DateTime.UtcNow - _lastRevealEndedUtc < _revealTapSuppression) return;
 
         if (!_isWideLayout)
         {

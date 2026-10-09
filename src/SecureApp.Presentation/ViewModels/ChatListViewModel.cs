@@ -75,6 +75,7 @@ public sealed partial class ChatListViewModel : ObservableObject
     private void ToggleArchive() => IsArchiveExpanded = !IsArchiveExpanded;
 
     private IReadOnlyDictionary<string, string> _displayedNames = new Dictionary<string, string>();
+    private IReadOnlyDictionary<string, string> _displayedFormalNames = new Dictionary<string, string>();
 
     public ChatListViewModel(
         IChatSessionRepository sessionRepository,
@@ -135,6 +136,7 @@ public sealed partial class ChatListViewModel : ObservableObject
     private async Task BuildListsAsync(IReadOnlyDictionary<string, string> directoryNames)
     {
         _displayedNames = directoryNames;
+        _displayedFormalNames = DirectoryNameResolver.LastKnownFormalNames;
 
         // One chat per PEER, not per session (2026-09-13, the user's live bug: "sami od sebe se tvoří
         // nové a nové chaty"). Resync/auto-heal/group-mesh CLOSE the old session and CREATE a new one
@@ -162,7 +164,8 @@ public sealed partial class ChatListViewModel : ObservableObject
             // DirectoryNameResolver.IsActive's own remarks). Only meaningful once a real fetch actually
             // happened (directoryNames.Count > 0); an empty directory just means "nothing fetched yet".
             var isUnavailable = directoryNames.Count > 0 && !DirectoryNameResolver.IsActive(directoryNames, s.PeerIdentityPublicKey);
-            return new ChatSessionItem(s.Id, name, s.State, DescribeLastActivity(s), ComputeInitials(name), isUnavailable);
+            return new ChatSessionItem(s.Id, name, s.State, DescribeLastActivity(s), ComputeInitials(name), isUnavailable,
+                DirectoryNameResolver.ResolveFormalName(s.PeerIdentityPublicKey));
         }
 
         // 2.3 (2026-09-14): archived chats/groups are moved OUT of the main list into a separate,
@@ -196,7 +199,8 @@ public sealed partial class ChatListViewModel : ObservableObject
         {
             var names = await DirectoryNameResolver.BuildAsync(_contactDirectoryService);
             if (names.Count == 0) return;
-            if (DirectoryNameResolver.AreEquivalent(names, _displayedNames)) return;
+            if (DirectoryNameResolver.AreEquivalent(names, _displayedNames)
+                && DirectoryNameResolver.AreEquivalent(DirectoryNameResolver.LastKnownFormalNames, _displayedFormalNames)) return;
             await BuildListsAsync(names);
         }
         catch
@@ -339,6 +343,41 @@ public sealed partial class ChatListViewModel : ObservableObject
     }
 }
 
-public sealed record ChatSessionItem(Guid Id, string PeerDisplayName, ChatSessionState State, string LastActivityText, string Initials, bool IsUnavailable = false);
+/// <summary>
+/// One 1:1 chat row. A class rather than a record since 2026-10-09: <see cref="ShownName"/> flips
+/// between the nick and <see cref="FormalName"/> while the row is pressed and held (see
+/// <c>ChatListPage</c>'s pointer handlers), and that needs change notification on the existing row
+/// instead of rebuilding the whole list. <see cref="PeerDisplayName"/> stays the nick for every
+/// other caller (dialogs, logs).
+/// </summary>
+public sealed partial class ChatSessionItem : ObservableObject
+{
+    public ChatSessionItem(Guid id, string peerDisplayName, ChatSessionState state, string lastActivityText, string initials, bool isUnavailable = false, string? formalName = null)
+    {
+        Id = id;
+        PeerDisplayName = peerDisplayName;
+        State = state;
+        LastActivityText = lastActivityText;
+        Initials = initials;
+        IsUnavailable = isUnavailable;
+        // Only worth revealing when it actually says something the nick doesn't.
+        FormalName = string.IsNullOrWhiteSpace(formalName) || formalName == peerDisplayName ? null : formalName;
+        ShownName = peerDisplayName;
+    }
+
+    public Guid Id { get; }
+    public string PeerDisplayName { get; }
+    public ChatSessionState State { get; }
+    public string LastActivityText { get; }
+    public string Initials { get; }
+    public bool IsUnavailable { get; }
+    public string? FormalName { get; }
+
+    [ObservableProperty]
+    public partial string ShownName { get; set; }
+
+    /// <summary>Press-and-hold reveal; a no-op for a peer with no distinct <see cref="FormalName"/>.</summary>
+    public void RevealFormalName(bool reveal) => ShownName = reveal && FormalName is not null ? FormalName : PeerDisplayName;
+}
 
 public sealed record GroupChatListItem(Guid Id, string Name, string Initials);

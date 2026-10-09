@@ -534,7 +534,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         try
         {
             var devices = await _relayAdminService.GetRegisteredDevicesAsync(endpoint, adminSecret);
-            RegisteredDevices = new ObservableCollection<RegisteredDeviceItem>(devices.Select(ToRegisteredDeviceItem));
+            RegisteredDevices = new ObservableCollection<RegisteredDeviceItem>(GroupDevicesByPerson(devices));
             HasNoRegisteredDevices = RegisteredDevices.Count == 0;
         }
         catch (Exception ex)
@@ -546,6 +546,58 @@ public sealed partial class SettingsViewModel : ObservableObject
             IsLoadingDevices = false;
         }
     }
+
+    /// <summary>Platforms a person is expected to have SecureApp on — the order the coverage line lists them in. Keys are <c>DeviceInfo.Current.Platform.ToString()</c> values, as published to the relay directory.</summary>
+    private static readonly (string Key, string Label)[] _coveredPlatforms =
+        [("Android", "Android"), ("WinUI", "PC"), ("iOS", "iPhone"), ("MacCatalyst", "Mac")];
+
+    /// <summary>
+    /// Orders the admin device list by person (2026-10-09) — devices that reconciled against the same
+    /// "Soukromé kontakty ARIM" row (<see cref="RegisteredDevice.ArimContactId"/>) sit together, and the
+    /// first row of each person carries a header with which platforms that person has and which are
+    /// missing ("is this person missing from PC/iPhone/Mac"). Devices never reconciled go last under
+    /// their own header. A flat list with per-row headers instead of a grouped CollectionView —
+    /// grouped CollectionViews have been unreliable on Android and this card needs nothing they add.
+    /// </summary>
+    private List<RegisteredDeviceItem> GroupDevicesByPerson(IReadOnlyList<RegisteredDevice> devices)
+    {
+        var result = new List<RegisteredDeviceItem>(devices.Count);
+
+        var people = devices
+            .Where(d => d.ArimContactId is not null)
+            .GroupBy(d => d.ArimContactId!.Value)
+            .OrderBy(g => g.Select(d => d.ArimContactName).FirstOrDefault(n => !string.IsNullOrWhiteSpace(n)) ?? "", StringComparer.CurrentCultureIgnoreCase);
+        foreach (var person in people)
+        {
+            var name = person.Select(d => d.ArimContactName).FirstOrDefault(n => !string.IsNullOrWhiteSpace(n)) ?? "Neznámý kontakt";
+            var present = person.Select(d => d.Platform).Where(p => p is not null).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var coverage = string.Join("  ·  ", _coveredPlatforms.Select(p => (present.Contains(p.Key) ? "✓ " : "✗ ") + p.Label));
+            AddGroup($"👤 {name}", coverage, person);
+        }
+
+        var unlinked = devices.Where(d => d.ArimContactId is null).ToList();
+        if (unlinked.Count > 0)
+            AddGroup("❔ Nepřiřazená zařízení", "Zatím neuložila profil proti kontaktům ARIM.", unlinked);
+
+        return result;
+
+        void AddGroup(string header, string coverage, IEnumerable<RegisteredDevice> groupDevices)
+        {
+            var first = true;
+            foreach (var device in groupDevices.OrderBy(d => d.Platform).ThenBy(d => d.DirectoryDisplayName ?? d.DisplayName))
+            {
+                var item = ToRegisteredDeviceItem(device);
+                result.Add(first ? item with { GroupHeader = header, GroupCoverageText = coverage } : item);
+                first = false;
+            }
+        }
+    }
+
+    private static string DescribePlatform(string? platform) => platform switch
+    {
+        null or "" => "neznámá platforma",
+        _ => _coveredPlatforms.FirstOrDefault(p => string.Equals(p.Key, platform, StringComparison.OrdinalIgnoreCase)).Label ?? platform
+    };
 
     private RegisteredDeviceItem ToRegisteredDeviceItem(RegisteredDevice device)
     {
@@ -561,7 +613,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 
         return new RegisteredDeviceItem(
             device.Id,
-            device.DirectoryDisplayName ?? device.DisplayName,
+            $"{device.DirectoryDisplayName ?? device.DisplayName}  ({DescribePlatform(device.Platform)})",
             statusText,
             pendingText,
             device.PendingOutboxCount > 0,
@@ -986,7 +1038,13 @@ public sealed partial class SettingsViewModel : ObservableObject
 }
 
 /// <summary>One row in the admin's device-management list (2.1, 2026-09-17) — <see cref="StatusText"/>/<see cref="PendingText"/> are pre-formatted here (not in XAML) so the CollectionView's DataTemplate needs no value converters, this codebase's established "no converters" convention.</summary>
-public sealed record RegisteredDeviceItem(Guid Id, string DisplayName, string StatusText, string PendingText, bool HasPendingMessages, bool IsStale, ICommand DeregisterCommand, ICommand ShowErrorsCommand, ICommand ShowEventsCommand);
+public sealed record RegisteredDeviceItem(Guid Id, string DisplayName, string StatusText, string PendingText, bool HasPendingMessages, bool IsStale, ICommand DeregisterCommand, ICommand ShowErrorsCommand, ICommand ShowEventsCommand)
+{
+    /// <summary>Person header (2026-10-09), set only on the first device row of each person — see <c>SettingsViewModel.GroupDevicesByPerson</c>.</summary>
+    public string? GroupHeader { get; init; }
+    public string? GroupCoverageText { get; init; }
+    public bool HasGroupHeader => GroupHeader is not null;
+}
 
 /// <summary>One row in the "Diagnostický log" list (2026-09-10) — display-only, no per-row command, unlike <see cref="RegisteredDeviceItem"/>. <see cref="Level"/> stays the English enum name (<c>Error</c>/<c>Warning</c>/<c>Info</c>) — the XAML template colors it, doesn't translate it, same "wire-level concept stays English" call this codebase already made for <c>TransportConnectionState</c>. <see cref="HasContext"/> is precomputed here (not a converter) so the DataTemplate's <c>IsVisible</c> binding stays a plain bool — this codebase's established preference over introducing a new <c>IValueConverter</c> for one spot.</summary>
 public sealed record DiagnosticLogItem(string TimeText, string Level, string DeviceDisplayName, string Message, string? Context)

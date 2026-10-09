@@ -581,6 +581,12 @@
                             </CollectionView.ItemsLayout>
                             <CollectionView.ItemTemplate>
                                 <DataTemplate x:DataType="vm:RegisteredDeviceItem">
+                                    <VerticalStackLayout Spacing="6">
+                                    <!-- Person header (2026-10-09) — only on the first device of each ARIM contact, see SettingsViewModel.GroupDevicesByPerson. -->
+                                    <VerticalStackLayout Spacing="2" Margin="0,8,0,0" IsVisible="{Binding HasGroupHeader}">
+                                        <Label Text="{Binding GroupHeader}" FontAttributes="Bold" FontSize="12" />
+                                        <Label Text="{Binding GroupCoverageText}" FontSize="9.5" TextColor="Gray" />
+                                    </VerticalStackLayout>
                                     <Border Style="{StaticResource CardBorder}" Margin="0" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
                                         <VerticalStackLayout Spacing="4">
                                             <Label Text="{Binding DisplayName}" FontAttributes="Bold" FontSize="11.5" />
@@ -601,6 +607,7 @@
                                             <Button Text="🗑 Odregistrovat" Style="{StaticResource SecondaryButton}" Command="{Binding DeregisterCommand}" CommandParameter="{Binding Id}" />
                                         </VerticalStackLayout>
                                     </Border>
+                                    </VerticalStackLayout>
                                 </DataTemplate>
                             </CollectionView.ItemTemplate>
                         </CollectionView>

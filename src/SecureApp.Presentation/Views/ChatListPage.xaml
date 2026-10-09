@@ -96,12 +96,21 @@
                             <CollectionView.ItemTemplate>
                                 <DataTemplate x:DataType="vm:ChatSessionItem">
                                     <Border Style="{StaticResource CardBorder}" Margin="0" Padding="10,8">
+                                        <!-- Press-and-hold reveals the peer's Jméno Příjmení in place of the nick
+                                             (2026-10-09) — see ChatListPage.OnSessionPointerPressed. A pointer
+                                             recognizer, not a tap one, so the row's normal tap-to-open selection
+                                             is left alone. -->
+                                        <Border.GestureRecognizers>
+                                            <PointerGestureRecognizer PointerPressed="OnSessionPointerPressed"
+                                                                      PointerReleased="OnSessionPointerReleased"
+                                                                      PointerExited="OnSessionPointerReleased" />
+                                        </Border.GestureRecognizers>
                                         <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="10">
                                             <Border Grid.Column="0" WidthRequest="34" HeightRequest="34" Padding="0" StrokeShape="RoundRectangle 17" Stroke="Transparent" BackgroundColor="{AppThemeBinding Light={StaticResource AccentSoft}, Dark={StaticResource AccentSoftDark}}" VerticalOptions="Center">
                                                 <Label Text="{Binding Initials}" FontFamily="SpectralSemibold" FontSize="10" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" HorizontalOptions="Center" VerticalOptions="Center" />
                                             </Border>
                                             <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
-                                                <Label Text="{Binding PeerDisplayName}" FontSize="11" FontAttributes="Bold" />
+                                                <Label Text="{Binding ShownName}" FontSize="11" FontAttributes="Bold" />
                                                 <Label Text="{Binding LastActivityText}" FontSize="9" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" LineBreakMode="TailTruncation" />
                                                 <!-- 2.1 (2026-09-17): peer absent from the relay's ACTIVE directory (stale/dead
                                                      registration) — paired with the same ↺ resync button every row already has. -->

@@ -27,15 +27,26 @@ public static class DirectoryNameResolver
     /// </summary>
     public static IReadOnlyDictionary<string, string> LastKnown { get; private set; } = new Dictionary<string, string>();
 
-    /// <summary>Fetches the whole directory once and keys it by public key (base64) for repeated lookups — call once per screen load, not per row. Updates <see cref="LastKnown"/> on success.</summary>
+    /// <summary>
+    /// Jméno Příjmení per peer (2026-10-09), same public-key keying as <see cref="LastKnown"/> and
+    /// refreshed by the same <see cref="BuildAsync"/> call — only peers that actually published a
+    /// <c>DirectoryMember.FormalName</c> are present. Kept as a second dictionary rather than changing
+    /// <see cref="LastKnown"/>'s value type, so every existing name-only caller stays untouched; the
+    /// chat list's press-and-hold reveal is the only reader.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> LastKnownFormalNames { get; private set; } = new Dictionary<string, string>();
+
+    /// <summary>Fetches the whole directory once and keys it by public key (base64) for repeated lookups — call once per screen load, not per row. Updates <see cref="LastKnown"/> and <see cref="LastKnownFormalNames"/> on success.</summary>
     public static async Task<IReadOnlyDictionary<string, string>> BuildAsync(IContactDirectoryService contactDirectoryService, CancellationToken ct = default)
     {
         try
         {
             var members = await contactDirectoryService.ListMembersAsync(ct);
-            var result = members
-                .GroupBy(m => Convert.ToBase64String(m.PublicKey))
-                .ToDictionary(g => g.Key, g => g.First().DisplayName);
+            var byKey = members.GroupBy(m => Convert.ToBase64String(m.PublicKey)).ToList();
+            var result = byKey.ToDictionary(g => g.Key, g => g.First().DisplayName);
+            LastKnownFormalNames = byKey
+                .Where(g => !string.IsNullOrWhiteSpace(g.First().FormalName))
+                .ToDictionary(g => g.Key, g => g.First().FormalName!);
             LastKnown = result;
             return result;
         }
@@ -63,6 +74,10 @@ public static class DirectoryNameResolver
         => directory.TryGetValue(Convert.ToBase64String(publicKey), out var currentName) && !string.IsNullOrWhiteSpace(currentName)
             ? currentName
             : fallback;
+
+    /// <summary>A peer's Jméno Příjmení from <see cref="LastKnownFormalNames"/>, or null if they never published one (older build, or Jméno/Příjmení not filled in).</summary>
+    public static string? ResolveFormalName(byte[] publicKey)
+        => LastKnownFormalNames.TryGetValue(Convert.ToBase64String(publicKey), out var formalName) ? formalName : null;
 
     /// <summary>
     /// Whether a peer is currently ACTIVE on the relay (2.1, 2026-09-17) — the same "nedostupný"
