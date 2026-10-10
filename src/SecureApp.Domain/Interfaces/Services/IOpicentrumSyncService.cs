@@ -36,4 +36,13 @@ public interface IOpicentrumSyncService
     /// than attempting anything.
     /// </summary>
     Task<OpicentrumNotePushResult> PushNoteAsync(DateOnly date, string? note, CancellationToken ct = default);
+
+    /// <summary>
+    /// Every person name the portal shows for <paramref name="month"/> (2026-10-10, user's ask: check
+    /// the ARIM contact list from WhatsApp against the names on Opicentrum, logging in through the app
+    /// so the credential never leaves the device). Read-only, same login as <see cref="SyncAsync"/>.
+    /// Throws <see cref="InvalidOperationException"/> with a user-facing message when there are no
+    /// credentials or the login fails.
+    /// </summary>
+    Task<IReadOnlyList<string>> FetchStaffNamesAsync(DateOnly month, CancellationToken ct = default);
 }

@@ -298,6 +298,13 @@
                         <Entry Text="{Binding OpicentrumPasswordInput}" Placeholder="Heslo" IsPassword="True" />
                         <Button Text="Uložit přihlašovací údaje" Command="{Binding SaveOpicentrumCredentialsCommand}" IsEnabled="{Binding CanSaveOpicentrumCredentials}" />
                         <Button Text="Odstranit přihlašovací údaje" Style="{StaticResource SecondaryButton}" Command="{Binding ClearOpicentrumCredentialsCommand}" IsVisible="{Binding HasOpicentrumCredentials}" />
+
+                        <!-- 2026-10-10: admin kontrola ARIM seznamu (z WhatsAppu) proti jménům v Opicentru - viz OpicentrumNameCheck. -->
+                        <VerticalStackLayout Spacing="6" IsVisible="{Binding IsAdmin}" Margin="0,6,0,0">
+                            <Button Text="Porovnat ARIM kontakty s Opicentrem" Style="{StaticResource SecondaryButton}" Command="{Binding CheckOpicentrumNamesCommand}" IsEnabled="{Binding CanCheckOpicentrumNames}" IsVisible="{Binding HasOpicentrumCredentials}" />
+                            <Label Text="{Binding OpicentrumNameCheckReport}" IsVisible="{Binding HasOpicentrumNameCheckReport}" FontSize="10" LineBreakMode="WordWrap" />
+                            <Button Text="Kopírovat výsledek" Style="{StaticResource SecondaryButton}" Command="{Binding CopyOpicentrumNameCheckReportCommand}" IsVisible="{Binding HasOpicentrumNameCheckReport}" />
+                        </VerticalStackLayout>
                     </VerticalStackLayout>
                 </Border>
 

@@ -80,6 +80,51 @@ public sealed partial class SettingsViewModel
         }
     }
 
+    [ObservableProperty]
+    public partial string? OpicentrumNameCheckReport { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasOpicentrumNameCheckReport { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsCheckingOpicentrumNames { get; set; }
+
+    public bool CanCheckOpicentrumNames => !IsCheckingOpicentrumNames;
+
+    partial void OnIsCheckingOpicentrumNamesChanged(bool value) => OnPropertyChanged(nameof(CanCheckOpicentrumNames));
+    partial void OnOpicentrumNameCheckReportChanged(string? value) => HasOpicentrumNameCheckReport = !string.IsNullOrEmpty(value);
+
+    /// <summary>ARIM contact list vs Opicentrum names (2026-10-10) — logs in with THIS device's stored credentials, so nothing about the login ever leaves it. See <see cref="Workplace.OpicentrumNameCheck"/>.</summary>
+    [RelayCommand]
+    private async Task CheckOpicentrumNamesAsync()
+    {
+        IsCheckingOpicentrumNames = true;
+        OpicentrumNameCheckReport = "Přihlašuji se do Opicentra a porovnávám…";
+        try
+        {
+            var opicentrumNames = await _opicentrumSyncService.FetchStaffNamesAsync(DateOnly.FromDateTime(DateTime.Today));
+            var contacts = await _sharedContactService.FetchAsync();
+            OpicentrumNameCheckReport = opicentrumNames.Count == 0
+                ? "Z Opicentra se nepodařilo načíst žádná jména (stránky se možná změnily)."
+                : Workplace.OpicentrumNameCheck.BuildReport(contacts.Select(c => c.DisplayName), opicentrumNames);
+        }
+        catch (Exception ex)
+        {
+            OpicentrumNameCheckReport = $"Porovnání se nezdařilo: {ex.Message}";
+        }
+        finally
+        {
+            IsCheckingOpicentrumNames = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task CopyOpicentrumNameCheckReportAsync()
+    {
+        if (OpicentrumNameCheckReport is { Length: > 0 } report)
+            await Microsoft.Maui.ApplicationModel.DataTransfer.Clipboard.SetTextAsync(report);
+    }
+
     [RelayCommand]
     private async Task ClearOpicentrumCredentialsAsync()
     {

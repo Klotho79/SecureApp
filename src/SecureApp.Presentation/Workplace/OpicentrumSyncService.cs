@@ -324,6 +324,78 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
         }
     }
 
+    /// <summary>
+    /// Union of every name on the three read-only pages <see cref="SyncAsync"/> already scrapes: the
+    /// monthly leave grid (one row per person, rostered or not — the main source), the monthly duty
+    /// slots and the weekly workplace roster for each week of the month (catches anyone the leave grid
+    /// might not list). Deduplicated by <see cref="OpicentrumParsing.NormalizeName"/>, first spelling wins.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> FetchStaffNamesAsync(DateOnly month, CancellationToken ct = default)
+    {
+        var usernameBytes = await _vault.RetrieveSecretAsync(OpicentrumVaultKeys.Username, ct);
+        var passwordBytes = await _vault.RetrieveSecretAsync(OpicentrumVaultKeys.Password, ct);
+        if (usernameBytes is null || passwordBytes is null)
+            throw new InvalidOperationException("Nejprve níže uložte přihlašovací údaje do Opicentra.");
+
+        var cookies = new CookieContainer();
+        using var handler = new HttpClientHandler { CookieContainer = cookies, UseCookies = true };
+        using var http = new HttpClient(handler) { BaseAddress = new Uri(BaseUrl) };
+        http.DefaultRequestHeaders.UserAgent.ParseAdd(BrowserUserAgent);
+
+        var monthStart = new DateOnly(month.Year, month.Month, 1);
+        var monthEnd = monthStart.AddMonths(1).AddDays(-1);
+        var names = new Dictionary<string, string>(StringComparer.Ordinal);
+        void Add(string raw)
+        {
+            var name = WebUtility.HtmlDecode(StripTags(raw)).Replace(' ', ' ').Trim();
+            if (!name.Any(char.IsLetter)) return;
+            names.TryAdd(OpicentrumParsing.NormalizeName(name), name);
+        }
+
+        await LoginGate.WaitAsync(ct);
+        try
+        {
+            if (await LoginAsync(http, Encoding.UTF8.GetString(usernameBytes), Encoding.UTF8.GetString(passwordBytes), ct) is null)
+                throw new InvalidOperationException("Přihlášení do Opicentra se nezdařilo — zkontrolujte uživatelské jméno a heslo.");
+
+            var leaveHtml = await http.GetStringAsync($"spravavolna.php?akce=ukazvolno&rok={month.Year}&mesic={month.Month}", ct);
+            foreach (Match m in LeavePersonLinkRegex().Matches(leaveHtml))
+                Add(m.Groups["name"].Value);
+
+            try
+            {
+                var form = new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["mesic"] = month.Month.ToString(CultureInfo.InvariantCulture),
+                    ["rok"] = month.Year.ToString(CultureInfo.InvariantCulture),
+                });
+                using var response = await http.PostAsync("sluzby7.php?akce=ukazsluzby", form, ct);
+                var sluzbyHtml = await response.Content.ReadAsStringAsync(ct);
+                foreach (Match row in SluzbyRowRegex().Matches(sluzbyHtml))
+                    foreach (Match cell in SluzbyCellRegex().Matches(row.Value))
+                        Add(cell.Groups["name"].Value);
+            }
+            catch (HttpRequestException) { /* best-effort extra source — the leave grid is the main one */ }
+
+            foreach (var monday in DistinctMondaysInRange(monthStart, monthEnd))
+            {
+                try
+                {
+                    var html = await http.GetStringAsync($"pracoviste.php?akce=ukazpracoviste&datum={monday:yyyyMMdd}", ct);
+                    foreach (var entry in OpicentrumParsing.ParsePracovisteWeek(html))
+                        Add(entry.PersonName);
+                }
+                catch (HttpRequestException) { /* best-effort per week */ }
+            }
+        }
+        finally
+        {
+            LoginGate.Release();
+        }
+
+        return names.Values.OrderBy(n => n, StringComparer.Create(Czech, ignoreCase: true)).ToList();
+    }
+
     private static string Truncate(string value, int maxLength) => value.Length <= maxLength ? value : value[..maxLength];
 
     private static async Task<string?> LoginAsync(HttpClient http, string username, string password, CancellationToken ct)
