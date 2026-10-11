@@ -54,6 +54,93 @@ public sealed partial class SettingsViewModel
             SettingsTab = i;
     }
 
+    // --- Sub-tabs within each main tab (2026-10-11, user's ask: "v nastaveni jsou strasne dlouhe
+    // obsahy... udelej podmenu jako napr v uzivateli udelej podmenu ucet vzhled zobrazeni") — one
+    // level deeper than SettingsTab above, same converter-free int+derived-bools+command pattern,
+    // one independent int per main tab so switching between Uživatel/Systém/Admin never disturbs
+    // which sub-section was open in the others.
+
+    [ObservableProperty]
+    public partial int UserSubTab { get; set; }
+
+    public bool IsUserAccountSubTab => UserSubTab == 0;
+    public bool IsUserAppearanceSubTab => UserSubTab == 1;
+    public bool IsUserVisibilitySubTab => UserSubTab == 2;
+    public bool IsUserBoardSubTab => UserSubTab == 3;
+
+    partial void OnUserSubTabChanged(int value)
+    {
+        OnPropertyChanged(nameof(IsUserAccountSubTab));
+        OnPropertyChanged(nameof(IsUserAppearanceSubTab));
+        OnPropertyChanged(nameof(IsUserVisibilitySubTab));
+        OnPropertyChanged(nameof(IsUserBoardSubTab));
+    }
+
+    [RelayCommand]
+    private void SelectUserSubTab(string index)
+    {
+        if (int.TryParse(index, out var i))
+            UserSubTab = i;
+    }
+
+    [ObservableProperty]
+    public partial int SystemSubTab { get; set; }
+
+    public bool IsSystemConnectionSubTab => SystemSubTab == 0;
+    public bool IsSystemIdentitySubTab => SystemSubTab == 1;
+    public bool IsSystemOpicentrumSubTab => SystemSubTab == 2;
+    public bool IsSystemRozpisSubTab => SystemSubTab == 3;
+    public bool IsSystemUpdateSubTab => SystemSubTab == 4;
+    public bool IsSystemLibrarySubTab => SystemSubTab == 5;
+    public bool IsSystemDiagnosticsSubTab => SystemSubTab == 6;
+
+    partial void OnSystemSubTabChanged(int value)
+    {
+        OnPropertyChanged(nameof(IsSystemConnectionSubTab));
+        OnPropertyChanged(nameof(IsSystemIdentitySubTab));
+        OnPropertyChanged(nameof(IsSystemOpicentrumSubTab));
+        OnPropertyChanged(nameof(IsSystemRozpisSubTab));
+        OnPropertyChanged(nameof(IsSystemUpdateSubTab));
+        OnPropertyChanged(nameof(IsSystemLibrarySubTab));
+        OnPropertyChanged(nameof(IsSystemDiagnosticsSubTab));
+    }
+
+    [RelayCommand]
+    private void SelectSystemSubTab(string index)
+    {
+        if (int.TryParse(index, out var i))
+            SystemSubTab = i;
+    }
+
+    [ObservableProperty]
+    public partial int AdminSubTab { get; set; }
+
+    public bool IsAdminDebugSubTab => AdminSubTab == 0;
+    public bool IsAdminLogsSubTab => AdminSubTab == 1;
+    public bool IsAdminMembersSubTab => AdminSubTab == 2;
+    public bool IsAdminDevicesSubTab => AdminSubTab == 3;
+    public bool IsAdminDeploySubTab => AdminSubTab == 4;
+    public bool IsAdminAiSubTab => AdminSubTab == 5;
+    public bool IsAdminNewMemberSubTab => AdminSubTab == 6;
+
+    partial void OnAdminSubTabChanged(int value)
+    {
+        OnPropertyChanged(nameof(IsAdminDebugSubTab));
+        OnPropertyChanged(nameof(IsAdminLogsSubTab));
+        OnPropertyChanged(nameof(IsAdminMembersSubTab));
+        OnPropertyChanged(nameof(IsAdminDevicesSubTab));
+        OnPropertyChanged(nameof(IsAdminDeploySubTab));
+        OnPropertyChanged(nameof(IsAdminAiSubTab));
+        OnPropertyChanged(nameof(IsAdminNewMemberSubTab));
+    }
+
+    [RelayCommand]
+    private void SelectAdminSubTab(string index)
+    {
+        if (int.TryParse(index, out var i))
+            AdminSubTab = i;
+    }
+
     // --- Appearance (Phase 4, easy customization) ------------------------------------------------
     // Light/dark/system, per device, applied live via App.ApplyThemeMode (which flips every
     // AppThemeBinding immediately) and persisted so it also holds across restarts.

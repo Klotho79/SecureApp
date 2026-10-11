@@ -48,6 +48,43 @@
             <!-- ============================ UŽIVATEL ============================ -->
             <VerticalStackLayout x:Name="UserTabContent" Spacing="12" IsVisible="{Binding IsUserSettingsTab}">
 
+                <!-- Sub-tabs (2026-10-11) — see SettingsViewModel.Community's UserSubTab remarks. -->
+                <FlexLayout Wrap="Wrap">
+                    <Button Text="Účet" Style="{StaticResource SubTabButton}" Command="{Binding SelectUserSubTabCommand}" CommandParameter="0">
+                        <Button.Triggers>
+                            <DataTrigger TargetType="Button" Binding="{Binding IsUserAccountSubTab}" Value="True">
+                                <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                                <Setter Property="TextColor" Value="{StaticResource White}" />
+                            </DataTrigger>
+                        </Button.Triggers>
+                    </Button>
+                    <Button Text="Vzhled" Style="{StaticResource SubTabButton}" Command="{Binding SelectUserSubTabCommand}" CommandParameter="1">
+                        <Button.Triggers>
+                            <DataTrigger TargetType="Button" Binding="{Binding IsUserAppearanceSubTab}" Value="True">
+                                <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                                <Setter Property="TextColor" Value="{StaticResource White}" />
+                            </DataTrigger>
+                        </Button.Triggers>
+                    </Button>
+                    <Button Text="Zobrazení" Style="{StaticResource SubTabButton}" Command="{Binding SelectUserSubTabCommand}" CommandParameter="2">
+                        <Button.Triggers>
+                            <DataTrigger TargetType="Button" Binding="{Binding IsUserVisibilitySubTab}" Value="True">
+                                <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                                <Setter Property="TextColor" Value="{StaticResource White}" />
+                            </DataTrigger>
+                        </Button.Triggers>
+                    </Button>
+                    <Button Text="Nástěnka" Style="{StaticResource SubTabButton}" IsVisible="{Binding CanPostToBoard}" Command="{Binding SelectUserSubTabCommand}" CommandParameter="3">
+                        <Button.Triggers>
+                            <DataTrigger TargetType="Button" Binding="{Binding IsUserBoardSubTab}" Value="True">
+                                <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                                <Setter Property="TextColor" Value="{StaticResource White}" />
+                            </DataTrigger>
+                        </Button.Triggers>
+                    </Button>
+                </FlexLayout>
+
+                <VerticalStackLayout Spacing="12" IsVisible="{Binding IsUserAccountSubTab}">
                 <Border Style="{StaticResource CardBorder}">
                     <VerticalStackLayout Spacing="8">
                         <Label Text="Účet" Style="{StaticResource SectionHeader}" Margin="0" />
@@ -87,7 +124,9 @@
                         <Label Text="{Binding ArimReconciliationStatusText}" IsVisible="{Binding HasArimReconciliationStatus}" FontSize="9.5" TextColor="Gray" LineBreakMode="WordWrap" />
                     </VerticalStackLayout>
                 </Border>
+                </VerticalStackLayout>
 
+                <VerticalStackLayout Spacing="12" IsVisible="{Binding IsUserAppearanceSubTab}">
                 <!-- Vzhled (2026-09-24, Phase 4) — světlý/tmavý/systém, projeví se hned. -->
                 <Border Style="{StaticResource CardBorder}">
                     <VerticalStackLayout Spacing="8">
@@ -155,7 +194,9 @@
                         <Label Text="Projeví se hned. Platí jen pro toto zařízení." FontSize="9.5" TextColor="Gray" />
                     </VerticalStackLayout>
                 </Border>
+                </VerticalStackLayout>
 
+                <VerticalStackLayout Spacing="12" IsVisible="{Binding IsUserVisibilitySubTab}">
                 <!-- Zobrazení — per-tab show/hide, per-device. -->
                 <Border Style="{StaticResource CardBorder}">
                     <VerticalStackLayout Spacing="8">
@@ -191,7 +232,9 @@
                         <Label Text="Přidá/skryje záložku Logbook (check-listy a záznam výkonů) — projeví se hned. Platí jen pro toto zařízení." FontSize="9.5" TextColor="Gray" />
                     </VerticalStackLayout>
                 </Border>
+                </VerticalStackLayout>
 
+                <VerticalStackLayout Spacing="12" IsVisible="{Binding IsUserBoardSubTab}">
                 <!-- Nástěnka (2026-09-24) — Admin/Modifier napíší zprávu, která se všem objeví na
                      záložce Nástěnka. Šifruje se sdíleným klíčem komunity, relay text nevidí. Ve
                      Uživatel tabu (ne Admin), aby na ni dosáhl i Modifier, který není admin. -->
@@ -204,12 +247,74 @@
                         <Label Text="{Binding BoardStatusText}" IsVisible="{Binding HasBoardStatus}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" LineBreakMode="WordWrap" />
                     </VerticalStackLayout>
                 </Border>
+                </VerticalStackLayout>
 
             </VerticalStackLayout>
 
             <!-- ============================ SYSTÉM ============================ -->
             <VerticalStackLayout x:Name="SystemTabContent" Spacing="12" IsVisible="{Binding IsSystemSettingsTab}">
 
+                <!-- Sub-tabs (2026-10-11) — see SettingsViewModel.Community's SystemSubTab remarks. -->
+                <FlexLayout Wrap="Wrap">
+                    <Button Text="Připojení" Style="{StaticResource SubTabButton}" Command="{Binding SelectSystemSubTabCommand}" CommandParameter="0">
+                        <Button.Triggers>
+                            <DataTrigger TargetType="Button" Binding="{Binding IsSystemConnectionSubTab}" Value="True">
+                                <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                                <Setter Property="TextColor" Value="{StaticResource White}" />
+                            </DataTrigger>
+                        </Button.Triggers>
+                    </Button>
+                    <Button Text="Identita" Style="{StaticResource SubTabButton}" Command="{Binding SelectSystemSubTabCommand}" CommandParameter="1">
+                        <Button.Triggers>
+                            <DataTrigger TargetType="Button" Binding="{Binding IsSystemIdentitySubTab}" Value="True">
+                                <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                                <Setter Property="TextColor" Value="{StaticResource White}" />
+                            </DataTrigger>
+                        </Button.Triggers>
+                    </Button>
+                    <Button Text="Opicentrum" Style="{StaticResource SubTabButton}" Command="{Binding SelectSystemSubTabCommand}" CommandParameter="2">
+                        <Button.Triggers>
+                            <DataTrigger TargetType="Button" Binding="{Binding IsSystemOpicentrumSubTab}" Value="True">
+                                <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                                <Setter Property="TextColor" Value="{StaticResource White}" />
+                            </DataTrigger>
+                        </Button.Triggers>
+                    </Button>
+                    <Button Text="Rozpis" Style="{StaticResource SubTabButton}" Command="{Binding SelectSystemSubTabCommand}" CommandParameter="3">
+                        <Button.Triggers>
+                            <DataTrigger TargetType="Button" Binding="{Binding IsSystemRozpisSubTab}" Value="True">
+                                <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                                <Setter Property="TextColor" Value="{StaticResource White}" />
+                            </DataTrigger>
+                        </Button.Triggers>
+                    </Button>
+                    <Button Text="Aktualizace" Style="{StaticResource SubTabButton}" Command="{Binding SelectSystemSubTabCommand}" CommandParameter="4">
+                        <Button.Triggers>
+                            <DataTrigger TargetType="Button" Binding="{Binding IsSystemUpdateSubTab}" Value="True">
+                                <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                                <Setter Property="TextColor" Value="{StaticResource White}" />
+                            </DataTrigger>
+                        </Button.Triggers>
+                    </Button>
+                    <Button Text="Knihovna" Style="{StaticResource SubTabButton}" Command="{Binding SelectSystemSubTabCommand}" CommandParameter="5">
+                        <Button.Triggers>
+                            <DataTrigger TargetType="Button" Binding="{Binding IsSystemLibrarySubTab}" Value="True">
+                                <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                                <Setter Property="TextColor" Value="{StaticResource White}" />
+                            </DataTrigger>
+                        </Button.Triggers>
+                    </Button>
+                    <Button Text="Diagnostika" Style="{StaticResource SubTabButton}" IsVisible="{Binding IsAdmin}" Command="{Binding SelectSystemSubTabCommand}" CommandParameter="6">
+                        <Button.Triggers>
+                            <DataTrigger TargetType="Button" Binding="{Binding IsSystemDiagnosticsSubTab}" Value="True">
+                                <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                                <Setter Property="TextColor" Value="{StaticResource White}" />
+                            </DataTrigger>
+                        </Button.Triggers>
+                    </Button>
+                </FlexLayout>
+
+                <VerticalStackLayout Spacing="12" IsVisible="{Binding IsSystemConnectionSubTab}">
                 <!-- Zprávy na pozadí (2026-09-26) — Android only. -->
                 <Border Style="{StaticResource CardBorder}" IsVisible="{Binding IsBackgroundRunSupported}">
                     <VerticalStackLayout Spacing="8">
@@ -254,7 +359,9 @@
                         <Button Text="Odhlásit se" Style="{StaticResource SecondaryButton}" Command="{Binding LogOutCommand}" />
                     </VerticalStackLayout>
                 </Border>
+                </VerticalStackLayout>
 
+                <VerticalStackLayout Spacing="12" IsVisible="{Binding IsSystemIdentitySubTab}">
                 <!-- Identita: zálohovat/obnovit (2026-09-29, disaster recovery po skutečné ztrátě
                      identity na S23+ tuhle session) — "Zálohovat" jen když je zařízení zaregistrované
                      (je co zálohovat), "Obnovit" jen dokud NENÍ (jinak by to přepsalo živou identitu —
@@ -284,7 +391,9 @@
                         <Label Text="{Binding RestoreStatusText}" IsVisible="{Binding HasRestoreStatus}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" LineBreakMode="WordWrap" />
                     </VerticalStackLayout>
                 </Border>
+                </VerticalStackLayout>
 
+                <VerticalStackLayout Spacing="12" IsVisible="{Binding IsSystemOpicentrumSubTab}">
                 <!-- Opicentrum — third-party login for the ARO staff portal the Rozpis syncs from. -->
                 <Border Style="{StaticResource CardBorder}">
                     <VerticalStackLayout Spacing="8">
@@ -307,7 +416,9 @@
                         </VerticalStackLayout>
                     </VerticalStackLayout>
                 </Border>
+                </VerticalStackLayout>
 
+                <VerticalStackLayout Spacing="12" IsVisible="{Binding IsSystemRozpisSubTab}">
                 <!-- Barvy typů rozpisu — per-device, applies on valid hex, no separate save. -->
                 <Border Style="{StaticResource CardBorder}">
                     <VerticalStackLayout Spacing="8">
@@ -328,7 +439,9 @@
                         </VerticalStackLayout>
                     </VerticalStackLayout>
                 </Border>
+                </VerticalStackLayout>
 
+                <VerticalStackLayout Spacing="12" IsVisible="{Binding IsSystemUpdateSubTab}">
                 <Border Style="{StaticResource CardBorder}">
                     <VerticalStackLayout Spacing="8">
                         <Label Text="Aktualizace appky" Style="{StaticResource SectionHeader}" Margin="0" />
@@ -339,7 +452,9 @@
                         <Label Text="{Binding UpdateStatusText}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding HasUpdateStatus}" />
                     </VerticalStackLayout>
                 </Border>
+                </VerticalStackLayout>
 
+                <VerticalStackLayout Spacing="12" IsVisible="{Binding IsSystemLibrarySubTab}">
                 <Border Style="{StaticResource CardBorder}">
                     <VerticalStackLayout Spacing="8">
                         <Label Text="Klíč sdílené knihovny" Style="{StaticResource SectionHeader}" Margin="0" />
@@ -392,7 +507,9 @@
                         <Label Text="{Binding LibraryCategoriesStatusText}" FontSize="9.5" IsVisible="{Binding HasLibraryCategoriesStatus}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
                     </VerticalStackLayout>
                 </Border>
+                </VerticalStackLayout>
 
+                <VerticalStackLayout Spacing="12" IsVisible="{Binding IsSystemDiagnosticsSubTab}">
                 <!-- Diagnostický log — every device still reports into it, but only the admin reads it (2026-09-26, user's call). -->
                 <Border Style="{StaticResource CardBorder}" IsVisible="{Binding IsAdmin}">
                     <VerticalStackLayout Spacing="8">
@@ -441,13 +558,15 @@
                         </CollectionView>
                     </VerticalStackLayout>
                 </Border>
+                </VerticalStackLayout>
 
             </VerticalStackLayout>
 
             <!-- ============================ ADMIN ============================ -->
             <VerticalStackLayout Spacing="12" IsVisible="{Binding IsAdminSettingsTab}">
 
-                <!-- Admin heslo — shared by every admin action below; never stored. -->
+                <!-- Admin heslo — shared by every admin action below; never stored. Stays above the
+                     sub-tabs (not inside one) since it's used across several of them. -->
                 <Border Style="{StaticResource CardBorder}">
                     <VerticalStackLayout Spacing="8">
                         <Label Text="Admin heslo relay serveru (SECUREAPP_RELAY_ADMIN_SECRET) — zadej před každou akcí, nikam se neukládá" FontSize="9.5" TextColor="Gray" />
@@ -456,6 +575,67 @@
                     </VerticalStackLayout>
                 </Border>
 
+                <!-- Sub-tabs (2026-10-11) — see SettingsViewModel.Community's AdminSubTab remarks. -->
+                <FlexLayout Wrap="Wrap">
+                    <Button Text="Ladění" Style="{StaticResource SubTabButton}" Command="{Binding SelectAdminSubTabCommand}" CommandParameter="0">
+                        <Button.Triggers>
+                            <DataTrigger TargetType="Button" Binding="{Binding IsAdminDebugSubTab}" Value="True">
+                                <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                                <Setter Property="TextColor" Value="{StaticResource White}" />
+                            </DataTrigger>
+                        </Button.Triggers>
+                    </Button>
+                    <Button Text="Logy" Style="{StaticResource SubTabButton}" Command="{Binding SelectAdminSubTabCommand}" CommandParameter="1">
+                        <Button.Triggers>
+                            <DataTrigger TargetType="Button" Binding="{Binding IsAdminLogsSubTab}" Value="True">
+                                <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                                <Setter Property="TextColor" Value="{StaticResource White}" />
+                            </DataTrigger>
+                        </Button.Triggers>
+                    </Button>
+                    <Button Text="Členové" Style="{StaticResource SubTabButton}" Command="{Binding SelectAdminSubTabCommand}" CommandParameter="2">
+                        <Button.Triggers>
+                            <DataTrigger TargetType="Button" Binding="{Binding IsAdminMembersSubTab}" Value="True">
+                                <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                                <Setter Property="TextColor" Value="{StaticResource White}" />
+                            </DataTrigger>
+                        </Button.Triggers>
+                    </Button>
+                    <Button Text="Zařízení" Style="{StaticResource SubTabButton}" Command="{Binding SelectAdminSubTabCommand}" CommandParameter="3">
+                        <Button.Triggers>
+                            <DataTrigger TargetType="Button" Binding="{Binding IsAdminDevicesSubTab}" Value="True">
+                                <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                                <Setter Property="TextColor" Value="{StaticResource White}" />
+                            </DataTrigger>
+                        </Button.Triggers>
+                    </Button>
+                    <Button Text="Nasazení" Style="{StaticResource SubTabButton}" Command="{Binding SelectAdminSubTabCommand}" CommandParameter="4">
+                        <Button.Triggers>
+                            <DataTrigger TargetType="Button" Binding="{Binding IsAdminDeploySubTab}" Value="True">
+                                <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                                <Setter Property="TextColor" Value="{StaticResource White}" />
+                            </DataTrigger>
+                        </Button.Triggers>
+                    </Button>
+                    <Button Text="AI překlad" Style="{StaticResource SubTabButton}" IsVisible="{Binding CanConfigureLocalAiTranslation}" Command="{Binding SelectAdminSubTabCommand}" CommandParameter="5">
+                        <Button.Triggers>
+                            <DataTrigger TargetType="Button" Binding="{Binding IsAdminAiSubTab}" Value="True">
+                                <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                                <Setter Property="TextColor" Value="{StaticResource White}" />
+                            </DataTrigger>
+                        </Button.Triggers>
+                    </Button>
+                    <Button Text="Nový člen" Style="{StaticResource SubTabButton}" Command="{Binding SelectAdminSubTabCommand}" CommandParameter="6">
+                        <Button.Triggers>
+                            <DataTrigger TargetType="Button" Binding="{Binding IsAdminNewMemberSubTab}" Value="True">
+                                <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                                <Setter Property="TextColor" Value="{StaticResource White}" />
+                            </DataTrigger>
+                        </Button.Triggers>
+                    </Button>
+                </FlexLayout>
+
+                <VerticalStackLayout Spacing="12" IsVisible="{Binding IsAdminDebugSubTab}">
                 <!-- Ladění: dočasně povolit snímky obrazovky na tomto zařízení (2026-10-11) — vyprší samo po 24 h. -->
                 <Border Style="{StaticResource CardBorder}">
                     <VerticalStackLayout Spacing="8">
@@ -468,7 +648,9 @@
                         <Label Text="Jen pro toto zařízení, na 24 hodin. Pak se ochrana zapne sama." FontSize="9.5" TextColor="Gray" />
                     </VerticalStackLayout>
                 </Border>
+                </VerticalStackLayout>
 
+                <VerticalStackLayout Spacing="12" IsVisible="{Binding IsAdminLogsSubTab}">
                 <!-- Log stažení dokumentů (2026-09-30, user's own ask: "bude log kdo co kdy stahl
                      podle dokumentu vyhledatelny") — every "Stáhnout" tap in DocumentViewerPage logs
                      here; admin-only search by document title, newest first. -->
@@ -541,7 +723,9 @@
                         </CollectionView>
                     </VerticalStackLayout>
                 </Border>
+                </VerticalStackLayout>
 
+                <VerticalStackLayout Spacing="12" IsVisible="{Binding IsAdminMembersSubTab}">
                 <!-- Správa členů — role + per-tab visibility per member. -->
                 <Border Style="{StaticResource CardBorder}">
                     <VerticalStackLayout Spacing="8">
@@ -581,7 +765,9 @@
                         </CollectionView>
                     </VerticalStackLayout>
                 </Border>
+                </VerticalStackLayout>
 
+                <VerticalStackLayout Spacing="12" IsVisible="{Binding IsAdminDevicesSubTab}">
                 <!-- Zařízení — staleness + pending outbox, deregister a dead device. -->
                 <Border Style="{StaticResource CardBorder}">
                     <VerticalStackLayout Spacing="8">
@@ -644,7 +830,9 @@
                         </Border>
                     </VerticalStackLayout>
                 </Border>
+                </VerticalStackLayout>
 
+                <VerticalStackLayout Spacing="12" IsVisible="{Binding IsAdminDeploySubTab}">
                 <Border Style="{StaticResource CardBorder}">
                     <VerticalStackLayout Spacing="8">
                         <Label Text="Admin: Nasazení relay serveru" Style="{StaticResource SectionHeader}" Margin="0" />
@@ -654,7 +842,9 @@
                         <Label Text="{Binding DeployStatusText}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding HasDeployStatus}" />
                     </VerticalStackLayout>
                 </Border>
+                </VerticalStackLayout>
 
+                <VerticalStackLayout Spacing="12" IsVisible="{Binding IsAdminAiSubTab}">
                 <!-- Admin-only local-AI PDF translation (2026-10-05) — only ever visible on Windows, since Ollama/LM Studio run on the admin's own PC. -->
                 <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanConfigureLocalAiTranslation}">
                     <VerticalStackLayout Spacing="8">
@@ -673,7 +863,9 @@
                         <Label Text="{Binding LocalAiTranslationStatusText}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding HasLocalAiTranslationStatus}" LineBreakMode="WordWrap" />
                     </VerticalStackLayout>
                 </Border>
+                </VerticalStackLayout>
 
+                <VerticalStackLayout Spacing="12" IsVisible="{Binding IsAdminNewMemberSubTab}">
                 <Border Style="{StaticResource CardBorder}">
                     <VerticalStackLayout Spacing="8">
                         <Label Text="Přidat nového člena" Style="{StaticResource SectionHeader}" Margin="0" />
@@ -702,6 +894,7 @@
                         <Label Text="{Binding DownloadShareUrl}" FontSize="9.5" TextColor="Gray" LineBreakMode="CharacterWrap" />
                     </VerticalStackLayout>
                 </Border>
+                </VerticalStackLayout>
 
             </VerticalStackLayout>
 

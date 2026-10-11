@@ -108,6 +108,17 @@
         </Setter>
     </Style>
 
+    <!-- Settings sub-tab chip (2026-10-11) — a smaller SecondaryButton for the second-level nav
+         inside each Uživatel/Systém/Admin tab (Účet/Vzhled/Zobrazení.../..., see SettingsPage.xaml);
+         FlexLayout gives each its own Margin instead of a shared ColumnSpacing so they wrap on a
+         narrow phone instead of being clipped. -->
+    <Style x:Key="SubTabButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Padding" Value="10,6" />
+        <Setter Property="MinimumHeightRequest" Value="34" />
+        <Setter Property="Margin" Value="0,0,6,6" />
+    </Style>
+
     <!-- Section heading within a page (e.g. Settings' "Relay"/"My Contact Card" groups) —
          replaces the repeated inline FontAttributes="Bold" Margin="0,16,0,0" pattern. Serif
          (SpectralSemibold), matching the redesign's "editorial authority" heading treatment —
