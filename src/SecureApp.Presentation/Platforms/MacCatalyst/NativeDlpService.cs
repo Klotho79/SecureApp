@@ -18,4 +18,8 @@ public sealed class NativeDlpService : INativeDlpService
     {
         // Intentionally empty — see remarks above.
     }
+
+    public void AllowScreenCapture()
+    {
+    }
 }

@@ -1246,7 +1246,9 @@ public partial class App : Application
 		window.Created += (_, _) =>
 		{
 			var dlpService = IPlatformApplication.Current?.Services.GetService<INativeDlpService>();
-			dlpService?.PreventScreenCapture();
+			// Admin debugging override (Settings → Admin) — time-limited, see ScreenCaptureDebugOverride.
+			if (!ScreenCaptureDebugOverride.IsActive)
+				dlpService?.PreventScreenCapture();
 
 			// Milestone 5 (E2EE Chat) connect: handled entirely by RunConnectionSupervisorLoopAsync
 			// now, started from the constructor above — its very first tick fires almost immediately,

@@ -21,13 +21,19 @@ public sealed class NativeDlpService : INativeDlpService
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity);
 
-    public void PreventScreenCapture()
+    private const uint WdaNone = 0x00000000;
+
+    public void PreventScreenCapture() => SetAffinity(WdaMonitor);
+
+    public void AllowScreenCapture() => SetAffinity(WdaNone);
+
+    private static void SetAffinity(uint affinity)
     {
         var mauiWindow = Microsoft.Maui.Controls.Application.Current?.Windows.FirstOrDefault();
         if (mauiWindow?.Handler?.PlatformView is not Microsoft.UI.Xaml.Window winUiWindow)
             return;
 
         var hwnd = WindowNative.GetWindowHandle(winUiWindow);
-        SetWindowDisplayAffinity(hwnd, WdaMonitor);
+        SetWindowDisplayAffinity(hwnd, affinity);
     }
 }

@@ -19,4 +19,9 @@ public sealed class NativeDlpService : INativeDlpService
     {
         Microsoft.Maui.ApplicationModel.Platform.CurrentActivity?.Window?.AddFlags(WindowManagerFlags.Secure);
     }
+
+    public void AllowScreenCapture()
+    {
+        Microsoft.Maui.ApplicationModel.Platform.CurrentActivity?.Window?.ClearFlags(WindowManagerFlags.Secure);
+    }
 }

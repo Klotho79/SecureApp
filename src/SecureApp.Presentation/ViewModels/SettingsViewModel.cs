@@ -402,6 +402,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         LoadAccent();
         LoadChatAppearance();
         RefreshBackgroundRunStatus();
+        if (IsAdmin)
+            LoadScreenCaptureState();
         IsSaved = false;
         ErrorMessage = null;
         IsLogbookVisible = Preferences.Default.Get(AppShell.LogbookVisibilityPreferenceKey, false);

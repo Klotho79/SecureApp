@@ -456,6 +456,19 @@
                     </VerticalStackLayout>
                 </Border>
 
+                <!-- Ladění: dočasně povolit snímky obrazovky na tomto zařízení (2026-10-11) — vyprší samo po 24 h. -->
+                <Border Style="{StaticResource CardBorder}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Ladění" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Grid ColumnDefinitions="*,Auto">
+                            <Label Grid.Column="0" Text="Povolit snímky obrazovky" VerticalOptions="Center" FontAttributes="Bold" />
+                            <Switch Grid.Column="1" IsToggled="{Binding IsScreenCaptureAllowed}" />
+                        </Grid>
+                        <Label Text="{Binding ScreenCaptureStatusText}" FontSize="9.5" TextColor="Gray" LineBreakMode="WordWrap" />
+                        <Label Text="Jen pro toto zařízení, na 24 hodin. Pak se ochrana zapne sama." FontSize="9.5" TextColor="Gray" />
+                    </VerticalStackLayout>
+                </Border>
+
                 <!-- Log stažení dokumentů (2026-09-30, user's own ask: "bude log kdo co kdy stahl
                      podle dokumentu vyhledatelny") — every "Stáhnout" tap in DocumentViewerPage logs
                      here; admin-only search by document title, newest first. -->

@@ -40,4 +40,9 @@ public sealed class NativeDlpService : INativeDlpService
         window.Layer.SuperLayer?.AddSublayer(secureField.Layer);
         secureField.Layer.Sublayers?.FirstOrDefault()?.AddSublayer(window.Layer);
     }
+
+    public void AllowScreenCapture()
+    {
+        // The layer re-parenting above can't be safely undone on a live window — takes effect on the next launch.
+    }
 }

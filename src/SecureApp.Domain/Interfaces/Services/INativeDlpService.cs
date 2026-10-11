@@ -12,4 +12,7 @@ public interface INativeDlpService
 {
     /// <summary>Best-effort. Platforms with no supported mechanism (or nothing meaningful to do) no-op.</summary>
     void PreventScreenCapture();
+
+    /// <summary>Undoes <see cref="PreventScreenCapture"/> on the live window — admin debugging only (screenshots for bug reports). Platforms that can't undo it live no-op; the block then stays off from the next launch.</summary>
+    void AllowScreenCapture();
 }
