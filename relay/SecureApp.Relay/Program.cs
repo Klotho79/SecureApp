@@ -194,6 +194,31 @@ app.MapPost("/admin/upload/ops", async (HttpRequest request, string name) =>
     return Results.Ok(new { uploaded = true, name, sizeBytes = new FileInfo(path).Length });
 });
 
+// Serves anything /admin/upload/ops put into downloadsDir (2026-10-12, user's own ask: "na relay
+// potrebuji aby bylo k dispozici vse k fungovani apky na pc" — the .NET Desktop Runtime / Windows
+// App SDK Runtime installers a framework-dependent Windows build needs, see this file's own remarks
+// above /download/windows). Public, same exposure class as every other /download/* route — same
+// `name` safety checks as the matching upload endpoint. Range-enabled since these installers run to
+// tens of MB, same reasoning as /download/android's own enableRangeProcessing.
+app.MapGet("/download/ops/{name}", (string name) =>
+{
+    if (string.IsNullOrWhiteSpace(name) || name.Contains("..") || name.Contains('/') || name.Contains('\\')
+        || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+        return Results.BadRequest("Invalid 'name'.");
+
+    var path = Path.Combine(downloadsDir, name);
+    if (!File.Exists(path))
+        return Results.NotFound($"'{name}' zatím není nahráno.");
+
+    var contentType = Path.GetExtension(name).ToLowerInvariant() switch
+    {
+        ".exe" => "application/octet-stream",
+        ".zip" => "application/zip",
+        _ => "application/octet-stream"
+    };
+    return Results.File(path, contentType, name, enableRangeProcessing: true);
+});
+
 // Self-update (2026-09-23) — the in-app update check reads this; unauthenticated, same reasoning
 // as /download itself (a device that's already this far along already has the app, but checking
 // "is there something newer" shouldn't need a device credential either — it's the same "anyone
