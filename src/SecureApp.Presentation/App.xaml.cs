@@ -655,6 +655,18 @@ public partial class App : Application
 
 			foreach (var post in posts)
 			{
+				// Not decryptable yet (2026-10-12, real bug caught from a user report: "proč mi chodí
+				// do zpráv, že [chybí] shared library key" — this device had no/the wrong shared
+				// library key, so HttpCommunityBoardService.ListAsync came back with its own "🔒
+				// (chybí klíč sdílené knihovny)" placeholder as post.Text, and THAT literal placeholder
+				// was going out as a real Nástěnka notification, over and over, once per new post,
+				// for as long as the key stayed missing). Skip it entirely — don't mark seen, don't
+				// notify — so the id stays un-seen and gets reconsidered on every sweep; the moment
+				// SharedLibraryKeySync's own automatic distribution lands the key, the very next sweep
+				// sees real text and raises a genuine, correct notification instead of having already
+				// permanently burned this id on a meaningless placeholder.
+				if (!post.IsReadable) continue;
+
 				var id = post.Id.ToString();
 				if (!seen.Add(id)) continue;                 // already known
 				if (firstRun) continue;                      // baseline only — don't notify for history

@@ -76,8 +76,18 @@ public sealed class HttpCommunityBoardService : ICommunityBoardService
             var result = new List<BoardPost>(dtos.Count);
             foreach (var d in dtos)
             {
-                var text = key is null ? "🔒 (chybí klíč sdílené knihovny)" : await TryDecryptAsync(d.ContentBlob, key, ct);
-                result.Add(new BoardPost(d.Id, d.AuthorDeviceId, d.AuthorDisplayName, text, d.CreatedAtUtc));
+                string text;
+                bool isReadable;
+                if (key is null)
+                {
+                    text = "🔒 (chybí klíč sdílené knihovny)";
+                    isReadable = false;
+                }
+                else
+                {
+                    (text, isReadable) = await TryDecryptAsync(d.ContentBlob, key, ct);
+                }
+                result.Add(new BoardPost(d.Id, d.AuthorDeviceId, d.AuthorDisplayName, text, d.CreatedAtUtc, isReadable));
             }
             return result;
         }
@@ -98,22 +108,24 @@ public sealed class HttpCommunityBoardService : ICommunityBoardService
         return response.IsSuccessStatusCode;
     }
 
-    private async Task<string> TryDecryptAsync(string blob, byte[] key, CancellationToken ct)
+    private async Task<(string Text, bool IsReadable)> TryDecryptAsync(string blob, byte[] key, CancellationToken ct)
     {
         try
         {
             var wire = Convert.FromBase64String(blob);
-            if (wire.Length < NonceLength + AuthTagLength) return "⚠ (poškozená zpráva)";
+            if (wire.Length < NonceLength + AuthTagLength) return ("⚠ (poškozená zpráva)", false);
             var nonce = wire[..NonceLength];
             var tag = wire[NonceLength..(NonceLength + AuthTagLength)];
             var cipher = wire[(NonceLength + AuthTagLength)..];
             var payload = new EncryptedPayload(Guid.Empty, EncryptionAlgorithm.Aes256Gcm, cipher, nonce, tag);
             var plaintext = await _crypto.DecryptWithKeyAsync(payload, key, ct);
-            return Encoding.UTF8.GetString(plaintext);
+            return (Encoding.UTF8.GetString(plaintext), true);
         }
         catch
         {
-            return "🔒 (nešlo dešifrovat — zkontrolujte klíč sdílené knihovny)";
+            // Wrong/stale local key for THIS post specifically (the common no-key-at-all case is
+            // handled one level up in ListAsync, before this is even called) — still not readable.
+            return ("🔒 (nešlo dešifrovat — zkontrolujte klíč sdílené knihovny)", false);
         }
     }
 

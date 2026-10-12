@@ -33,10 +33,21 @@ public sealed record ManagedDevice(
     string? AppVersion = null,
     bool IsPiccTeam = false);
 
-/// <summary>One notice-board post, decrypted for display (2026-09-24). <see cref="AuthorDisplayName"/> is resolved by the relay against the live directory, so a rename applies retroactively.</summary>
+/// <summary>
+/// One notice-board post, decrypted for display (2026-09-24). <see cref="AuthorDisplayName"/> is
+/// resolved by the relay against the live directory, so a rename applies retroactively.
+/// <see cref="IsReadable"/> (2026-10-12) is false when <see cref="Text"/> is actually one of
+/// <c>HttpCommunityBoardService</c>'s own placeholder strings (no/wrong shared library key on this
+/// device yet) rather than real decrypted content — see <c>App.SyncBoardToNotificationsAsync</c>'s
+/// own remarks on why that distinction matters: without it, every post this device can't yet read
+/// gets silently marked "seen" with the placeholder as its permanent content, so the REAL text never
+/// arrives even after the key shows up later. Appended last with a default so existing positional
+/// constructor calls elsewhere keep compiling unchanged, same precedent as <see cref="DevicePolicy"/>.
+/// </summary>
 public sealed record BoardPost(
     Guid Id,
     Guid AuthorDeviceId,
     string AuthorDisplayName,
     string Text,
-    DateTimeOffset CreatedAtUtc);
+    DateTimeOffset CreatedAtUtc,
+    bool IsReadable = true);
