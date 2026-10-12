@@ -1419,6 +1419,15 @@ static string DownloadPageHtml(bool androidAvailable, string? androidSize, bool 
                 <li>Stáhněte .zip tlačítkem výše a celý rozbalte (pravým tlačítkem → Extrahovat vše).</li>
                 <li>Ve vybalené složce spusťte <strong>SecureApp.Presentation.exe</strong> — instalace ani admin práva nejsou potřeba.</li>
             </ol>
+            <p class="muted">
+                Appka nepoužívá instalátor, ale POTŘEBUJE mít na počítači už nainstalované dvě
+                komponenty od Microsoftu (na většině PC už jsou) — pokud se appka po spuštění
+                nic neukáže nebo nahlásí chybu, doinstalujte obě a zkuste to znovu:
+                <a href="/download/ops/windowsdesktop-runtime-10.0-win-x64.exe">.NET Desktop Runtime</a> a
+                <a href="/download/ops/windowsappruntimeinstall-x64.exe">Windows App SDK Runtime</a>
+                (u obou klepněte „Další“/„Ano“, nic se neptají). Instalaci "Nové PC" .bat tlačítkem
+                níže doinstaluje obě automaticky, bez tohoto kroku.
+            </p>
             """
         : "";
 
