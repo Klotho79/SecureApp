@@ -388,7 +388,7 @@ public sealed partial class SettingsViewModel
             var members = await _relayAdminService.GetManagedDevicesAsync(endpoint, adminSecret);
             ManagedMembers.Clear();
             foreach (var m in members)
-                ManagedMembers.Add(new MemberPolicyItem(m.DeviceId, m.DisplayName, m.Role, m.HiddenTabs, m.LastSeenUtc, m.IsDocumentReviewer, m.AppVersion, m.IsPiccTeam));
+                ManagedMembers.Add(new MemberPolicyItem(m.DeviceId, m.DisplayName, m.Role, m.HiddenTabs, m.LastSeenUtc, m.IsDocumentReviewer, m.AppVersion, m.IsPiccTeam, m.HasSharedLibraryKey));
             MemberManagementStatusText = members.Count == 0 ? "Zatím žádní členové." : $"Načteno členů: {members.Count}.";
 
             // The admin opening this screen is, by definition, online right now and (almost always)
@@ -433,6 +433,31 @@ public sealed partial class SettingsViewModel
         }
     }
 
+    /// <summary>
+    /// Admin-triggered nudge for a member stuck without the shared library key (2026-10-12, direct
+    /// follow-up to a real user report of bogus Nástěnka notifications — see
+    /// <c>App.SyncBoardToNotificationsAsync</c>'s own remarks for the bug this surfaced). Re-runs the
+    /// SAME escrow publish <see cref="LoadManagedMembersAsync"/> already fires automatically on every
+    /// load — there is no per-recipient targeting in <c>PublishWrappedKeyForMembersAsync</c> (it wraps
+    /// for every current member at once), so this is a manual "do it again right now" rather than a
+    /// way to single out one device. Still worth exposing per-row: the admin reaches for it exactly
+    /// when looking at ONE stuck member, even though it helps everyone who's missing the key.
+    /// </summary>
+    [RelayCommand]
+    private async Task ResendSharedLibraryKeyAsync(MemberPolicyItem? member)
+    {
+        if (member is null) return;
+        try
+        {
+            await _sharedLibraryService.PublishWrappedKeyForMembersAsync();
+            member.StatusText = "Klíč znovu odeslán — zařízení ho vyzvedne při příštím připojení (do ~3 min).";
+        }
+        catch (Exception ex)
+        {
+            member.StatusText = $"Odeslání se nezdařilo: {ex.Message}";
+        }
+    }
+
     /// <summary>Called from the page's OnDisappearing so the admin secret held for the management session doesn't outlive it.</summary>
     public void ClearMemberManagement()
     {
@@ -461,7 +486,7 @@ public sealed class AccentSwatchItem
 /// <summary>One member row in the admin's "Správa členů" screen — editable role + per-tab visibility.</summary>
 public sealed partial class MemberPolicyItem : ObservableObject
 {
-    public MemberPolicyItem(Guid deviceId, string displayName, Role? role, IReadOnlyList<string> hiddenTabs, DateTimeOffset? lastSeenUtc, bool isDocumentReviewer = false, string? appVersion = null, bool isPiccTeam = false)
+    public MemberPolicyItem(Guid deviceId, string displayName, Role? role, IReadOnlyList<string> hiddenTabs, DateTimeOffset? lastSeenUtc, bool isDocumentReviewer = false, string? appVersion = null, bool isPiccTeam = false, bool hasSharedLibraryKey = false)
     {
         DeviceId = deviceId;
         DisplayName = displayName;
@@ -480,12 +505,22 @@ public sealed partial class MemberPolicyItem : ObservableObject
         // device that has never published to the directory since this field shipped; both read the
         // same to the admin ("neznámá"), since neither case is actionable differently right now.
         AppVersionText = string.IsNullOrWhiteSpace(appVersion) ? "verze neznámá" : $"verze {appVersion}";
+
+        // HasSharedLibraryKey (2026-10-12) — see ManagedDevice's own remarks on why this is here at
+        // all. HasSharedLibraryKey itself (not just the text) drives the "Odeslat klíč" button's
+        // IsVisible in SettingsPage.xaml — no point showing it for a member who already has the key.
+        HasSharedLibraryKey = hasSharedLibraryKey;
+        SharedLibraryKeyText = hasSharedLibraryKey ? "🔑 má klíč sdílené knihovny" : "🔒 NEMÁ klíč sdílené knihovny";
     }
 
     public Guid DeviceId { get; }
     public string DisplayName { get; }
     public string LastSeenText { get; }
     public string AppVersionText { get; }
+    public bool HasSharedLibraryKey { get; }
+    /// <summary>Converter-free inverse of <see cref="HasSharedLibraryKey"/> for the resend button's IsVisible, same style as the rest of this file's own derived bools.</summary>
+    public bool MissingSharedLibraryKey => !HasSharedLibraryKey;
+    public string SharedLibraryKeyText { get; }
 
     /// <summary>Picker source: index 0 = "ponechat na zařízení" (null), then the three real roles.</summary>
     public IReadOnlyList<string> RoleChoices { get; } = ["Neurčeno (ponechat)", "Admin", "Modifier", "Viewer"];

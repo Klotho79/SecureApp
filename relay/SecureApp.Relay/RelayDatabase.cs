@@ -317,6 +317,17 @@ public sealed class RelayDatabase
         if (!ColumnExists(connection, "directory_entries", "arim_contact_id"))
             Execute(connection, "ALTER TABLE directory_entries ADD COLUMN arim_contact_id TEXT NULL");
 
+        // has_shared_library_key (2026-10-12, user's own ask after a real report of bogus Nástěnka
+        // notifications — see HttpCommunityBoardService's own remarks: this device self-reports
+        // whether it currently holds the shared library key, same self-reported shape as app_version/
+        // platform above, piggybacked on the same /directory/publish call — the relay has no other
+        // way to know a device's local vault state. Admin's "Správa členů" screen surfaces it so a
+        // member stuck without the key is visible there instead of only discoverable by them
+        // reporting broken Nástěnka/library content. Defaults to 0 (false) for an older client that
+        // predates this field.
+        if (!ColumnExists(connection, "directory_entries", "has_shared_library_key"))
+            Execute(connection, "ALTER TABLE directory_entries ADD COLUMN has_shared_library_key INTEGER NOT NULL DEFAULT 0");
+
         // Document Library content-approval workflow (2026-10-01) — layered ALONGSIDE library_files,
         // never migrating it: an existing library_files row with no matching row here simply has no
         // review history, still found the normal way via GET /library/files. Each version's actual
@@ -1396,7 +1407,7 @@ public sealed class RelayDatabase
         DateTimeOffset.Parse((string)reader["created_at_utc"], CultureInfo.InvariantCulture),
         reader["assigned_device_id"] is DBNull ? null : Guid.Parse((string)reader["assigned_device_id"]));
 
-    public void UpsertDirectoryEntry(Guid deviceId, string displayName, byte[] publicKey, string? appVersion, string? formalName = null, string? platform = null)
+    public void UpsertDirectoryEntry(Guid deviceId, string displayName, byte[] publicKey, string? appVersion, string? formalName = null, string? platform = null, bool hasSharedLibraryKey = false)
     {
         using var connection = OpenConnection();
         // Deliberately does NOT touch arim_contact_id — that's set once, separately, by
@@ -1404,10 +1415,10 @@ public sealed class RelayDatabase
         // ordinary republish (every reconnect) in between.
         Execute(connection,
             """
-            INSERT INTO directory_entries (device_id, display_name, public_key, updated_at_utc, app_version, formal_name, platform) VALUES (@id, @name, @key, @now, @version, @formal, @platform)
-            ON CONFLICT(device_id) DO UPDATE SET display_name = @name, public_key = @key, updated_at_utc = @now, app_version = @version, formal_name = @formal, platform = @platform
+            INSERT INTO directory_entries (device_id, display_name, public_key, updated_at_utc, app_version, formal_name, platform, has_shared_library_key) VALUES (@id, @name, @key, @now, @version, @formal, @platform, @haskey)
+            ON CONFLICT(device_id) DO UPDATE SET display_name = @name, public_key = @key, updated_at_utc = @now, app_version = @version, formal_name = @formal, platform = @platform, has_shared_library_key = @haskey
             """,
-            ("@id", deviceId.ToString()), ("@name", displayName), ("@key", publicKey), ("@now", Format(DateTimeOffset.UtcNow)), ("@version", (object?)appVersion ?? DBNull.Value), ("@formal", (object?)formalName ?? DBNull.Value), ("@platform", (object?)platform ?? DBNull.Value));
+            ("@id", deviceId.ToString()), ("@name", displayName), ("@key", publicKey), ("@now", Format(DateTimeOffset.UtcNow)), ("@version", (object?)appVersion ?? DBNull.Value), ("@formal", (object?)formalName ?? DBNull.Value), ("@platform", (object?)platform ?? DBNull.Value), ("@haskey", hasSharedLibraryKey ? 1 : 0));
     }
 
     /// <summary>Links a device to the "Soukromé kontakty ARIM" row it successfully reconciled against (2026-10-08) — see directory_entries.arim_contact_id's own schema remarks for why this is separate from the ordinary UpsertDirectoryEntry republish path.</summary>
@@ -1457,7 +1468,7 @@ public sealed class RelayDatabase
     }
 
     /// <summary>Every registered device with whatever policy it currently has, for the admin's own management screen. Names come from the live directory (a device that has never published shows its registration-time name instead).</summary>
-    public IReadOnlyList<(Guid DeviceId, string DisplayName, int? Role, IReadOnlyList<string> HiddenTabs, DateTimeOffset? LastSeenUtc, bool DocumentReviewer, bool PiccTeam, string? AppVersion)> GetManagedDevices()
+    public IReadOnlyList<(Guid DeviceId, string DisplayName, int? Role, IReadOnlyList<string> HiddenTabs, DateTimeOffset? LastSeenUtc, bool DocumentReviewer, bool PiccTeam, string? AppVersion, bool HasSharedLibraryKey)> GetManagedDevices()
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
@@ -1469,14 +1480,15 @@ public sealed class RelayDatabase
                    p.document_reviewer AS document_reviewer,
                    p.picc_team         AS picc_team,
                    e.updated_at_utc    AS last_seen,
-                   e.app_version       AS app_version
+                   e.app_version       AS app_version,
+                   e.has_shared_library_key AS has_shared_library_key
             FROM devices d
             LEFT JOIN directory_entries e ON e.device_id = d.id
             LEFT JOIN device_policy    p ON p.device_id = d.id
             ORDER BY display_name COLLATE NOCASE
             """;
 
-        var results = new List<(Guid, string, int?, IReadOnlyList<string>, DateTimeOffset?, bool, bool, string?)>();
+        var results = new List<(Guid, string, int?, IReadOnlyList<string>, DateTimeOffset?, bool, bool, string?, bool)>();
         using var reader = command.ExecuteReader();
         while (reader.Read())
         {
@@ -1488,7 +1500,8 @@ public sealed class RelayDatabase
                 reader["last_seen"] is DBNull ? null : DateTimeOffset.Parse((string)reader["last_seen"]),
                 reader["document_reviewer"] is not DBNull && Convert.ToInt32(reader["document_reviewer"]) != 0,
                 reader["picc_team"] is not DBNull && Convert.ToInt32(reader["picc_team"]) != 0,
-                reader["app_version"] is DBNull ? null : (string)reader["app_version"]));
+                reader["app_version"] is DBNull ? null : (string)reader["app_version"],
+                reader["has_shared_library_key"] is not DBNull && Convert.ToInt32(reader["has_shared_library_key"]) != 0));
         }
 
         return results;

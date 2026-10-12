@@ -24,18 +24,21 @@ public sealed class HttpContactDirectoryService : IContactDirectoryService
     private readonly IMessagingService _messagingService;
     private readonly ISecureVaultKeyStore _vault;
     private readonly ITransportSettingsRepository _transportSettingsRepository;
+    private readonly ISharedLibraryService _sharedLibraryService;
     private readonly HttpClient _httpClient = new();
 
     public HttpContactDirectoryService(
         ICurrentUserService currentUserService,
         IMessagingService messagingService,
         ISecureVaultKeyStore vault,
-        ITransportSettingsRepository transportSettingsRepository)
+        ITransportSettingsRepository transportSettingsRepository,
+        ISharedLibraryService sharedLibraryService)
     {
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         _messagingService = messagingService ?? throw new ArgumentNullException(nameof(messagingService));
         _vault = vault ?? throw new ArgumentNullException(nameof(vault));
         _transportSettingsRepository = transportSettingsRepository ?? throw new ArgumentNullException(nameof(transportSettingsRepository));
+        _sharedLibraryService = sharedLibraryService ?? throw new ArgumentNullException(nameof(sharedLibraryService));
     }
 
     public async Task PublishSelfAsync(CancellationToken ct = default)
@@ -62,6 +65,14 @@ public sealed class HttpContactDirectoryService : IContactDirectoryService
         // own remarks). Platform — DeviceInfo.Current.Platform's string form (Android/iOS/WinUI/
         // MacCatalyst), for the admin device list's per-platform coverage view.
         var formalName = _currentUserService.Current.FormalName;
+
+        // HasSharedLibraryKey (2026-10-12, user's own ask after a real bogus-notification report —
+        // see HttpCommunityBoardService's own remarks): self-reported the same way AppVersion/Platform
+        // already are, so the admin's "Správa členů" screen can show which members are stuck without
+        // the key instead of only finding out when something downstream (Nástěnka, library files)
+        // breaks for them.
+        var hasSharedLibraryKey = await _sharedLibraryService.HasSharedKeyAsync(ct);
+
         using var request = new HttpRequestMessage(HttpMethod.Post, uri)
         {
             Content = JsonContent.Create(
@@ -72,6 +83,7 @@ public sealed class HttpContactDirectoryService : IContactDirectoryService
                     AppVersion = appVersion,
                     FormalName = string.IsNullOrWhiteSpace(formalName) ? null : formalName,
                     Platform = Microsoft.Maui.Devices.DeviceInfo.Current.Platform.ToString(),
+                    HasSharedLibraryKey = hasSharedLibraryKey,
                 },
                 options: HttpJsonOptions)
         };

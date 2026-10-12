@@ -875,7 +875,7 @@ app.MapPost("/directory/publish", (HttpRequest request, PublishDirectoryEntryReq
         return Results.BadRequest("PublicKeyBase64 is not valid base64.");
     }
 
-    db.UpsertDirectoryEntry(deviceId, body.DisplayName, publicKey, body.AppVersion, body.FormalName, body.Platform);
+    db.UpsertDirectoryEntry(deviceId, body.DisplayName, publicKey, body.AppVersion, body.FormalName, body.Platform, body.HasSharedLibraryKey);
     return Results.Ok();
 });
 
@@ -909,7 +909,7 @@ app.MapGet("/admin/users", (HttpRequest request, RelayDatabase db) =>
         return Results.Unauthorized();
 
     var devices = db.GetManagedDevices()
-        .Select(d => new ManagedDeviceDto(d.DeviceId, d.DisplayName, d.Role, d.HiddenTabs, d.LastSeenUtc, d.DocumentReviewer, d.AppVersion, d.PiccTeam))
+        .Select(d => new ManagedDeviceDto(d.DeviceId, d.DisplayName, d.Role, d.HiddenTabs, d.LastSeenUtc, d.DocumentReviewer, d.AppVersion, d.PiccTeam, d.HasSharedLibraryKey))
         .ToList();
     return Results.Ok(devices);
 });

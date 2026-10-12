@@ -22,7 +22,17 @@ public sealed record DevicePolicy(Role? Role, IReadOnlyList<string> HiddenTabs, 
     public static DevicePolicy Unmanaged { get; } = new(null, Array.Empty<string>(), false, false);
 }
 
-/// <summary>One member as the admin's management screen sees them (2026-09-24). <see cref="IsDocumentReviewer"/> (2026-10-01)/<see cref="IsPiccTeam"/> (2026-10-12) appended last — see <see cref="DevicePolicy"/>'s own remarks. <see cref="AppVersion"/> (2026-10-01) is whatever the device last reported on <c>/directory/publish</c> — null for an older client that predates this field, or one that has never reconnected since.</summary>
+/// <summary>
+/// One member as the admin's management screen sees them (2026-09-24). <see cref="IsDocumentReviewer"/>
+/// (2026-10-01)/<see cref="IsPiccTeam"/> (2026-10-12) appended last — see <see cref="DevicePolicy"/>'s
+/// own remarks. <see cref="AppVersion"/> (2026-10-01) is whatever the device last reported on
+/// <c>/directory/publish</c> — null for an older client that predates this field, or one that has
+/// never reconnected since. <see cref="HasSharedLibraryKey"/> (2026-10-12, user's own ask — surfacing
+/// per-device key status in Admin so a "stuck" member is visible instead of only discoverable by
+/// them reporting broken Nástěnka/library content) is the SAME self-reported flag, piggybacked on the
+/// same publish call for the same reason: the relay can't know a device's local vault state any other
+/// way, and a device already reports things about itself this way (<see cref="AppVersion"/>/Platform).
+/// </summary>
 public sealed record ManagedDevice(
     Guid DeviceId,
     string DisplayName,
@@ -31,7 +41,8 @@ public sealed record ManagedDevice(
     DateTimeOffset? LastSeenUtc,
     bool IsDocumentReviewer = false,
     string? AppVersion = null,
-    bool IsPiccTeam = false);
+    bool IsPiccTeam = false,
+    bool HasSharedLibraryKey = false);
 
 /// <summary>
 /// One notice-board post, decrypted for display (2026-09-24). <see cref="AuthorDisplayName"/> is

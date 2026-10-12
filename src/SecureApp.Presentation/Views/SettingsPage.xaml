@@ -761,6 +761,21 @@
                                             <Label Text="{Binding DisplayName}" FontAttributes="Bold" FontSize="11.5" />
                                             <Label Text="{Binding LastSeenText}" FontSize="9" TextColor="Gray" />
                                             <Label Text="{Binding AppVersionText}" FontSize="9" TextColor="Gray" />
+                                            <!-- Shared library key status (2026-10-12) — see ManagedDevice's own remarks. The resend
+                                                 button only shows when missing; there's nothing to "resend" for a member who already has it. -->
+                                            <Label Text="{Binding SharedLibraryKeyText}" FontSize="9">
+                                                <Label.Triggers>
+                                                    <DataTrigger TargetType="Label" Binding="{Binding HasSharedLibraryKey}" Value="True">
+                                                        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger TargetType="Label" Binding="{Binding HasSharedLibraryKey}" Value="False">
+                                                        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" />
+                                                    </DataTrigger>
+                                                </Label.Triggers>
+                                            </Label>
+                                            <Button Text="🔄 Odeslat klíč znovu" Style="{StaticResource SecondaryButton}" IsVisible="{Binding MissingSharedLibraryKey}"
+                                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:SettingsViewModel}}, Path=ResendSharedLibraryKeyCommand}"
+                                                    CommandParameter="{Binding .}" />
                                             <Label Text="Role" FontSize="9" TextColor="Gray" Margin="0,4,0,0" />
                                             <Picker ItemsSource="{Binding RoleChoices}" SelectedIndex="{Binding SelectedRoleIndex}" />
                                             <Grid ColumnDefinitions="*,Auto"><Label Grid.Column="0" Text="Chaty" VerticalOptions="Center" /><Switch Grid.Column="1" IsToggled="{Binding ShowChaty}" /></Grid>

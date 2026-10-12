@@ -57,8 +57,8 @@ public sealed record RegisteredDeviceSummary(Guid Id, string DisplayName, DateTi
 // an admin approve every device's real identity; see RelayDatabase's own remarks on
 // directory_entries for the trust-model note this relies on.
 
-/// <summary>Upserts the CALLING (device-authenticated) device's own entry — carries no device id, since the relay already knows which device is asking from the X-Device-Id/X-Device-Secret headers, same auth as the /library/files endpoints.</summary>
-public sealed record PublishDirectoryEntryRequest(string DisplayName, string PublicKeyBase64, string? AppVersion = null, string? FormalName = null, string? Platform = null);
+/// <summary>Upserts the CALLING (device-authenticated) device's own entry — carries no device id, since the relay already knows which device is asking from the X-Device-Id/X-Device-Secret headers, same auth as the /library/files endpoints. <c>HasSharedLibraryKey</c> (2026-10-12) is the same kind of device-self-reported status as <c>AppVersion</c>/<c>Platform</c> — see directory_entries.has_shared_library_key's own remarks.</summary>
+public sealed record PublishDirectoryEntryRequest(string DisplayName, string PublicKeyBase64, string? AppVersion = null, string? FormalName = null, string? Platform = null, bool HasSharedLibraryKey = false);
 
 /// <summary>See <c>RelayDatabase.SetDirectoryArimLink</c>'s own remarks.</summary>
 public sealed record LinkArimContactRequest(Guid ArimContactId);
@@ -139,8 +139,8 @@ public sealed record IdentityBackupDto(string EnvelopeJson);
 /// <summary>What the CALLING device is allowed to be. <c>Role</c> null means no admin has managed this device yet — the client then keeps its own local role rather than being demoted. <c>HiddenTabs</c> holds AppShell preference keys (e.g. <c>tab_chaty_visible</c>) the device must not show. <c>DocumentReviewer</c> (2026-10-01) is the separate Document Library review capability — see <c>device_policy</c>'s own remarks.</summary>
 public sealed record DevicePolicyResponse(int? Role, IReadOnlyList<string> HiddenTabs, bool DocumentReviewer = false, bool PiccTeam = false);
 
-/// <summary>One member as the admin's management screen sees them. <c>LastSeenUtc</c> is the directory's own last-published timestamp (null = never connected since the directory existed).</summary>
-public sealed record ManagedDeviceDto(Guid DeviceId, string DisplayName, int? Role, IReadOnlyList<string> HiddenTabs, DateTimeOffset? LastSeenUtc, bool DocumentReviewer = false, string? AppVersion = null, bool PiccTeam = false);
+/// <summary>One member as the admin's management screen sees them. <c>LastSeenUtc</c> is the directory's own last-published timestamp (null = never connected since the directory existed). <c>HasSharedLibraryKey</c> (2026-10-12) — see directory_entries.has_shared_library_key's own remarks.</summary>
+public sealed record ManagedDeviceDto(Guid DeviceId, string DisplayName, int? Role, IReadOnlyList<string> HiddenTabs, DateTimeOffset? LastSeenUtc, bool DocumentReviewer = false, string? AppVersion = null, bool PiccTeam = false, bool HasSharedLibraryKey = false);
 
 /// <summary>Admin sets one member's role, which tabs they may not see, and (2026-10-01) whether they may review Document Library submissions, plus (2026-10-12) whether they're on the PICC team — see <c>device_policy</c>'s own remarks. A null <c>Role</c> clears the assignment and hands the role decision back to the device. A null <c>DocumentReviewer</c>/<c>PiccTeam</c> leaves that capability unchanged.</summary>
 public sealed record SetDevicePolicyRequest(int? Role, IReadOnlyList<string>? HiddenTabs, bool? DocumentReviewer = null, bool? PiccTeam = null);
