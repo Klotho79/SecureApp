@@ -378,7 +378,12 @@ public sealed partial class SettingsViewModel
         {
             var progress = new Progress<double>(p => UpdateDownloadProgress = p);
             _pendingUpdateLocalPath = await _updateService.DownloadUpdateAsync(progress);
-            UpdateStatusText = "Staženo — otevírá se instalace…";
+            // Windows installs by closing and relaunching THIS process (see NativeAppInstaller's own
+            // remarks) — there's no OS install prompt to describe the way "otevírá se instalace…"
+            // (Android) does, and barely a moment to read it before the window actually closes.
+            UpdateStatusText = OperatingSystem.IsWindows()
+                ? "Staženo — appka se za chvíli restartuje s novou verzí…"
+                : "Staženo — otevírá se instalace…";
             _nativeAppInstaller.InstallApk(_pendingUpdateLocalPath);
         }
         catch (Exception ex)

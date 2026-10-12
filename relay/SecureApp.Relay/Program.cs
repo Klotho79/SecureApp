@@ -106,9 +106,9 @@ app.MapGet("/download/android", () =>
 
 // Windows portable build (2026-10-02, user's own ask: a second PC with no admin rights can't install
 // the .NET Desktop Runtime / Windows App SDK Runtime a framework-dependent build needs — see the
-// Presentation csproj's own remarks on the matching SelfContained switch). No in-app updater for this
-// one (unlike Android) — placed here manually via scp, not /admin/upload/android's sibling, since this
-// is an occasional manual hand-off, not a routine release channel.
+// Presentation csproj's own remarks on the matching SelfContained switch). Also the file the in-app
+// Windows updater itself downloads (2026-10-12, see /download/windows/version + INativeAppInstaller's
+// Windows implementation) — not just a manual-install artifact anymore.
 app.MapGet("/download/windows", () =>
 {
     var path = Path.Combine(downloadsDir, "secureapp-windows-portable.zip");
@@ -232,6 +232,20 @@ app.MapGet("/download/android/version", () =>
     return Results.Content(File.ReadAllText(versionPath), "application/json");
 });
 
+// Self-update, Windows side (2026-10-12, mirrors /download/android/version above) — the in-app
+// update check on a Windows device reads THIS, not the Android one; before this existed, UpdateService
+// always queried the Android manifest regardless of platform, so a Windows device compared its own
+// build number against the ANDROID release and, even when it detected a newer version, had no actual
+// installer to hand off to (see INativeAppInstaller's Windows implementation for that other half).
+app.MapGet("/download/windows/version", () =>
+{
+    var versionPath = Path.Combine(downloadsDir, "secureapp-windows.version.json");
+    if (!File.Exists(versionPath))
+        return Results.NotFound();
+
+    return Results.Content(File.ReadAllText(versionPath), "application/json");
+});
+
 // Lets a future release be published with one authenticated POST from the dev machine instead of
 // manually scp-ing the APK onto the Pi — same admin-secret gate as /admin/deploy right above.
 app.MapPost("/admin/upload/android", async (HttpRequest request) =>
@@ -270,7 +284,14 @@ app.MapPost("/admin/upload/android", async (HttpRequest request) =>
 // unlike the APK upload above — ASP.NET Core's own default MultipartBodyLengthLimit (128MB) rejected
 // this ~170MB zip even with Kestrel's MaxRequestBodySize already raised; a raw stream only answers to
 // that larger Kestrel limit (200MB), already comfortably enough.
-app.MapPost("/admin/upload/windows", async (HttpRequest request) =>
+//
+// versionCode/versionName are now OPTIONAL query params (2026-10-12, same self-update wiring the
+// Android upload above always had) — a plain body-only POST still just updates the zip with no
+// version bump, same as before this existed, but passing them also writes
+// secureapp-windows.version.json so /download/windows/version (and therefore the in-app Windows
+// update check) actually sees the new release. Omitted on purpose until now; this is why a Windows
+// device could never detect/install its own update (it was comparing against the ANDROID manifest).
+app.MapPost("/admin/upload/windows", async (HttpRequest request, int? versionCode, string? versionName) =>
 {
     if (!IsAdminAuthorized(request, adminSecret))
         return Results.Unauthorized();
@@ -279,7 +300,14 @@ app.MapPost("/admin/upload/windows", async (HttpRequest request) =>
     await using (var stream = File.Create(zipPath))
         await request.Body.CopyToAsync(stream);
 
-    return Results.Ok(new { uploaded = true, sizeBytes = new FileInfo(zipPath).Length });
+    if (versionCode is { } code)
+    {
+        var versionPath = Path.Combine(downloadsDir, "secureapp-windows.version.json");
+        var manifest = new UpdateManifest(code, string.IsNullOrEmpty(versionName) ? code.ToString() : versionName, DateTimeOffset.UtcNow);
+        await File.WriteAllTextAsync(versionPath, System.Text.Json.JsonSerializer.Serialize(manifest));
+    }
+
+    return Results.Ok(new { uploaded = true, sizeBytes = new FileInfo(zipPath).Length, versionCode, versionName });
 });
 
 app.MapPost("/admin/invites", (HttpRequest request, CreateInviteRequest body, RelayDatabase db) =>

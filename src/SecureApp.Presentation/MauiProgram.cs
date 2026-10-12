@@ -143,14 +143,19 @@ public static class MauiProgram
 		builder.Services.AddSingleton<INativeNotificationService, NativeNotificationService>();
 
 		// Self-update (2026-09-23) — IUpdateService itself is plain cross-platform HTTP (registered
-		// unconditionally below), but actually launching an OS install flow for a downloaded APK is
-		// an Android-only concept, unlike DLP/notifications above which exist on every platform —
+		// unconditionally below), but actually landing a downloaded update is platform-specific —
 		// this project's first real need for a genuinely platform-CONDITIONAL registration rather
 		// than one-file-per-platform-folder.
 #if ANDROID
 		builder.Services.AddSingleton<INativeAppInstaller, SecureApp.Presentation.Infrastructure.NativeAppInstaller>();
 		// Background (foreground-service) update download — Android only; see INativeUpdateDownloader.
 		builder.Services.AddSingleton<INativeUpdateDownloader, SecureApp.Presentation.Infrastructure.AndroidUpdateDownloader>();
+#endif
+		// Windows (2026-10-12): extract-and-relaunch instead of Android's OS package installer — see
+		// Platforms/Windows/NativeAppInstaller.cs. No INativeUpdateDownloader equivalent here; the
+		// portable zip download stays tied to the Settings screen's own lifetime on this platform.
+#if WINDOWS
+		builder.Services.AddSingleton<INativeAppInstaller, SecureApp.Presentation.Infrastructure.NativeAppInstaller>();
 #endif
 		builder.Services.AddSingleton<IUpdateService, SecureApp.Presentation.Updates.UpdateService>();
 
