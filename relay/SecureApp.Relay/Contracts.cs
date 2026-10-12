@@ -137,13 +137,23 @@ public sealed record IdentityBackupDto(string EnvelopeJson);
 // on-device (anyone could make themselves Admin), so an admin had no way to govern anyone else.
 
 /// <summary>What the CALLING device is allowed to be. <c>Role</c> null means no admin has managed this device yet — the client then keeps its own local role rather than being demoted. <c>HiddenTabs</c> holds AppShell preference keys (e.g. <c>tab_chaty_visible</c>) the device must not show. <c>DocumentReviewer</c> (2026-10-01) is the separate Document Library review capability — see <c>device_policy</c>'s own remarks.</summary>
-public sealed record DevicePolicyResponse(int? Role, IReadOnlyList<string> HiddenTabs, bool DocumentReviewer = false);
+public sealed record DevicePolicyResponse(int? Role, IReadOnlyList<string> HiddenTabs, bool DocumentReviewer = false, bool PiccTeam = false);
 
 /// <summary>One member as the admin's management screen sees them. <c>LastSeenUtc</c> is the directory's own last-published timestamp (null = never connected since the directory existed).</summary>
-public sealed record ManagedDeviceDto(Guid DeviceId, string DisplayName, int? Role, IReadOnlyList<string> HiddenTabs, DateTimeOffset? LastSeenUtc, bool DocumentReviewer = false, string? AppVersion = null);
+public sealed record ManagedDeviceDto(Guid DeviceId, string DisplayName, int? Role, IReadOnlyList<string> HiddenTabs, DateTimeOffset? LastSeenUtc, bool DocumentReviewer = false, string? AppVersion = null, bool PiccTeam = false);
 
-/// <summary>Admin sets one member's role, which tabs they may not see, and (2026-10-01) whether they may review Document Library submissions. A null <c>Role</c> clears the assignment and hands the role decision back to the device. A null <c>DocumentReviewer</c> leaves that capability unchanged.</summary>
-public sealed record SetDevicePolicyRequest(int? Role, IReadOnlyList<string>? HiddenTabs, bool? DocumentReviewer = null);
+/// <summary>Admin sets one member's role, which tabs they may not see, and (2026-10-01) whether they may review Document Library submissions, plus (2026-10-12) whether they're on the PICC team — see <c>device_policy</c>'s own remarks. A null <c>Role</c> clears the assignment and hands the role decision back to the device. A null <c>DocumentReviewer</c>/<c>PiccTeam</c> leaves that capability unchanged.</summary>
+public sealed record SetDevicePolicyRequest(int? Role, IReadOnlyList<string>? HiddenTabs, bool? DocumentReviewer = null, bool? PiccTeam = null);
+
+/// <summary>
+/// PICC roster (2026-10-12) — see the picc_status/picc_roster_pointer tables' own remarks in
+/// RelayDatabase for the split access model. <c>ContentBlob</c> in both is opaque to the relay,
+/// same shared-library-key ciphertext convention as <see cref="CreateBoardPostRequest"/>.
+/// </summary>
+public sealed record SetPiccStatusRequest(string ContentBlob);
+public sealed record PiccStatusResponse(string ContentBlob, DateTimeOffset UpdatedAtUtc);
+public sealed record SetPiccRosterPointerRequest(Guid LibraryFileId);
+public sealed record PiccRosterPointerResponse(Guid LibraryFileId, DateTimeOffset UpdatedAtUtc);
 
 // --- Document Library content-approval workflow (2026-10-01) — see the library_documents/
 // library_document_versions/library_document_reviews tables' own remarks. Layered alongside the

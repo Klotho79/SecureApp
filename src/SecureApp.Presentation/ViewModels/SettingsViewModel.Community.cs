@@ -93,6 +93,7 @@ public sealed partial class SettingsViewModel
     public bool IsSystemUpdateSubTab => SystemSubTab == 4;
     public bool IsSystemLibrarySubTab => SystemSubTab == 5;
     public bool IsSystemDiagnosticsSubTab => SystemSubTab == 6;
+    public bool IsSystemPiccSubTab => SystemSubTab == 7;
 
     partial void OnSystemSubTabChanged(int value)
     {
@@ -103,6 +104,7 @@ public sealed partial class SettingsViewModel
         OnPropertyChanged(nameof(IsSystemUpdateSubTab));
         OnPropertyChanged(nameof(IsSystemLibrarySubTab));
         OnPropertyChanged(nameof(IsSystemDiagnosticsSubTab));
+        OnPropertyChanged(nameof(IsSystemPiccSubTab));
     }
 
     [RelayCommand]
@@ -384,7 +386,7 @@ public sealed partial class SettingsViewModel
             var members = await _relayAdminService.GetManagedDevicesAsync(endpoint, adminSecret);
             ManagedMembers.Clear();
             foreach (var m in members)
-                ManagedMembers.Add(new MemberPolicyItem(m.DeviceId, m.DisplayName, m.Role, m.HiddenTabs, m.LastSeenUtc, m.IsDocumentReviewer, m.AppVersion));
+                ManagedMembers.Add(new MemberPolicyItem(m.DeviceId, m.DisplayName, m.Role, m.HiddenTabs, m.LastSeenUtc, m.IsDocumentReviewer, m.AppVersion, m.IsPiccTeam));
             MemberManagementStatusText = members.Count == 0 ? "Zatím žádní členové." : $"Načteno členů: {members.Count}.";
 
             // The admin opening this screen is, by definition, online right now and (almost always)
@@ -418,7 +420,7 @@ public sealed partial class SettingsViewModel
 
         try
         {
-            await _relayAdminService.SetDevicePolicyAsync(endpoint, _managementAdminSecret, member.DeviceId, member.SelectedRole, member.HiddenTabs, member.IsDocumentReviewer);
+            await _relayAdminService.SetDevicePolicyAsync(endpoint, _managementAdminSecret, member.DeviceId, member.SelectedRole, member.HiddenTabs, member.IsDocumentReviewer, member.IsPiccTeam);
             member.StatusText = "Uloženo ✓";
             MemberManagementStatusText = $"Uloženo pro {member.DisplayName}.";
         }
@@ -457,7 +459,7 @@ public sealed class AccentSwatchItem
 /// <summary>One member row in the admin's "Správa členů" screen — editable role + per-tab visibility.</summary>
 public sealed partial class MemberPolicyItem : ObservableObject
 {
-    public MemberPolicyItem(Guid deviceId, string displayName, Role? role, IReadOnlyList<string> hiddenTabs, DateTimeOffset? lastSeenUtc, bool isDocumentReviewer = false, string? appVersion = null)
+    public MemberPolicyItem(Guid deviceId, string displayName, Role? role, IReadOnlyList<string> hiddenTabs, DateTimeOffset? lastSeenUtc, bool isDocumentReviewer = false, string? appVersion = null, bool isPiccTeam = false)
     {
         DeviceId = deviceId;
         DisplayName = displayName;
@@ -468,6 +470,7 @@ public sealed partial class MemberPolicyItem : ObservableObject
         ShowNastenka = !hiddenTabs.Contains(AppShell.NotificationsTabVisibilityPreferenceKey);
         ShowLogbook = !hiddenTabs.Contains(AppShell.LogbookVisibilityPreferenceKey);
         IsDocumentReviewer = isDocumentReviewer;
+        IsPiccTeam = isPiccTeam;
         LastSeenText = lastSeenUtc is { } seen
             ? $"naposledy {seen.LocalDateTime:d.M. HH:mm}"
             : "nikdy nepřipojeno";
@@ -506,6 +509,10 @@ public sealed partial class MemberPolicyItem : ObservableObject
     /// <summary>Document Library review capability (2026-10-01) — orthogonal to <see cref="SelectedRole"/>, see <c>DevicePolicy.IsDocumentReviewer</c>'s own remarks.</summary>
     [ObservableProperty]
     public partial bool IsDocumentReviewer { get; set; }
+
+    /// <summary>PICC roster capability (2026-10-12) — orthogonal to <see cref="SelectedRole"/>, see <c>DevicePolicy.IsPiccTeam</c>'s own remarks.</summary>
+    [ObservableProperty]
+    public partial bool IsPiccTeam { get; set; }
 
     [ObservableProperty]
     public partial string? StatusText { get; set; }

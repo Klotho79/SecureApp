@@ -158,6 +158,10 @@ public static class MauiProgram
 		builder.Services.AddSingleton<IDevicePolicyService, SecureApp.Presentation.Transport.HttpDevicePolicyService>();
 		builder.Services.AddSingleton<ICommunityBoardService, SecureApp.Presentation.Transport.HttpCommunityBoardService>();
 
+		// PICC roster (2026-10-12) — manual xlsx upload, doctor-name status public, nurses gated. See
+		// IPiccRosterService's own remarks.
+		builder.Services.AddSingleton<IPiccRosterService, SecureApp.Presentation.Transport.HttpPiccRosterService>();
+
 		// Milestone 5 (E2EE Chat) transport: relay server + client (see DEVELOPMENT_PLAN.md's note).
 		// Lives here rather than SecureApp.Data for the same reason as everything else in this
 		// block — WebSocketMessageTransport is actually platform-agnostic BCL code, but it's the

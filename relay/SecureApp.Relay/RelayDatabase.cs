@@ -280,6 +280,14 @@ public sealed class RelayDatabase
         if (!ColumnExists(connection, "device_policy", "document_reviewer"))
             Execute(connection, "ALTER TABLE device_policy ADD COLUMN document_reviewer INTEGER NOT NULL DEFAULT 0");
 
+        // picc_team (2026-10-12, user's own ask: "admin urci uzivatele, ktery bude videt i sestry picc
+        // teamu") — same orthogonal-capability shape as document_reviewer right above: not a Role value,
+        // a device can be Modifier-and-PiccTeam at once. Gates both who may upload the PICC roster
+        // (picc_roster_pointer below) and who may see the nurses names it contains — the current
+        // on-call DOCTOR'S name is NOT gated by this (see picc_status below), only the nurses are.
+        if (!ColumnExists(connection, "device_policy", "picc_team"))
+            Execute(connection, "ALTER TABLE device_policy ADD COLUMN picc_team INTEGER NOT NULL DEFAULT 0");
+
         // app_version (2026-10-01) — reported by the client on every /directory/publish call (already
         // fired on nearly every app launch, see HttpContactDirectoryService.PublishSelfAsync's own
         // remarks), so the admin's member screen can see at a glance who is on an outdated build
@@ -377,6 +385,33 @@ public sealed class RelayDatabase
                 author_device_id   TEXT NOT NULL,
                 content_blob       TEXT NOT NULL,
                 created_at_utc     TEXT NOT NULL
+            )
+            """);
+
+        // PICC roster (2026-10-12) — two singleton rows (fixed id="current"), deliberately split in
+        // two so the relay itself can enforce who sees what, not just the client UI:
+        //   - picc_status: just today's on-call PICC DOCTOR's name, ciphertext (same shared-library-key
+        //     AES-GCM scheme board_posts.content_blob uses) — reading this is open to ANY device
+        //     (see /picc/status below), same trust level as the board.
+        //   - picc_roster_pointer: which shared-library file (picc_team's own manual xlsx upload,
+        //     uploaded is_listed=0 so it never shows in the ordinary library browser) holds the FULL
+        //     roster, doctors AND nurses. Reading the pointer is gated to picc_team/Admin devices (see
+        //     /picc/roster-pointer below) — a device that can't read the pointer can never learn that
+        //     file's id, so it can never download the nurses' names either.
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS picc_status (
+                id                 TEXT PRIMARY KEY NOT NULL,
+                content_blob       TEXT NOT NULL,
+                updated_by_device  TEXT NOT NULL,
+                updated_at_utc     TEXT NOT NULL
+            )
+            """);
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS picc_roster_pointer (
+                id                 TEXT PRIMARY KEY NOT NULL,
+                library_file_id    TEXT NOT NULL,
+                updated_by_device  TEXT NOT NULL,
+                updated_at_utc     TEXT NOT NULL
             )
             """);
 
@@ -1386,11 +1421,11 @@ public sealed class RelayDatabase
     // --- Admin-assigned device policy (2026-09-24) — see the device_policy table's own remarks.
 
     /// <summary>This device's admin-assigned policy, or null when no admin has managed it yet (in which case the client keeps deciding locally, rather than being silently demoted).</summary>
-    public (int? Role, IReadOnlyList<string> HiddenTabs, bool DocumentReviewer, DateTimeOffset UpdatedAtUtc)? GetDevicePolicy(Guid deviceId)
+    public (int? Role, IReadOnlyList<string> HiddenTabs, bool DocumentReviewer, bool PiccTeam, DateTimeOffset UpdatedAtUtc)? GetDevicePolicy(Guid deviceId)
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT role, hidden_tabs, document_reviewer, updated_at_utc FROM device_policy WHERE device_id = @id";
+        command.CommandText = "SELECT role, hidden_tabs, document_reviewer, picc_team, updated_at_utc FROM device_policy WHERE device_id = @id";
         command.Parameters.AddWithValue("@id", deviceId.ToString());
 
         using var reader = command.ExecuteReader();
@@ -1398,28 +1433,31 @@ public sealed class RelayDatabase
             return null;
 
         var role = reader["role"] is DBNull ? (int?)null : Convert.ToInt32(reader["role"]);
-        return (role, DeserializeTabs((string)reader["hidden_tabs"]), Convert.ToInt32(reader["document_reviewer"]) != 0, DateTimeOffset.Parse((string)reader["updated_at_utc"]));
+        return (role, DeserializeTabs((string)reader["hidden_tabs"]), Convert.ToInt32(reader["document_reviewer"]) != 0, Convert.ToInt32(reader["picc_team"]) != 0, DateTimeOffset.Parse((string)reader["updated_at_utc"]));
     }
 
-    /// <summary>Creates or replaces one device's policy. A null <paramref name="role"/> means "leave the role to the device itself" while still applying any tab restrictions. A null <paramref name="documentReviewer"/> leaves that capability unchanged (defaults to false for a brand-new row).</summary>
-    public void SetDevicePolicy(Guid deviceId, int? role, IReadOnlyList<string> hiddenTabs, bool? documentReviewer = null)
+    /// <summary>Creates or replaces one device's policy. A null <paramref name="role"/> means "leave the role to the device itself" while still applying any tab restrictions. A null <paramref name="documentReviewer"/>/<paramref name="piccTeam"/> leaves that capability unchanged (defaults to false for a brand-new row).</summary>
+    public void SetDevicePolicy(Guid deviceId, int? role, IReadOnlyList<string> hiddenTabs, bool? documentReviewer = null, bool? piccTeam = null)
     {
         using var connection = OpenConnection();
-        var existingReviewer = documentReviewer ?? GetDevicePolicy(deviceId)?.DocumentReviewer ?? false;
+        var existing = GetDevicePolicy(deviceId);
+        var existingReviewer = documentReviewer ?? existing?.DocumentReviewer ?? false;
+        var existingPiccTeam = piccTeam ?? existing?.PiccTeam ?? false;
         Execute(connection,
             """
-            INSERT INTO device_policy (device_id, role, hidden_tabs, document_reviewer, updated_at_utc) VALUES (@id, @role, @tabs, @reviewer, @now)
-            ON CONFLICT(device_id) DO UPDATE SET role = @role, hidden_tabs = @tabs, document_reviewer = @reviewer, updated_at_utc = @now
+            INSERT INTO device_policy (device_id, role, hidden_tabs, document_reviewer, picc_team, updated_at_utc) VALUES (@id, @role, @tabs, @reviewer, @picc, @now)
+            ON CONFLICT(device_id) DO UPDATE SET role = @role, hidden_tabs = @tabs, document_reviewer = @reviewer, picc_team = @picc, updated_at_utc = @now
             """,
             ("@id", deviceId.ToString()),
             ("@role", role is null ? DBNull.Value : role.Value),
             ("@tabs", System.Text.Json.JsonSerializer.Serialize(hiddenTabs)),
             ("@reviewer", existingReviewer ? 1 : 0),
+            ("@picc", existingPiccTeam ? 1 : 0),
             ("@now", Format(DateTimeOffset.UtcNow)));
     }
 
     /// <summary>Every registered device with whatever policy it currently has, for the admin's own management screen. Names come from the live directory (a device that has never published shows its registration-time name instead).</summary>
-    public IReadOnlyList<(Guid DeviceId, string DisplayName, int? Role, IReadOnlyList<string> HiddenTabs, DateTimeOffset? LastSeenUtc, bool DocumentReviewer, string? AppVersion)> GetManagedDevices()
+    public IReadOnlyList<(Guid DeviceId, string DisplayName, int? Role, IReadOnlyList<string> HiddenTabs, DateTimeOffset? LastSeenUtc, bool DocumentReviewer, bool PiccTeam, string? AppVersion)> GetManagedDevices()
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
@@ -1429,6 +1467,7 @@ public sealed class RelayDatabase
                    p.role              AS role,
                    p.hidden_tabs       AS hidden_tabs,
                    p.document_reviewer AS document_reviewer,
+                   p.picc_team         AS picc_team,
                    e.updated_at_utc    AS last_seen,
                    e.app_version       AS app_version
             FROM devices d
@@ -1437,7 +1476,7 @@ public sealed class RelayDatabase
             ORDER BY display_name COLLATE NOCASE
             """;
 
-        var results = new List<(Guid, string, int?, IReadOnlyList<string>, DateTimeOffset?, bool, string?)>();
+        var results = new List<(Guid, string, int?, IReadOnlyList<string>, DateTimeOffset?, bool, bool, string?)>();
         using var reader = command.ExecuteReader();
         while (reader.Read())
         {
@@ -1448,6 +1487,7 @@ public sealed class RelayDatabase
                 reader["hidden_tabs"] is DBNull ? Array.Empty<string>() : DeserializeTabs((string)reader["hidden_tabs"]),
                 reader["last_seen"] is DBNull ? null : DateTimeOffset.Parse((string)reader["last_seen"]),
                 reader["document_reviewer"] is not DBNull && Convert.ToInt32(reader["document_reviewer"]) != 0,
+                reader["picc_team"] is not DBNull && Convert.ToInt32(reader["picc_team"]) != 0,
                 reader["app_version"] is DBNull ? null : (string)reader["app_version"]));
         }
 
@@ -1528,6 +1568,60 @@ public sealed class RelayDatabase
         }
 
         return command.ExecuteNonQuery() > 0;
+    }
+
+    // --- PICC roster (2026-10-12) — see the picc_status/picc_roster_pointer tables' own remarks.
+
+    private const string PiccSingletonRowId = "current";
+
+    public void SetPiccStatus(Guid updatedByDeviceId, string contentBlob)
+    {
+        using var connection = OpenConnection();
+        Execute(connection,
+            """
+            INSERT INTO picc_status (id, content_blob, updated_by_device, updated_at_utc) VALUES (@id, @blob, @by, @now)
+            ON CONFLICT(id) DO UPDATE SET content_blob = @blob, updated_by_device = @by, updated_at_utc = @now
+            """,
+            ("@id", PiccSingletonRowId), ("@blob", contentBlob), ("@by", updatedByDeviceId.ToString()), ("@now", Format(DateTimeOffset.UtcNow)));
+    }
+
+    /// <summary>Open read — see the picc_status table's own remarks on why this one is NOT policy-gated.</summary>
+    public (string ContentBlob, DateTimeOffset UpdatedAtUtc)? GetPiccStatus()
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT content_blob, updated_at_utc FROM picc_status WHERE id = @id";
+        command.Parameters.AddWithValue("@id", PiccSingletonRowId);
+
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+            return null;
+        return ((string)reader["content_blob"], DateTimeOffset.Parse((string)reader["updated_at_utc"]));
+    }
+
+    public void SetPiccRosterPointer(Guid updatedByDeviceId, Guid libraryFileId)
+    {
+        using var connection = OpenConnection();
+        Execute(connection,
+            """
+            INSERT INTO picc_roster_pointer (id, library_file_id, updated_by_device, updated_at_utc) VALUES (@id, @fileId, @by, @now)
+            ON CONFLICT(id) DO UPDATE SET library_file_id = @fileId, updated_by_device = @by, updated_at_utc = @now
+            """,
+            ("@id", PiccSingletonRowId), ("@fileId", libraryFileId.ToString()), ("@by", updatedByDeviceId.ToString()), ("@now", Format(DateTimeOffset.UtcNow)));
+    }
+
+    /// <summary>Caller (Program.cs) must already have checked the caller is picc_team/Admin before exposing this — see the picc_roster_pointer table's own remarks on why the pointer itself is the real access boundary for the nurses' names.</summary>
+    public (Guid LibraryFileId, DateTimeOffset UpdatedAtUtc)? GetPiccRosterPointer()
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT library_file_id, updated_at_utc FROM picc_roster_pointer WHERE id = @id";
+        command.Parameters.AddWithValue("@id", PiccSingletonRowId);
+
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+            return null;
+        return (Guid.Parse((string)reader["library_file_id"]), DateTimeOffset.Parse((string)reader["updated_at_utc"]));
     }
 
     /// <summary>How long since a device last refreshed its directory entry before it's treated as INACTIVE and hidden from the member listing (2026-09-14, the user's ask: "server hlásí jen aktivní uživatele"). A live device republishes on every relay (re)connect — the client forces a reconnect every ~5 min — so an active device is always fresh; only a wiped/abandoned identity (like the ghost founder that caused the black-hole incident) ever goes stale. Generous enough (2 days) that a device merely offline over a weekend reappears the moment it reconnects and republishes.</summary>

@@ -11,15 +11,18 @@ namespace SecureApp.Domain.ValueObjects;
 /// ready for a given member. <see cref="IsDocumentReviewer"/> (2026-10-01) is a separate, orthogonal
 /// capability for the Document Library's content-approval workflow — deliberately NOT a <see cref="Role"/>
 /// value, since the user scoped review capability to documents only; a device can be Modifier AND
-/// Reviewer at once. Appended as the LAST parameter (default false) so existing positional
-/// constructor calls elsewhere in the codebase keep compiling unchanged.
+/// Reviewer at once. <see cref="IsPiccTeam"/> (2026-10-12) is the same shape of orthogonal capability
+/// for the PICC roster (see <c>IPiccRosterService</c>'s own remarks) — gates who may upload a new
+/// roster and who may see the nurses' names in it; the on-call doctor's name is NOT gated by this.
+/// Both appended as the LAST parameters (default false) so existing positional constructor calls
+/// elsewhere in the codebase keep compiling unchanged.
 /// </summary>
-public sealed record DevicePolicy(Role? Role, IReadOnlyList<string> HiddenTabs, bool IsDocumentReviewer = false)
+public sealed record DevicePolicy(Role? Role, IReadOnlyList<string> HiddenTabs, bool IsDocumentReviewer = false, bool IsPiccTeam = false)
 {
-    public static DevicePolicy Unmanaged { get; } = new(null, Array.Empty<string>(), false);
+    public static DevicePolicy Unmanaged { get; } = new(null, Array.Empty<string>(), false, false);
 }
 
-/// <summary>One member as the admin's management screen sees them (2026-09-24). <see cref="IsDocumentReviewer"/> (2026-10-01) appended last — see <see cref="DevicePolicy"/>'s own remarks. <see cref="AppVersion"/> (2026-10-01) is whatever the device last reported on <c>/directory/publish</c> — null for an older client that predates this field, or one that has never reconnected since.</summary>
+/// <summary>One member as the admin's management screen sees them (2026-09-24). <see cref="IsDocumentReviewer"/> (2026-10-01)/<see cref="IsPiccTeam"/> (2026-10-12) appended last — see <see cref="DevicePolicy"/>'s own remarks. <see cref="AppVersion"/> (2026-10-01) is whatever the device last reported on <c>/directory/publish</c> — null for an older client that predates this field, or one that has never reconnected since.</summary>
 public sealed record ManagedDevice(
     Guid DeviceId,
     string DisplayName,
@@ -27,7 +30,8 @@ public sealed record ManagedDevice(
     IReadOnlyList<string> HiddenTabs,
     DateTimeOffset? LastSeenUtc,
     bool IsDocumentReviewer = false,
-    string? AppVersion = null);
+    string? AppVersion = null,
+    bool IsPiccTeam = false);
 
 /// <summary>One notice-board post, decrypted for display (2026-09-24). <see cref="AuthorDisplayName"/> is resolved by the relay against the live directory, so a rename applies retroactively.</summary>
 public sealed record BoardPost(

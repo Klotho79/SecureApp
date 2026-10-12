@@ -314,6 +314,7 @@ public partial class App : Application
 						await RunPeerIdentityReconciliationAsync(services, transport);
 						await ApplyDevicePolicyAsync(services);
 						await SyncBoardToNotificationsAsync(services);
+						await SyncPiccStatusAsync(services);
 						await Diagnostics.AppLogUploader.UploadAsync(services);
 						if (services.GetService<ISharedContactService>() is { } sharedContactService)
 							await Contacts.ContactPhoneCache.RefreshAsync(sharedContactService);
@@ -607,6 +608,23 @@ public partial class App : Application
 		catch
 		{
 			// Best-effort — see this method's own remarks; keep whatever the device already had.
+		}
+	}
+
+	/// <summary>Today's on-call PICC doctor's name, cached for the Android widget's duty list (2026-10-12) — see <see cref="Workplace.PiccRosterStore"/>'s own remarks. Open to every device, same trust level as the board; best-effort like every other step in this loop.</summary>
+	private static async Task SyncPiccStatusAsync(IServiceProvider services)
+	{
+		try
+		{
+			var piccRosterService = services.GetService<IPiccRosterService>();
+			if (piccRosterService is null) return;
+
+			var status = await piccRosterService.GetCurrentStatusAsync();
+			Workplace.PiccRosterStore.Save(status?.DoctorName, status?.AsOfDate);
+		}
+		catch
+		{
+			// Best-effort — see this method's own remarks.
 		}
 	}
 

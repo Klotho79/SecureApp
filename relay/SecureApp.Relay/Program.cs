@@ -837,7 +837,7 @@ app.MapGet("/me/policy", (HttpRequest request, RelayDatabase db) =>
         return Results.Unauthorized();
 
     var policy = db.GetDevicePolicy(deviceId);
-    return Results.Ok(new DevicePolicyResponse(policy?.Role, policy?.HiddenTabs ?? Array.Empty<string>(), policy?.DocumentReviewer ?? false));
+    return Results.Ok(new DevicePolicyResponse(policy?.Role, policy?.HiddenTabs ?? Array.Empty<string>(), policy?.DocumentReviewer ?? false, policy?.PiccTeam ?? false));
 });
 
 app.MapGet("/admin/users", (HttpRequest request, RelayDatabase db) =>
@@ -846,7 +846,7 @@ app.MapGet("/admin/users", (HttpRequest request, RelayDatabase db) =>
         return Results.Unauthorized();
 
     var devices = db.GetManagedDevices()
-        .Select(d => new ManagedDeviceDto(d.DeviceId, d.DisplayName, d.Role, d.HiddenTabs, d.LastSeenUtc, d.DocumentReviewer, d.AppVersion))
+        .Select(d => new ManagedDeviceDto(d.DeviceId, d.DisplayName, d.Role, d.HiddenTabs, d.LastSeenUtc, d.DocumentReviewer, d.AppVersion, d.PiccTeam))
         .ToList();
     return Results.Ok(devices);
 });
@@ -856,8 +856,61 @@ app.MapPost("/admin/users/{id:guid}/policy", (HttpRequest request, Guid id, SetD
     if (!IsAdminAuthorized(request, adminSecret))
         return Results.Unauthorized();
 
-    db.SetDevicePolicy(id, body.Role, body.HiddenTabs ?? new List<string>(), body.DocumentReviewer);
+    db.SetDevicePolicy(id, body.Role, body.HiddenTabs ?? new List<string>(), body.DocumentReviewer, body.PiccTeam);
     return Results.NoContent();
+});
+
+// --- PICC roster (2026-10-12) — see RelayDatabase's picc_status/picc_roster_pointer tables for the
+// split access model this mirrors exactly: today's on-call DOCTOR's name is open to any device (same
+// trust level as /board below), while the pointer to the full roster file (doctors AND nurses) is
+// gated to picc_team/Admin, same check shape as /library-documents/pending above.
+
+app.MapPost("/picc/status", (HttpRequest request, SetPiccStatusRequest body, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+
+    var policy = db.GetDevicePolicy(deviceId);
+    if (policy is not { } p || (!p.PiccTeam && p.Role != 0))
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+
+    db.SetPiccStatus(deviceId, body.ContentBlob);
+    return Results.NoContent();
+});
+
+app.MapGet("/picc/status", (HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out _))
+        return Results.Unauthorized();
+
+    var status = db.GetPiccStatus();
+    return status is null ? Results.NotFound() : Results.Ok(new PiccStatusResponse(status.Value.ContentBlob, status.Value.UpdatedAtUtc));
+});
+
+app.MapPost("/picc/roster-pointer", (HttpRequest request, SetPiccRosterPointerRequest body, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+
+    var policy = db.GetDevicePolicy(deviceId);
+    if (policy is not { } p || (!p.PiccTeam && p.Role != 0))
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+
+    db.SetPiccRosterPointer(deviceId, body.LibraryFileId);
+    return Results.NoContent();
+});
+
+app.MapGet("/picc/roster-pointer", (HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+
+    var policy = db.GetDevicePolicy(deviceId);
+    if (policy is not { } p || (!p.PiccTeam && p.Role != 0))
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+
+    var pointer = db.GetPiccRosterPointer();
+    return pointer is null ? Results.NotFound() : Results.Ok(new PiccRosterPointerResponse(pointer.Value.LibraryFileId, pointer.Value.UpdatedAtUtc));
 });
 
 // Notice board. Posting is gated on the caller's assigned role (Admin=0/Modifier=1) — reading is

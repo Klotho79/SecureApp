@@ -277,6 +277,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         ICommunityBoardService communityBoardService,
         IIdentityBackupService identityBackupService,
         ILibraryTranslationService libraryTranslationService,
+        IDevicePolicyService devicePolicyService,
+        IPiccRosterService piccRosterService,
         INativeAppInstaller? nativeAppInstaller = null,
         INativeUpdateDownloader? nativeUpdateDownloader = null)
     {
@@ -295,6 +297,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         _communityBoardService = communityBoardService ?? throw new ArgumentNullException(nameof(communityBoardService));
         _identityBackupService = identityBackupService ?? throw new ArgumentNullException(nameof(identityBackupService));
         _libraryTranslationService = libraryTranslationService ?? throw new ArgumentNullException(nameof(libraryTranslationService));
+        _devicePolicyService = devicePolicyService ?? throw new ArgumentNullException(nameof(devicePolicyService));
+        _piccRosterService = piccRosterService ?? throw new ArgumentNullException(nameof(piccRosterService));
         _nativeAppInstaller = nativeAppInstaller;
         _nativeUpdateDownloader = nativeUpdateDownloader;
 
@@ -423,6 +427,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 
         await LoadOpicentrumStateAsync();
         LoadWorkplaceColorsState();
+        await LoadPiccStateAsync();
 
         // Resume polling an activation request that was still pending the last time this device
         // closed — otherwise a relaunch mid-activation would silently strand the request: nothing

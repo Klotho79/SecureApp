@@ -241,7 +241,15 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
         views.SetViewVisibility(Resource.Id.widget_duty_list, showDuty ? global::Android.Views.ViewStates.Visible : global::Android.Views.ViewStates.Gone);
         if (!showDuty) return;
 
-        var entries = DutyRosterStore.Get(today);
+        // PICC doctor (2026-10-12, user's own ask: "aktualni lekar by byl videt ve wigetu jako
+        // posledni jako PICC") — appended as one more duty-list row rather than a new always-visible
+        // UI element, so "poslední" (last) is literal and no widget_notifications.xml layout change
+        // was needed. Public to every device (PiccRosterStore caches only the doctor, never nurses —
+        // see that store's own remarks), and only shown when it's actually for TODAY.
+        var entries = DutyRosterStore.Get(today).ToList();
+        if (PiccRosterStore.GetTodayDoctorName() is { } piccDoctor && entries.Count < MaxDutyRows)
+            entries.Add(new DutyEntry("PICC", piccDoctor));
+
         if (entries.Count == 0)
         {
             views.SetViewVisibility(DutyRowIds[0], global::Android.Views.ViewStates.Visible);

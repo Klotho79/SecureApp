@@ -56,8 +56,8 @@ public interface IRelayAdminService
     /// <summary>Every member with their admin-assigned role + hidden tabs (2026-09-24) — the data behind the "Správa členů" screen.</summary>
     Task<IReadOnlyList<ManagedDevice>> GetManagedDevicesAsync(Uri endpoint, string adminSecret, CancellationToken ct = default);
 
-    /// <summary>Sets one member's role, which tabs they may not see, and whether they may review Document Library submissions (2026-10-01). A null <paramref name="role"/> hands the role decision back to that device; <paramref name="hiddenTabs"/> is the full set of AppShell preference keys to hide; a null <paramref name="isDocumentReviewer"/> leaves that capability unchanged.</summary>
-    Task SetDevicePolicyAsync(Uri endpoint, string adminSecret, Guid deviceId, Enums.Role? role, IReadOnlyList<string> hiddenTabs, bool? isDocumentReviewer = null, CancellationToken ct = default);
+    /// <summary>Sets one member's role, which tabs they may not see, whether they may review Document Library submissions (2026-10-01), and (2026-10-12) whether they're on the PICC team. A null <paramref name="role"/> hands the role decision back to that device; <paramref name="hiddenTabs"/> is the full set of AppShell preference keys to hide; a null <paramref name="isDocumentReviewer"/>/<paramref name="isPiccTeam"/> leaves that capability unchanged.</summary>
+    Task SetDevicePolicyAsync(Uri endpoint, string adminSecret, Guid deviceId, Enums.Role? role, IReadOnlyList<string> hiddenTabs, bool? isDocumentReviewer = null, bool? isPiccTeam = null, CancellationToken ct = default);
 
     /// <summary>Document-download audit log search (2026-09-30) — <paramref name="query"/> matches a document's title as a substring, case-insensitive; null/empty returns every logged download, newest first. See <see cref="ValueObjects.DocumentDownloadEntry"/>'s own remarks.</summary>
     Task<IReadOnlyList<ValueObjects.DocumentDownloadEntry>> SearchDocumentDownloadsAsync(Uri endpoint, string adminSecret, string? query, CancellationToken ct = default);
