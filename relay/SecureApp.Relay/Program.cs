@@ -96,12 +96,18 @@ app.MapGet("/download/android", () =>
     if (!File.Exists(path))
         return Results.NotFound("Android verze zatím není nahraná.");
 
+    // Suggested filename carries the version (2026-10-12, user's own ask) — without it every manual
+    // download from /download lands as the same generic "SecureApp.apk", so a browser's download
+    // history/folder can't tell two releases apart without opening the file.
+    var versionName = ReadVersionName(Path.Combine(downloadsDir, "secureapp-android.version.json"));
+    var downloadName = versionName is null ? "SecureApp.apk" : $"SecureApp-{versionName}.apk";
+
     // enableRangeProcessing: the client's foreground-service downloader resumes an interrupted
     // download with a `Range: bytes=<already-have>-` request (2026-09-24, user's own ask: a failed
     // update must not re-download from scratch and waste mobile data). The physical-file overload
     // both honours that (206 Partial Content) and streams from disk instead of loading the whole
     // ~64 MB APK into memory per request, which the old byte[] overload did.
-    return Results.File(path, "application/vnd.android.package-archive", "SecureApp.apk", enableRangeProcessing: true);
+    return Results.File(path, "application/vnd.android.package-archive", downloadName, enableRangeProcessing: true);
 });
 
 // Windows portable build (2026-10-02, user's own ask: a second PC with no admin rights can't install
@@ -115,7 +121,11 @@ app.MapGet("/download/windows", () =>
     if (!File.Exists(path))
         return Results.NotFound("Windows verze zatím není nahraná.");
 
-    return Results.File(path, "application/zip", "SecureApp-Windows-portable.zip", enableRangeProcessing: true);
+    // Suggested filename carries the version, same reasoning as /download/android above.
+    var versionName = ReadVersionName(Path.Combine(downloadsDir, "secureapp-windows.version.json"));
+    var downloadName = versionName is null ? "SecureApp-Windows-portable.zip" : $"SecureApp-Windows-{versionName}.zip";
+
+    return Results.File(path, "application/zip", downloadName, enableRangeProcessing: true);
 });
 
 // New-PC onboarding (2026-10-07) — same manual-scp hand-off as /download/windows above, not a
@@ -1406,6 +1416,28 @@ app.Map("/ws", async (HttpContext context, RelayDatabase db, ConnectionRegistry 
 });
 
 app.Run();
+
+/// <summary>Best-effort VersionName out of a platform's own version.json (never throws — a missing/corrupt manifest just falls back to the generic download filename, same tolerance as a missing file).</summary>
+static string? ReadVersionName(string versionPath)
+{
+    if (!File.Exists(versionPath))
+        return null;
+    try
+    {
+        var versionName = System.Text.Json.JsonSerializer.Deserialize<UpdateManifest>(File.ReadAllText(versionPath))?.VersionName;
+        if (string.IsNullOrWhiteSpace(versionName))
+            return null;
+
+        // The suggested filename this feeds (Content-Disposition) must never carry a raw admin-
+        // supplied string unsanitized — strip anything that isn't a safe filename character.
+        var sanitized = new string(versionName.Where(c => !char.IsWhiteSpace(c) && Array.IndexOf(Path.GetInvalidFileNameChars(), c) < 0).ToArray());
+        return sanitized.Length == 0 ? null : sanitized;
+    }
+    catch
+    {
+        return null;
+    }
+}
 
 static bool IsAdminAuthorized(HttpRequest request, string adminSecret)
 {

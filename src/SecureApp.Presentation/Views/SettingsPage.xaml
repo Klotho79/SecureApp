@@ -166,6 +166,30 @@
                     </VerticalStackLayout>
                 </Border>
 
+                <!-- Barvy typů rozpisu — per-device, applies on valid hex, no separate save. Moved
+                     here from Systém/Rozpis (2026-10-12, user's own ask: "v nastaveni v systemu je
+                     barva rozpisu, patri do uzivatele vzhled" — a per-device appearance setting
+                     belongs under Vzhled, not Systém). -->
+                <Border Style="{StaticResource CardBorder}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Barvy typů rozpisu" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Label Text="Barva každého typu (Práce, Dovolená, ...) na Rozpisu — jen na tomto zařízení." FontSize="9.5" TextColor="Gray" />
+
+                        <VerticalStackLayout Spacing="10" BindableLayout.ItemsSource="{Binding WorkplaceColorItems}">
+                            <BindableLayout.ItemTemplate>
+                                <DataTemplate x:DataType="vm:AssignmentColorSettingItem">
+                                    <Grid ColumnDefinitions="28,*,90,Auto" ColumnSpacing="8">
+                                        <BoxView Grid.Column="0" CornerRadius="6" WidthRequest="24" HeightRequest="24" Color="{Binding Preview}" VerticalOptions="Center" />
+                                        <Label Grid.Column="1" Text="{Binding Label}" FontSize="11" VerticalOptions="Center" />
+                                        <Entry Grid.Column="2" Text="{Binding HexInput}" FontSize="10.5" Placeholder="#RRGGBB" />
+                                        <Button Grid.Column="3" Text="↺" Style="{StaticResource SecondaryButton}" WidthRequest="40" Padding="0" Command="{Binding ResetCommand}" IsEnabled="{Binding IsCustomized}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </BindableLayout.ItemTemplate>
+                        </VerticalStackLayout>
+                    </VerticalStackLayout>
+                </Border>
+
                 <!-- Chat (2026-09-26) — message font size + own-bubble colour, applied live. -->
                 <Border Style="{StaticResource CardBorder}">
                     <VerticalStackLayout Spacing="8">
@@ -280,15 +304,7 @@
                             </DataTrigger>
                         </Button.Triggers>
                     </Button>
-                    <Button Text="Rozpis" Style="{StaticResource SubTabButton}" Command="{Binding SelectSystemSubTabCommand}" CommandParameter="3">
-                        <Button.Triggers>
-                            <DataTrigger TargetType="Button" Binding="{Binding IsSystemRozpisSubTab}" Value="True">
-                                <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
-                                <Setter Property="TextColor" Value="{StaticResource White}" />
-                            </DataTrigger>
-                        </Button.Triggers>
-                    </Button>
-                    <Button Text="Aktualizace" Style="{StaticResource SubTabButton}" Command="{Binding SelectSystemSubTabCommand}" CommandParameter="4">
+                    <Button Text="Aktualizace" Style="{StaticResource SubTabButton}" Command="{Binding SelectSystemSubTabCommand}" CommandParameter="3">
                         <Button.Triggers>
                             <DataTrigger TargetType="Button" Binding="{Binding IsSystemUpdateSubTab}" Value="True">
                                 <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
@@ -296,7 +312,7 @@
                             </DataTrigger>
                         </Button.Triggers>
                     </Button>
-                    <Button Text="Knihovna" Style="{StaticResource SubTabButton}" Command="{Binding SelectSystemSubTabCommand}" CommandParameter="5">
+                    <Button Text="Knihovna" Style="{StaticResource SubTabButton}" Command="{Binding SelectSystemSubTabCommand}" CommandParameter="4">
                         <Button.Triggers>
                             <DataTrigger TargetType="Button" Binding="{Binding IsSystemLibrarySubTab}" Value="True">
                                 <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
@@ -304,7 +320,7 @@
                             </DataTrigger>
                         </Button.Triggers>
                     </Button>
-                    <Button Text="Diagnostika" Style="{StaticResource SubTabButton}" IsVisible="{Binding IsAdmin}" Command="{Binding SelectSystemSubTabCommand}" CommandParameter="6">
+                    <Button Text="Diagnostika" Style="{StaticResource SubTabButton}" IsVisible="{Binding IsAdmin}" Command="{Binding SelectSystemSubTabCommand}" CommandParameter="5">
                         <Button.Triggers>
                             <DataTrigger TargetType="Button" Binding="{Binding IsSystemDiagnosticsSubTab}" Value="True">
                                 <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
@@ -312,7 +328,7 @@
                             </DataTrigger>
                         </Button.Triggers>
                     </Button>
-                    <Button Text="PICC" Style="{StaticResource SubTabButton}" IsVisible="{Binding IsPiccTeam}" Command="{Binding SelectSystemSubTabCommand}" CommandParameter="7">
+                    <Button Text="PICC" Style="{StaticResource SubTabButton}" IsVisible="{Binding IsPiccTeam}" Command="{Binding SelectSystemSubTabCommand}" CommandParameter="6">
                         <Button.Triggers>
                             <DataTrigger TargetType="Button" Binding="{Binding IsSystemPiccSubTab}" Value="True">
                                 <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
@@ -421,29 +437,6 @@
                             <Button Text="Porovnat ARIM kontakty s Opicentrem" Style="{StaticResource SecondaryButton}" Command="{Binding CheckOpicentrumNamesCommand}" IsEnabled="{Binding CanCheckOpicentrumNames}" IsVisible="{Binding HasOpicentrumCredentials}" />
                             <Label Text="{Binding OpicentrumNameCheckReport}" IsVisible="{Binding HasOpicentrumNameCheckReport}" FontSize="10" LineBreakMode="WordWrap" />
                             <Button Text="Kopírovat výsledek" Style="{StaticResource SecondaryButton}" Command="{Binding CopyOpicentrumNameCheckReportCommand}" IsVisible="{Binding HasOpicentrumNameCheckReport}" />
-                        </VerticalStackLayout>
-                    </VerticalStackLayout>
-                </Border>
-                </VerticalStackLayout>
-
-                <VerticalStackLayout Spacing="12" IsVisible="{Binding IsSystemRozpisSubTab}">
-                <!-- Barvy typů rozpisu — per-device, applies on valid hex, no separate save. -->
-                <Border Style="{StaticResource CardBorder}">
-                    <VerticalStackLayout Spacing="8">
-                        <Label Text="Barvy typů rozpisu" Style="{StaticResource SectionHeader}" Margin="0" />
-                        <Label Text="Barva každého typu (Práce, Dovolená, ...) na Rozpisu — jen na tomto zařízení." FontSize="9.5" TextColor="Gray" />
-
-                        <VerticalStackLayout Spacing="10" BindableLayout.ItemsSource="{Binding WorkplaceColorItems}">
-                            <BindableLayout.ItemTemplate>
-                                <DataTemplate x:DataType="vm:AssignmentColorSettingItem">
-                                    <Grid ColumnDefinitions="28,*,90,Auto" ColumnSpacing="8">
-                                        <BoxView Grid.Column="0" CornerRadius="6" WidthRequest="24" HeightRequest="24" Color="{Binding Preview}" VerticalOptions="Center" />
-                                        <Label Grid.Column="1" Text="{Binding Label}" FontSize="11" VerticalOptions="Center" />
-                                        <Entry Grid.Column="2" Text="{Binding HexInput}" FontSize="10.5" Placeholder="#RRGGBB" />
-                                        <Button Grid.Column="3" Text="↺" Style="{StaticResource SecondaryButton}" WidthRequest="40" Padding="0" Command="{Binding ResetCommand}" IsEnabled="{Binding IsCustomized}" />
-                                    </Grid>
-                                </DataTemplate>
-                            </BindableLayout.ItemTemplate>
                         </VerticalStackLayout>
                     </VerticalStackLayout>
                 </Border>

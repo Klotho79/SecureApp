@@ -89,18 +89,20 @@ public sealed partial class SettingsViewModel
     public bool IsSystemConnectionSubTab => SystemSubTab == 0;
     public bool IsSystemIdentitySubTab => SystemSubTab == 1;
     public bool IsSystemOpicentrumSubTab => SystemSubTab == 2;
-    public bool IsSystemRozpisSubTab => SystemSubTab == 3;
-    public bool IsSystemUpdateSubTab => SystemSubTab == 4;
-    public bool IsSystemLibrarySubTab => SystemSubTab == 5;
-    public bool IsSystemDiagnosticsSubTab => SystemSubTab == 6;
-    public bool IsSystemPiccSubTab => SystemSubTab == 7;
+    // Rozpis (index 3) removed 2026-10-12 — its only content, "Barvy typů rozpisu", moved to
+    // Uživatel/Vzhled (user's own ask: a per-device appearance setting belongs there, not under
+    // Systém). Every sub-tab after it shifted down by one; renumber here AND in SettingsPage.xaml's
+    // matching CommandParameters if another one is ever inserted/removed.
+    public bool IsSystemUpdateSubTab => SystemSubTab == 3;
+    public bool IsSystemLibrarySubTab => SystemSubTab == 4;
+    public bool IsSystemDiagnosticsSubTab => SystemSubTab == 5;
+    public bool IsSystemPiccSubTab => SystemSubTab == 6;
 
     partial void OnSystemSubTabChanged(int value)
     {
         OnPropertyChanged(nameof(IsSystemConnectionSubTab));
         OnPropertyChanged(nameof(IsSystemIdentitySubTab));
         OnPropertyChanged(nameof(IsSystemOpicentrumSubTab));
-        OnPropertyChanged(nameof(IsSystemRozpisSubTab));
         OnPropertyChanged(nameof(IsSystemUpdateSubTab));
         OnPropertyChanged(nameof(IsSystemLibrarySubTab));
         OnPropertyChanged(nameof(IsSystemDiagnosticsSubTab));
