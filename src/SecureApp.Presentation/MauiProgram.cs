@@ -301,6 +301,10 @@ public static class MauiProgram
 		builder.Services.AddTransient<RedakceViewModel>();
 		builder.Services.AddTransient<RedakcePage>();
 
+		// Role preview (2026-10-13, user's own ask: "v nastaveni admina dej rolmenu zobrazeni co vidi
+		// jednotlive role") — one shared in-memory override, see RolePreviewService's own remarks.
+		builder.Services.AddSingleton<RolePreviewService>();
+
 		// Smart Search (2026-09-20, Phase 4 — see NOTIFICATION_HUB_SPEC.md).
 		builder.Services.AddTransient<SmartSearchViewModel>();
 		builder.Services.AddTransient<SmartSearchPage>();

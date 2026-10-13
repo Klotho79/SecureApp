@@ -32,7 +32,7 @@ public sealed partial class NotificationsViewModel
     {
         try
         {
-            var canEditAnyRoom = _currentUserService.Current.Role is Role.Admin or Role.Modifier;
+            var canEditAnyRoom = _rolePreviewService.Resolve(_currentUserService.Current.Role) is Role.Admin or Role.Modifier;
 
             var optionsTask = _roomStatusService.GetStatusOptionsAsync();
             var statusesTask = _roomStatusService.ListAsync();

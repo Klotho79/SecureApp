@@ -6,6 +6,7 @@ using SecureApp.Domain.Enums;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Domain.Policies;
+using SecureApp.Presentation.Infrastructure;
 
 namespace SecureApp.Presentation.ViewModels;
 
@@ -25,6 +26,7 @@ public sealed partial class DocumentBrowserViewModel : ObservableObject
     private readonly IDocumentImportService _importService;
     private readonly ICurrentUserService _currentUserService;
     private readonly IDiagnosticsReporter _diagnosticsReporter;
+    private readonly RolePreviewService _rolePreviewService;
 
     private readonly Stack<(Guid? FolderId, string FolderName)> _breadcrumb = new();
     private Guid? _currentFolderId;
@@ -73,13 +75,15 @@ public sealed partial class DocumentBrowserViewModel : ObservableObject
         IDocumentFolderRepository folderRepository,
         IDocumentImportService importService,
         ICurrentUserService currentUserService,
-        IDiagnosticsReporter diagnosticsReporter)
+        IDiagnosticsReporter diagnosticsReporter,
+        RolePreviewService rolePreviewService)
     {
         _documentRepository = documentRepository ?? throw new ArgumentNullException(nameof(documentRepository));
         _folderRepository = folderRepository ?? throw new ArgumentNullException(nameof(folderRepository));
         _importService = importService ?? throw new ArgumentNullException(nameof(importService));
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         _diagnosticsReporter = diagnosticsReporter ?? throw new ArgumentNullException(nameof(diagnosticsReporter));
+        _rolePreviewService = rolePreviewService ?? throw new ArgumentNullException(nameof(rolePreviewService));
 
         Folders = [];
         Documents = [];
@@ -103,7 +107,7 @@ public sealed partial class DocumentBrowserViewModel : ObservableObject
         try
         {
             await _currentUserService.InitializeAsync();
-            CanModifyContent = RoleAccessPolicy.IsAllowed(_currentUserService.Current.Role, RbacAction.CreateFolder);
+            CanModifyContent = RoleAccessPolicy.IsAllowed(_rolePreviewService.Resolve(_currentUserService.Current.Role), RbacAction.CreateFolder);
 
             var folderEntities = await _folderRepository.GetChildrenAsync(_currentFolderId);
             var documentEntities = await _documentRepository.GetByFolderAsync(_currentFolderId);

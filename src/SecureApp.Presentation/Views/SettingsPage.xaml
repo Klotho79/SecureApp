@@ -303,7 +303,7 @@
                             </DataTrigger>
                         </Button.Triggers>
                     </Button>
-                    <Button Text="Diagnostika" Style="{StaticResource SubTabButton}" IsVisible="{Binding IsAdmin}" Command="{Binding SelectSystemSubTabCommand}" CommandParameter="5">
+                    <Button Text="Diagnostika" Style="{StaticResource SubTabButton}" IsVisible="{Binding IsAdminEffective}" Command="{Binding SelectSystemSubTabCommand}" CommandParameter="5">
                         <Button.Triggers>
                             <DataTrigger TargetType="Button" Binding="{Binding IsSystemDiagnosticsSubTab}" Value="True">
                                 <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
@@ -448,54 +448,13 @@
                     </VerticalStackLayout>
                 </Border>
 
-                <!-- Správa kategorií knihovny (2026-10-02) — moved here from the Library browse page
-                     per the user's own ask ("sprava a pridavani kategorii ma byt v nastaveni"), same
-                     consolidation as upload/review already being behind "✏ Spravovat" rather than on
-                     the browse page itself. Visible to Modifier/Admin (CanManageLibrary), same gate
-                     the browse page's own add button used to use. -->
-                <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanManageLibrary}">
-                    <VerticalStackLayout Spacing="8">
-                        <Label Text="Kategorie knihovny" Style="{StaticResource SectionHeader}" Margin="0" />
-                        <Button Text="✏ Spravovat obsah (nahrát, koncepty, schvalování)" Style="{StaticResource SecondaryButton}" Command="{Binding OpenLibraryManageCommand}" />
-                        <Label Text="Podkategorie se otevírají a procházejí v Knihovně — přidávání a mazání je tady." FontSize="9.5" TextColor="Gray" />
-
-                        <Picker ItemsSource="{Binding LibraryTopCategories}" SelectedItem="{Binding SelectedLibraryTopCategory}" Title="Kategorie" />
-
-                        <controls:DelayedActivityIndicator IsBusy="{Binding IsLoadingLibrarySubcategories}" HorizontalOptions="Center" />
-                        <Label Text="Tato kategorie zatím nemá žádné podkategorie." FontSize="9.5" TextColor="Gray" IsVisible="{Binding HasNoLibrarySubcategories}" />
-
-                        <CollectionView ItemsSource="{Binding LibrarySubcategories}" IsVisible="{Binding HasLibrarySubcategories}">
-                            <CollectionView.ItemsLayout>
-                                <LinearItemsLayout Orientation="Vertical" ItemSpacing="6" />
-                            </CollectionView.ItemsLayout>
-                            <CollectionView.ItemTemplate>
-                                <DataTemplate x:DataType="vm:SubcategoryItem">
-                                    <Border Style="{StaticResource CardBorder}" Margin="0" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
-                                        <Grid ColumnDefinitions="*,Auto">
-                                            <Label Grid.Column="0" Text="{Binding Name}" FontSize="10.5" VerticalOptions="Center" />
-                                            <Button Grid.Column="1" Text="🗑" BackgroundColor="Transparent" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" Padding="4,0"
-                                                    IsVisible="{Binding CanDelete}"
-                                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:SettingsViewModel}}, Path=DeleteLibrarySubcategoryCommand}"
-                                                    CommandParameter="{Binding .}" />
-                                        </Grid>
-                                    </Border>
-                                </DataTemplate>
-                            </CollectionView.ItemTemplate>
-                        </CollectionView>
-
-                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                            <Entry Grid.Column="0" Text="{Binding NewLibrarySubcategoryNameText}" Placeholder="Název nové podkategorie" />
-                            <Button Grid.Column="1" Text="＋ Přidat" Style="{StaticResource SecondaryButton}" Command="{Binding AddLibrarySubcategoryCommand}" />
-                        </Grid>
-
-                        <Label Text="{Binding LibraryCategoriesStatusText}" FontSize="9.5" IsVisible="{Binding HasLibraryCategoriesStatus}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
-                    </VerticalStackLayout>
-                </Border>
+                <!-- Správa kategorií knihovny přesunuta do Redakce (2026-10-13, user's own ask:
+                     "V nastaveni sytem kategorie knihovny patri taky do redakce"). -->
                 </VerticalStackLayout>
 
                 <VerticalStackLayout Spacing="12" IsVisible="{Binding IsSystemDiagnosticsSubTab}">
-                <!-- Diagnostický log — every device still reports into it, but only the admin reads it (2026-09-26, user's call). -->
-                <Border Style="{StaticResource CardBorder}" IsVisible="{Binding IsAdmin}">
+                <!-- Diagnostický log — every device still reports into it, but only the admin reads it (2026-09-26, user's call). IsAdminEffective so an admin previewing a lower role sees it disappear too. -->
+                <Border Style="{StaticResource CardBorder}" IsVisible="{Binding IsAdminEffective}">
                     <VerticalStackLayout Spacing="8">
                         <Label Text="Diagnostický log" Style="{StaticResource SectionHeader}" Margin="0" />
                         <Label Text="Sdílené chybové/varovné hlášení ze všech zařízení v komunitě." FontSize="9.5" TextColor="Gray" />
@@ -645,6 +604,21 @@
                         </Grid>
                         <Label Text="{Binding ScreenCaptureStatusText}" FontSize="9.5" TextColor="Gray" LineBreakMode="WordWrap" />
                         <Label Text="Jen pro toto zařízení, na 24 hodin. Pak se ochrana zapne sama." FontSize="9.5" TextColor="Gray" />
+                    </VerticalStackLayout>
+                </Border>
+
+                <!-- Náhled jako role (2026-10-13, user's own ask: "v nastaveni admina dej rolmenu
+                     zobrazeni co vidi jednotlive role") — živý náhled, ne jen popis: appka se po
+                     zvolení Modifier/Viewer všude chová (skrývá karty/tlačítka), jako by na tomhle
+                     zařízení byla přihlášená ta role. Nic se neukládá, při vypnutí appky se náhled
+                     sám zruší. Admin heslo a reálná role zůstávají nedotčené — náhled jen schovává
+                     ovládací prvky, nikdy nezmění, co appka ve skutečnosti udělá. -->
+                <Border Style="{StaticResource CardBorder}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Náhled jako role" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Label Text="Appka se zobrazí přesně tak, jak ji vidí zvolená role — na tomto zařízení, dokud náhled nezrušíte nebo appku nezavřete." FontSize="9.5" TextColor="Gray" LineBreakMode="WordWrap" />
+                        <Picker ItemsSource="{Binding PreviewRoleOptions}" SelectedItem="{Binding SelectedPreviewRoleOption}" Title="Role" />
+                        <Label Text="{Binding SelectedPreviewRoleOption, StringFormat='Aktivní náhled: {0}'}" IsVisible="{Binding HasActivePreview}" FontSize="9.5" FontAttributes="Bold" TextColor="{AppThemeBinding Light={StaticResource Warn}, Dark={StaticResource WarnDark}}" />
                     </VerticalStackLayout>
                 </Border>
                 </VerticalStackLayout>

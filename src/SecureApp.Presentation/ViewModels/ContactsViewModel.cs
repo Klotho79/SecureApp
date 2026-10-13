@@ -8,6 +8,7 @@ using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Domain.Policies;
 using SecureApp.Domain.ValueObjects;
 using SecureApp.Presentation.Contacts;
+using SecureApp.Presentation.Infrastructure;
 
 namespace SecureApp.Presentation.ViewModels;
 
@@ -40,6 +41,7 @@ public sealed partial class ContactsViewModel : ObservableObject
 
     private readonly ISharedContactService _sharedContactService;
     private readonly ICurrentUserService _currentUserService;
+    private readonly RolePreviewService _rolePreviewService;
     private List<SharedContact> _allArimContacts = [];
 
     /// <summary>
@@ -104,10 +106,11 @@ public sealed partial class ContactsViewModel : ObservableObject
     /// <summary>Raised so the Page (which alone can push a MAUI navigation) opens the add-contact form — same MAUI-free-ViewModel split this codebase already established elsewhere.</summary>
     public event Action? RequestAddContact;
 
-    public ContactsViewModel(ISharedContactService sharedContactService, ICurrentUserService currentUserService)
+    public ContactsViewModel(ISharedContactService sharedContactService, ICurrentUserService currentUserService, RolePreviewService rolePreviewService)
     {
         _sharedContactService = sharedContactService ?? throw new ArgumentNullException(nameof(sharedContactService));
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
+        _rolePreviewService = rolePreviewService ?? throw new ArgumentNullException(nameof(rolePreviewService));
         CanEditContacts = true;
         SearchQuery = string.Empty;
         PhoneSections = [];
@@ -164,7 +167,7 @@ public sealed partial class ContactsViewModel : ObservableObject
     [RelayCommand]
     private async Task LoadAsync()
     {
-        CanEditContacts = RoleAccessPolicy.IsAllowed(_currentUserService.Current.Role, RbacAction.EditContact);
+        CanEditContacts = RoleAccessPolicy.IsAllowed(_rolePreviewService.Resolve(_currentUserService.Current.Role), RbacAction.EditContact);
         ApplyFilter();
         await LoadCompanyContactsAsync();
     }

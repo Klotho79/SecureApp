@@ -39,6 +39,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly INativeUpdateDownloader? _nativeUpdateDownloader;
     private readonly IIdentityBackupService _identityBackupService;
     private readonly ILibraryTranslationService _libraryTranslationService;
+    private readonly RolePreviewService _rolePreviewService;
 
     private EventHandler<TransportConnectionState>? _connectionStateHandler;
     private IDispatcherTimer? _activationPollTimer;
@@ -111,9 +112,44 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsAdmin { get; set; }
 
-    /// <summary>Gates the "Spravovat knihovnu" entry card (2026-10-02 — consolidated here per the user's own ask, "veškerá správa do nastavení": every management surface lives in Settings, not scattered across other tabs). Admin or Modifier, same RoleAccessPolicy.UploadLibraryFile reasoning LibraryViewModel.CanModifyContent already uses — a pure Viewer-role device that's also been flagged as a document reviewer is a narrow edge case not covered here yet, deferred along with the rest of this Settings layout pass.</summary>
+    /// <summary>
+    /// "Náhled jako role" (2026-10-13, user's own ask: "v nastaveni admina dej rolmenu zobrazeni co
+    /// vidi jednotlive role") — unlike <see cref="IsAdmin"/>, this reflects an active role preview
+    /// (<see cref="RolePreviewService"/>) when the real device role is Admin. Gates the handful of
+    /// admin-only surfaces that are purely about VIEWING (Diagnostika/AI překlad sub-tabs, the
+    /// Diagnostický log card) — deliberately NOT the Account card's own role Picker/Save (AvailableRoles
+    /// stays keyed off the real <see cref="IsAdmin"/> so a preview can never itself demote the real
+    /// account), and deliberately NOT the top-level "Admin" tab button itself (also real <see cref="IsAdmin"/>),
+    /// so the admin previewing a lower role can always get back here to cancel it.
+    /// </summary>
     [ObservableProperty]
-    public partial bool CanManageLibrary { get; set; }
+    public partial bool IsAdminEffective { get; set; }
+
+    /// <summary>Picker items for the preview switcher below — "Vlastní role" (no override) plus every non-Admin role; mirrors <see cref="RolePreviewService.PreviewRole"/>.</summary>
+    [ObservableProperty]
+    public partial ObservableCollection<string> PreviewRoleOptions { get; set; } = ["Vlastní role (Admin)", "Modifier", "Viewer"];
+
+    [ObservableProperty]
+    public partial string SelectedPreviewRoleOption { get; set; } = "Vlastní role (Admin)";
+
+    [ObservableProperty]
+    public partial bool HasActivePreview { get; set; }
+
+    partial void OnSelectedPreviewRoleOptionChanged(string value)
+    {
+        var role = value switch
+        {
+            "Modifier" => Role.Modifier,
+            "Viewer" => Role.Viewer,
+            _ => (Role?)null,
+        };
+        _rolePreviewService.SetPreviewRole(role);
+        HasActivePreview = role is not null;
+        // Recomputed here (not just in LoadAsync) so switching the picker updates this same page
+        // live — IsAdminEffective-gated cards on OTHER pages pick it up next time they load (every
+        // page here reloads on OnAppearing), same as the rest of this app's load-on-appear convention.
+        IsAdminEffective = _rolePreviewService.Resolve(_currentUserService.Current.Role) == Role.Admin;
+    }
 
     /// <summary>Logbook tab show/hide (2026-09-09) — the user's own explicit ask. Stored via <c>Preferences</c> (a per-device display setting, not User data — see LoadAsync/OnIsLogbookVisibleChanged) rather than a new Domain entity/table; applies live, see <c>AppShell.RebuildTabBar</c>'s own remarks.</summary>
     [ObservableProperty]
@@ -281,6 +317,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         ILibraryTranslationService libraryTranslationService,
         IDevicePolicyService devicePolicyService,
         IPiccRosterService piccRosterService,
+        RolePreviewService rolePreviewService,
         INativeAppInstaller? nativeAppInstaller = null,
         INativeUpdateDownloader? nativeUpdateDownloader = null)
     {
@@ -300,6 +337,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         _libraryTranslationService = libraryTranslationService ?? throw new ArgumentNullException(nameof(libraryTranslationService));
         _devicePolicyService = devicePolicyService ?? throw new ArgumentNullException(nameof(devicePolicyService));
         _piccRosterService = piccRosterService ?? throw new ArgumentNullException(nameof(piccRosterService));
+        _rolePreviewService = rolePreviewService ?? throw new ArgumentNullException(nameof(rolePreviewService));
         _nativeAppInstaller = nativeAppInstaller;
         _nativeUpdateDownloader = nativeUpdateDownloader;
 
@@ -330,7 +368,6 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         IsSaved = false;
         IsAdmin = value == Role.Admin;
-        CanManageLibrary = value != Role.Viewer;
     }
 
     partial void OnRelayErrorMessageChanged(string? value) => HasRelayError = !string.IsNullOrEmpty(value);
@@ -402,8 +439,15 @@ public sealed partial class SettingsViewModel : ObservableObject
         // CommunityToolkit's generated setter skips the change notification entirely when nothing
         // actually changed, so the partial method (and anything it sets) never runs on first load.
         IsAdmin = SelectedRole == Role.Admin;
-        CanManageLibrary = SelectedRole != Role.Viewer;
         AvailableRoles = IsAdmin ? Enum.GetValues<Role>() : [Role.Modifier, Role.Viewer];
+        SelectedPreviewRoleOption = _rolePreviewService.PreviewRole switch
+        {
+            Role.Modifier => "Modifier",
+            Role.Viewer => "Viewer",
+            _ => "Vlastní role (Admin)",
+        };
+        HasActivePreview = _rolePreviewService.PreviewRole is not null;
+        IsAdminEffective = _rolePreviewService.Resolve(_currentUserService.Current.Role) == Role.Admin;
         LoadThemeMode();
         LoadFontScale();
         LoadAccent();
@@ -445,7 +489,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
 
         HasSharedLibraryKey = await _sharedLibraryService.HasSharedKeyAsync();
-        await RefreshLibraryCategoriesAsync();
 
         // Diagnostic log auto-loads here since it needs no admin secret — LoadDiagnosticLogAsync
         // already catches its own failures into DiagnosticLogErrorMessage rather than throwing, so

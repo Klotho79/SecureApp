@@ -6,6 +6,7 @@ using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Domain.Policies;
 using SecureApp.Domain.ValueObjects;
+using SecureApp.Presentation.Infrastructure;
 using SecureApp.Presentation.Views;
 
 namespace SecureApp.Presentation.ViewModels;
@@ -24,6 +25,7 @@ public sealed partial class LibrarySubcategoryDetailViewModel : ObservableObject
     private readonly ITransportSettingsRepository _transportSettingsRepository;
     private readonly IDiagnosticsReporter _diagnosticsReporter;
     private readonly ILibraryTranslationService _libraryTranslationService;
+    private readonly RolePreviewService _rolePreviewService;
 
     private Guid _subcategoryId;
     private string _parentCategory = string.Empty;
@@ -76,13 +78,15 @@ public sealed partial class LibrarySubcategoryDetailViewModel : ObservableObject
         ICurrentUserService currentUserService,
         ITransportSettingsRepository transportSettingsRepository,
         IDiagnosticsReporter diagnosticsReporter,
-        ILibraryTranslationService libraryTranslationService)
+        ILibraryTranslationService libraryTranslationService,
+        RolePreviewService rolePreviewService)
     {
         _libraryService = libraryService ?? throw new ArgumentNullException(nameof(libraryService));
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         _transportSettingsRepository = transportSettingsRepository ?? throw new ArgumentNullException(nameof(transportSettingsRepository));
         _diagnosticsReporter = diagnosticsReporter ?? throw new ArgumentNullException(nameof(diagnosticsReporter));
         _libraryTranslationService = libraryTranslationService ?? throw new ArgumentNullException(nameof(libraryTranslationService));
+        _rolePreviewService = rolePreviewService ?? throw new ArgumentNullException(nameof(rolePreviewService));
     }
 
     public void ApplyQueryAttributes(IDictionary<string, object> query)
@@ -106,8 +110,9 @@ public sealed partial class LibrarySubcategoryDetailViewModel : ObservableObject
     {
         IsLoading = true;
         StatusErrorMessage = null;
-        CanModifyContent = RoleAccessPolicy.IsAllowed(_currentUserService.Current.Role, RbacAction.UploadLibraryFile);
-        CanTranslateDocuments = _currentUserService.Current.Role == Role.Admin
+        var role = _rolePreviewService.Resolve(_currentUserService.Current.Role);
+        CanModifyContent = RoleAccessPolicy.IsAllowed(role, RbacAction.UploadLibraryFile);
+        CanTranslateDocuments = role == Role.Admin
             && Microsoft.Maui.Devices.DeviceInfo.Current.Platform == Microsoft.Maui.Devices.DevicePlatform.WinUI;
         try
         {

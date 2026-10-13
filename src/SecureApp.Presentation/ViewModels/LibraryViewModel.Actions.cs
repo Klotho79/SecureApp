@@ -201,7 +201,7 @@ public sealed partial class LibraryViewModel
     /// partial's own "free of any MAUI type" rule pushes out of it.
     /// </summary>
     private bool ComputeCanTranslateDocuments() =>
-        _currentUserService.Current.Role == Domain.Enums.Role.Admin
+        _rolePreviewService.Resolve(_currentUserService.Current.Role) == Domain.Enums.Role.Admin
         && Microsoft.Maui.Devices.DeviceInfo.Current.Platform == Microsoft.Maui.Devices.DevicePlatform.WinUI;
 
     [RelayCommand]

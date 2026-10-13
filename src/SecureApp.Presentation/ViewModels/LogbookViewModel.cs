@@ -6,6 +6,7 @@ using SecureApp.Domain.Enums;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Domain.Policies;
+using SecureApp.Presentation.Infrastructure;
 using SecureApp.Presentation.Views;
 
 namespace SecureApp.Presentation.ViewModels;
@@ -36,6 +37,7 @@ public sealed partial class LogbookViewModel : ObservableObject
     private readonly ILogbookProcedureTypeRepository _procedureTypeRepository;
     private readonly ILogbookProcedureEntryRepository _procedureEntryRepository;
     private readonly ICurrentUserService _currentUserService;
+    private readonly RolePreviewService _rolePreviewService;
     private readonly IDiagnosticsReporter _diagnosticsReporter;
     private readonly ILogbookCatalogSyncService _catalogSyncService;
 
@@ -109,7 +111,8 @@ public sealed partial class LogbookViewModel : ObservableObject
         ILogbookProcedureEntryRepository procedureEntryRepository,
         ICurrentUserService currentUserService,
         IDiagnosticsReporter diagnosticsReporter,
-        ILogbookCatalogSyncService catalogSyncService)
+        ILogbookCatalogSyncService catalogSyncService,
+        RolePreviewService rolePreviewService)
     {
         _checklistRepository = checklistRepository ?? throw new ArgumentNullException(nameof(checklistRepository));
         _procedureTypeRepository = procedureTypeRepository ?? throw new ArgumentNullException(nameof(procedureTypeRepository));
@@ -117,6 +120,7 @@ public sealed partial class LogbookViewModel : ObservableObject
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         _diagnosticsReporter = diagnosticsReporter ?? throw new ArgumentNullException(nameof(diagnosticsReporter));
         _catalogSyncService = catalogSyncService ?? throw new ArgumentNullException(nameof(catalogSyncService));
+        _rolePreviewService = rolePreviewService ?? throw new ArgumentNullException(nameof(rolePreviewService));
 
         Checklists = [];
         ProcedureTypeOptions = [];
@@ -140,7 +144,7 @@ public sealed partial class LogbookViewModel : ObservableObject
         try
         {
             await _currentUserService.InitializeAsync();
-            var role = _currentUserService.Current.Role;
+            var role = _rolePreviewService.Resolve(_currentUserService.Current.Role);
             CanManageChecklists = RoleAccessPolicy.IsAllowed(role, RbacAction.ManageLogbookChecklists);
             CanManageProcedureCatalog = RoleAccessPolicy.IsAllowed(role, RbacAction.ManageLogbookProcedureCatalog);
             CanManageAnything = CanManageChecklists || CanManageProcedureCatalog;

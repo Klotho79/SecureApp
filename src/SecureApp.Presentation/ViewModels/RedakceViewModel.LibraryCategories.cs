@@ -2,19 +2,18 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SecureApp.Domain.Enums;
-using SecureApp.Presentation.Views;
 
 namespace SecureApp.Presentation.ViewModels;
 
 /// <summary>
-/// Library sub-category management (2026-10-02) — moved out of the Library browse page per the
-/// user's own "sprava a pridavani kategorii ma byt v nastaveni" ask, consolidating it alongside the
-/// rest of library management the same way upload/review already live behind "✏ Spravovat" rather
-/// than on the browse page itself. Browsing/opening a sub-category still lives on
-/// <see cref="LibraryViewModel"/>'s own page; only add/delete moved here. Split into its own partial
-/// the same way Updates/Community are.
+/// Library sub-category management — moved here from SettingsViewModel.LibraryCategories.cs
+/// (2026-10-13, user's own ask: "V nastaveni sytem kategorie knihovny patri taky do redakce"), same
+/// consolidation as the rest of <see cref="RedakceViewModel"/>'s own cards. Only the "Kategorie
+/// knihovny" card (add/delete sub-categories + the "✏ Spravovat obsah" link) moved; the plain "Klíč
+/// sdílené knihovny" status card on Nastavení→Systém→Knihovna is informational, not an edit action,
+/// and stayed there.
 /// </summary>
-public sealed partial class SettingsViewModel
+public sealed partial class RedakceViewModel
 {
     /// <summary>Same floor-not-ceiling seed list as <see cref="LibraryViewModel"/>'s own — duplicated
     /// on purpose, two small independently-readable lists beat reaching a shared static across
@@ -22,19 +21,19 @@ public sealed partial class SettingsViewModel
     private static readonly string[] LibrarySeedCategories = ["Doporučení", "Resuscitace", "Postupy", "Výuka", "Nástroje"];
 
     [ObservableProperty]
-    public partial ObservableCollection<string> LibraryTopCategories { get; set; } = [];
+    public partial ObservableCollection<string> LibraryTopCategories { get; set; }
 
     [ObservableProperty]
     public partial string? SelectedLibraryTopCategory { get; set; }
 
     [ObservableProperty]
-    public partial ObservableCollection<SubcategoryItem> LibrarySubcategories { get; set; } = [];
+    public partial ObservableCollection<SubcategoryItem> LibrarySubcategories { get; set; }
 
     [ObservableProperty]
     public partial bool HasLibrarySubcategories { get; set; }
 
     /// <summary>Mirrors <see cref="HasLibrarySubcategories"/> — same established pattern this app
-    /// uses throughout (see e.g. <c>HasNoSharedLibraryKey</c>) instead of an IValueConverter.</summary>
+    /// uses throughout instead of an IValueConverter.</summary>
     [ObservableProperty]
     public partial bool HasNoLibrarySubcategories { get; set; }
 
@@ -57,7 +56,7 @@ public sealed partial class SettingsViewModel
     partial void OnSelectedLibraryTopCategoryChanged(string? value) => _ = RefreshLibrarySubcategoriesAsync();
 
     /// <summary>Best-effort, same posture as the rest of this page's background extras — a failure
-    /// here must never block Settings from loading. Only called for a Modifier/Admin
+    /// here must never block Redakce from loading. Only called for a Modifier/Admin
     /// (<see cref="CanManageLibrary"/>); a Viewer has nothing to manage here.</summary>
     private async Task RefreshLibraryCategoriesAsync()
     {
@@ -87,7 +86,7 @@ public sealed partial class SettingsViewModel
         }
         catch (Exception ex)
         {
-            _ = _diagnosticsReporter.ReportAsync(DiagnosticLogLevel.Warning, "Nepodařilo se načíst kategorie knihovny.", nameof(SettingsViewModel), ex);
+            _ = _diagnosticsReporter.ReportAsync(DiagnosticLogLevel.Warning, "Nepodařilo se načíst kategorie knihovny.", nameof(RedakceViewModel), ex);
         }
     }
 
@@ -121,12 +120,10 @@ public sealed partial class SettingsViewModel
     }
 
     /// <summary>The "✏ Spravovat" entry (upload/"Moje koncepty"/review queue) that used to sit on the
-    /// Library browse page itself — moved here, same consolidation as sub-category add/delete right
-    /// below. <c>Shell.Current</c> is already used directly elsewhere in this ViewModel's own
-    /// partials (e.g. <c>SettingsViewModel.Community.cs</c>), so no MAUI-type-isolation constraint
-    /// applies here the way it does on <see cref="LibraryViewModel"/>.</summary>
+    /// Library browse page itself, then on Nastavení→Systém→Knihovna — moved here, same consolidation
+    /// as sub-category add/delete right below.</summary>
     [RelayCommand]
-    private async Task OpenLibraryManageAsync() => await Shell.Current.GoToAsync(nameof(LibraryManagePage), animate: false);
+    private void OpenLibraryManage() => RequestNavigate?.Invoke(nameof(Views.LibraryManagePage));
 
     [RelayCommand]
     private void SelectLibraryTopCategory(string? category) => SelectedLibraryTopCategory = category;

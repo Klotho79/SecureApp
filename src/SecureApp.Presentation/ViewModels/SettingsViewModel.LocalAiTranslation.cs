@@ -39,12 +39,14 @@ public sealed partial class SettingsViewModel
     /// matrix structurally can't express "Admin but not Modifier"; true admin-only features here,
     /// e.g. "Admin: Nasazení relay serveru", already bypass RbacAction the same way) plus a plain
     /// DeviceInfo.Current.Platform runtime check — not #if WINDOWS — same idiom as
-    /// Profiles.ActiveProfile/TrustedAdminDevices.
+    /// Profiles.ActiveProfile/TrustedAdminDevices. Uses <see cref="IsAdminEffective"/>, not
+    /// <see cref="IsAdmin"/>, so an admin previewing a lower role (see IsAdminEffective's own
+    /// remarks) stops seeing this card too, same as every other admin-only surface.
     /// </summary>
     public bool CanConfigureLocalAiTranslation =>
-        IsAdmin && Microsoft.Maui.Devices.DeviceInfo.Current.Platform == Microsoft.Maui.Devices.DevicePlatform.WinUI;
+        IsAdminEffective && Microsoft.Maui.Devices.DeviceInfo.Current.Platform == Microsoft.Maui.Devices.DevicePlatform.WinUI;
 
-    partial void OnIsAdminChanged(bool value) => OnPropertyChanged(nameof(CanConfigureLocalAiTranslation));
+    partial void OnIsAdminEffectiveChanged(bool value) => OnPropertyChanged(nameof(CanConfigureLocalAiTranslation));
 
     partial void OnLocalAiTranslationStatusTextChanged(string? value) => HasLocalAiTranslationStatus = !string.IsNullOrEmpty(value);
 

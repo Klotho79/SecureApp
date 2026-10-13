@@ -534,3 +534,8 @@ $adb = "C:\Users\dvora\AppData\Local\Android\Sdk\platform-tools\adb.exe"
 # Ask the user: (a) get Petr/PC/S9+ onto 1.17+, (b) device-verify the still-unverified 1.16/1.17
 # features listed in "Where We're Going" #2, or (c) resume Phase 2b/3 with a fresh scope decision.
 ```
+
+## Session Closed
+**Closed at:** 2026-09-28 (this session)
+**Commit:** `bdf7e05`
+**Session status:** Handed off to next session

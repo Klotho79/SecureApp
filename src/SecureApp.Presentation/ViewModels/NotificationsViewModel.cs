@@ -8,6 +8,7 @@ using SecureApp.Domain.Enums;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Domain.ValueObjects;
+using SecureApp.Presentation.Infrastructure;
 
 namespace SecureApp.Presentation.ViewModels;
 
@@ -35,6 +36,7 @@ public sealed partial class NotificationsViewModel : ObservableObject
     private readonly IWorkplaceCatalogService _workplaceCatalogService;
     private readonly IWorkAssignmentRepository _workAssignmentRepository;
     private readonly ICurrentUserService _currentUserService;
+    private readonly RolePreviewService _rolePreviewService;
 
     [ObservableProperty]
     public partial ObservableCollection<NotificationSectionGroup> Sections { get; set; }
@@ -81,7 +83,8 @@ public sealed partial class NotificationsViewModel : ObservableObject
         IRoomStatusService roomStatusService,
         IWorkplaceCatalogService workplaceCatalogService,
         IWorkAssignmentRepository workAssignmentRepository,
-        ICurrentUserService currentUserService)
+        ICurrentUserService currentUserService,
+        RolePreviewService rolePreviewService)
     {
         _notificationRepository = notificationRepository ?? throw new ArgumentNullException(nameof(notificationRepository));
         _chatSessionRepository = chatSessionRepository ?? throw new ArgumentNullException(nameof(chatSessionRepository));
@@ -90,6 +93,7 @@ public sealed partial class NotificationsViewModel : ObservableObject
         _workplaceCatalogService = workplaceCatalogService ?? throw new ArgumentNullException(nameof(workplaceCatalogService));
         _workAssignmentRepository = workAssignmentRepository ?? throw new ArgumentNullException(nameof(workAssignmentRepository));
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
+        _rolePreviewService = rolePreviewService ?? throw new ArgumentNullException(nameof(rolePreviewService));
         Sections = [];
         HasNoNotifications = true;
         ChatQuickAccess = [];

@@ -27,7 +27,12 @@
       "WebFetch(domain:github.com)",
       "PowerShell(dotnet run --project \"$env:CLAUDE_JOB_DIR\\\\tmp\\\\ReflectDump\\\\ReflectDump.csproj\" -c Debug 2>&1)",
       "PowerShell(dotnet run --project \"$env:CLAUDE_JOB_DIR\\\\tmp\\\\ReflectDump\\\\ReflectDump.csproj\" -c Debug 2>&1 | Select-String -Pattern \"TextSize|DrawText|===== SkiaSharp\")",
-      "PowerShell(dotnet run --project \"$env:CLAUDE_JOB_DIR\\\\tmp\\\\ViewModelSmokeTest\\\\ViewModelSmokeTest.csproj\" -c Debug 2>&1)"
+      "PowerShell(dotnet run --project \"$env:CLAUDE_JOB_DIR\\\\tmp\\\\ViewModelSmokeTest\\\\ViewModelSmokeTest.csproj\" -c Debug 2>&1)",
+      "PowerShell(ssh secureapp-pi *)",
+      "PowerShell(scp *)",
+      "PowerShell($git = \"C:\\\\Program Files\\\\Microsoft Visual Studio\\\\2022\\\\Community\\\\Common7\\\\IDE\\\\CommonExtensions\\\\Microsoft\\\\TeamFoundation\\\\Team Explorer\\\\Git\\\\cmd\\\\git.exe\"*)",
+      "PowerShell($dir = \"C:\\\\Users\\\\dvora\\\\dotnet-local\"*)",
+      "PowerShell($adb = \"C:\\\\Users\\\\dvora\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\"*)"
     ]
   }
 }

@@ -8,6 +8,7 @@ using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Domain.Policies;
 using SecureApp.Domain.ValueObjects;
+using SecureApp.Presentation.Infrastructure;
 using SecureApp.Presentation.Notifications;
 using SecureApp.Presentation.Workplace;
 
@@ -32,6 +33,7 @@ public sealed partial class AddAssignmentViewModel : ObservableObject, IQueryAtt
     private readonly ICurrentUserService _currentUserService;
     private readonly IOpicentrumSyncService _opicentrumSyncService;
     private readonly INotificationRepository _notificationRepository;
+    private readonly RolePreviewService _rolePreviewService;
 
     private DateOnly _date;
     private Guid? _assignmentId;
@@ -108,13 +110,15 @@ public sealed partial class AddAssignmentViewModel : ObservableObject, IQueryAtt
         IWorkplaceCatalogService workplaceCatalogService,
         ICurrentUserService currentUserService,
         IOpicentrumSyncService opicentrumSyncService,
-        INotificationRepository notificationRepository)
+        INotificationRepository notificationRepository,
+        RolePreviewService rolePreviewService)
     {
         _assignmentRepository = assignmentRepository ?? throw new ArgumentNullException(nameof(assignmentRepository));
         _workplaceCatalogService = workplaceCatalogService ?? throw new ArgumentNullException(nameof(workplaceCatalogService));
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         _opicentrumSyncService = opicentrumSyncService ?? throw new ArgumentNullException(nameof(opicentrumSyncService));
         _notificationRepository = notificationRepository ?? throw new ArgumentNullException(nameof(notificationRepository));
+        _rolePreviewService = rolePreviewService ?? throw new ArgumentNullException(nameof(rolePreviewService));
         TypeOptions = AssignmentTypeCatalog.All.Select(t => new AssignmentTypeOption(t, AssignmentTypeCatalog.Label(t))).ToList();
         SelectedTypeOption = TypeOptions[0];
         DateText = string.Empty;
@@ -149,7 +153,7 @@ public sealed partial class AddAssignmentViewModel : ObservableObject, IQueryAtt
     {
         DateText = FormatDate(_date);
         await _currentUserService.InitializeAsync();
-        CanEditAssignment = RoleAccessPolicy.IsAllowed(_currentUserService.Current.Role, RbacAction.EditWorkAssignment);
+        CanEditAssignment = RoleAccessPolicy.IsAllowed(_rolePreviewService.Resolve(_currentUserService.Current.Role), RbacAction.EditWorkAssignment);
 
         try
         {
