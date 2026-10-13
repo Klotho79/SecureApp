@@ -19,6 +19,7 @@ public partial class AppShell : Shell
 	public static string FilesTabVisibilityPreferenceKey => Profiles.ActiveProfile.PrefKey("tab_soubory_visible");
 	public static string ContactsTabVisibilityPreferenceKey => Profiles.ActiveProfile.PrefKey("tab_kontakty_visible");
 	public static string NotificationsTabVisibilityPreferenceKey => Profiles.ActiveProfile.PrefKey("tab_oznameni_visible");
+	public static string RedakceTabVisibilityPreferenceKey => Profiles.ActiveProfile.PrefKey("tab_redakce_visible");
 
 	/// <summary>
 	/// Every tab that can be hidden (2026-09-16, user's own ask: "chci mít možnost schovávat
@@ -50,6 +51,7 @@ public partial class AppShell : Shell
 			(ChatsTab, ChatsTabVisibilityPreferenceKey, true),
 			(FilesTab, FilesTabVisibilityPreferenceKey, true),
 			(ContactsTab, ContactsTabVisibilityPreferenceKey, true),
+			(RedakceTab, RedakceTabVisibilityPreferenceKey, true),
 			(_logbookTab, LogbookVisibilityPreferenceKey, false),
 		];
 		RebuildTabBar();

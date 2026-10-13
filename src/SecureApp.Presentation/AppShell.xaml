@@ -46,6 +46,16 @@
         <Tab x:Name="ContactsTab" Title="☎ Kontakty">
             <ShellContent ContentTemplate="{DataTemplate views:ContactsPage}" Route="ContactsTab" />
         </Tab>
+        <!-- Redakce (2026-10-13, user's own ask: "vsechny modifikace upravy a vkladani zprav... dej
+             do nastenky jako jednu polozku na spodnim menu") — one consolidated tab for every
+             edit/post action that used to be scattered (board composer was in Nastavení→Uživatel→
+             Nástěnka, sál-status-options management was inline on Nástěnka itself). Editing the
+             device's OWN sál status stays inline on Nástěnka (user's own explicit call) — only the
+             Admin/Modifier-only actions moved here. Inserted BEFORE Nastavení, same convention as
+             Kontakty's own insertion above. -->
+        <Tab x:Name="RedakceTab" Title="📝 Redakce">
+            <ShellContent ContentTemplate="{DataTemplate views:RedakcePage}" Route="RedakceTab" />
+        </Tab>
         <Tab Title="⚙ Nastavení">
             <ShellContent ContentTemplate="{DataTemplate views:SettingsPage}" Route="SettingsTab" />
         </Tab>

@@ -132,6 +132,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsNotificationsTabVisible { get; set; }
 
+    [ObservableProperty]
+    public partial bool IsRedakceTabVisible { get; set; }
+
     // --- Relay (Milestone 5) ---
 
     [ObservableProperty]
@@ -274,7 +277,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         IChatSessionRepository chatSessionRepository,
         IOpicentrumSyncService opicentrumSyncService,
         IUpdateService updateService,
-        ICommunityBoardService communityBoardService,
         IIdentityBackupService identityBackupService,
         ILibraryTranslationService libraryTranslationService,
         IDevicePolicyService devicePolicyService,
@@ -294,7 +296,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         _chatSessionRepository = chatSessionRepository ?? throw new ArgumentNullException(nameof(chatSessionRepository));
         _opicentrumSyncService = opicentrumSyncService ?? throw new ArgumentNullException(nameof(opicentrumSyncService));
         _updateService = updateService ?? throw new ArgumentNullException(nameof(updateService));
-        _communityBoardService = communityBoardService ?? throw new ArgumentNullException(nameof(communityBoardService));
         _identityBackupService = identityBackupService ?? throw new ArgumentNullException(nameof(identityBackupService));
         _libraryTranslationService = libraryTranslationService ?? throw new ArgumentNullException(nameof(libraryTranslationService));
         _devicePolicyService = devicePolicyService ?? throw new ArgumentNullException(nameof(devicePolicyService));
@@ -382,6 +383,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnIsNotificationsTabVisibleChanged(bool value) =>
         (Shell.Current as AppShell)?.ApplyTabVisibility(AppShell.NotificationsTabVisibilityPreferenceKey, value);
 
+    partial void OnIsRedakceTabVisibleChanged(bool value) =>
+        (Shell.Current as AppShell)?.ApplyTabVisibility(AppShell.RedakceTabVisibilityPreferenceKey, value);
+
     [RelayCommand]
     private async Task LoadAsync()
     {
@@ -400,7 +404,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         IsAdmin = SelectedRole == Role.Admin;
         CanManageLibrary = SelectedRole != Role.Viewer;
         AvailableRoles = IsAdmin ? Enum.GetValues<Role>() : [Role.Modifier, Role.Viewer];
-        RefreshCanPostToBoard();
         LoadThemeMode();
         LoadFontScale();
         LoadAccent();
@@ -415,6 +418,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         IsFilesTabVisible = Preferences.Default.Get(AppShell.FilesTabVisibilityPreferenceKey, true);
         IsContactsTabVisible = Preferences.Default.Get(AppShell.ContactsTabVisibilityPreferenceKey, true);
         IsNotificationsTabVisible = Preferences.Default.Get(AppShell.NotificationsTabVisibilityPreferenceKey, true);
+        IsRedakceTabVisible = Preferences.Default.Get(AppShell.RedakceTabVisibilityPreferenceKey, true);
 
         var configuration = await _transportSettingsRepository.GetAsync();
         // No saved endpoint yet (first time this device opens Settings) -> pre-fill the

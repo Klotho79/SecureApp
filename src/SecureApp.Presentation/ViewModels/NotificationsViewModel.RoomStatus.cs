@@ -9,8 +9,9 @@ namespace SecureApp.Presentation.ViewModels;
 /// Live "stav sálu" board on Nástěnka (2026-10-13, user's own ask — see IRoomStatusService's own
 /// remarks for the relay-side shape). Shows every <c>Workplace</c> from the shared catalog, the
 /// device's own today's sál (from the LOCAL rozpis) sorted first. A plain Viewer may only change the
-/// row matching their own today's assignment; Admin/Modifier may change any row and additionally
-/// curate the list of possible status VALUES below.
+/// row matching their own today's assignment; Admin/Modifier may change any row — editing stays
+/// inline here (user's own explicit call), but CURATING the list of possible status VALUES moved to
+/// the Redakce tab (RedakceViewModel) alongside the other consolidated edit/post actions.
 /// </summary>
 public sealed partial class NotificationsViewModel
 {
@@ -25,27 +26,13 @@ public sealed partial class NotificationsViewModel
 
     partial void OnHasNoRoomStatusChanged(bool value) => OnPropertyChanged(nameof(HasRoomStatus));
 
-    [ObservableProperty]
-    public partial ObservableCollection<string> RoomStatusOptions { get; set; }
-
-    [ObservableProperty]
-    public partial bool CanManageRoomStatusOptions { get; set; }
-
-    [ObservableProperty]
-    public partial string NewStatusOptionText { get; set; }
-
-    private void InitRoomStatusState()
-    {
-        RoomStatusRows = [];
-        RoomStatusOptions = [];
-        NewStatusOptionText = string.Empty;
-    }
+    private void InitRoomStatusState() => RoomStatusRows = [];
 
     private async Task LoadRoomStatusAsync()
     {
         try
         {
-            CanManageRoomStatusOptions = _currentUserService.Current.Role is Role.Admin or Role.Modifier;
+            var canEditAnyRoom = _currentUserService.Current.Role is Role.Admin or Role.Modifier;
 
             var optionsTask = _roomStatusService.GetStatusOptionsAsync();
             var statusesTask = _roomStatusService.ListAsync();
@@ -55,8 +42,6 @@ public sealed partial class NotificationsViewModel
             await Task.WhenAll(optionsTask, statusesTask, workplacesTask, assignmentsTask);
 
             var options = optionsTask.Result;
-            RoomStatusOptions = new ObservableCollection<string>(options);
-
             var myWorkplaceId = assignmentsTask.Result.FirstOrDefault(a => a.WorkplaceId is not null)?.WorkplaceId;
             var statusByWorkplace = statusesTask.Result.ToDictionary(s => s.WorkplaceId);
 
@@ -67,7 +52,7 @@ public sealed partial class NotificationsViewModel
                     var isMine = myWorkplaceId == w.Id;
                     statusByWorkplace.TryGetValue(w.Id, out var status);
                     return new RoomStatusRowItem(
-                        w.Id, w.Name, isMine, isMine || CanManageRoomStatusOptions, options,
+                        w.Id, w.Name, isMine, isMine || canEditAnyRoom, options,
                         status?.StatusText, status?.UpdatedByDisplayName, status?.UpdatedAtUtc);
                 })
                 .OrderByDescending(r => r.IsMine)
@@ -93,32 +78,9 @@ public sealed partial class NotificationsViewModel
         await _roomStatusService.SetStatusAsync(row.WorkplaceId, row.WorkplaceName, row.SelectedStatus);
         await LoadRoomStatusAsync();
     }
-
-    [RelayCommand]
-    private async Task AddStatusOptionAsync()
-    {
-        var text = NewStatusOptionText.Trim();
-        if (string.IsNullOrWhiteSpace(text) || RoomStatusOptions.Contains(text)) return;
-
-        var updated = RoomStatusOptions.Append(text).ToList();
-        if (await _roomStatusService.SetStatusOptionsAsync(updated))
-        {
-            NewStatusOptionText = string.Empty;
-            await LoadRoomStatusAsync();
-        }
-    }
-
-    [RelayCommand]
-    private async Task RemoveStatusOptionAsync(string? option)
-    {
-        if (option is null) return;
-        var updated = RoomStatusOptions.Where(o => o != option).ToList();
-        if (await _roomStatusService.SetStatusOptionsAsync(updated))
-            await LoadRoomStatusAsync();
-    }
 }
 
-/// <summary>One row of the "Stav sálů" board. <see cref="Options"/> is each row's own copy (not the shared ViewModel collection) so the Picker's ItemsSource is stable even while the admin-only options editor below mutates the ViewModel-level list.</summary>
+/// <summary>One row of the "Stav sálů" board. <see cref="Options"/> is each row's own copy of the curated status-value list fetched at load time (that list itself is now managed from the Redakce tab, not here).</summary>
 public sealed partial class RoomStatusRowItem : ObservableObject
 {
     public Guid WorkplaceId { get; }

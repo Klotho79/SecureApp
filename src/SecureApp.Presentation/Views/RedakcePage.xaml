@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="SecureApp.Presentation.Views.RedakcePage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
+    x:DataType="vm:RedakceViewModel"
+    Title="Redakce"
+    Shell.NavBarIsVisible="False">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="16" Spacing="12">
+
+            <Label Text="Redakce" Style="{StaticResource PageTitle}" />
+            <Label Text="Všechny úpravy, zprávy a správa na jednom místě — podle vašich oprávnění." FontSize="9.5" TextColor="Gray" />
+
+            <Label Text="Nemáte žádná oprávnění k úpravám." FontSize="9.5" TextColor="Gray" IsVisible="{Binding HasNoEditorialAccess}" HorizontalOptions="Center" Margin="0,20" />
+
+            <!-- Zpráva na nástěnku (Admin/Modifier) — přesunuto z Nastavení/Uživatel/Nástěnka. -->
+            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanPostToBoard}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Zpráva na nástěnku" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Label Text="Zpráva se objeví všem členům na jejich Nástěnce. Vyžaduje nastavený klíč sdílené knihovny." FontSize="9.5" TextColor="Gray" />
+                    <Editor Text="{Binding BoardMessageText}" Placeholder="Co chcete oznámit…" AutoSize="TextChanges" HeightRequest="80" />
+                    <Button Text="Odeslat na nástěnku" Command="{Binding PostToBoardCommand}" />
+                    <Label Text="{Binding BoardStatusText}" IsVisible="{Binding HasBoardStatus}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" LineBreakMode="WordWrap" />
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Možné stavy sálů (Admin/Modifier) — přesunuto z Nástěnky. -->
+            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanManageRoomStatusOptions}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Možné stavy sálů" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Label Text="Seznam stavů, které si může vybrat kdokoliv v Picker na řádku svého sálu na Nástěnce." FontSize="9.5" TextColor="Gray" />
+                    <VerticalStackLayout Spacing="4" BindableLayout.ItemsSource="{Binding RoomStatusOptions}">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="x:String">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                    <Label Grid.Column="0" Text="{Binding .}" FontSize="10.5" VerticalOptions="Center" />
+                                    <Button Grid.Column="1" Text="✕" Style="{StaticResource SecondaryButton}" WidthRequest="36" Padding="0"
+                                            Command="{Binding Source={RelativeSource AncestorType={x:Type vm:RedakceViewModel}}, Path=RemoveStatusOptionCommand}"
+                                            CommandParameter="{Binding .}" />
+                                </Grid>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <Entry Grid.Column="0" Placeholder="Nový stav…" Text="{Binding NewStatusOptionText}" FontSize="10.5" />
+                        <Button Grid.Column="1" Text="Přidat" Style="{StaticResource SecondaryButton}" Command="{Binding AddStatusOptionCommand}" />
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Logbook (Modifier/Admin) — odkaz na stávající správu check-listů a katalogu výkonů. -->
+            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanManageLogbook}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Logbook" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Label Text="Správa check-listů a katalogu výkonů Logbooku." FontSize="9.5" TextColor="Gray" />
+                    <Button Text="⚙ Správa Logbooku" Style="{StaticResource SecondaryButton}" Command="{Binding OpenLogbookManageCommand}" HorizontalOptions="Start" />
+                </VerticalStackLayout>
+            </Border>
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

@@ -297,6 +297,10 @@ public static class MauiProgram
 		builder.Services.AddTransient<NotificationDetailViewModel>();
 		builder.Services.AddTransient<NotificationDetailPage>();
 
+		// Redakce (2026-10-13) — consolidated edit/post tab, its own standalone tab like Nástěnka above.
+		builder.Services.AddTransient<RedakceViewModel>();
+		builder.Services.AddTransient<RedakcePage>();
+
 		// Smart Search (2026-09-20, Phase 4 — see NOTIFICATION_HUB_SPEC.md).
 		builder.Services.AddTransient<SmartSearchViewModel>();
 		builder.Services.AddTransient<SmartSearchPage>();

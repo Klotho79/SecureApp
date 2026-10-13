@@ -15,8 +15,6 @@ namespace SecureApp.Presentation.ViewModels;
 /// </summary>
 public sealed partial class SettingsViewModel
 {
-    private readonly ICommunityBoardService _communityBoardService;
-
     // --- Profil (2026-10-05, Windows multi-profile login) — Profiles.ActiveProfile's own remarks.
     // HasActiveProfile is false on every platform except a logged-in Windows session, so this card
     // simply doesn't render anywhere else — no separate platform check needed in the ViewModel.
@@ -66,14 +64,16 @@ public sealed partial class SettingsViewModel
     public bool IsUserAccountSubTab => UserSubTab == 0;
     public bool IsUserAppearanceSubTab => UserSubTab == 1;
     public bool IsUserVisibilitySubTab => UserSubTab == 2;
-    public bool IsUserBoardSubTab => UserSubTab == 3;
+    // Nástěnka (former index 3) removed 2026-10-13 — its only content, the board composer, moved to
+    // the new Redakce tab (RedakceViewModel), consolidated there with the sál-status-options admin
+    // card that used to live inline on Nástěnka. User's own ask: "vsechny modifikace upravy a
+    // vkladani zprav... dej do nastenky jako jednu polozku na spodnim menu".
 
     partial void OnUserSubTabChanged(int value)
     {
         OnPropertyChanged(nameof(IsUserAccountSubTab));
         OnPropertyChanged(nameof(IsUserAppearanceSubTab));
         OnPropertyChanged(nameof(IsUserVisibilitySubTab));
-        OnPropertyChanged(nameof(IsUserBoardSubTab));
     }
 
     [RelayCommand]
@@ -313,48 +313,6 @@ public sealed partial class SettingsViewModel
     // logical action" exception the activation-approval flow already makes, just spanning the whole
     // management screen. Cleared by ClearMemberManagement (called from the page's OnDisappearing).
     private string? _managementAdminSecret;
-
-    // --- Notice board composer -------------------------------------------------------------------
-
-    [ObservableProperty]
-    public partial bool CanPostToBoard { get; set; }
-
-    [ObservableProperty]
-    public partial string BoardMessageText { get; set; } = string.Empty;
-
-    [ObservableProperty]
-    public partial string? BoardStatusText { get; set; }
-
-    [ObservableProperty]
-    public partial bool HasBoardStatus { get; set; }
-
-    partial void OnBoardStatusTextChanged(string? value) => HasBoardStatus = !string.IsNullOrEmpty(value);
-
-    /// <summary>Set from LoadAsync once the stored role is known — Admin and Modifier may post, Viewer may not (mirrors the relay's own POST /board gate).</summary>
-    private void RefreshCanPostToBoard()
-        => CanPostToBoard = _currentUserService.Current.Role is Role.Admin or Role.Modifier;
-
-    [RelayCommand]
-    private async Task PostToBoardAsync()
-    {
-        var text = BoardMessageText?.Trim();
-        if (string.IsNullOrEmpty(text))
-        {
-            BoardStatusText = "Zpráva je prázdná.";
-            return;
-        }
-
-        try
-        {
-            await _communityBoardService.PostAsync(text);
-            BoardMessageText = string.Empty;
-            BoardStatusText = "Odesláno na nástěnku.";
-        }
-        catch (Exception ex)
-        {
-            BoardStatusText = $"Nepodařilo se odeslat: {ex.Message}";
-        }
-    }
 
     // --- Member management (Admin only) ----------------------------------------------------------
 

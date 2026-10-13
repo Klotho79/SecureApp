@@ -193,27 +193,6 @@
                 </BindableLayout.ItemTemplate>
             </VerticalStackLayout>
 
-            <!-- Admin/Modifier only — curates the list of possible status VALUES every sál's Picker offers. -->
-            <VerticalStackLayout Spacing="6" IsVisible="{Binding CanManageRoomStatusOptions}" Margin="0,8,0,0">
-                <Label Text="Možné stavy (Admin/Modifier)" Style="{StaticResource SectionHeader}" />
-                <VerticalStackLayout Spacing="4" BindableLayout.ItemsSource="{Binding RoomStatusOptions}">
-                    <BindableLayout.ItemTemplate>
-                        <DataTemplate x:DataType="x:String">
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                                <Label Grid.Column="0" Text="{Binding .}" FontSize="10.5" VerticalOptions="Center" />
-                                <Button Grid.Column="1" Text="✕" Style="{StaticResource SecondaryButton}" WidthRequest="36" Padding="0"
-                                        Command="{Binding Source={RelativeSource AncestorType={x:Type vm:NotificationsViewModel}}, Path=RemoveStatusOptionCommand}"
-                                        CommandParameter="{Binding .}" />
-                            </Grid>
-                        </DataTemplate>
-                    </BindableLayout.ItemTemplate>
-                </VerticalStackLayout>
-                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                    <Entry Grid.Column="0" Placeholder="Nový stav…" Text="{Binding NewStatusOptionText}" FontSize="10.5" />
-                    <Button Grid.Column="1" Text="Přidat" Style="{StaticResource SecondaryButton}" Command="{Binding AddStatusOptionCommand}" />
-                </Grid>
-            </VerticalStackLayout>
-
         </VerticalStackLayout>
     </ScrollView>
 </ContentPage>

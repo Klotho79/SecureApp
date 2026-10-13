@@ -56,10 +56,9 @@ public sealed partial class SettingsViewModel
 
     partial void OnSelectedLibraryTopCategoryChanged(string? value) => _ = RefreshLibrarySubcategoriesAsync();
 
-    /// <summary>Best-effort, same posture as the rest of this page's background extras (e.g.
-    /// <see cref="RefreshCanPostToBoard"/>) — a failure here must never block Settings from loading.
-    /// Only called for a Modifier/Admin (<see cref="CanManageLibrary"/>); a Viewer has nothing to
-    /// manage here.</summary>
+    /// <summary>Best-effort, same posture as the rest of this page's background extras — a failure
+    /// here must never block Settings from loading. Only called for a Modifier/Admin
+    /// (<see cref="CanManageLibrary"/>); a Viewer has nothing to manage here.</summary>
     private async Task RefreshLibraryCategoriesAsync()
     {
         if (!CanManageLibrary) return;

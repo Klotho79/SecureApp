@@ -74,14 +74,6 @@
                             </DataTrigger>
                         </Button.Triggers>
                     </Button>
-                    <Button Text="Nástěnka" Style="{StaticResource SubTabButton}" IsVisible="{Binding CanPostToBoard}" Command="{Binding SelectUserSubTabCommand}" CommandParameter="3">
-                        <Button.Triggers>
-                            <DataTrigger TargetType="Button" Binding="{Binding IsUserBoardSubTab}" Value="True">
-                                <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
-                                <Setter Property="TextColor" Value="{StaticResource White}" />
-                            </DataTrigger>
-                        </Button.Triggers>
-                    </Button>
                 </FlexLayout>
 
                 <VerticalStackLayout Spacing="12" IsVisible="{Binding IsUserAccountSubTab}">
@@ -250,25 +242,16 @@
                         <Label Text="Přidá/skryje záložku Kontakty — projeví se hned. Platí jen pro toto zařízení." FontSize="9.5" TextColor="Gray" />
 
                         <Grid ColumnDefinitions="*,Auto">
+                            <Label Grid.Column="0" Text="Redakce" VerticalOptions="Center" FontAttributes="Bold" />
+                            <Switch Grid.Column="1" IsToggled="{Binding IsRedakceTabVisible}" />
+                        </Grid>
+                        <Label Text="Přidá/skryje záložku Redakce — projeví se hned. Platí jen pro toto zařízení." FontSize="9.5" TextColor="Gray" />
+
+                        <Grid ColumnDefinitions="*,Auto">
                             <Label Grid.Column="0" Text="Logbook" VerticalOptions="Center" FontAttributes="Bold" />
                             <Switch Grid.Column="1" IsToggled="{Binding IsLogbookVisible}" />
                         </Grid>
                         <Label Text="Přidá/skryje záložku Logbook (check-listy a záznam výkonů) — projeví se hned. Platí jen pro toto zařízení." FontSize="9.5" TextColor="Gray" />
-                    </VerticalStackLayout>
-                </Border>
-                </VerticalStackLayout>
-
-                <VerticalStackLayout Spacing="12" IsVisible="{Binding IsUserBoardSubTab}">
-                <!-- Nástěnka (2026-09-24) — Admin/Modifier napíší zprávu, která se všem objeví na
-                     záložce Nástěnka. Šifruje se sdíleným klíčem komunity, relay text nevidí. Ve
-                     Uživatel tabu (ne Admin), aby na ni dosáhl i Modifier, který není admin. -->
-                <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanPostToBoard}">
-                    <VerticalStackLayout Spacing="8">
-                        <Label Text="Nástěnka" Style="{StaticResource SectionHeader}" Margin="0" />
-                        <Label Text="Zpráva se objeví všem členům na jejich Nástěnce. Vyžaduje nastavený klíč sdílené knihovny." FontSize="9.5" TextColor="Gray" />
-                        <Editor Text="{Binding BoardMessageText}" Placeholder="Co chcete oznámit…" AutoSize="TextChanges" HeightRequest="80" />
-                        <Button Text="Odeslat na nástěnku" Command="{Binding PostToBoardCommand}" />
-                        <Label Text="{Binding BoardStatusText}" IsVisible="{Binding HasBoardStatus}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" LineBreakMode="WordWrap" />
                     </VerticalStackLayout>
                 </Border>
                 </VerticalStackLayout>
