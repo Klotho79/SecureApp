@@ -1283,6 +1283,54 @@ app.MapDelete("/workplaces/{id:guid}", (Guid id, HttpRequest request, RelayDatab
     return Results.NoContent();
 });
 
+// Live sál status board (2026-10-13, user's own ask on Nástěnka). Any authenticated device may set
+// ANY sál's status — the relay has no way to verify "this device really is on that sál" (the rozpis/
+// WorkAssignment is local-only, never uploaded); the own-sál-only restriction for a plain Viewer is
+// enforced client-side only. The curated list of possible status VALUES is Admin/Modifier-gated here,
+// same role check as the notice board above.
+app.MapGet("/room-status", (HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out _))
+        return Results.Unauthorized();
+
+    var statuses = db.GetRoomStatuses()
+        .Select(s => new RoomStatusDto(s.WorkplaceId, s.WorkplaceName, s.StatusText, s.UpdatedByDisplayName, s.UpdatedAtUtc))
+        .ToList();
+    return Results.Ok(statuses);
+});
+
+app.MapPost("/room-status", (HttpRequest request, SetRoomStatusRequest body, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+    if (string.IsNullOrWhiteSpace(body.WorkplaceName) || string.IsNullOrWhiteSpace(body.StatusText))
+        return Results.BadRequest("WorkplaceName and StatusText are required.");
+
+    db.UpsertRoomStatus(body.WorkplaceId, body.WorkplaceName, body.StatusText, deviceId);
+    return Results.Ok();
+});
+
+app.MapGet("/room-status/options", (HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out _))
+        return Results.Unauthorized();
+
+    return Results.Ok(db.GetRoomStatusOptions());
+});
+
+app.MapPost("/room-status/options", (HttpRequest request, SetRoomStatusOptionsRequest body, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+
+    var role = db.GetDevicePolicy(deviceId)?.Role;
+    if (role is not (0 or 1)) // Admin or Modifier only — same gate as the notice board
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+
+    db.ReplaceRoomStatusOptions(body.Options.Where(o => !string.IsNullOrWhiteSpace(o)).Select(o => o.Trim()).ToList());
+    return Results.Ok();
+});
+
 app.Map("/ws", async (HttpContext context, RelayDatabase db, ConnectionRegistry registry) =>
 {
     if (!context.WebSockets.IsWebSocketRequest)

@@ -124,6 +124,14 @@ public sealed record SharedContactRenameRow(Guid Id, string DisplayName);
 
 public sealed record WorkplaceDto(Guid Id, string Name, string? Description, DateTimeOffset CreatedAtUtc);
 
+/// <summary>Live sál status (2026-10-13) — see RelayDatabase's room_status table.</summary>
+public sealed record SetRoomStatusRequest(Guid WorkplaceId, string WorkplaceName, string StatusText);
+
+public sealed record RoomStatusDto(Guid WorkplaceId, string WorkplaceName, string StatusText, string UpdatedByDisplayName, DateTimeOffset UpdatedAtUtc);
+
+/// <summary>Admin/Modifier-only full replace of the curated status-value list — see RelayDatabase's room_status_options table.</summary>
+public sealed record SetRoomStatusOptionsRequest(List<string> Options);
+
 /// <summary>Document download audit log (2026-09-30) — see RelayDatabase's document_downloads table. Posted device-authed on every "Stáhnout" tap; searched admin-secret-authed via GET /admin/document-downloads.</summary>
 public sealed record DocumentDownloadLogRequest(string DisplayName, string DocumentTitle, Guid? SourceLibraryFileId);
 

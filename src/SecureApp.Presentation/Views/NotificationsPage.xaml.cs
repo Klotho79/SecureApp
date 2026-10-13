@@ -29,5 +29,11 @@ public partial class NotificationsPage : ContentPage
     private async void OnWorkplaceClicked(object? sender, EventArgs e)
         => await Shell.Current.GoToAsync(nameof(WorkplacePage));
 
+    private async void OnAcuteStatesClicked(object? sender, EventArgs e)
+        => await Shell.Current.GoToAsync("//LibraryTab");
+
+    private async void OnContactsClicked(object? sender, EventArgs e)
+        => await Shell.Current.GoToAsync("//ContactsTab");
+
     private async void OnRequestNavigate(string route) => await Shell.Current.GoToAsync(route);
 }

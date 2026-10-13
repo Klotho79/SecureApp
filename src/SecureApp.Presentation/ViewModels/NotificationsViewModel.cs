@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.Input;
 using SecureApp.Domain.Entities;
 using SecureApp.Domain.Enums;
 using SecureApp.Domain.Interfaces.Repositories;
+using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Domain.ValueObjects;
 
 namespace SecureApp.Presentation.ViewModels;
@@ -30,6 +31,10 @@ public sealed partial class NotificationsViewModel : ObservableObject
     private readonly INotificationRepository _notificationRepository;
     private readonly IChatSessionRepository _chatSessionRepository;
     private readonly IGroupChatRepository _groupChatRepository;
+    private readonly IRoomStatusService _roomStatusService;
+    private readonly IWorkplaceCatalogService _workplaceCatalogService;
+    private readonly IWorkAssignmentRepository _workAssignmentRepository;
+    private readonly ICurrentUserService _currentUserService;
 
     [ObservableProperty]
     public partial ObservableCollection<NotificationSectionGroup> Sections { get; set; }
@@ -72,15 +77,24 @@ public sealed partial class NotificationsViewModel : ObservableObject
     public NotificationsViewModel(
         INotificationRepository notificationRepository,
         IChatSessionRepository chatSessionRepository,
-        IGroupChatRepository groupChatRepository)
+        IGroupChatRepository groupChatRepository,
+        IRoomStatusService roomStatusService,
+        IWorkplaceCatalogService workplaceCatalogService,
+        IWorkAssignmentRepository workAssignmentRepository,
+        ICurrentUserService currentUserService)
     {
         _notificationRepository = notificationRepository ?? throw new ArgumentNullException(nameof(notificationRepository));
         _chatSessionRepository = chatSessionRepository ?? throw new ArgumentNullException(nameof(chatSessionRepository));
         _groupChatRepository = groupChatRepository ?? throw new ArgumentNullException(nameof(groupChatRepository));
+        _roomStatusService = roomStatusService ?? throw new ArgumentNullException(nameof(roomStatusService));
+        _workplaceCatalogService = workplaceCatalogService ?? throw new ArgumentNullException(nameof(workplaceCatalogService));
+        _workAssignmentRepository = workAssignmentRepository ?? throw new ArgumentNullException(nameof(workAssignmentRepository));
+        _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         Sections = [];
         HasNoNotifications = true;
         ChatQuickAccess = [];
         HasNoChatQuickAccess = true;
+        InitRoomStatusState();
 
         // Built once, with THIS instance's own SelectCommand baked in per chip (same "shared command
         // instance, no x:Reference back to the page" pattern this codebase already uses for
@@ -129,6 +143,7 @@ public sealed partial class NotificationsViewModel : ObservableObject
                 HasChatQuickAccess = false;
             }
 
+            await LoadRoomStatusAsync();
         }
         finally
         {

@@ -581,6 +581,34 @@ public sealed class RelayDatabase
         }
         if (!hasAbbreviationColumn)
             Execute(connection, "ALTER TABLE logbook_procedure_types ADD COLUMN abbreviation TEXT NOT NULL DEFAULT ''");
+
+        // Live sál status board (2026-10-13, user's own ask on Nástěnka). One row per workplace that
+        // currently HAS a status set (not every workplace — a sál nobody has touched yet just has no
+        // row, same "absence means not managed yet" shape as device_policy above). workplace_name is a
+        // snapshot (same reasoning as workplaces/WorkAssignment's own), updated_by_device_id resolves
+        // against the CURRENT directory on read, same COALESCE pattern as GetBoardPosts.
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS room_status (
+                workplace_id          TEXT PRIMARY KEY NOT NULL,
+                workplace_name        TEXT NOT NULL,
+                status_text           TEXT NOT NULL,
+                updated_by_device_id  TEXT NOT NULL,
+                updated_at_utc        TEXT NOT NULL
+            )
+            """);
+
+        // The curated set of status VALUES a sál's picker may offer (Admin/Modifier only, relay-
+        // enforced — see the /room-status/options endpoint). Saved as a full replace (delete-all +
+        // re-insert with fresh sort_order), not row-by-row CRUD — this list is small and edited as a
+        // whole by one admin at a time, same tradeoff already made for AssignmentColorCatalog-style
+        // settings elsewhere, just relay-backed instead of per-device Preferences here.
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS room_status_options (
+                id            TEXT PRIMARY KEY NOT NULL,
+                text          TEXT NOT NULL,
+                sort_order    INTEGER NOT NULL
+            )
+            """);
     }
 
     public string CreateInvite(string? displayNameHint, TimeSpan validFor, out DateTimeOffset expiresAtUtc)
@@ -2019,6 +2047,74 @@ public sealed class RelayDatabase
     {
         using var connection = OpenConnection();
         Execute(connection, "DELETE FROM workplaces WHERE id = @id", ("@id", id.ToString()));
+    }
+
+    public void UpsertRoomStatus(Guid workplaceId, string workplaceName, string statusText, Guid updatedByDeviceId)
+    {
+        using var connection = OpenConnection();
+        Execute(connection,
+            """
+            INSERT INTO room_status (workplace_id, workplace_name, status_text, updated_by_device_id, updated_at_utc)
+            VALUES (@id, @name, @status, @by, @now)
+            ON CONFLICT(workplace_id) DO UPDATE SET workplace_name = @name, status_text = @status, updated_by_device_id = @by, updated_at_utc = @now
+            """,
+            ("@id", workplaceId.ToString()), ("@name", workplaceName), ("@status", statusText),
+            ("@by", updatedByDeviceId.ToString()), ("@now", Format(DateTimeOffset.UtcNow)));
+    }
+
+    /// <summary>The updater's name is resolved against the CURRENT directory, same reasoning as <see cref="GetBoardPosts"/>'s own author lookup.</summary>
+    public IReadOnlyList<(Guid WorkplaceId, string WorkplaceName, string StatusText, string UpdatedByDisplayName, DateTimeOffset UpdatedAtUtc)> GetRoomStatuses()
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT r.workplace_id, r.workplace_name, r.status_text, r.updated_at_utc,
+                   COALESCE(e.display_name, d.display_name, 'Neznámý') AS updated_by_name
+            FROM room_status r
+            LEFT JOIN directory_entries e ON e.device_id = r.updated_by_device_id
+            LEFT JOIN devices           d ON d.id        = r.updated_by_device_id
+            ORDER BY r.workplace_name COLLATE NOCASE
+            """;
+
+        var results = new List<(Guid, string, string, string, DateTimeOffset)>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            results.Add((
+                Guid.Parse((string)reader["workplace_id"]),
+                (string)reader["workplace_name"],
+                (string)reader["status_text"],
+                (string)reader["updated_by_name"],
+                DateTimeOffset.Parse((string)reader["updated_at_utc"], CultureInfo.InvariantCulture)));
+        }
+        return results;
+    }
+
+    public IReadOnlyList<string> GetRoomStatusOptions()
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT text FROM room_status_options ORDER BY sort_order";
+
+        var results = new List<string>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            results.Add((string)reader["text"]);
+        return results;
+    }
+
+    public void ReplaceRoomStatusOptions(IReadOnlyList<string> options)
+    {
+        using var connection = OpenConnection();
+        using var transaction = connection.BeginTransaction();
+        Execute(connection, transaction, "DELETE FROM room_status_options");
+        for (var i = 0; i < options.Count; i++)
+        {
+            Execute(connection, transaction,
+                "INSERT INTO room_status_options (id, text, sort_order) VALUES (@id, @text, @order)",
+                ("@id", Guid.NewGuid().ToString()), ("@text", options[i]), ("@order", i));
+        }
+        transaction.Commit();
     }
 
     private static LibraryFileRecord ReadLibraryFileRecord(SqliteDataReader reader) => new(

@@ -226,6 +226,9 @@ public static class MauiProgram
 		// Shared company workplace catalog (2026-09-20, Phase 5 — see IWorkplaceCatalogService's own remarks).
 		builder.Services.AddSingleton<IWorkplaceCatalogService, HttpWorkplaceCatalogService>();
 
+		// Live sál status board on Nástěnka (2026-10-13 — see IRoomStatusService's own remarks).
+		builder.Services.AddSingleton<IRoomStatusService, SecureApp.Presentation.Workplace.HttpRoomStatusService>();
+
 		// Opicentrum/ARO portal sync (2026-09-21, Phase 5 follow-up — see IOpicentrumSyncService's own remarks).
 		builder.Services.AddSingleton<IOpicentrumSyncService, OpicentrumSyncService>();
 
