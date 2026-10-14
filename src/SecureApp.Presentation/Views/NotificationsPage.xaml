@@ -29,15 +29,29 @@
                 <Button Grid.Column="2" Text="☎ Kontakty" Style="{StaticResource SecondaryButton}" FontSize="10.5" Clicked="OnContactsClicked" />
             </Grid>
 
-            <!-- Status (2026-10-14, user's own ask) — "Stav sálů" moved to its own page, too many
-                 rows to render inline here. Gated: only shows for staff whose today's own rozpis
-                 (auto-synced from Opicentrum) is on a sál/ostatní/ODS/oční-type workplace; Admin
-                 always sees it, see NotificationsViewModel.RoomStatus.cs's own remarks. The current
-                 status text next to the button (same-day follow-up: "vedle ikony napis aktualni
-                 status") is the device's OWN qualifying sál(y) status at a glance, no tap needed. -->
-            <VerticalStackLayout Spacing="2" IsVisible="{Binding CanSeeRoomStatus}">
+            <!-- Status (2026-10-14, user's own ask) — the icon opens the full "Stav sálů" board
+                 (kompletní obsazení salů se statusy a poznamkami, see RoomStatusPage). Gated: only
+                 shows for staff whose today's own rozpis (auto-synced from Opicentrum) is on a
+                 sál/ostatní/ODS/oční-type workplace; Admin always sees it, see
+                 NotificationsViewModel.RoomStatus.cs's own remarks. Right under the icon, a Picker
+                 per qualifying sál lets the user change their OWN status directly from the
+                 dashboard (user's own correction: "status s rolovacím menu", not just read-only
+                 text) — empty for Admin, who has no personal sál by default. -->
+            <VerticalStackLayout Spacing="4" IsVisible="{Binding CanSeeRoomStatus}">
                 <Button Text="🏥 Status" Style="{StaticResource SecondaryButton}" FontSize="10.5" Clicked="OnRoomStatusClicked" HorizontalOptions="Start" />
-                <Label Text="{Binding CurrentStatusSummaryText}" FontSize="9" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding HasCurrentStatusSummary}" LineBreakMode="WordWrap" />
+                <VerticalStackLayout Spacing="4" BindableLayout.ItemsSource="{Binding MyRoomStatusRows}">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="vm:MyRoomStatusItem">
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
+                                <Label Grid.Column="0" Text="{Binding WorkplaceName}" FontSize="9" VerticalOptions="Center" LineBreakMode="TailTruncation" MaxLines="1" WidthRequest="90" />
+                                <Picker Grid.Column="1" Title="Vyberte stav" ItemsSource="{Binding StatusOptions}" SelectedItem="{Binding SelectedStatus}" FontSize="9.5" />
+                                <Button Grid.Column="2" Text="✔" Style="{StaticResource SecondaryButton}" WidthRequest="36" Padding="0" FontSize="9.5"
+                                        Command="{Binding Source={RelativeSource AncestorType={x:Type vm:NotificationsViewModel}}, Path=SetMyRoomStatusCommand}"
+                                        CommandParameter="{Binding .}" />
+                            </Grid>
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </VerticalStackLayout>
             </VerticalStackLayout>
 
             <!-- Filter chips (spec §12) — horizontally scrollable pill row. -->
