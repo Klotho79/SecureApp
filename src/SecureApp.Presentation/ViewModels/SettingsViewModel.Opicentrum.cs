@@ -125,6 +125,60 @@ public sealed partial class SettingsViewModel
             await Microsoft.Maui.ApplicationModel.DataTransfer.Clipboard.SetTextAsync(report);
     }
 
+    [ObservableProperty]
+    public partial string? OpicentrumWorkplaceCheckReport { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasOpicentrumWorkplaceCheckReport { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsCheckingOpicentrumWorkplaces { get; set; }
+
+    public bool CanCheckOpicentrumWorkplaces => !IsCheckingOpicentrumWorkplaces;
+
+    partial void OnIsCheckingOpicentrumWorkplacesChanged(bool value) => OnPropertyChanged(nameof(CanCheckOpicentrumWorkplaces));
+    partial void OnOpicentrumWorkplaceCheckReportChanged(string? value) => HasOpicentrumWorkplaceCheckReport = !string.IsNullOrEmpty(value);
+
+    /// <summary>
+    /// 2026-10-14, user's own ask: "stáhni kompletní sálové rozlišení, všechny pozice které obsahují
+    /// ve jméně sál nebo oční nebo ODS nebo ostatní" — this week's pracoviste.php roster, EVERY
+    /// distinct workplace label across every rostered person (not just this device's own), filtered
+    /// to the same keyword set the Nástěnka "Status" gate itself uses (see
+    /// NotificationsViewModel.RoomStatus.cs's own QualifyingKeywords) so the two always describe the
+    /// same real-world set of rooms.
+    /// </summary>
+    [RelayCommand]
+    private async Task CheckOpicentrumWorkplacesAsync()
+    {
+        IsCheckingOpicentrumWorkplaces = true;
+        OpicentrumWorkplaceCheckReport = "Přihlašuji se do Opicentra a stahuji rozvržení…";
+        try
+        {
+            var allNames = await _opicentrumSyncService.FetchWorkplaceNamesAsync(DateOnly.FromDateTime(DateTime.Today));
+            string[] keywords = ["sál", "ostatní", "ODS", "oční"];
+            var matching = allNames.Where(n => keywords.Any(k => n.Contains(k, StringComparison.OrdinalIgnoreCase))).ToList();
+
+            OpicentrumWorkplaceCheckReport = matching.Count == 0
+                ? $"Žádná pozice z tohoto týdne neobsahuje sál/ostatní/ODS/oční (celkem {allNames.Count} pozic nalezeno)."
+                : $"Pozice obsahující sál/ostatní/ODS/oční ({matching.Count} z {allNames.Count} celkem):\n" + string.Join("\n", matching.Select(n => "• " + n));
+        }
+        catch (Exception ex)
+        {
+            OpicentrumWorkplaceCheckReport = $"Stažení se nezdařilo: {ex.Message}";
+        }
+        finally
+        {
+            IsCheckingOpicentrumWorkplaces = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task CopyOpicentrumWorkplaceCheckReportAsync()
+    {
+        if (OpicentrumWorkplaceCheckReport is { Length: > 0 } report)
+            await Microsoft.Maui.ApplicationModel.DataTransfer.Clipboard.SetTextAsync(report);
+    }
+
     [RelayCommand]
     private async Task ClearOpicentrumCredentialsAsync()
     {

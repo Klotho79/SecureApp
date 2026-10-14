@@ -52,6 +52,30 @@
                 </VerticalStackLayout>
             </Border>
 
+            <!-- Možné poznámky k sálům (Admin/Modifier, 2026-10-14) — druhý, nezávislý Picker na řádku sálu na Stavu sálů. -->
+            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanManageRoomStatusOptions}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Možné poznámky k sálům" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Label Text="Např. „poslední uzavření sálu“, „poslední výkon“, „sál pokračuje do služby“ — volitelný druhý Picker na řádku sálu na Stavu sálů." FontSize="9.5" TextColor="Gray" />
+                    <VerticalStackLayout Spacing="4" BindableLayout.ItemsSource="{Binding RoomStatusNoteOptions}">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="x:String">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                    <Label Grid.Column="0" Text="{Binding .}" FontSize="10.5" VerticalOptions="Center" />
+                                    <Button Grid.Column="1" Text="✕" Style="{StaticResource SecondaryButton}" WidthRequest="36" Padding="0"
+                                            Command="{Binding Source={RelativeSource AncestorType={x:Type vm:RedakceViewModel}}, Path=RemoveNoteOptionCommand}"
+                                            CommandParameter="{Binding .}" />
+                                </Grid>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <Entry Grid.Column="0" Placeholder="Nová poznámka…" Text="{Binding NewNoteOptionText}" FontSize="10.5" />
+                        <Button Grid.Column="1" Text="Přidat" Style="{StaticResource SecondaryButton}" Command="{Binding AddNoteOptionCommand}" />
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+
             <!-- Logbook (Modifier/Admin) — odkaz na stávající správu check-listů a katalogu výkonů. -->
             <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanManageLogbook}">
                 <VerticalStackLayout Spacing="8">

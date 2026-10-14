@@ -9,5 +9,11 @@ namespace SecureApp.Domain.ValueObjects;
 /// <see cref="WorkplaceName"/> is a snapshot, not a live FK lookup — same reasoning as
 /// <see cref="Entities.WorkAssignment.WorkplaceName"/>: the catalog entry could be renamed or deleted
 /// later, and a status row should stay displayable regardless.
+///
+/// <see cref="NoteText"/> (2026-10-14, user's own ask) is a second, independently-curated field on
+/// the same row — "poslední uzavření sálu, poslední výkon, sál pokračuje do služby" — picked from
+/// its own admin/modifier-defined list (<see cref="Interfaces.Services.IRoomStatusService.GetNoteOptionsAsync"/>),
+/// same editability as <see cref="StatusText"/> itself. Never null, defaults to "" for a status that
+/// predates this field or has never had a note set.
 /// </summary>
-public sealed record RoomStatus(Guid WorkplaceId, string WorkplaceName, string StatusText, string UpdatedByDisplayName, DateTimeOffset UpdatedAtUtc);
+public sealed record RoomStatus(Guid WorkplaceId, string WorkplaceName, string StatusText, string UpdatedByDisplayName, DateTimeOffset UpdatedAtUtc, string NoteText = "");

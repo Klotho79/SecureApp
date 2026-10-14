@@ -35,6 +35,7 @@ public sealed partial class NotificationsViewModel : ObservableObject
     private readonly IWorkAssignmentRepository _workAssignmentRepository;
     private readonly ICurrentUserService _currentUserService;
     private readonly RolePreviewService _rolePreviewService;
+    private readonly IRoomStatusService _roomStatusService;
 
     [ObservableProperty]
     public partial ObservableCollection<NotificationSectionGroup> Sections { get; set; }
@@ -80,7 +81,8 @@ public sealed partial class NotificationsViewModel : ObservableObject
         IGroupChatRepository groupChatRepository,
         IWorkAssignmentRepository workAssignmentRepository,
         ICurrentUserService currentUserService,
-        RolePreviewService rolePreviewService)
+        RolePreviewService rolePreviewService,
+        IRoomStatusService roomStatusService)
     {
         _notificationRepository = notificationRepository ?? throw new ArgumentNullException(nameof(notificationRepository));
         _chatSessionRepository = chatSessionRepository ?? throw new ArgumentNullException(nameof(chatSessionRepository));
@@ -88,6 +90,7 @@ public sealed partial class NotificationsViewModel : ObservableObject
         _workAssignmentRepository = workAssignmentRepository ?? throw new ArgumentNullException(nameof(workAssignmentRepository));
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         _rolePreviewService = rolePreviewService ?? throw new ArgumentNullException(nameof(rolePreviewService));
+        _roomStatusService = roomStatusService ?? throw new ArgumentNullException(nameof(roomStatusService));
         Sections = [];
         HasNoNotifications = true;
         ChatQuickAccess = [];

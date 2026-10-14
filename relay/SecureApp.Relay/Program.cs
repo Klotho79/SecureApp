@@ -1385,7 +1385,7 @@ app.MapGet("/room-status", (HttpRequest request, RelayDatabase db) =>
         return Results.Unauthorized();
 
     var statuses = db.GetRoomStatuses()
-        .Select(s => new RoomStatusDto(s.WorkplaceId, s.WorkplaceName, s.StatusText, s.UpdatedByDisplayName, s.UpdatedAtUtc))
+        .Select(s => new RoomStatusDto(s.WorkplaceId, s.WorkplaceName, s.StatusText, s.UpdatedByDisplayName, s.UpdatedAtUtc, s.NoteText))
         .ToList();
     return Results.Ok(statuses);
 });
@@ -1397,7 +1397,7 @@ app.MapPost("/room-status", (HttpRequest request, SetRoomStatusRequest body, Rel
     if (string.IsNullOrWhiteSpace(body.WorkplaceName) || string.IsNullOrWhiteSpace(body.StatusText))
         return Results.BadRequest("WorkplaceName and StatusText are required.");
 
-    db.UpsertRoomStatus(body.WorkplaceId, body.WorkplaceName, body.StatusText, deviceId);
+    db.UpsertRoomStatus(body.WorkplaceId, body.WorkplaceName, body.StatusText, body.NoteText, deviceId);
     return Results.Ok();
 });
 
@@ -1419,6 +1419,29 @@ app.MapPost("/room-status/options", (HttpRequest request, SetRoomStatusOptionsRe
         return Results.StatusCode(StatusCodes.Status403Forbidden);
 
     db.ReplaceRoomStatusOptions(body.Options.Where(o => !string.IsNullOrWhiteSpace(o)).Select(o => o.Trim()).ToList());
+    return Results.Ok();
+});
+
+// Curated note list (2026-10-14, user's own ask) — same shape and same Admin/Modifier-only write as
+// /room-status/options above, see room_status_notes' own schema remarks for why it's a separate list.
+app.MapGet("/room-status/notes", (HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out _))
+        return Results.Unauthorized();
+
+    return Results.Ok(db.GetRoomStatusNoteOptions());
+});
+
+app.MapPost("/room-status/notes", (HttpRequest request, SetRoomStatusNoteOptionsRequest body, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+
+    var role = db.GetDevicePolicy(deviceId)?.Role;
+    if (role is not (0 or 1)) // Admin or Modifier only — same gate as the notice board
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+
+    db.ReplaceRoomStatusNoteOptions(body.Options.Where(o => !string.IsNullOrWhiteSpace(o)).Select(o => o.Trim()).ToList());
     return Results.Ok();
 });
 

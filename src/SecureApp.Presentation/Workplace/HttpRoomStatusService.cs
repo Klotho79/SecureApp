@@ -37,17 +37,17 @@ public sealed class HttpRoomStatusService : IRoomStatusService
         response.EnsureSuccessStatusCode();
 
         var dtos = await response.Content.ReadFromJsonAsync<List<RoomStatusDto>>(HttpJsonOptions, ct) ?? [];
-        return dtos.Select(d => new RoomStatus(d.WorkplaceId, d.WorkplaceName, d.StatusText, d.UpdatedByDisplayName, d.UpdatedAtUtc)).ToList();
+        return dtos.Select(d => new RoomStatus(d.WorkplaceId, d.WorkplaceName, d.StatusText, d.UpdatedByDisplayName, d.UpdatedAtUtc, d.NoteText)).ToList();
     }
 
-    public async Task<bool> SetStatusAsync(Guid workplaceId, string workplaceName, string statusText, CancellationToken ct = default)
+    public async Task<bool> SetStatusAsync(Guid workplaceId, string workplaceName, string statusText, string? noteText = null, CancellationToken ct = default)
     {
         try
         {
             var endpoint = await GetHttpEndpointAsync(ct);
             using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(endpoint, "room-status"))
             {
-                Content = JsonContent.Create(new { WorkplaceId = workplaceId, WorkplaceName = workplaceName, StatusText = statusText }, options: HttpJsonOptions)
+                Content = JsonContent.Create(new { WorkplaceId = workplaceId, WorkplaceName = workplaceName, StatusText = statusText, NoteText = noteText }, options: HttpJsonOptions)
             };
             await AddDeviceAuthAsync(request, ct);
             using var response = await _httpClient.SendAsync(request, ct);
@@ -89,6 +89,36 @@ public sealed class HttpRoomStatusService : IRoomStatusService
         }
     }
 
+    public async Task<IReadOnlyList<string>> GetNoteOptionsAsync(CancellationToken ct = default)
+    {
+        var endpoint = await GetHttpEndpointAsync(ct);
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(endpoint, "room-status/notes"));
+        await AddDeviceAuthAsync(request, ct);
+        using var response = await _httpClient.SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<List<string>>(HttpJsonOptions, ct) ?? [];
+    }
+
+    public async Task<bool> SetNoteOptionsAsync(IReadOnlyList<string> options, CancellationToken ct = default)
+    {
+        try
+        {
+            var endpoint = await GetHttpEndpointAsync(ct);
+            using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(endpoint, "room-status/notes"))
+            {
+                Content = JsonContent.Create(new { Options = options }, options: HttpJsonOptions)
+            };
+            await AddDeviceAuthAsync(request, ct);
+            using var response = await _httpClient.SendAsync(request, ct);
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private async Task<Uri> GetHttpEndpointAsync(CancellationToken ct)
     {
         var configuration = await _transportSettingsRepository.GetAsync(ct);
@@ -116,5 +146,5 @@ public sealed class HttpRoomStatusService : IRoomStatusService
         request.Headers.Add("X-Device-Secret", Encoding.UTF8.GetString(secretBytes));
     }
 
-    private sealed record RoomStatusDto(Guid WorkplaceId, string WorkplaceName, string StatusText, string UpdatedByDisplayName, DateTimeOffset UpdatedAtUtc);
+    private sealed record RoomStatusDto(Guid WorkplaceId, string WorkplaceName, string StatusText, string UpdatedByDisplayName, DateTimeOffset UpdatedAtUtc, string NoteText);
 }

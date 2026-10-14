@@ -13,9 +13,13 @@ namespace SecureApp.Presentation.ViewModels;
 /// grown into "hodně řádků" for the Nástěnka dashboard, so it now lives behind a dedicated "Status"
 /// nav button there instead of rendering inline; see NotificationsViewModel.RoomStatus.cs's own
 /// remarks for that button's visibility gate). Shows every <see cref="Domain.ValueObjects.Workplace"/>
-/// from the shared catalog, the device's own today's sál (from the LOCAL rozpis) sorted first. A
-/// plain Viewer may only change the row matching their own today's assignment; Admin/Modifier may
-/// change any row — editing stays inline here, but CURATING the list of possible status VALUES is
+/// from the shared catalog, the device's own today's sál(y) (from the LOCAL rozpis) sorted first.
+///
+/// 2026-10-14, same-day follow-up: "je mozne ze jeden uzivatel je urceny na vice pracovist (op.
+/// salu)" — a device's today's rozpis can carry MORE THAN ONE workplace assignment (e.g. covering two
+/// sály in one day), so "my own sál" is now the full SET of today's assigned workplace ids, not just
+/// the first one found. A plain Viewer may only change a row in that set; Admin/Modifier may change
+/// any row — editing stays inline here, but CURATING the list of possible status/note VALUES is
 /// managed from the Redakce tab (RedakceViewModel) alongside the other consolidated edit/post actions.
 /// </summary>
 public sealed partial class RoomStatusViewModel : ObservableObject
@@ -64,26 +68,33 @@ public sealed partial class RoomStatusViewModel : ObservableObject
             await _currentUserService.InitializeAsync();
             var canEditAnyRoom = _rolePreviewService.Resolve(_currentUserService.Current.Role) is Role.Admin or Role.Modifier;
 
-            var optionsTask = _roomStatusService.GetStatusOptionsAsync();
+            var statusOptionsTask = _roomStatusService.GetStatusOptionsAsync();
+            var noteOptionsTask = _roomStatusService.GetNoteOptionsAsync();
             var statusesTask = _roomStatusService.ListAsync();
             var workplacesTask = _workplaceCatalogService.FetchAsync();
             var today = DateOnly.FromDateTime(DateTime.Today);
             var assignmentsTask = _workAssignmentRepository.GetByDateRangeAsync(today, today);
-            await Task.WhenAll(optionsTask, statusesTask, workplacesTask, assignmentsTask);
+            await Task.WhenAll(statusOptionsTask, noteOptionsTask, statusesTask, workplacesTask, assignmentsTask);
 
-            var options = optionsTask.Result;
-            var myWorkplaceId = assignmentsTask.Result.FirstOrDefault(a => a.WorkplaceId is not null)?.WorkplaceId;
+            var statusOptions = statusOptionsTask.Result;
+            var noteOptions = noteOptionsTask.Result;
+            // A device's today's rozpis can carry more than one workplace (see this type's own
+            // remarks above) — every one of them counts as "my sál", not just the first found.
+            var myWorkplaceIds = assignmentsTask.Result
+                .Where(a => a.WorkplaceId is not null)
+                .Select(a => a.WorkplaceId!.Value)
+                .ToHashSet();
             var statusByWorkplace = statusesTask.Result.ToDictionary(s => s.WorkplaceId);
 
             var rows = workplacesTask.Result
                 .OrderBy(w => w.Name, StringComparer.OrdinalIgnoreCase)
                 .Select(w =>
                 {
-                    var isMine = myWorkplaceId == w.Id;
+                    var isMine = myWorkplaceIds.Contains(w.Id);
                     statusByWorkplace.TryGetValue(w.Id, out var status);
                     return new RoomStatusRowItem(
-                        w.Id, w.Name, isMine, isMine || canEditAnyRoom, options,
-                        status?.StatusText, status?.UpdatedByDisplayName, status?.UpdatedAtUtc);
+                        w.Id, w.Name, isMine, isMine || canEditAnyRoom, statusOptions, noteOptions,
+                        status?.StatusText, status?.NoteText, status?.UpdatedByDisplayName, status?.UpdatedAtUtc);
                 })
                 .OrderByDescending(r => r.IsMine)
                 .ThenBy(r => r.WorkplaceName, StringComparer.OrdinalIgnoreCase)
@@ -108,12 +119,12 @@ public sealed partial class RoomStatusViewModel : ObservableObject
     private async Task SetRoomStatusAsync(RoomStatusRowItem? row)
     {
         if (row is null || string.IsNullOrWhiteSpace(row.SelectedStatus)) return;
-        await _roomStatusService.SetStatusAsync(row.WorkplaceId, row.WorkplaceName, row.SelectedStatus);
+        await _roomStatusService.SetStatusAsync(row.WorkplaceId, row.WorkplaceName, row.SelectedStatus, row.SelectedNote);
         await LoadAsync();
     }
 }
 
-/// <summary>One row of the "Stav sálů" board. <see cref="Options"/> is each row's own copy of the curated status-value list fetched at load time (that list itself is managed from the Redakce tab, not here).</summary>
+/// <summary>One row of the "Stav sálů" board. <see cref="StatusOptions"/>/<see cref="NoteOptions"/> are each row's own copy of the curated value lists fetched at load time (those lists themselves are managed from the Redakce tab, not here).</summary>
 public sealed partial class RoomStatusRowItem : ObservableObject
 {
     public Guid WorkplaceId { get; }
@@ -124,24 +135,35 @@ public sealed partial class RoomStatusRowItem : ObservableObject
     /// <summary>Converter-free inverse of <see cref="CanEdit"/> for the read-only row layout.</summary>
     public bool IsReadOnly => !CanEdit;
 
-    public ObservableCollection<string> Options { get; }
+    public ObservableCollection<string> StatusOptions { get; }
+
+    /// <summary>2026-10-14, user's own ask: "poslední uzavření sálu, poslední výkon, sál pokračuje do služby atd" — a second, independent curated choice on the same row.</summary>
+    public ObservableCollection<string> NoteOptions { get; }
+
     public string? UpdatedInfoText { get; }
 
     [ObservableProperty]
     public partial string? SelectedStatus { get; set; }
 
+    [ObservableProperty]
+    public partial string? SelectedNote { get; set; }
+
     public bool HasStatus => !string.IsNullOrWhiteSpace(SelectedStatus);
+    public bool HasNote => !string.IsNullOrWhiteSpace(SelectedNote);
 
     public RoomStatusRowItem(
-        Guid workplaceId, string workplaceName, bool isMine, bool canEdit, IReadOnlyList<string> options,
-        string? currentStatus, string? updatedByDisplayName, DateTimeOffset? updatedAtUtc)
+        Guid workplaceId, string workplaceName, bool isMine, bool canEdit,
+        IReadOnlyList<string> statusOptions, IReadOnlyList<string> noteOptions,
+        string? currentStatus, string? currentNote, string? updatedByDisplayName, DateTimeOffset? updatedAtUtc)
     {
         WorkplaceId = workplaceId;
         WorkplaceName = workplaceName;
         IsMine = isMine;
         CanEdit = canEdit;
-        Options = new ObservableCollection<string>(options);
+        StatusOptions = new ObservableCollection<string>(statusOptions);
+        NoteOptions = new ObservableCollection<string>(noteOptions);
         SelectedStatus = currentStatus;
+        SelectedNote = currentNote;
         UpdatedInfoText = updatedAtUtc is { } utc ? $"{updatedByDisplayName}, {FormatRelative(utc)}" : null;
     }
 

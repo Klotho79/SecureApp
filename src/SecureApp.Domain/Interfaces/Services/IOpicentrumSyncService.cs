@@ -45,4 +45,14 @@ public interface IOpicentrumSyncService
     /// credentials or the login fails.
     /// </summary>
     Task<IReadOnlyList<string>> FetchStaffNamesAsync(DateOnly month, CancellationToken ct = default);
+
+    /// <summary>
+    /// Every distinct workplace/room label pracoviste.php's weekly roster lists for the week
+    /// containing <paramref name="weekOf"/> — across EVERY person rostered that week, not just the
+    /// logged-in user (2026-10-14, user's own ask: "stáhni kompletní sálové rozlišení... všechny
+    /// pozice"). Same read-only login as <see cref="FetchStaffNamesAsync"/>; throws
+    /// <see cref="InvalidOperationException"/> with a user-facing message when there are no
+    /// credentials or the login fails.
+    /// </summary>
+    Task<IReadOnlyList<string>> FetchWorkplaceNamesAsync(DateOnly weekOf, CancellationToken ct = default);
 }

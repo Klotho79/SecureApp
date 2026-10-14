@@ -13,14 +13,15 @@ namespace SecureApp.Presentation.ViewModels;
 /// Redakce (2026-10-13, user's own ask: "vsechny modifikace upravy a vkladani zprav atd dej do
 /// nastenky jako jednu polozku na spodnim menu. Polozky podle pravomoci zachovat.") — one tab
 /// consolidating every edit/post action that used to be scattered across the app: the notice-board
-/// composer (used to live in Nastavení→Uživatel→Nástěnka), the sál-status-options curation (used
-/// to live inline on Nástěnka itself), and library category/subcategory management (used to live in
-/// Nastavení→Systém→Knihovna, moved out per the user's own follow-up ask "V nastaveni sytem kategorie
-/// knihovny patri taky do redakce" — only the "Kategorie knihovny" management card moved; the "Klíč
-/// sdílené knihovny" status card is informational, not an edit action, and stays in Settings), plus a
-/// link into the existing Logbook catalog management screen. Editing the device's OWN sál status
-/// stays inline on Nástěnka (NotificationsViewModel.RoomStatus.cs) — the user's own explicit call on
-/// a follow-up question; only the Admin/Modifier-only actions moved here. "Polozky podle pravomoci
+/// composer (used to live in Nastavení→Uživatel→Nástěnka), the sál-status/poznámka-options curation
+/// (used to live inline on Nástěnka itself; poznámka list added 2026-10-14), and library
+/// category/subcategory management (used to live in Nastavení→Systém→Knihovna, moved out per the
+/// user's own follow-up ask "V nastaveni sytem kategorie knihovny patri taky do redakce" — only the
+/// "Kategorie knihovny" management card moved; the "Klíč sdílené knihovny" status card is
+/// informational, not an edit action, and stays in Settings), plus a link into the existing Logbook
+/// catalog management screen. Editing the device's OWN sál status lives on its own page now
+/// (RoomStatusViewModel/RoomStatusPage, moved there 2026-10-14) — only the Admin/Modifier-only
+/// curation of the status/poznámka VALUE LISTS lives here. "Polozky podle pravomoci
 /// zachovat" — every card below keeps the exact same role gate it already had wherever it used to
 /// live; nothing about WHO may do what changed, only WHERE the controls live. Library category
 /// management is split across this file and <see cref="RedakceViewModel"/>'s own
@@ -57,6 +58,13 @@ public sealed partial class RedakceViewModel : ObservableObject
     [ObservableProperty]
     public partial string NewStatusOptionText { get; set; } = string.Empty;
 
+    /// <summary>2026-10-14, user's own ask: "poslední uzavření sálu, poslední výkon, sál pokračuje do služby atd... tyto poznámky nadefinuje admin nebo modifer" — a second, independent curated list, same role gate as <see cref="RoomStatusOptions"/>.</summary>
+    [ObservableProperty]
+    public partial ObservableCollection<string> RoomStatusNoteOptions { get; set; }
+
+    [ObservableProperty]
+    public partial string NewNoteOptionText { get; set; } = string.Empty;
+
     [ObservableProperty]
     public partial bool CanManageLogbook { get; set; }
 
@@ -89,6 +97,7 @@ public sealed partial class RedakceViewModel : ObservableObject
         _diagnosticsReporter = diagnosticsReporter ?? throw new ArgumentNullException(nameof(diagnosticsReporter));
         _rolePreviewService = rolePreviewService ?? throw new ArgumentNullException(nameof(rolePreviewService));
         RoomStatusOptions = [];
+        RoomStatusNoteOptions = [];
         LibraryTopCategories = [];
         LibrarySubcategories = [];
     }
@@ -115,6 +124,15 @@ public sealed partial class RedakceViewModel : ObservableObject
             catch
             {
                 RoomStatusOptions = [];
+            }
+
+            try
+            {
+                RoomStatusNoteOptions = new ObservableCollection<string>(await _roomStatusService.GetNoteOptionsAsync());
+            }
+            catch
+            {
+                RoomStatusNoteOptions = [];
             }
         }
 
@@ -178,6 +196,29 @@ public sealed partial class RedakceViewModel : ObservableObject
         var updated = RoomStatusOptions.Where(o => o != option).ToList();
         if (await _roomStatusService.SetStatusOptionsAsync(updated))
             RoomStatusOptions = new ObservableCollection<string>(updated);
+    }
+
+    [RelayCommand]
+    private async Task AddNoteOptionAsync()
+    {
+        var text = NewNoteOptionText.Trim();
+        if (string.IsNullOrWhiteSpace(text) || RoomStatusNoteOptions.Contains(text)) return;
+
+        var updated = RoomStatusNoteOptions.Append(text).ToList();
+        if (await _roomStatusService.SetNoteOptionsAsync(updated))
+        {
+            NewNoteOptionText = string.Empty;
+            RoomStatusNoteOptions = new ObservableCollection<string>(updated);
+        }
+    }
+
+    [RelayCommand]
+    private async Task RemoveNoteOptionAsync(string? option)
+    {
+        if (option is null) return;
+        var updated = RoomStatusNoteOptions.Where(o => o != option).ToList();
+        if (await _roomStatusService.SetNoteOptionsAsync(updated))
+            RoomStatusNoteOptions = new ObservableCollection<string>(updated);
     }
 
     [RelayCommand]

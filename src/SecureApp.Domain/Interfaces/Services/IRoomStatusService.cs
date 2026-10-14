@@ -18,11 +18,18 @@ public interface IRoomStatusService
     /// <summary>Every sál that currently has a status set, newest-updated info included.</summary>
     Task<IReadOnlyList<RoomStatus>> ListAsync(CancellationToken ct = default);
 
-    Task<bool> SetStatusAsync(Guid workplaceId, string workplaceName, string statusText, CancellationToken ct = default);
+    /// <summary><paramref name="noteText"/> (2026-10-14) null leaves whatever note is already stored untouched — pass it only when the caller is actually changing the note, not on every status-only save.</summary>
+    Task<bool> SetStatusAsync(Guid workplaceId, string workplaceName, string statusText, string? noteText = null, CancellationToken ct = default);
 
     /// <summary>The curated list of status values a picker may offer, in display order.</summary>
     Task<IReadOnlyList<string>> GetStatusOptionsAsync(CancellationToken ct = default);
 
     /// <summary>Admin/Modifier only (relay-enforced) — replaces the whole options list at once.</summary>
     Task<bool> SetStatusOptionsAsync(IReadOnlyList<string> options, CancellationToken ct = default);
+
+    /// <summary>The curated list of NOTE values a second picker may offer (2026-10-14), in display order — independent of <see cref="GetStatusOptionsAsync"/>.</summary>
+    Task<IReadOnlyList<string>> GetNoteOptionsAsync(CancellationToken ct = default);
+
+    /// <summary>Admin/Modifier only (relay-enforced) — replaces the whole note-options list at once.</summary>
+    Task<bool> SetNoteOptionsAsync(IReadOnlyList<string> options, CancellationToken ct = default);
 }

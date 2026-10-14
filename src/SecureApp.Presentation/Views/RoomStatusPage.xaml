@@ -19,23 +19,25 @@
                     <DataTemplate x:DataType="vm:RoomStatusRowItem">
                         <Border Style="{StaticResource CardBorder}" Margin="0" Padding="10,8">
                             <Border.Triggers>
+                                <!-- Green (2026-10-14, user's own ask) — a device can have more than one "moje" sál today (see RoomStatusViewModel's own remarks), each one highlighted the same way. -->
                                 <DataTrigger TargetType="Border" Binding="{Binding IsMine}" Value="True">
-                                    <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource InfoSoft}, Dark={StaticResource InfoSoftDark}}" />
+                                    <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource SuccessSoft}, Dark={StaticResource SuccessSoftDark}}" />
                                 </DataTrigger>
                             </Border.Triggers>
                             <VerticalStackLayout Spacing="4">
                                 <Grid ColumnDefinitions="*,Auto">
                                     <Label Grid.Column="0" Text="{Binding WorkplaceName}" FontSize="11" FontAttributes="Bold" />
-                                    <Label Grid.Column="1" Text="moje" FontSize="9" TextColor="{AppThemeBinding Light={StaticResource Info}, Dark={StaticResource InfoDark}}" IsVisible="{Binding IsMine}" VerticalOptions="Center" />
+                                    <Label Grid.Column="1" Text="moje" FontSize="9" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding IsMine}" VerticalOptions="Center" />
                                 </Grid>
 
-                                <!-- Editable (own sál, or Admin/Modifier on any sál): Picker + Uložit. -->
+                                <!-- Editable (own sál, or Admin/Modifier on any sál): Status + Poznámka pickers + Uložit. -->
                                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" IsVisible="{Binding CanEdit}">
-                                    <Picker Grid.Column="0" Title="Vyberte stav" ItemsSource="{Binding Options}" SelectedItem="{Binding SelectedStatus}" FontSize="10.5" />
+                                    <Picker Grid.Column="0" Title="Vyberte stav" ItemsSource="{Binding StatusOptions}" SelectedItem="{Binding SelectedStatus}" FontSize="10.5" />
                                     <Button Grid.Column="1" Text="✔" Style="{StaticResource SecondaryButton}" WidthRequest="40" Padding="0"
                                             Command="{Binding Source={RelativeSource AncestorType={x:Type vm:RoomStatusViewModel}}, Path=SetRoomStatusCommand}"
                                             CommandParameter="{Binding .}" />
                                 </Grid>
+                                <Picker Title="Poznámka (volitelné)" ItemsSource="{Binding NoteOptions}" SelectedItem="{Binding SelectedNote}" FontSize="10.5" IsVisible="{Binding CanEdit}" />
 
                                 <!-- Read-only (any other sál, plain Viewer). -->
                                 <Label Text="{Binding SelectedStatus}" FontSize="10.5" IsVisible="{Binding IsReadOnly}" />
@@ -46,6 +48,11 @@
                                         </DataTrigger>
                                     </Label.Triggers>
                                 </Label>
+
+                                <!-- Poznámka display (2026-10-14) — visible to EVERYONE regardless of CanEdit, per the
+                                     user's own ask: the full board shows every sál's status AND its note. Only the
+                                     pickers above are edit-gated; this plain label just reflects whatever's stored. -->
+                                <Label Text="{Binding SelectedNote, StringFormat='📝 {0}'}" FontSize="9.5" FontAttributes="Italic" IsVisible="{Binding HasNote}" />
 
                                 <Label Text="{Binding UpdatedInfoText}" FontSize="8.5" TextColor="Gray" IsVisible="{Binding HasStatus}" />
                             </VerticalStackLayout>

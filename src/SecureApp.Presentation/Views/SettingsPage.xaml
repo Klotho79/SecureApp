@@ -420,6 +420,11 @@
                             <Button Text="Porovnat ARIM kontakty s Opicentrem" Style="{StaticResource SecondaryButton}" Command="{Binding CheckOpicentrumNamesCommand}" IsEnabled="{Binding CanCheckOpicentrumNames}" IsVisible="{Binding HasOpicentrumCredentials}" />
                             <Label Text="{Binding OpicentrumNameCheckReport}" IsVisible="{Binding HasOpicentrumNameCheckReport}" FontSize="10" LineBreakMode="WordWrap" />
                             <Button Text="Kopírovat výsledek" Style="{StaticResource SecondaryButton}" Command="{Binding CopyOpicentrumNameCheckReportCommand}" IsVisible="{Binding HasOpicentrumNameCheckReport}" />
+
+                            <!-- 2026-10-14, user's own ask: kompletní sálové rozvržení tohoto týdne z pracoviste.php, filtrované na sál/ostatní/ODS/oční — stejná klíčová slova jako Status gate na Nástěnce. -->
+                            <Button Text="Stáhnout sálové rozvržení (sál/ostatní/ODS/oční)" Style="{StaticResource SecondaryButton}" Command="{Binding CheckOpicentrumWorkplacesCommand}" IsEnabled="{Binding CanCheckOpicentrumWorkplaces}" IsVisible="{Binding HasOpicentrumCredentials}" Margin="0,8,0,0" />
+                            <Label Text="{Binding OpicentrumWorkplaceCheckReport}" IsVisible="{Binding HasOpicentrumWorkplaceCheckReport}" FontSize="10" LineBreakMode="WordWrap" />
+                            <Button Text="Kopírovat výsledek" Style="{StaticResource SecondaryButton}" Command="{Binding CopyOpicentrumWorkplaceCheckReportCommand}" IsVisible="{Binding HasOpicentrumWorkplaceCheckReport}" />
                         </VerticalStackLayout>
                     </VerticalStackLayout>
                 </Border>

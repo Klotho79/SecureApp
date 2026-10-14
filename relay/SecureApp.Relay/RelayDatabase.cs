@@ -617,6 +617,12 @@ public sealed class RelayDatabase
                 updated_at_utc        TEXT NOT NULL
             )
             """);
+        // note_text (2026-10-14, user's own ask): a second, independently-curated field on the same
+        // row - "posledni uzavreni salu, posledni vykon, sal pokracuje do sluzby" - picked from its
+        // own admin/modifier list (room_status_notes below), same editability as status_text itself.
+        // Guarded ALTER, same reasoning as logbook_procedure_types.abbreviation above.
+        if (!ColumnExists(connection, "room_status", "note_text"))
+            Execute(connection, "ALTER TABLE room_status ADD COLUMN note_text TEXT NOT NULL DEFAULT ''");
 
         // The curated set of status VALUES a sál's picker may offer (Admin/Modifier only, relay-
         // enforced — see the /room-status/options endpoint). Saved as a full replace (delete-all +
@@ -625,6 +631,19 @@ public sealed class RelayDatabase
         // settings elsewhere, just relay-backed instead of per-device Preferences here.
         Execute(connection, """
             CREATE TABLE IF NOT EXISTS room_status_options (
+                id            TEXT PRIMARY KEY NOT NULL,
+                text          TEXT NOT NULL,
+                sort_order    INTEGER NOT NULL
+            )
+            """);
+
+        // The curated set of NOTE values a sál's second picker may offer (2026-10-14, user's own
+        // ask: "posledni uzavreni salu, posledni vykon, sal pokracuje do sluzby atd... tyto poznamky
+        // nadefinuje admin nebo modifer") - same shape and same Admin/Modifier-only replace-all
+        // write as room_status_options above, just a separate curated list since a note and a status
+        // are independent choices on the same row.
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS room_status_notes (
                 id            TEXT PRIMARY KEY NOT NULL,
                 text          TEXT NOT NULL,
                 sort_order    INTEGER NOT NULL
@@ -2103,26 +2122,28 @@ public sealed class RelayDatabase
         Execute(connection, "DELETE FROM workplaces WHERE id = @id", ("@id", id.ToString()));
     }
 
-    public void UpsertRoomStatus(Guid workplaceId, string workplaceName, string statusText, Guid updatedByDeviceId)
+    /// <summary><paramref name="noteText"/> null leaves whatever note is already stored untouched (a caller that only changes the status doesn't have to resend it); a brand-new row with no note given yet starts at "".</summary>
+    public void UpsertRoomStatus(Guid workplaceId, string workplaceName, string statusText, string? noteText, Guid updatedByDeviceId)
     {
         using var connection = OpenConnection();
         Execute(connection,
             """
-            INSERT INTO room_status (workplace_id, workplace_name, status_text, updated_by_device_id, updated_at_utc)
-            VALUES (@id, @name, @status, @by, @now)
-            ON CONFLICT(workplace_id) DO UPDATE SET workplace_name = @name, status_text = @status, updated_by_device_id = @by, updated_at_utc = @now
+            INSERT INTO room_status (workplace_id, workplace_name, status_text, note_text, updated_by_device_id, updated_at_utc)
+            VALUES (@id, @name, @status, COALESCE(@note, ''), @by, @now)
+            ON CONFLICT(workplace_id) DO UPDATE SET workplace_name = @name, status_text = @status, note_text = COALESCE(@note, note_text), updated_by_device_id = @by, updated_at_utc = @now
             """,
             ("@id", workplaceId.ToString()), ("@name", workplaceName), ("@status", statusText),
+            ("@note", (object?)noteText ?? DBNull.Value),
             ("@by", updatedByDeviceId.ToString()), ("@now", Format(DateTimeOffset.UtcNow)));
     }
 
     /// <summary>The updater's name is resolved against the CURRENT directory, same reasoning as <see cref="GetBoardPosts"/>'s own author lookup.</summary>
-    public IReadOnlyList<(Guid WorkplaceId, string WorkplaceName, string StatusText, string UpdatedByDisplayName, DateTimeOffset UpdatedAtUtc)> GetRoomStatuses()
+    public IReadOnlyList<(Guid WorkplaceId, string WorkplaceName, string StatusText, string UpdatedByDisplayName, DateTimeOffset UpdatedAtUtc, string NoteText)> GetRoomStatuses()
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT r.workplace_id, r.workplace_name, r.status_text, r.updated_at_utc,
+            SELECT r.workplace_id, r.workplace_name, r.status_text, r.note_text, r.updated_at_utc,
                    COALESCE(e.display_name, d.display_name, 'Neznámý') AS updated_by_name
             FROM room_status r
             LEFT JOIN directory_entries e ON e.device_id = r.updated_by_device_id
@@ -2130,7 +2151,7 @@ public sealed class RelayDatabase
             ORDER BY r.workplace_name COLLATE NOCASE
             """;
 
-        var results = new List<(Guid, string, string, string, DateTimeOffset)>();
+        var results = new List<(Guid, string, string, string, DateTimeOffset, string)>();
         using var reader = command.ExecuteReader();
         while (reader.Read())
         {
@@ -2139,7 +2160,8 @@ public sealed class RelayDatabase
                 (string)reader["workplace_name"],
                 (string)reader["status_text"],
                 (string)reader["updated_by_name"],
-                DateTimeOffset.Parse((string)reader["updated_at_utc"], CultureInfo.InvariantCulture)));
+                DateTimeOffset.Parse((string)reader["updated_at_utc"], CultureInfo.InvariantCulture),
+                (string)reader["note_text"]));
         }
         return results;
     }
@@ -2166,6 +2188,34 @@ public sealed class RelayDatabase
         {
             Execute(connection, transaction,
                 "INSERT INTO room_status_options (id, text, sort_order) VALUES (@id, @text, @order)",
+                ("@id", Guid.NewGuid().ToString()), ("@text", options[i]), ("@order", i));
+        }
+        transaction.Commit();
+    }
+
+    /// <summary>Curated note list (2026-10-14) — see room_status_notes' own schema remarks. Same replace-all shape as <see cref="GetRoomStatusOptions"/>/<see cref="ReplaceRoomStatusOptions"/>.</summary>
+    public IReadOnlyList<string> GetRoomStatusNoteOptions()
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT text FROM room_status_notes ORDER BY sort_order";
+
+        var results = new List<string>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            results.Add((string)reader["text"]);
+        return results;
+    }
+
+    public void ReplaceRoomStatusNoteOptions(IReadOnlyList<string> options)
+    {
+        using var connection = OpenConnection();
+        using var transaction = connection.BeginTransaction();
+        Execute(connection, transaction, "DELETE FROM room_status_notes");
+        for (var i = 0; i < options.Count; i++)
+        {
+            Execute(connection, transaction,
+                "INSERT INTO room_status_notes (id, text, sort_order) VALUES (@id, @text, @order)",
                 ("@id", Guid.NewGuid().ToString()), ("@text", options[i]), ("@order", i));
         }
         transaction.Commit();
