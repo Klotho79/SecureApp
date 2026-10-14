@@ -120,6 +120,10 @@ public partial class AppShell : Shell
 		// leading TabBar tab added above, not a registered route.
 		Routing.RegisterRoute(nameof(NotificationDetailPage), typeof(NotificationDetailPage));
 
+		// Stav sálů (2026-10-14) — reached via the gated "Status" button on NotificationsPage; global
+		// like Smart Search below, not tied to any one tab.
+		Routing.RegisterRoute(nameof(RoomStatusPage), typeof(RoomStatusPage));
+
 		// Smart Search (2026-09-20, Phase 4 — see NOTIFICATION_HUB_SPEC.md) — reached via the 🔍
 		// button on NotificationsPage; global, not tied to any one tab, so a plain pushed route
 		// rather than a TabBar entry.

@@ -29,6 +29,12 @@
                 <Button Grid.Column="2" Text="☎ Kontakty" Style="{StaticResource SecondaryButton}" FontSize="10.5" Clicked="OnContactsClicked" />
             </Grid>
 
+            <!-- Status (2026-10-14, user's own ask) — "Stav sálů" moved to its own page, too many
+                 rows to render inline here. Gated: only shows for staff whose today's own rozpis
+                 (auto-synced from Opicentrum) is on a sál/ostatní/ODS/oční-type workplace; Admin
+                 always sees it, see NotificationsViewModel.RoomStatus.cs's own remarks. -->
+            <Button Text="🏥 Status" Style="{StaticResource SecondaryButton}" FontSize="10.5" Clicked="OnRoomStatusClicked" IsVisible="{Binding CanSeeRoomStatus}" />
+
             <!-- Filter chips (spec §12) — horizontally scrollable pill row. -->
             <ScrollView Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
                 <HorizontalStackLayout Spacing="8" BindableLayout.ItemsSource="{Binding FilterChips}">
@@ -146,52 +152,6 @@
                     </DataTemplate>
                 </CollectionView.ItemTemplate>
             </CollectionView>
-
-            <!-- Stav sálů (2026-10-13, user's own ask) — the device's own today's sál (from the
-                 local rozpis) sorted first and editable, every other sál below as a read-only/
-                 admin-editable overview. See NotificationsViewModel.RoomStatus.cs's own remarks. -->
-            <Label Text="Stav sálů" Style="{StaticResource SectionHeader}" Margin="0,8,0,0" IsVisible="{Binding HasRoomStatus}" />
-            <Label Text="Žádná pracoviště v katalogu." FontSize="9.5" TextColor="Gray" IsVisible="{Binding HasNoRoomStatus}" />
-
-            <VerticalStackLayout Spacing="6" BindableLayout.ItemsSource="{Binding RoomStatusRows}">
-                <BindableLayout.ItemTemplate>
-                    <DataTemplate x:DataType="vm:RoomStatusRowItem">
-                        <Border Style="{StaticResource CardBorder}" Margin="0" Padding="10,8">
-                            <Border.Triggers>
-                                <DataTrigger TargetType="Border" Binding="{Binding IsMine}" Value="True">
-                                    <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource InfoSoft}, Dark={StaticResource InfoSoftDark}}" />
-                                </DataTrigger>
-                            </Border.Triggers>
-                            <VerticalStackLayout Spacing="4">
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <Label Grid.Column="0" Text="{Binding WorkplaceName}" FontSize="11" FontAttributes="Bold" />
-                                    <Label Grid.Column="1" Text="moje" FontSize="9" TextColor="{AppThemeBinding Light={StaticResource Info}, Dark={StaticResource InfoDark}}" IsVisible="{Binding IsMine}" VerticalOptions="Center" />
-                                </Grid>
-
-                                <!-- Editable (own sál, or Admin/Modifier on any sál): Picker + Uložit. -->
-                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" IsVisible="{Binding CanEdit}">
-                                    <Picker Grid.Column="0" Title="Vyberte stav" ItemsSource="{Binding Options}" SelectedItem="{Binding SelectedStatus}" FontSize="10.5" />
-                                    <Button Grid.Column="1" Text="✔" Style="{StaticResource SecondaryButton}" WidthRequest="40" Padding="0"
-                                            Command="{Binding Source={RelativeSource AncestorType={x:Type vm:NotificationsViewModel}}, Path=SetRoomStatusCommand}"
-                                            CommandParameter="{Binding .}" />
-                                </Grid>
-
-                                <!-- Read-only (any other sál, plain Viewer). -->
-                                <Label Text="{Binding SelectedStatus}" FontSize="10.5" IsVisible="{Binding IsReadOnly}" />
-                                <Label Text="— stav zatím nenastaven —" FontSize="9.5" TextColor="Gray" IsVisible="{Binding IsReadOnly}">
-                                    <Label.Triggers>
-                                        <DataTrigger TargetType="Label" Binding="{Binding HasStatus}" Value="True">
-                                            <Setter Property="IsVisible" Value="False" />
-                                        </DataTrigger>
-                                    </Label.Triggers>
-                                </Label>
-
-                                <Label Text="{Binding UpdatedInfoText}" FontSize="8.5" TextColor="Gray" IsVisible="{Binding HasStatus}" />
-                            </VerticalStackLayout>
-                        </Border>
-                    </DataTemplate>
-                </BindableLayout.ItemTemplate>
-            </VerticalStackLayout>
 
         </VerticalStackLayout>
     </ScrollView>

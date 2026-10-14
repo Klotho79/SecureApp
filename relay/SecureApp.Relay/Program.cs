@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Net.Http.Json;
 using System.Net.WebSockets;
 using System.Security.Cryptography;
@@ -256,6 +257,58 @@ app.MapGet("/download/windows/version", () =>
     return Results.Content(File.ReadAllText(versionPath), "application/json");
 });
 
+// Delta updates (2026-10-14, user's own ask: avoid re-downloading the whole ~170MB portable build
+// for a small change). Path→sha256 for every file in the CURRENT secureapp-windows-portable.zip,
+// computed once at upload time (see /admin/upload/windows below) rather than per-request. Absent
+// until the first post-feature upload (e.g. right after this itself ships) — the client treats a
+// 404 here as "no delta support yet" and falls back to the unconditional full /download/windows,
+// so an older zip with no matching manifest is never a hard failure.
+app.MapGet("/download/windows/manifest", () =>
+{
+    var path = Path.Combine(downloadsDir, "secureapp-windows.manifest.json");
+    if (!File.Exists(path))
+        return Results.NotFound();
+
+    return Results.Content(File.ReadAllText(path), "application/json");
+});
+
+// Returns a small zip containing only the requested files, read directly out of the already-stored
+// full zip (ZipArchiveEntry.Open on a name match — never touches the filesystem with the client's
+// own input, so there's no path-traversal surface here despite Paths being client-supplied).
+// Deliberately intersected against the manifest's own known file list rather than trusted outright.
+app.MapPost("/download/windows/delta", async (WindowsDeltaRequest body) =>
+{
+    var zipPath = Path.Combine(downloadsDir, "secureapp-windows-portable.zip");
+    var manifestPath = Path.Combine(downloadsDir, "secureapp-windows.manifest.json");
+    if (!File.Exists(zipPath) || !File.Exists(manifestPath))
+        return Results.NotFound();
+
+    var manifest = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(await File.ReadAllTextAsync(manifestPath))
+        ?? new Dictionary<string, string>();
+    var requested = (body.Paths ?? Array.Empty<string>()).Where(manifest.ContainsKey).Distinct().ToList();
+    if (requested.Count == 0)
+        return Results.BadRequest("No matching paths.");
+
+    using var ms = new MemoryStream();
+    using (var sourceArchive = ZipFile.OpenRead(zipPath))
+    {
+        using var outArchive = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true);
+        foreach (var path in requested)
+        {
+            var sourceEntry = sourceArchive.GetEntry(path);
+            if (sourceEntry is null)
+                continue;
+
+            var newEntry = outArchive.CreateEntry(path, CompressionLevel.Fastest);
+            await using var src = sourceEntry.Open();
+            await using var dst = newEntry.Open();
+            await src.CopyToAsync(dst);
+        }
+    }
+
+    return Results.Bytes(ms.ToArray(), "application/zip", "secureapp-windows-delta.zip");
+});
+
 // Lets a future release be published with one authenticated POST from the dev machine instead of
 // manually scp-ing the APK onto the Pi — same admin-secret gate as /admin/deploy right above.
 app.MapPost("/admin/upload/android", async (HttpRequest request) =>
@@ -309,6 +362,29 @@ app.MapPost("/admin/upload/windows", async (HttpRequest request, int? versionCod
     var zipPath = Path.Combine(downloadsDir, "secureapp-windows-portable.zip");
     await using (var stream = File.Create(zipPath))
         await request.Body.CopyToAsync(stream);
+
+    // Delta-update manifest (2026-10-14) — recomputed on every upload so /download/windows/manifest
+    // and /download/windows/delta above always reflect exactly what's in THIS zip. Best-effort: a
+    // corrupt/unreadable zip here just means delta support is unavailable for this release (manifest
+    // file is left stale or missing), never a reason to fail the upload itself — the plain
+    // /download/windows full-file path is unaffected either way.
+    try
+    {
+        var manifest = new Dictionary<string, string>(StringComparer.Ordinal);
+        using (var archive = ZipFile.OpenRead(zipPath))
+        {
+            foreach (var entry in archive.Entries)
+            {
+                if (entry.Name.Length == 0) continue; // directory entry
+                using var entryStream = entry.Open();
+                manifest[entry.FullName] = Convert.ToHexStringLower(SHA256.HashData(entryStream));
+            }
+        }
+
+        var manifestPath = Path.Combine(downloadsDir, "secureapp-windows.manifest.json");
+        await File.WriteAllTextAsync(manifestPath, System.Text.Json.JsonSerializer.Serialize(manifest));
+    }
+    catch { /* see remarks above — delta support only, never blocks the upload */ }
 
     if (versionCode is { } code)
     {
@@ -370,6 +446,13 @@ app.MapPost("/admin/wireguard/clients", async (HttpRequest request, CreateWireGu
     // generous for "hand someone a code today or tomorrow" without leaving it valid indefinitely —
     // see wireguard_pickup_codes' own schema remarks for why this is a separate table from `invites`.
     var pickupCode = db.CreateWireGuardPickupCode(configText, body.Name, TimeSpan.FromHours(24));
+
+    // 2026-10-14, user's own ask: the admin picks this new member's role right here, not in a
+    // separate later visit to "Správa členů" — see pending_member_roles' own schema remarks for why
+    // this can only be PARKED now rather than applied immediately (the device itself doesn't exist
+    // yet) and ApproveActivationRequest's caller below for where it actually gets applied.
+    if (body.Role is { } role)
+        db.SetPendingMemberRole(body.Name, role);
 
     return Results.Ok(new WireGuardClientResponse(configText, pickupCode));
 });
@@ -455,7 +538,15 @@ app.MapPost("/activation/request", (CreateActivationRequestRequest body, RelayDa
     // same device-creation path a manual /admin/activation-requests/{id}/approve already used, so
     // the client's existing PollActivationAsync loop needs no changes — it just sees "Approved" on
     // its very next poll instead of staying "Pending" indefinitely.
-    db.ApproveActivationRequest(requestId);
+    var approved = db.ApproveActivationRequest(requestId);
+
+    // 2026-10-14 — apply whatever role an admin parked for this name when they created this
+    // member's WireGuard access (see /admin/wireguard/clients above and pending_member_roles' own
+    // schema remarks). Best-effort by design: no match (name mismatch, nothing was ever parked, or
+    // it went stale) just leaves the device Unmanaged, exactly like before this existed — an admin
+    // can still fix it in "Správa členů".
+    if (approved is { } device && db.TryConsumePendingMemberRole(body.DisplayName) is { } pendingRole)
+        db.SetDevicePolicy(device.DeviceId, pendingRole, new List<string>());
 
     return Results.Ok(new CreateActivationRequestResponse(requestId));
 });

@@ -198,7 +198,7 @@ public sealed class HttpRelayAdminService : IRelayAdminService
         return new UriBuilder(wsEndpoint) { Scheme = scheme, Port = wsEndpoint.Port }.Uri;
     }
 
-    public async Task<(string ConfigurationText, string? PickupCode)> CreateWireGuardClientAsync(Uri endpoint, string adminSecret, string memberName, CancellationToken ct = default)
+    public async Task<(string ConfigurationText, string? PickupCode)> CreateWireGuardClientAsync(Uri endpoint, string adminSecret, string memberName, SecureApp.Domain.Enums.Role? role = null, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
         ArgumentException.ThrowIfNullOrWhiteSpace(adminSecret);
@@ -207,7 +207,7 @@ public sealed class HttpRelayAdminService : IRelayAdminService
         var wireguardUri = new Uri(ToHttpUri(endpoint), "admin/wireguard/clients");
         using var request = new HttpRequestMessage(HttpMethod.Post, wireguardUri)
         {
-            Content = JsonContent.Create(new { Name = memberName }, options: HttpJsonOptions)
+            Content = JsonContent.Create(new { Name = memberName, Role = role is null ? null : (int?)role.Value }, options: HttpJsonOptions)
         };
         request.Headers.Add("X-Admin-Secret", adminSecret);
 

@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Domain.ValueObjects;
@@ -59,6 +60,20 @@ public sealed class UpdateService : IUpdateService
 
     public async Task<string> DownloadUpdateAsync(IProgress<double>? onProgress = null, CancellationToken ct = default)
     {
+        // Windows delta path (2026-10-14, user's own ask: don't re-download the whole ~170MB portable
+        // build for a small change) — Android has no equivalent (see this type's own remarks on why a
+        // sideloaded APK can't do this without a custom bsdiff-style binary patcher); Windows can,
+        // because the portable build is just a folder of files the relay can diff by path+hash. Falls
+        // straight through to the unconditional full download below on ANY failure (old relay with no
+        // manifest yet, network hiccup, local files that don't match what the manifest expects) — the
+        // full path is always correct, just occasionally not the smallest one.
+        if (OperatingSystem.IsWindows())
+        {
+            var delta = await TryDownloadWindowsDeltaAsync(onProgress, ct);
+            if (delta is not null)
+                return delta;
+        }
+
         using var http = new HttpClient { BaseAddress = await ResolveHttpBaseAsync(ct) };
         using var response = await http.GetAsync($"download/{PlatformName}", HttpCompletionOption.ResponseHeadersRead, ct);
         response.EnsureSuccessStatusCode();
@@ -81,6 +96,72 @@ public sealed class UpdateService : IUpdateService
         }
 
         return destinationPath;
+    }
+
+    /// <summary>
+    /// Fetches the relay's path→sha256 manifest for the hosted Windows build (see
+    /// <c>SecureApp.Relay.Program</c>'s own <c>/download/windows/manifest</c>/<c>/download/windows/delta</c>
+    /// remarks), hashes this install's own files against it, and downloads only what actually
+    /// differs. Returns null on anything that doesn't cleanly work out — the caller falls back to a
+    /// full download rather than ever treating this as a hard error.
+    /// </summary>
+    private async Task<string?> TryDownloadWindowsDeltaAsync(IProgress<double>? onProgress, CancellationToken ct)
+    {
+        try
+        {
+            using var http = new HttpClient { BaseAddress = await ResolveHttpBaseAsync(ct) };
+            var manifest = await http.GetFromJsonAsync<Dictionary<string, string>>("download/windows/manifest", ct);
+            if (manifest is null || manifest.Count == 0)
+                return null;
+
+            var baseDir = AppContext.BaseDirectory;
+            var needed = new List<string>();
+            foreach (var (relativePath, expectedHash) in manifest)
+            {
+                var localPath = Path.Combine(baseDir, relativePath.Replace('/', Path.DirectorySeparatorChar));
+                if (!File.Exists(localPath) || !string.Equals(ComputeFileSha256(localPath), expectedHash, StringComparison.OrdinalIgnoreCase))
+                    needed.Add(relativePath);
+            }
+
+            // Every file the manifest lists already matches what's on disk — nothing to transfer at
+            // all. In practice this means the version bump was metadata-only (shouldn't normally
+            // happen, since the main exe/dll's own version is baked into their bytes), but there's
+            // nothing unsafe about it: just hand back "no update needed" rather than fabricate a path.
+            if (needed.Count == 0)
+                return null;
+
+            using var response = await http.PostAsJsonAsync("download/windows/delta", new { paths = needed }, ct);
+            if (!response.IsSuccessStatusCode)
+                return null;
+
+            var totalBytes = response.Content.Headers.ContentLength;
+            var destinationPath = Path.Combine(Microsoft.Maui.Storage.FileSystem.CacheDirectory, "secureapp-update-delta.zip");
+            await using var source = await response.Content.ReadAsStreamAsync(ct);
+            await using var destination = File.Create(destinationPath);
+
+            var buffer = new byte[81920];
+            long readSoFar = 0;
+            int bytesRead;
+            while ((bytesRead = await source.ReadAsync(buffer, ct)) > 0)
+            {
+                await destination.WriteAsync(buffer.AsMemory(0, bytesRead), ct);
+                readSoFar += bytesRead;
+                if (totalBytes is > 0)
+                    onProgress?.Report((double)readSoFar / totalBytes.Value);
+            }
+
+            return destinationPath;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string ComputeFileSha256(string path)
+    {
+        using var stream = File.OpenRead(path);
+        return Convert.ToHexStringLower(SHA256.HashData(stream));
     }
 
     public async Task<string> GetDownloadUrlAsync(CancellationToken ct = default)

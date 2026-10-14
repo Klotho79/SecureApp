@@ -104,6 +104,27 @@ public sealed partial class SettingsViewModel
     [ObservableProperty]
     public partial string NewMemberNameText { get; set; } = string.Empty;
 
+    /// <summary>
+    /// 2026-10-14, user's own ask (after discovering no device anywhere had ever had a relay role
+    /// set): "pri vytvareni noveho uzivatele bude admin zadavat roli ta se ulozi na relay" — picked
+    /// right here, alongside the member's name, rather than needing a separate later visit to
+    /// "Správa členů". No "ponechat" option (unlike <see cref="MemberPolicyItem.RoleChoices"/>,
+    /// which also manages EXISTING members) — a brand-new member always gets an explicit choice,
+    /// defaulting to Modifier, the same safe floor <c>CurrentUserService</c> already bootstraps a
+    /// new device to locally.
+    /// </summary>
+    public IReadOnlyList<string> NewMemberRoleChoices { get; } = ["Modifier", "Viewer", "Admin"];
+
+    [ObservableProperty]
+    public partial int NewMemberRoleIndex { get; set; } = 0;
+
+    private SecureApp.Domain.Enums.Role NewMemberRole => NewMemberRoleIndex switch
+    {
+        1 => SecureApp.Domain.Enums.Role.Viewer,
+        2 => SecureApp.Domain.Enums.Role.Admin,
+        _ => SecureApp.Domain.Enums.Role.Modifier,
+    };
+
     [ObservableProperty]
     public partial string? WireGuardStatusText { get; set; }
 
@@ -211,7 +232,7 @@ public sealed partial class SettingsViewModel
         IsCreatingWireGuardAccess = true;
         try
         {
-            var (configText, pickupCode) = await _relayAdminService.CreateWireGuardClientAsync(endpoint, adminSecret, NewMemberNameText);
+            var (configText, pickupCode) = await _relayAdminService.CreateWireGuardClientAsync(endpoint, adminSecret, NewMemberNameText, NewMemberRole);
             var png = QrImageGenerator.GeneratePng(configText);
             WireGuardQrImage = Microsoft.Maui.Controls.ImageSource.FromStream(() => new MemoryStream(png));
             WireGuardConfigText = configText;

@@ -50,8 +50,13 @@ public interface IRelayAdminService
     /// <c>relay/ops/new-pc-onboarding.bat</c>'s own remarks. Lets a non-admin colleague self-onboard
     /// a brand-new PC with just that code, never this device's admin secret and never a .conf file
     /// handed over directly.
+    ///
+    /// 2026-10-14: <paramref name="role"/> (optional) is the role the admin already decided for this
+    /// not-yet-existing member — parked on the relay (<c>pending_member_roles</c>) and applied the
+    /// moment their device actually registers, so the admin doesn't need a separate later visit to
+    /// "Správa členů" for the common case. Null leaves it unmanaged, same as before this existed.
     /// </summary>
-    Task<(string ConfigurationText, string? PickupCode)> CreateWireGuardClientAsync(Uri endpoint, string adminSecret, string memberName, CancellationToken ct = default);
+    Task<(string ConfigurationText, string? PickupCode)> CreateWireGuardClientAsync(Uri endpoint, string adminSecret, string memberName, Enums.Role? role = null, CancellationToken ct = default);
 
     /// <summary>Every member with their admin-assigned role + hidden tabs (2026-09-24) — the data behind the "Správa členů" screen.</summary>
     Task<IReadOnlyList<ManagedDevice>> GetManagedDevicesAsync(Uri endpoint, string adminSecret, CancellationToken ct = default);

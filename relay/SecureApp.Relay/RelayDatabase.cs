@@ -147,6 +147,27 @@ public sealed class RelayDatabase
                 consumed_at_utc   TEXT NULL
             )
             """);
+        // Pending member roles (2026-10-14, user's own ask, after discovering that no device anywhere
+        // had ever had a device_policy row set: "pri vytvareni noveho uzivatele bude admin zadavat
+        // roli ta se ulozi na relay" — the admin should pick a new member's role at the same moment
+        // they create their WireGuard access (/admin/wireguard/clients below), not have to remember
+        // to go set it separately in "Správa členů" after the fact. But the actual device row doesn't
+        // exist yet at that point — it's only created later, asynchronously, when the new member's
+        // own phone/PC calls /activation/request (auto-approved, no admin step there) — so the
+        // intended role is parked here, keyed by the same member name the admin already typed, and
+        // applied the moment that device is actually created (see ApproveActivationRequest's caller
+        // in Program.cs). name_normalized avoids a case/whitespace mismatch between what the admin
+        // typed and what the new member's own device later reports as its display name. One-time use
+        // (consumed, not just read) and time-boxed the same way wireguard_pickup_codes is, so a stale
+        // entry can never silently apply to an unrelated later registration reusing the same name.
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS pending_member_roles (
+                name_normalized   TEXT PRIMARY KEY NOT NULL,
+                role              INTEGER NOT NULL,
+                created_at_utc    TEXT NOT NULL
+            )
+            """);
+
         Execute(connection, """
             CREATE TABLE IF NOT EXISTS outbox (
                 id                    TEXT PRIMARY KEY NOT NULL,
@@ -1414,6 +1435,39 @@ public sealed class RelayDatabase
         using var reader = command.ExecuteReader();
         return reader.Read() && reader["device_secret"] is string secret ? secret : null;
     }
+
+    /// <summary>Parks the role an admin picked for a not-yet-existing member's device — see <c>pending_member_roles</c>'s own schema remarks. Overwrites any earlier pending entry for the same name (the admin re-ran "Vytvořit WireGuard přístup" for the same person, e.g. after a mistake).</summary>
+    public void SetPendingMemberRole(string name, int role)
+    {
+        using var connection = OpenConnection();
+        Execute(connection,
+            """
+            INSERT INTO pending_member_roles (name_normalized, role, created_at_utc) VALUES (@name, @role, @now)
+            ON CONFLICT(name_normalized) DO UPDATE SET role = @role, created_at_utc = @now
+            """,
+            ("@name", NormalizeMemberName(name)), ("@role", role), ("@now", Format(DateTimeOffset.UtcNow)));
+    }
+
+    /// <summary>One-time read: returns and deletes the pending role for this name if one exists and isn't stale (48h — generous for "admin sets this up, then walks the new member through install", but short enough that a name reused much later never silently inherits it).</summary>
+    public int? TryConsumePendingMemberRole(string name)
+    {
+        using var connection = OpenConnection();
+        var normalized = NormalizeMemberName(name);
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT role, created_at_utc FROM pending_member_roles WHERE name_normalized = @name";
+        command.Parameters.AddWithValue("@name", normalized);
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+            return null;
+        var role = (int)(long)reader["role"];
+        var createdAtUtc = DateTimeOffset.Parse((string)reader["created_at_utc"], CultureInfo.InvariantCulture);
+        reader.Close();
+
+        Execute(connection, "DELETE FROM pending_member_roles WHERE name_normalized = @name", ("@name", normalized));
+        return DateTimeOffset.UtcNow - createdAtUtc <= TimeSpan.FromHours(48) ? role : null;
+    }
+
+    private static string NormalizeMemberName(string name) => name.Trim().ToLowerInvariant();
 
     /// <summary>Returns false if the request doesn't exist or was already decided — same "someone/something else got there first" reasoning as <see cref="ApproveActivationRequest"/>.</summary>
     public bool RejectActivationRequest(Guid id)

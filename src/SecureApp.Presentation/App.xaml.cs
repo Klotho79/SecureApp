@@ -47,10 +47,23 @@ public partial class App : Application
 #if ANDROID
 		app.Resources["AppFontSize"] = BaseFontSize;
 		Infrastructure.FontScaling.SetFactor(factor);
+#elif WINDOWS
+		// 2026-10-14, user's own ask: "zvetsi pismo na pc je skoro necitelne" — this app's literal
+		// FontSize values throughout (9/9.5/10.5/11pt etc.) were all tuned against a PHONE's DPI, so
+		// they render tiny on a desktop monitor. Stacking a Windows-only multiplier on top of the
+		// user's own slider factor (rather than just raising BaseFontSize) keeps index 1 == "normal
+		// for this platform" on every platform, while making Windows' "normal" noticeably bigger than
+		// the phone's. Needs the SAME native per-control scaling Android already has (see
+		// Infrastructure.FontScaling) since most pages set a literal FontSize the AppFontSize
+		// resource alone never touches.
+		app.Resources["AppFontSize"] = BaseFontSize;
+		Infrastructure.FontScaling.SetFactor(factor * WindowsBaselineMultiplier);
 #else
 		app.Resources["AppFontSize"] = BaseFontSize * factor;
 #endif
 	}
+
+	private const double WindowsBaselineMultiplier = 1.4;
 
 	private static void ApplySavedFontScale()
 	{

@@ -297,6 +297,11 @@ public static class MauiProgram
 		builder.Services.AddTransient<NotificationDetailViewModel>();
 		builder.Services.AddTransient<NotificationDetailPage>();
 
+		// Stav sálů (2026-10-14) — moved out of Nástěnka's inline list onto its own page, reached via
+		// a gated "Status" nav button (see NotificationsViewModel.RoomStatus.cs's own remarks).
+		builder.Services.AddTransient<RoomStatusViewModel>();
+		builder.Services.AddTransient<RoomStatusPage>();
+
 		// Redakce (2026-10-13) — consolidated edit/post tab, its own standalone tab like Nástěnka above.
 		builder.Services.AddTransient<RedakceViewModel>();
 		builder.Services.AddTransient<RedakcePage>();

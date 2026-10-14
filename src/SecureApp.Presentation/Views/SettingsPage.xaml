@@ -861,6 +861,8 @@
                         <Label Text="Přidat nového člena" Style="{StaticResource SectionHeader}" Margin="0" />
                         <Label Text="Krok 1: Nový člen/zařízení zatím nemá přístup do naší sítě. Zadejte jméno (každé zařízení/PC potřebuje svůj VLASTNÍ přístup, nelze použít jeden pro víc zařízení najednou) a vytvořte WireGuard přístup — telefon naskenuje QR v appce WireGuard (jiná appka, z Google Play); PC nemá čtečku QR, použijte tlačítko dole a naimportujte .conf přímo do WireGuard klienta pro Windows." FontAttributes="Bold" FontSize="10.5" />
                         <Entry Placeholder="Jméno nového člena/zařízení" Text="{Binding NewMemberNameText}" />
+                        <Label Text="Role nového člena (uloží se na relay, jakmile si appku poprvé zaregistruje):" FontSize="9.5" TextColor="Gray" />
+                        <Picker ItemsSource="{Binding NewMemberRoleChoices}" SelectedIndex="{Binding NewMemberRoleIndex}" />
                         <Button Text="Vytvořit WireGuard přístup" Style="{StaticResource SecondaryButton}" Command="{Binding CreateWireGuardAccessCommand}" IsEnabled="{Binding CanCreateWireGuardAccess}" />
                         <Image Source="{Binding WireGuardQrImage}" HeightRequest="180" WidthRequest="180" HorizontalOptions="Center" IsVisible="{Binding HasWireGuardQrImage}" />
                         <Button Text="⬇ Stáhnout .conf (pro PC)" Style="{StaticResource SecondaryButton}" Command="{Binding DownloadWireGuardConfigCommand}" IsVisible="{Binding HasWireGuardConfigText}" />

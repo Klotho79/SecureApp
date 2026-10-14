@@ -32,8 +32,6 @@ public sealed partial class NotificationsViewModel : ObservableObject
     private readonly INotificationRepository _notificationRepository;
     private readonly IChatSessionRepository _chatSessionRepository;
     private readonly IGroupChatRepository _groupChatRepository;
-    private readonly IRoomStatusService _roomStatusService;
-    private readonly IWorkplaceCatalogService _workplaceCatalogService;
     private readonly IWorkAssignmentRepository _workAssignmentRepository;
     private readonly ICurrentUserService _currentUserService;
     private readonly RolePreviewService _rolePreviewService;
@@ -80,8 +78,6 @@ public sealed partial class NotificationsViewModel : ObservableObject
         INotificationRepository notificationRepository,
         IChatSessionRepository chatSessionRepository,
         IGroupChatRepository groupChatRepository,
-        IRoomStatusService roomStatusService,
-        IWorkplaceCatalogService workplaceCatalogService,
         IWorkAssignmentRepository workAssignmentRepository,
         ICurrentUserService currentUserService,
         RolePreviewService rolePreviewService)
@@ -89,8 +85,6 @@ public sealed partial class NotificationsViewModel : ObservableObject
         _notificationRepository = notificationRepository ?? throw new ArgumentNullException(nameof(notificationRepository));
         _chatSessionRepository = chatSessionRepository ?? throw new ArgumentNullException(nameof(chatSessionRepository));
         _groupChatRepository = groupChatRepository ?? throw new ArgumentNullException(nameof(groupChatRepository));
-        _roomStatusService = roomStatusService ?? throw new ArgumentNullException(nameof(roomStatusService));
-        _workplaceCatalogService = workplaceCatalogService ?? throw new ArgumentNullException(nameof(workplaceCatalogService));
         _workAssignmentRepository = workAssignmentRepository ?? throw new ArgumentNullException(nameof(workAssignmentRepository));
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         _rolePreviewService = rolePreviewService ?? throw new ArgumentNullException(nameof(rolePreviewService));

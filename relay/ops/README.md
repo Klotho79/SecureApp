@@ -234,13 +234,22 @@ Run it manually any time with `.\relay\ops\backup-from-pi.ps1` from the repo roo
 check applies to manual runs too (it just compares against the newest existing backup, regardless of
 what triggered the run), so pass `-MinHoursBetweenRuns 0` to force one on demand right after another.
 
-**Restoring**: stop the relay/wg-easy containers, copy the relevant `<timestamp>\relay-data\*` back
-onto the Pi's `~/SecureApp/relay/SecureApp.Relay/data/`, `<timestamp>\relay.env` onto
-`~/SecureApp/relay/SecureApp.Relay/.env`, and `<timestamp>\wireguard-data\*` onto
-`~/wireguard/data/`, then `docker compose up -d` both.
+**Restoring** (2026-10-14, automated — a backup nobody can actually restore from isn't a disaster
+recovery plan): `.\relay\ops\restore-to-pi.ps1` stops both containers, copies the newest (or a
+chosen `-Timestamp`) backup's `relay-data`/`relay.env`/`wireguard-data` back onto the Pi exactly
+where `backup-from-pi.ps1` pulled them from, and starts both containers back up. Asks for a typed
+`RESTORE` confirmation first (it's destructive — overwrites whatever's currently on the Pi); pass
+`-Force` to skip that for a scripted/unattended run. On a Pi that's been fully replaced (new SD
+card/hardware, not just stopped containers), do the "one-time Pi setup" steps above FIRST (clone
+the repo, install the deploy watcher) — this script only restores data onto an already-set-up relay,
+it doesn't provision Docker/git/wg-easy from nothing.
 
 **Still not covered by this backup** (accepted gaps, not yet addressed):
 - The SSH private key this PC uses to reach the Pi at all (`C:\Users\dvora\.ssh\secureapp_pi_ed25519`)
-  — only exists here; losing this PC means losing remote Pi access until physically at the Pi itself.
+  — only exists here; losing THIS PC means losing remote Pi access (so also the ability to run
+  `restore-to-pi.ps1` itself) until physically at the Pi itself, or until that key is recovered from
+  wherever else it was kept. If the real goal is "relay survives losing the Pi", this key — not just
+  the Pi-side data — is the piece actually worth keeping a copy of somewhere separate (e.g. a
+  password manager), since every other piece already has its own backup here.
 - Each individual device's own local encrypted vault (chat history, E2EE keys) — deliberately never
   backed up anywhere centrally; that's the point of E2EE, not a gap.

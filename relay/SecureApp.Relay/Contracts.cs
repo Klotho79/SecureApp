@@ -9,8 +9,11 @@ public sealed record DeviceCredentialResponse(Guid DeviceId, string Secret);
 /// <summary>Self-update manifest (2026-09-23) — written by /admin/upload/android, read by the app's own update check via /download/android/version. VersionCode is the Android versionCode (ApplicationVersion in the .csproj) — the actual number compared to decide "is there something newer", VersionName is just the human-readable display string.</summary>
 public sealed record UpdateManifest(int VersionCode, string VersionName, DateTimeOffset ReleasedAtUtc);
 
-/// <summary>New-member WireGuard onboarding (2026-09-23) — see /admin/wireguard/clients' own remarks.</summary>
-public sealed record CreateWireGuardClientRequest(string Name);
+/// <summary>Windows delta update (2026-10-14) — the client POSTs the relative paths (from /download/windows/manifest) whose local hash didn't match, see /download/windows/delta's own remarks.</summary>
+public sealed record WindowsDeltaRequest(string[]? Paths);
+
+/// <summary>New-member WireGuard onboarding (2026-09-23) — see /admin/wireguard/clients' own remarks. Role (2026-10-14) is the admin's role choice for this not-yet-existing member, parked in pending_member_roles and applied the moment their device actually registers — null leaves it unmanaged, same as today.</summary>
+public sealed record CreateWireGuardClientRequest(string Name, int? Role = null);
 
 /// <summary>
 /// PickupCode (2026-10-07) is additive, default-valued so the one existing call site didn't need

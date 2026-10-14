@@ -35,5 +35,8 @@ public partial class NotificationsPage : ContentPage
     private async void OnContactsClicked(object? sender, EventArgs e)
         => await Shell.Current.GoToAsync("//ContactsTab");
 
+    private async void OnRoomStatusClicked(object? sender, EventArgs e)
+        => await Shell.Current.GoToAsync(nameof(RoomStatusPage));
+
     private async void OnRequestNavigate(string route) => await Shell.Current.GoToAsync(route);
 }
