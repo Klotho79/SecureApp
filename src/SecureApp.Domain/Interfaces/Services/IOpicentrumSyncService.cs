@@ -55,4 +55,16 @@ public interface IOpicentrumSyncService
     /// credentials or the login fails.
     /// </summary>
     Task<IReadOnlyList<string>> FetchWorkplaceNamesAsync(DateOnly weekOf, CancellationToken ct = default);
+
+    /// <summary>
+    /// Every distinct workplace/room label pracoviste.php's roster lists for exactly <paramref name="date"/>
+    /// (2026-10-14, "Stav sálů" full-board bugfix) — across EVERY person rostered that day, not just
+    /// the logged-in user. This is the real "kompletní rozvržení salu" row source for
+    /// <c>RoomStatusViewModel</c>'s full board; the admin-curated shared Workplace catalog it used
+    /// before was sparse (manually added, 3 entries) and not what the user meant by "complete". Same
+    /// read-only login as <see cref="FetchWorkplaceNamesAsync"/>; throws
+    /// <see cref="InvalidOperationException"/> with a user-facing message when there are no
+    /// credentials or the login fails.
+    /// </summary>
+    Task<IReadOnlyList<string>> FetchWorkplaceNamesForDateAsync(DateOnly date, CancellationToken ct = default);
 }

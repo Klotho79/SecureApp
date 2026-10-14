@@ -438,6 +438,42 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
         return names.Values.OrderBy(n => n, StringComparer.Create(Czech, ignoreCase: true)).ToList();
     }
 
+    /// <inheritdoc cref="IOpicentrumSyncService.FetchWorkplaceNamesForDateAsync"/>
+    public async Task<IReadOnlyList<string>> FetchWorkplaceNamesForDateAsync(DateOnly date, CancellationToken ct = default)
+    {
+        var usernameBytes = await _vault.RetrieveSecretAsync(OpicentrumVaultKeys.Username, ct);
+        var passwordBytes = await _vault.RetrieveSecretAsync(OpicentrumVaultKeys.Password, ct);
+        if (usernameBytes is null || passwordBytes is null)
+            throw new InvalidOperationException("Nejprve níže uložte přihlašovací údaje do Opicentra.");
+
+        var cookies = new CookieContainer();
+        using var handler = new HttpClientHandler { CookieContainer = cookies, UseCookies = true };
+        using var http = new HttpClient(handler) { BaseAddress = new Uri(BaseUrl) };
+        http.DefaultRequestHeaders.UserAgent.ParseAdd(BrowserUserAgent);
+
+        await LoginGate.WaitAsync(ct);
+        try
+        {
+            if (await LoginAsync(http, Encoding.UTF8.GetString(usernameBytes), Encoding.UTF8.GetString(passwordBytes), ct) is null)
+                throw new InvalidOperationException("Přihlášení do Opicentra se nezdařilo — zkontrolujte uživatelské jméno a heslo.");
+
+            var monday = StartOfWeek(date);
+            var html = await http.GetStringAsync($"pracoviste.php?akce=ukazpracoviste&datum={monday:yyyyMMdd}", ct);
+            var names = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var entry in OpicentrumParsing.ParsePracovisteWeek(html).Where(e => e.Date == date))
+            {
+                var name = entry.WorkplaceName.Trim();
+                if (name.Length == 0) continue;
+                names.TryAdd(name.ToUpperInvariant(), name);
+            }
+            return names.Values.OrderBy(n => n, StringComparer.Create(Czech, ignoreCase: true)).ToList();
+        }
+        finally
+        {
+            LoginGate.Release();
+        }
+    }
+
     private static string Truncate(string value, int maxLength) => value.Length <= maxLength ? value : value[..maxLength];
 
     private static async Task<string?> LoginAsync(HttpClient http, string username, string password, CancellationToken ct)

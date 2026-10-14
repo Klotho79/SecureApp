@@ -5,6 +5,7 @@ using SecureApp.Domain.Enums;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Presentation.Infrastructure;
+using SecureApp.Presentation.Workplace;
 
 namespace SecureApp.Presentation.ViewModels;
 
@@ -12,8 +13,11 @@ namespace SecureApp.Presentation.ViewModels;
 /// Live "Stav sálů" board (2026-10-13, user's own ask; moved to its own page 2026-10-14 — it had
 /// grown into "hodně řádků" for the Nástěnka dashboard, so it now lives behind a dedicated "Status"
 /// nav button there instead of rendering inline; see NotificationsViewModel.RoomStatus.cs's own
-/// remarks for that button's visibility gate). Shows every <see cref="Domain.ValueObjects.Workplace"/>
-/// from the shared catalog, the device's own today's sál(y) (from the LOCAL rozpis) sorted first.
+/// remarks for that button's visibility gate). Shows today's complete sál/ostatní/ODS/oční roster
+/// pulled live from Opicentrum's pracoviste.php (2026-10-14, bugfix — see
+/// <see cref="IOpicentrumSyncService.FetchWorkplaceNamesForDateAsync"/>'s own remarks: the
+/// admin-curated shared Workplace catalog this used to read from was sparse/manually-added, not the
+/// "kompletní rozvržení" the user actually asked for), the device's own today's sál(y) sorted first.
 ///
 /// 2026-10-14, same-day follow-up: "je mozne ze jeden uzivatel je urceny na vice pracovist (op.
 /// salu)" — a device's today's rozpis can carry MORE THAN ONE workplace assignment (e.g. covering two
@@ -25,7 +29,7 @@ namespace SecureApp.Presentation.ViewModels;
 public sealed partial class RoomStatusViewModel : ObservableObject
 {
     private readonly IRoomStatusService _roomStatusService;
-    private readonly IWorkplaceCatalogService _workplaceCatalogService;
+    private readonly IOpicentrumSyncService _opicentrumSyncService;
     private readonly IWorkAssignmentRepository _workAssignmentRepository;
     private readonly ICurrentUserService _currentUserService;
     private readonly RolePreviewService _rolePreviewService;
@@ -46,13 +50,13 @@ public sealed partial class RoomStatusViewModel : ObservableObject
 
     public RoomStatusViewModel(
         IRoomStatusService roomStatusService,
-        IWorkplaceCatalogService workplaceCatalogService,
+        IOpicentrumSyncService opicentrumSyncService,
         IWorkAssignmentRepository workAssignmentRepository,
         ICurrentUserService currentUserService,
         RolePreviewService rolePreviewService)
     {
         _roomStatusService = roomStatusService ?? throw new ArgumentNullException(nameof(roomStatusService));
-        _workplaceCatalogService = workplaceCatalogService ?? throw new ArgumentNullException(nameof(workplaceCatalogService));
+        _opicentrumSyncService = opicentrumSyncService ?? throw new ArgumentNullException(nameof(opicentrumSyncService));
         _workAssignmentRepository = workAssignmentRepository ?? throw new ArgumentNullException(nameof(workAssignmentRepository));
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         _rolePreviewService = rolePreviewService ?? throw new ArgumentNullException(nameof(rolePreviewService));
@@ -71,29 +75,47 @@ public sealed partial class RoomStatusViewModel : ObservableObject
             var statusOptionsTask = _roomStatusService.GetStatusOptionsAsync();
             var noteOptionsTask = _roomStatusService.GetNoteOptionsAsync();
             var statusesTask = _roomStatusService.ListAsync();
-            var workplacesTask = _workplaceCatalogService.FetchAsync();
             var today = DateOnly.FromDateTime(DateTime.Today);
             var assignmentsTask = _workAssignmentRepository.GetByDateRangeAsync(today, today);
-            await Task.WhenAll(statusOptionsTask, noteOptionsTask, statusesTask, workplacesTask, assignmentsTask);
+            await Task.WhenAll(statusOptionsTask, noteOptionsTask, statusesTask, assignmentsTask);
 
             var statusOptions = statusOptionsTask.Result;
             var noteOptions = noteOptionsTask.Result;
-            // A device's today's rozpis can carry more than one workplace (see this type's own
-            // remarks above) — every one of them counts as "my sál", not just the first found.
+            // A device's today's rozpis can carry more than one qualifying workplace (see this
+            // type's own remarks above) — every one of them counts as "my sál", not just the first
+            // found. Opicentrum-synced WorkplaceName is never tied to a catalog Id (see
+            // RoomWorkplaceKeywords's own remarks) — the Guid is derived from the name itself.
             var myWorkplaceIds = assignmentsTask.Result
-                .Where(a => a.WorkplaceId is not null)
-                .Select(a => a.WorkplaceId!.Value)
+                .Where(a => a.WorkplaceName is { } name && RoomWorkplaceKeywords.IsQualifying(name))
+                .Select(a => RoomWorkplaceKeywords.DeterministicId(a.WorkplaceName!))
                 .ToHashSet();
             var statusByWorkplace = statusesTask.Result.ToDictionary(s => s.WorkplaceId);
 
-            var rows = workplacesTask.Result
-                .OrderBy(w => w.Name, StringComparer.OrdinalIgnoreCase)
-                .Select(w =>
+            IReadOnlyList<string> todaysWorkplaceNames;
+            try
+            {
+                todaysWorkplaceNames = await _opicentrumSyncService.FetchWorkplaceNamesForDateAsync(today);
+            }
+            catch
+            {
+                // Opicentrum unreachable right now (seen live: "Software caused connection abort") —
+                // fall back to whatever this device's own already-synced local rozpis knows about
+                // its own qualifying room(s), rather than an empty board.
+                todaysWorkplaceNames = assignmentsTask.Result
+                    .Where(a => a.WorkplaceName is { } name && RoomWorkplaceKeywords.IsQualifying(name))
+                    .Select(a => a.WorkplaceName!)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+            }
+
+            var rows = todaysWorkplaceNames
+                .Select(name =>
                 {
-                    var isMine = myWorkplaceIds.Contains(w.Id);
-                    statusByWorkplace.TryGetValue(w.Id, out var status);
+                    var id = RoomWorkplaceKeywords.DeterministicId(name);
+                    var isMine = myWorkplaceIds.Contains(id);
+                    statusByWorkplace.TryGetValue(id, out var status);
                     return new RoomStatusRowItem(
-                        w.Id, w.Name, isMine, isMine || canEditAnyRoom, statusOptions, noteOptions,
+                        id, name, isMine, isMine || canEditAnyRoom, statusOptions, noteOptions,
                         status?.StatusText, status?.NoteText, status?.UpdatedByDisplayName, status?.UpdatedAtUtc);
                 })
                 .OrderByDescending(r => r.IsMine)

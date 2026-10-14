@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SecureApp.Domain.Enums;
+using SecureApp.Presentation.Workplace;
 
 namespace SecureApp.Presentation.ViewModels;
 
@@ -12,7 +13,7 @@ namespace SecureApp.Presentation.ViewModels;
 /// statusy a poznamkami"). Only staff actually tied to an operating-room-type workplace need the
 /// button at all, so visibility is driven by today's own LOCAL rozpis entry — auto-synced from
 /// Opicentrum (see <see cref="Domain.Interfaces.Services.IOpicentrumSyncService"/>'s own remarks),
-/// never admin-assigned: if its <c>WorkplaceName</c> contains one of <see cref="QualifyingKeywords"/>
+/// never admin-assigned: if its <c>WorkplaceName</c> qualifies per <see cref="RoomWorkplaceKeywords"/>
 /// (case-insensitive substring), the button shows. Admin always sees it regardless of their own
 /// rozpis, so they can reach the full cross-workplace overview.
 ///
@@ -21,11 +22,14 @@ namespace SecureApp.Presentation.ViewModels;
 /// right on the dashboard, not just text) — one row per qualifying sál with a Picker the user can
 /// change directly, no need to open the full board just to update their own status. Empty for
 /// Admin by default (no personal sál), who still sees the button to reach the full board.
+///
+/// BUGFIX (same day, "chybi rolovaci menu"): this used to also require <c>a.WorkplaceId is not
+/// null</c>, but Opicentrum-synced assignments NEVER have one (see
+/// <see cref="RoomWorkplaceKeywords"/>'s own remarks) — the picker could never appear for anyone.
+/// Now matches on <c>WorkplaceName</c> alone and derives the Guid deterministically from it.
 /// </summary>
 public sealed partial class NotificationsViewModel
 {
-    private static readonly string[] QualifyingKeywords = ["sál", "ostatní", "ODS", "oční"];
-
     [ObservableProperty]
     public partial bool CanSeeRoomStatus { get; set; }
 
@@ -50,8 +54,7 @@ public sealed partial class NotificationsViewModel
             // RoomStatusViewModel's own remarks) — every qualifying one counts, not just whichever
             // assignment happened to come back first.
             var myQualifyingAssignments = assignments
-                .Where(a => a.WorkplaceId is not null && a.WorkplaceName is { } name
-                    && QualifyingKeywords.Any(keyword => name.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
+                .Where(a => a.WorkplaceName is { } name && RoomWorkplaceKeywords.IsQualifying(name))
                 .ToList();
 
             CanSeeRoomStatus = isAdmin || myQualifyingAssignments.Count > 0;
@@ -68,8 +71,9 @@ public sealed partial class NotificationsViewModel
             MyRoomStatusRows = new ObservableCollection<MyRoomStatusItem>(myQualifyingAssignments
                 .Select(a =>
                 {
-                    statusByWorkplace.TryGetValue(a.WorkplaceId!.Value, out var status);
-                    return new MyRoomStatusItem(a.WorkplaceId!.Value, a.WorkplaceName!, statusOptions, status?.StatusText);
+                    var id = RoomWorkplaceKeywords.DeterministicId(a.WorkplaceName!);
+                    statusByWorkplace.TryGetValue(id, out var status);
+                    return new MyRoomStatusItem(id, a.WorkplaceName!, statusOptions, status?.StatusText);
                 }));
         }
         catch
