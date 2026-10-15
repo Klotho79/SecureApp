@@ -143,9 +143,9 @@ public sealed partial class SettingsViewModel
     /// 2026-10-14, user's own ask: "stáhni kompletní sálové rozlišení, všechny pozice které obsahují
     /// ve jméně sál nebo oční nebo ODS nebo ostatní" — this week's pracoviste.php roster, EVERY
     /// distinct workplace label across every rostered person (not just this device's own), filtered
-    /// to the same keyword set the Nástěnka "Status" gate itself uses (see
-    /// NotificationsViewModel.RoomStatus.cs's own QualifyingKeywords) so the two always describe the
-    /// same real-world set of rooms.
+    /// to the same keyword set the Nástěnka "Status" gate itself uses (<see cref="Workplace.RoomWorkplaceKeywords"/>,
+    /// reused directly — not duplicated — so the two can never drift apart again; narrowed 2026-10-15
+    /// to just "sál" per the user's own correction, see that type's remarks).
     /// </summary>
     [RelayCommand]
     private async Task CheckOpicentrumWorkplacesAsync()
@@ -155,12 +155,11 @@ public sealed partial class SettingsViewModel
         try
         {
             var allNames = await _opicentrumSyncService.FetchWorkplaceNamesAsync(DateOnly.FromDateTime(DateTime.Today));
-            string[] keywords = ["sál", "ostatní", "ODS", "oční"];
-            var matching = allNames.Where(n => keywords.Any(k => n.Contains(k, StringComparison.OrdinalIgnoreCase))).ToList();
+            var matching = allNames.Where(Workplace.RoomWorkplaceKeywords.IsQualifying).ToList();
 
             OpicentrumWorkplaceCheckReport = matching.Count == 0
-                ? $"Žádná pozice z tohoto týdne neobsahuje sál/ostatní/ODS/oční (celkem {allNames.Count} pozic nalezeno)."
-                : $"Pozice obsahující sál/ostatní/ODS/oční ({matching.Count} z {allNames.Count} celkem):\n" + string.Join("\n", matching.Select(n => "• " + n));
+                ? $"Žádná pozice z tohoto týdne neobsahuje sál (celkem {allNames.Count} pozic nalezeno)."
+                : $"Pozice obsahující sál ({matching.Count} z {allNames.Count} celkem):\n" + string.Join("\n", matching.Select(n => "• " + n));
         }
         catch (Exception ex)
         {
