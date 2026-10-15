@@ -33,26 +33,150 @@
                  (kompletní obsazení salů se statusy a poznamkami, see RoomStatusPage). Gated: only
                  shows for staff whose today's own rozpis (auto-synced from Opicentrum) is on a
                  sál/ostatní/ODS/oční-type workplace; Admin always sees it, see
-                 NotificationsViewModel.RoomStatus.cs's own remarks. Right under the icon, a Picker
-                 per qualifying sál lets the user change their OWN status directly from the
-                 dashboard (user's own correction: "status s rolovacím menu", not just read-only
-                 text) — empty for Admin, who has no personal sál by default. -->
-            <VerticalStackLayout Spacing="4" IsVisible="{Binding CanSeeRoomStatus}">
-                <Button Text="🏥 Status" Style="{StaticResource SecondaryButton}" FontSize="10.5" Clicked="OnRoomStatusClicked" HorizontalOptions="Start" />
-                <VerticalStackLayout Spacing="4" BindableLayout.ItemsSource="{Binding MyRoomStatusRows}">
-                    <BindableLayout.ItemTemplate>
-                        <DataTemplate x:DataType="vm:MyRoomStatusItem">
-                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
-                                <Label Grid.Column="0" Text="{Binding WorkplaceName}" FontSize="9" VerticalOptions="Center" LineBreakMode="TailTruncation" MaxLines="1" WidthRequest="90" />
-                                <Picker Grid.Column="1" Title="Vyberte stav" ItemsSource="{Binding StatusOptions}" SelectedItem="{Binding SelectedStatus}" FontSize="9.5" />
-                                <Button Grid.Column="2" Text="✔" Style="{StaticResource SecondaryButton}" WidthRequest="36" Padding="0" FontSize="9.5"
-                                        Command="{Binding Source={RelativeSource AncestorType={x:Type vm:NotificationsViewModel}}, Path=SetMyRoomStatusCommand}"
-                                        CommandParameter="{Binding .}" />
-                            </Grid>
-                        </DataTemplate>
-                    </BindableLayout.ItemTemplate>
+                 NotificationsViewModel.RoomStatus.cs's own remarks.
+                 2026-10-15 design pass ("strasne osklive" → Design-canvas mockup, matched against the
+                 app's own already-chosen visual direction): the Picker dropdown is gone — a small badge
+                 shows the current status at a glance, and a color-coded grid of tiles below lets the
+                 user change it with one tap (no separate confirm button). Header/nav buttons around it
+                 are intentionally untouched, per the user's own ask. -->
+            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanSeeRoomStatus}">
+                <VerticalStackLayout Spacing="14">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Grid.Column="0" Text="🏥 Stav mého sálu" Style="{StaticResource SectionHeader}" Margin="0" VerticalOptions="Center" />
+                        <Button Grid.Column="1" Text="Vše ›" Style="{StaticResource SecondaryButton}" FontSize="10" Padding="12,0" MinimumHeightRequest="32" MinimumWidthRequest="0" Clicked="OnRoomStatusClicked" />
+                    </Grid>
+
+                    <VerticalStackLayout Spacing="16" BindableLayout.ItemsSource="{Binding MyRoomStatusRows}">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="vm:MyRoomStatusItem">
+                                <VerticalStackLayout Spacing="8">
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                        <Label Grid.Column="0" Text="{Binding WorkplaceName}" FontSize="12.5" FontAttributes="Bold" VerticalOptions="Center" />
+
+                                        <!-- Current-status badge — color-coded, same tokens as the tiles below. -->
+                                        <Border Grid.Column="1" Padding="10,5" StrokeThickness="0" StrokeShape="RoundRectangle 999" HorizontalOptions="End"
+                                                BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}"
+                                                IsVisible="{Binding HasCurrentStatus}">
+                                            <HorizontalStackLayout Spacing="6">
+                                                <BoxView WidthRequest="6" HeightRequest="6" CornerRadius="3" VerticalOptions="Center"
+                                                         Color="{AppThemeBinding Light={StaticResource Gray300}, Dark={StaticResource Gray400}}" x:Name="BadgeDot" />
+                                                <Label Text="{Binding CurrentStatus}" FontSize="10.5" FontAttributes="Bold" VerticalOptions="Center"
+                                                       TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" x:Name="BadgeLabel" />
+                                            </HorizontalStackLayout>
+                                            <Border.Triggers>
+                                                <DataTrigger TargetType="Border" Binding="{Binding CurrentCategory}" Value="Success">
+                                                    <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource SuccessSoft}, Dark={StaticResource SuccessSoftDark}}" />
+                                                </DataTrigger>
+                                                <DataTrigger TargetType="Border" Binding="{Binding CurrentCategory}" Value="Info">
+                                                    <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource InfoSoft}, Dark={StaticResource InfoSoftDark}}" />
+                                                </DataTrigger>
+                                                <DataTrigger TargetType="Border" Binding="{Binding CurrentCategory}" Value="Warn">
+                                                    <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource WarnSoft}, Dark={StaticResource WarnSoftDark}}" />
+                                                </DataTrigger>
+                                                <DataTrigger TargetType="Border" Binding="{Binding CurrentCategory}" Value="Danger">
+                                                    <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource DangerSoft}, Dark={StaticResource DangerSoftDark}}" />
+                                                </DataTrigger>
+                                            </Border.Triggers>
+                                        </Border>
+                                    </Grid>
+
+                                    <!-- Status grid — one tile per curated option, tap = saved immediately. Wraps instead of a
+                                         fixed 2-column Grid so it still works with however many options Redakce curates. -->
+                                    <FlexLayout Wrap="Wrap" Direction="Row" JustifyContent="Start" AlignItems="Start" BindableLayout.ItemsSource="{Binding Options}">
+                                        <BindableLayout.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:RoomStatusOptionTile">
+                                                <Border Margin="0,0,7,7" MinimumWidthRequest="146" HeightRequest="44" Padding="11,0" StrokeThickness="1"
+                                                        StrokeShape="RoundRectangle 11"
+                                                        Stroke="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}"
+                                                        BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
+                                                    <Border.GestureRecognizers>
+                                                        <TapGestureRecognizer
+                                                            Command="{Binding Source={RelativeSource AncestorType={x:Type vm:NotificationsViewModel}}, Path=PickMyRoomStatusCommand}"
+                                                            CommandParameter="{Binding .}" />
+                                                    </Border.GestureRecognizers>
+                                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="7">
+                                                        <BoxView Grid.Column="0" WidthRequest="7" HeightRequest="7" CornerRadius="3.5" VerticalOptions="Center"
+                                                                 Color="{AppThemeBinding Light={StaticResource Gray300}, Dark={StaticResource Gray400}}">
+                                                            <BoxView.Triggers>
+                                                                <DataTrigger TargetType="BoxView" Binding="{Binding DisplayCategory}" Value="Success">
+                                                                    <Setter Property="Color" Value="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" />
+                                                                </DataTrigger>
+                                                                <DataTrigger TargetType="BoxView" Binding="{Binding DisplayCategory}" Value="Info">
+                                                                    <Setter Property="Color" Value="{AppThemeBinding Light={StaticResource Info}, Dark={StaticResource InfoDark}}" />
+                                                                </DataTrigger>
+                                                                <DataTrigger TargetType="BoxView" Binding="{Binding DisplayCategory}" Value="Warn">
+                                                                    <Setter Property="Color" Value="{AppThemeBinding Light={StaticResource Warn}, Dark={StaticResource WarnDark}}" />
+                                                                </DataTrigger>
+                                                                <DataTrigger TargetType="BoxView" Binding="{Binding DisplayCategory}" Value="Danger">
+                                                                    <Setter Property="Color" Value="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" />
+                                                                </DataTrigger>
+                                                            </BoxView.Triggers>
+                                                        </BoxView>
+                                                        <Label Grid.Column="1" Text="{Binding Text}" FontSize="11" FontAttributes="Bold" VerticalOptions="Center" LineBreakMode="TailTruncation"
+                                                               TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}">
+                                                            <Label.Triggers>
+                                                                <DataTrigger TargetType="Label" Binding="{Binding DisplayCategory}" Value="Success">
+                                                                    <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" />
+                                                                </DataTrigger>
+                                                                <DataTrigger TargetType="Label" Binding="{Binding DisplayCategory}" Value="Info">
+                                                                    <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Info}, Dark={StaticResource InfoDark}}" />
+                                                                </DataTrigger>
+                                                                <DataTrigger TargetType="Label" Binding="{Binding DisplayCategory}" Value="Warn">
+                                                                    <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Warn}, Dark={StaticResource WarnDark}}" />
+                                                                </DataTrigger>
+                                                                <DataTrigger TargetType="Label" Binding="{Binding DisplayCategory}" Value="Danger">
+                                                                    <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" />
+                                                                </DataTrigger>
+                                                            </Label.Triggers>
+                                                        </Label>
+                                                        <Label Grid.Column="2" Text="✓" FontSize="12" FontAttributes="Bold" VerticalOptions="Center" IsVisible="{Binding IsSelected}"
+                                                               TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}">
+                                                            <Label.Triggers>
+                                                                <DataTrigger TargetType="Label" Binding="{Binding DisplayCategory}" Value="Success">
+                                                                    <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" />
+                                                                </DataTrigger>
+                                                                <DataTrigger TargetType="Label" Binding="{Binding DisplayCategory}" Value="Info">
+                                                                    <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Info}, Dark={StaticResource InfoDark}}" />
+                                                                </DataTrigger>
+                                                                <DataTrigger TargetType="Label" Binding="{Binding DisplayCategory}" Value="Warn">
+                                                                    <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Warn}, Dark={StaticResource WarnDark}}" />
+                                                                </DataTrigger>
+                                                                <DataTrigger TargetType="Label" Binding="{Binding DisplayCategory}" Value="Danger">
+                                                                    <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" />
+                                                                </DataTrigger>
+                                                            </Label.Triggers>
+                                                        </Label>
+                                                    </Grid>
+                                                    <Border.Triggers>
+                                                        <DataTrigger TargetType="Border" Binding="{Binding DisplayCategory}" Value="Success">
+                                                            <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource SuccessSoft}, Dark={StaticResource SuccessSoftDark}}" />
+                                                            <Setter Property="Stroke" Value="Transparent" />
+                                                        </DataTrigger>
+                                                        <DataTrigger TargetType="Border" Binding="{Binding DisplayCategory}" Value="Info">
+                                                            <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource InfoSoft}, Dark={StaticResource InfoSoftDark}}" />
+                                                            <Setter Property="Stroke" Value="Transparent" />
+                                                        </DataTrigger>
+                                                        <DataTrigger TargetType="Border" Binding="{Binding DisplayCategory}" Value="Warn">
+                                                            <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource WarnSoft}, Dark={StaticResource WarnSoftDark}}" />
+                                                            <Setter Property="Stroke" Value="Transparent" />
+                                                        </DataTrigger>
+                                                        <DataTrigger TargetType="Border" Binding="{Binding DisplayCategory}" Value="Danger">
+                                                            <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource DangerSoft}, Dark={StaticResource DangerSoftDark}}" />
+                                                            <Setter Property="Stroke" Value="Transparent" />
+                                                        </DataTrigger>
+                                                    </Border.Triggers>
+                                                </Border>
+                                            </DataTemplate>
+                                        </BindableLayout.ItemTemplate>
+                                    </FlexLayout>
+
+                                    <Label Text="{Binding UpdatedInfoText}" FontSize="8.5" TextColor="Gray" IsVisible="{Binding HasCurrentStatus}" />
+                                </VerticalStackLayout>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
                 </VerticalStackLayout>
-            </VerticalStackLayout>
+            </Border>
 
             <!-- Filter chips (spec §12) — horizontally scrollable pill row. -->
             <ScrollView Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
