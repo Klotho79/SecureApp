@@ -26,6 +26,9 @@ public partial class NotificationsPage : ContentPage
     private async void OnSearchClicked(object? sender, EventArgs e)
         => await Shell.Current.GoToAsync(nameof(SmartSearchPage));
 
+    private async void OnSettingsClicked(object? sender, EventArgs e)
+        => await Shell.Current.GoToAsync("//SettingsTab");
+
     private async void OnWorkplaceClicked(object? sender, EventArgs e)
         => await Shell.Current.GoToAsync(nameof(WorkplacePage));
 

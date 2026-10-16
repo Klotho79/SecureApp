@@ -140,6 +140,11 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
         using var http = new HttpClient(handler) { BaseAddress = new Uri(BaseUrl) };
         http.DefaultRequestHeaders.UserAgent.ParseAdd(BrowserUserAgent);
 
+        // 2026-10-16, user's own ask ("prisla hlaska... bylo by dobre blizzsi info vice zachytnych
+        // bodu aby to nebylo tak anonymni" — a sync-failure notification was too generic to tell what
+        // actually broke): every step below updates `stage`, so a failure anywhere names WHICH step
+        // it was in, not just a bare exception message.
+        var stage = "přihlášení";
         await LoginGate.WaitAsync(ct);
         try
         {
@@ -158,6 +163,7 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
             // spravavolna.php's monthly grid carries a row per person regardless of duty.
             // The id is only needed for spravavolna.php (its rows are keyed by id); pracoviste.php and
             // sluzby7.php are matched by name, so a missing id no longer blanks the whole schedule.
+            stage = "zjištění ID osoby";
             var myId = await ResolvePersonIdAsync(http, rangeStart, myName, ct)
                        ?? await ResolvePersonIdFromLeavePageAsync(http, rangeStart, myName, ct);
 
@@ -170,7 +176,9 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
             var onDuty = new Dictionary<DateOnly, List<DutyEntry>>();
             var shifted = new Dictionary<DateOnly, List<DutyEntry>>();
 
+            stage = "stažení pracovišť (pracoviste.php)";
             await MergePracovisteAsync(http, rangeStart, rangeEnd, myName, myId, resolved, shifted, ct);
+            stage = "stažení služeb (sluzby7.php)";
             await MergeSluzbyAsync(http, rangeStart, rangeEnd, myName, resolved, onDuty, ct);
             try
             {
@@ -185,7 +193,10 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
             }
             catch { /* best-effort — the widget line just stays stale */ }
             if (myId is { } id)
+            {
+                stage = "stažení volna (spravavolna.php)";
                 await MergeSpravavolnaAsync(http, rangeStart, rangeEnd, id, resolved, ct);
+            }
 
             if (myId is null && resolved.Count == 0)
             {
@@ -199,11 +210,12 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
                 return new OpicentrumSyncResult(false, 0, 0, error);
             }
 
+            stage = "zápis do místní databáze";
             return await WriteBackAsync(resolved, ct);
         }
         catch (Exception ex)
         {
-            var error = $"Synchronizace s Opicentrem selhala: {ex.Message}";
+            var error = $"Synchronizace s Opicentrem selhala (krok: {stage}; {ex.GetType().Name}): {ex.Message}";
             try { await NotificationPublisher.PublishSystemWarningAsync(_notificationRepository, "Synchronizace rozpisu selhala", error, ct: ct); }
             catch { /* best-effort — the sync failure itself is already the thing being reported */ }
             return new OpicentrumSyncResult(false, 0, 0, error);

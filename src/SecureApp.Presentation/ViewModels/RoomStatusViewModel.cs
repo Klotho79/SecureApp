@@ -94,7 +94,12 @@ public sealed partial class RoomStatusViewModel : ObservableObject
             IReadOnlyList<string> todaysWorkplaceNames;
             try
             {
-                todaysWorkplaceNames = await _opicentrumSyncService.FetchWorkplaceNamesForDateAsync(today);
+                // 2026-10-16, bugfix: FetchWorkplaceNamesForDateAsync returns EVERY pracoviste entry
+                // for the day (ambulances, ARIMs, everything), not just sály — the board must filter
+                // it the same way the fallback path below already does.
+                todaysWorkplaceNames = (await _opicentrumSyncService.FetchWorkplaceNamesForDateAsync(today))
+                    .Where(RoomWorkplaceKeywords.IsQualifying)
+                    .ToList();
             }
             catch
             {

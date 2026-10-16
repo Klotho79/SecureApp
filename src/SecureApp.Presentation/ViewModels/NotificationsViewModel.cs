@@ -127,6 +127,15 @@ public sealed partial class NotificationsViewModel : ObservableObject
             var activeChip = FilterChips.FirstOrDefault(c => c.IsSelected);
             var activeFilter = activeChip?.Filter ?? NotificationFilter.Default;
             var notifications = await _notificationRepository.GetPagedAsync(activeFilter, PageSize);
+
+            // 2026-10-16, user's own ask ("přečtené zprávy už nezobrazuj na nástěnce") — once read, a
+            // notification has served its purpose and shouldn't keep cluttering the dashboard under
+            // ANY chip. "Archiv" is the one exception: it exists specifically to browse past/handled
+            // items, read or not. "Nepřečtené" already excludes read ones at the SQL level, so this is
+            // a no-op there.
+            if (!activeFilter.ArchivedOnly)
+                notifications = notifications.Where(n => !n.IsRead).ToList();
+
             BuildSections(notifications);
 
             // The "Chat" chip only ever filters Notification rows by Category — i.e. past

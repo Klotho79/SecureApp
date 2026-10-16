@@ -34,6 +34,13 @@ namespace SecureApp.Presentation.ViewModels;
 /// a colour-coded grid of every option, tapping one saves immediately (no separate confirm step),
 /// plus a small badge showing the current status at a glance. Colours come from
 /// <see cref="RoomStatusPalette"/> (same Success/Info/Warn/Danger tokens as the rest of the app).
+///
+/// 2026-10-16 follow-up ("zmenil bych ten status vedle jen bud nazev salu a nastaveny status...
+/// po kluknuti na status se otevre okno"): the inline tile grid is too much for the dashboard row
+/// itself — the row now shows only the room name + current-status badge, and tapping it opens
+/// <see cref="ActiveRoomStatusPicker"/> as a page-level overlay dialog containing the tile grid.
+/// Only one dialog open at a time (tapping another row's badge, or the same one again, swaps/closes
+/// it) — closed explicitly via its own "✕", same as any other modal in this app.
 /// </summary>
 public sealed partial class NotificationsViewModel
 {
@@ -43,11 +50,30 @@ public sealed partial class NotificationsViewModel
     [ObservableProperty]
     public partial ObservableCollection<MyRoomStatusItem> MyRoomStatusRows { get; set; }
 
+    [ObservableProperty]
+    public partial MyRoomStatusItem? ActiveRoomStatusPicker { get; set; }
+
+    public bool HasActiveRoomStatusPicker => ActiveRoomStatusPicker is not null;
+
+    partial void OnActiveRoomStatusPickerChanged(MyRoomStatusItem? value) => OnPropertyChanged(nameof(HasActiveRoomStatusPicker));
+
     private void InitRoomStatusState()
     {
         CanSeeRoomStatus = false;
         MyRoomStatusRows = [];
+        ActiveRoomStatusPicker = null;
     }
+
+    /// <summary>Tapping a room's badge opens its picker dialog; tapping the same room again, or its dialog's "✕", closes it.</summary>
+    [RelayCommand]
+    private void ToggleRoomStatusPicker(MyRoomStatusItem? item)
+    {
+        if (item is null) return;
+        ActiveRoomStatusPicker = ActiveRoomStatusPicker == item ? null : item;
+    }
+
+    [RelayCommand]
+    private void CloseRoomStatusPicker() => ActiveRoomStatusPicker = null;
 
     private async Task LoadRoomStatusAsync()
     {
