@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SecureApp.Domain.Enums;
@@ -96,7 +96,7 @@ public abstract partial class ChatThreadViewModelBase<TItem> : ObservableObject
     partial void OnStatusErrorMessageChanged(string? value)
     {
         HasStatusError = !string.IsNullOrEmpty(value);
-        if (HasStatusError) _ = DiagnosticsReporter.ReportAsync(DiagnosticLogLevel.Error, value!, GetType().Name);
+        if (HasStatusError) _ = DiagnosticsReporter.ReportAsync(DiagnosticLogLevel.Warning, value!, GetType().Name);
     }
 
     partial void OnComposeTextChanged(string value) => RecomputeCanSend();

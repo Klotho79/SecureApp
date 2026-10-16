@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -123,7 +123,7 @@ public sealed partial class LogbookManageViewModel : ObservableObject
     partial void OnStatusErrorMessageChanged(string? value)
     {
         HasStatusError = !string.IsNullOrEmpty(value);
-        if (HasStatusError) _ = _diagnosticsReporter.ReportAsync(DiagnosticLogLevel.Error, value!, nameof(LogbookManageViewModel));
+        if (HasStatusError) _ = _diagnosticsReporter.ReportAsync(DiagnosticLogLevel.Warning, value!, nameof(LogbookManageViewModel));
     }
 
     partial void OnStatusSuccessMessageChanged(string? value) => HasStatusSuccess = !string.IsNullOrEmpty(value);

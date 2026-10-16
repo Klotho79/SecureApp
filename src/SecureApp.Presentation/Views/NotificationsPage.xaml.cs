@@ -39,7 +39,10 @@ public partial class NotificationsPage : ContentPage
         => await Shell.Current.GoToAsync("//ContactsTab");
 
     private async void OnRoomStatusClicked(object? sender, EventArgs e)
-        => await Shell.Current.GoToAsync(nameof(RoomStatusPage));
+    {
+        _viewModel.CloseRoomStatusPickerCommand.Execute(null);
+        await Shell.Current.GoToAsync(nameof(RoomStatusPage));
+    }
 
     private async void OnRequestNavigate(string route) => await Shell.Current.GoToAsync(route);
 }

@@ -235,7 +235,12 @@ public partial class App : Application
 	{
 		// Durable local log first (2026-09-13) — works offline and survives a crash-on-exit, unlike the
 		// relay reporter which needs a live connection. AppLog.Error never throws.
-		AppLog.Error(context, $"[{level}] {message}", exception);
+		switch (level)
+		{
+			case DiagnosticLogLevel.Critical: AppLog.Critical(context, message, exception); break;
+			case DiagnosticLogLevel.Warning: AppLog.Warning(context, message, exception); break;
+			default: AppLog.Error(context, $"[{level}] {message}", exception); break;
+		}
 
 		try
 		{
@@ -252,10 +257,52 @@ public partial class App : Application
 	private static void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
 	{
 		var exception = e.ExceptionObject as Exception;
-		ReportFireAndForget(DiagnosticLogLevel.Error,
-			e.IsTerminating ? "Neošetřená výjimka — aplikace se ukončuje." : "Neošetřená výjimka.",
-			nameof(OnUnhandledException), exception);
+		if (e.IsTerminating)
+		{
+			// 2026-10-16 (user's ask: crashes into the system chat, once, with a count): the process is
+			// dying, so a relay call from here usually never completes. Park the crash in Preferences
+			// (local, synchronous) and let the NEXT launch report it exactly once — see
+			// ReportPendingCrashAsync — instead of firing a request that may or may not survive.
+			AppLog.Critical(nameof(OnUnhandledException), "Neošetřená výjimka — aplikace se ukončuje.", exception);
+			try
+			{
+				var first = (exception?.Message ?? string.Empty).ReplaceLineEndings(" ");
+				var summary = $"{exception?.GetType().Name ?? "Neznámá výjimka"}: {(first.Length > 160 ? first[..160] : first)}";
+				Microsoft.Maui.Storage.Preferences.Default.Set(PendingCrashPreferenceKey, summary);
+			}
+			catch { /* best-effort — the local errors.log above already has it */ }
+			return;
+		}
+		ReportFireAndForget(DiagnosticLogLevel.Error, "Neošetřená výjimka.", nameof(OnUnhandledException), exception);
 	}
+
+	private const string PendingCrashPreferenceKey = "pending_crash_summary";
+
+	/// <summary>Reports a crash parked by <see cref="OnUnhandledException"/> on the previous run as ONE Critical entry (with app version and OS), then forgets it. Runs from the supervisor sweep, i.e. only once the relay is connected.</summary>
+	private static async Task ReportPendingCrashAsync(IServiceProvider services)
+	{
+		try
+		{
+			var prefs = Microsoft.Maui.Storage.Preferences.Default;
+			var summary = prefs.Get(PendingCrashPreferenceKey, string.Empty);
+			if (string.IsNullOrEmpty(summary)) return;
+
+			var reporter = services.GetService<IDiagnosticsReporter>();
+			if (reporter is null) return;
+
+			var info = Microsoft.Maui.ApplicationModel.AppInfo.Current;
+			await reporter.ReportAsync(DiagnosticLogLevel.Critical,
+				$"Pád aplikace — {summary} | verze {info.VersionString} ({info.BuildString}) | {Microsoft.Maui.Devices.DeviceInfo.Platform} {Microsoft.Maui.Devices.DeviceInfo.VersionString}",
+				AppCrashContext);
+			prefs.Remove(PendingCrashPreferenceKey);
+		}
+		catch
+		{
+			// Best-effort — stays parked and is retried next sweep.
+		}
+	}
+
+	private const string AppCrashContext = "AppCrash";
 
 	private static void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
 	{
@@ -327,6 +374,8 @@ public partial class App : Application
 						await RunPeerIdentityReconciliationAsync(services, transport);
 						await ApplyDevicePolicyAsync(services);
 						await SyncBoardToNotificationsAsync(services);
+						await ReportPendingCrashAsync(services);
+						await SyncAdminAlertsAsync(services);
 						await SyncPiccStatusAsync(services);
 						await Diagnostics.AppLogUploader.UploadAsync(services);
 						if (services.GetService<ISharedContactService>() is { } sharedContactService)
@@ -477,13 +526,23 @@ public partial class App : Application
 		catch { return; }
 
 		ReportChatHealth(sessions);
+		ReportStuckPairings(sessions);
 
 		// 2026-10-04: no longer excludes a peer in RemovedPeersStore — see OnPairingInviteReceived's
 		// own remarks on why that gate is gone entirely (closed, personally-vetted community; nothing
 		// requires manual consent to resume talking to someone already in it).
+		// 2026-10-16 ("chat musi byt automaticky navazany... uzivatel nesmi poznat ze se neco deje"):
+		// a peer whose newest session has sat in PendingHandshake for over an hour is retried too, not
+		// only all-Closed peers — live case: Vilém's S23+ waited 7+ hours on a handshake the peer never
+		// answered (peer's app was crash-looping), and nothing ever re-sent the invite afterwards. Each
+		// retry mints a new session (fresh ModifiedAtUtc), so this fires at most once an hour per peer.
+		var pendingRetryAfter = TimeSpan.FromHours(1);
 		var stalePeers = sessions
 			.GroupBy(s => Convert.ToHexStringLower(s.PeerIdentityPublicKey))
-			.Where(group => group.All(s => s.State == ChatSessionState.Closed))
+			.Where(group => group.All(s => s.State == ChatSessionState.Closed)
+				|| (!group.Any(s => s.State == ChatSessionState.Active)
+					&& group.Where(s => s.State == ChatSessionState.PendingHandshake).Any()
+					&& DateTimeOffset.UtcNow - group.Where(s => s.State == ChatSessionState.PendingHandshake).Max(s => s.ModifiedAtUtc) >= pendingRetryAfter))
 			.Select(group => group.OrderByDescending(s => s.ModifiedAtUtc).First())
 			.ToList();
 
@@ -694,6 +753,133 @@ public partial class App : Application
 		catch
 		{
 			// Best-effort — a failed board sync must never disturb the connection supervisor.
+		}
+	}
+
+	private const string PairingWatchdogContext = "PairingWatchdog";
+	private static readonly HashSet<string> _reportedStuckPairings = new();
+
+	/// <summary>
+	/// Pairing watchdog (2026-10-16, user's ask: "pokud nedojde ke sparovani po zadosti, posli me zpravu"):
+	/// a handshake still pending after 15 min is reported as a Warning and after 60 min as an Error to the
+	/// shared diagnostics log, once per session per tier. Nothing is shown to the affected user — the
+	/// admin's own device turns these entries into a notification (see <see cref="SyncAdminAlertsAsync"/>).
+	/// </summary>
+	private static void ReportStuckPairings(IReadOnlyList<ChatSession> sessions)
+	{
+		try
+		{
+			var now = DateTimeOffset.UtcNow;
+			foreach (var s in sessions.Where(s => s.State == ChatSessionState.PendingHandshake))
+			{
+				var minutes = (int)(now - s.ModifiedAtUtc).TotalMinutes;
+				var level = minutes >= 60 ? DiagnosticLogLevel.Error : minutes >= 15 ? DiagnosticLogLevel.Warning : (DiagnosticLogLevel?)null;
+				if (level is null) continue;
+				if (!_reportedStuckPairings.Add($"{s.Id}:{level}")) continue;
+				ReportFireAndForget(level.Value,
+					$"Párování s {s.PeerDisplayName} se nedokončilo už {minutes} min.",
+					PairingWatchdogContext, null);
+			}
+		}
+		catch
+		{
+			// Best-effort — a watchdog failing must never disturb the sweep it runs in.
+		}
+	}
+
+	private const string AdminAlertsWatermarkPreferenceKey = "admin_alerts_last_utc_ticks";
+	private const string AdminAlertGroupsPreferenceKey = "admin_alert_groups";
+
+	private sealed record AdminAlertGroup(Guid NotificationId, int Count);
+
+	private static Dictionary<string, AdminAlertGroup> LoadAdminAlertGroups(Microsoft.Maui.Storage.IPreferences prefs)
+	{
+		try
+		{
+			var json = prefs.Get(AdminAlertGroupsPreferenceKey, string.Empty);
+			return string.IsNullOrEmpty(json)
+				? new()
+				: System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, AdminAlertGroup>>(json) ?? new();
+		}
+		catch { return new(); }
+	}
+
+	private static void SaveAdminAlertGroups(Microsoft.Maui.Storage.IPreferences prefs, Dictionary<string, AdminAlertGroup> groups)
+	{
+		try
+		{
+			var trimmed = groups.Count > 100 ? groups.Skip(groups.Count - 100).ToDictionary(p => p.Key, p => p.Value) : groups;
+			prefs.Set(AdminAlertGroupsPreferenceKey, System.Text.Json.JsonSerializer.Serialize(trimmed));
+		}
+		catch { /* best-effort */ }
+	}
+
+	/// <summary>
+	/// Admin only: turns new Error/Critical entries (and pairing-watchdog warnings) from the shared
+	/// diagnostics log into a Nástěnka notification, so a problem on ANY member's device reaches the
+	/// admin without anyone touching that device. First run only sets the watermark (no history burst).
+	/// At most 5 notifications per sweep; identical device+message repeats collapse into one.
+	/// </summary>
+	private static async Task SyncAdminAlertsAsync(IServiceProvider services)
+	{
+		try
+		{
+			using var scope = services.CreateScope();
+			var currentUser = scope.ServiceProvider.GetRequiredService<ICurrentUserService>();
+			await currentUser.InitializeAsync();
+			if (currentUser.Current.Role != Role.Admin) return;
+
+			var reporter = scope.ServiceProvider.GetRequiredService<IDiagnosticsReporter>();
+			var entries = await reporter.GetRecentAsync(100);
+
+			var prefs = Microsoft.Maui.Storage.Preferences.Default;
+			var lastTicks = prefs.Get(AdminAlertsWatermarkPreferenceKey, 0L);
+			var newest = entries.Count > 0 ? entries.Max(e => e.CreatedAtUtc) : DateTimeOffset.UtcNow;
+			if (lastTicks == 0)
+			{
+				prefs.Set(AdminAlertsWatermarkPreferenceKey, newest.UtcTicks);
+				return;
+			}
+
+			var watermark = new DateTimeOffset(lastTicks, TimeSpan.Zero);
+			// One notification per distinct problem (device + exact message — the message of a crash
+			// already carries app version and OS), however often it recurs: a repeat archives the
+			// earlier notification and posts a fresh one titled with the running count ("2×"), so the
+			// system chat shows each problem once, newest and unread. Counts survive restarts in Preferences.
+			var fresh = entries
+				.Where(e => e.CreatedAtUtc > watermark
+					&& (e.Level >= DiagnosticLogLevel.Error || e.Context == PairingWatchdogContext))
+				.OrderBy(e => e.CreatedAtUtc)
+				.GroupBy(e => (e.DeviceDisplayName, e.Message))
+				.ToList();
+
+			var groups = LoadAdminAlertGroups(prefs);
+			var notifications = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
+			var native = services.GetService<INativeNotificationService>();
+			foreach (var g in fresh.Take(8))
+			{
+				var last = g.Last();
+				var key = $"{g.Key.DeviceDisplayName}|{g.Key.Message}";
+				var previous = groups.GetValueOrDefault(key);
+				var total = (previous?.Count ?? 0) + g.Count();
+				if (previous is not null && await notifications.GetByIdAsync(previous.NotificationId) is { } old)
+				{
+					old.Archive();
+					await notifications.UpdateAsync(old);
+				}
+				var id = await NotificationPublisher.PublishAdminAlertAsync(notifications, last.Level, g.Key.DeviceDisplayName, g.Key.Message, total, native);
+				groups[key] = new AdminAlertGroup(id, total);
+			}
+			if (fresh.Count > 8)
+				await NotificationPublisher.PublishAdminAlertAsync(notifications, DiagnosticLogLevel.Warning, "více zařízení", $"Dalších {fresh.Count - 8} různých upozornění v Nastavení → Diagnostika.", 1, native);
+			SaveAdminAlertGroups(prefs, groups);
+
+			if (newest.UtcTicks > lastTicks)
+				prefs.Set(AdminAlertsWatermarkPreferenceKey, newest.UtcTicks);
+		}
+		catch
+		{
+			// Best-effort — retried next sweep.
 		}
 	}
 
@@ -955,7 +1141,7 @@ public partial class App : Application
 			// SessionRecoveryHelper.ResyncAsync's own cooldown makes it safe for a page-level
 			// handler to also attempt this a moment later for the same peer.
 			var reporter = scope.ServiceProvider.GetRequiredService<IDiagnosticsReporter>();
-			_ = reporter.ReportAsync(DiagnosticLogLevel.Error, "Přijatou zprávu se nepodařilo dešifrovat — spouští se automatické obnovení spojení.", nameof(OnEnvelopeReceived), ex);
+			_ = reporter.ReportAsync(DiagnosticLogLevel.Warning, "Přijatou zprávu se nepodařilo dešifrovat — spouští se automatické obnovení spojení.", nameof(OnEnvelopeReceived), ex);
 			AppLog.Error("App.Receive", "decrypt failed; auto-healing session", ex);
 			try
 			{

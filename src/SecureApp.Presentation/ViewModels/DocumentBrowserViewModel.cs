@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SecureApp.Domain.Entities;
@@ -95,7 +95,7 @@ public sealed partial class DocumentBrowserViewModel : ObservableObject
     partial void OnStatusErrorMessageChanged(string? value)
     {
         HasStatusError = !string.IsNullOrEmpty(value);
-        if (HasStatusError) _ = _diagnosticsReporter.ReportAsync(DiagnosticLogLevel.Error, value!, nameof(DocumentBrowserViewModel));
+        if (HasStatusError) _ = _diagnosticsReporter.ReportAsync(DiagnosticLogLevel.Warning, value!, nameof(DocumentBrowserViewModel));
     }
 
     partial void OnIsImportingChanged(bool value) => CanImport = !value;

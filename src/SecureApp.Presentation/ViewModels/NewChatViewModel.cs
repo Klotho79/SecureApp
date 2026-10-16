@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -134,7 +134,7 @@ public sealed partial class NewChatViewModel : ObservableObject
     partial void OnStatusErrorMessageChanged(string? value)
     {
         HasStatusError = !string.IsNullOrEmpty(value);
-        if (HasStatusError) _ = _diagnosticsReporter.ReportAsync(DiagnosticLogLevel.Error, value!, nameof(NewChatViewModel));
+        if (HasStatusError) _ = _diagnosticsReporter.ReportAsync(DiagnosticLogLevel.Warning, value!, nameof(NewChatViewModel));
     }
 
     partial void OnStatusInfoMessageChanged(string? value) => HasStatusInfo = !string.IsNullOrEmpty(value);

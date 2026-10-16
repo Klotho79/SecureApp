@@ -136,6 +136,37 @@ public static class NotificationPublisher
         return TryAddAsync(notificationRepository, notification, nativeNotificationService, ct);
     }
 
+    /// <summary>
+    /// Admin-only alert about another (or this) device's problem, built from the shared diagnostics log
+    /// (2026-10-16): Warning → Normal, Error → Important, Critical → Critical. Only the admin's own
+    /// device ever raises these (see <c>App.SyncAdminAlertsAsync</c>), so ordinary members never see
+    /// background trouble they can do nothing about.
+    /// </summary>
+    public static async Task<Guid> PublishAdminAlertAsync(
+        INotificationRepository notificationRepository,
+        DiagnosticLogLevel level,
+        string deviceName,
+        string message,
+        int occurrences = 1,
+        INativeNotificationService? nativeNotificationService = null,
+        CancellationToken ct = default)
+    {
+        var (prefix, priority) = level switch
+        {
+            DiagnosticLogLevel.Critical => ("Kritická chyba", NotificationPriority.Critical),
+            DiagnosticLogLevel.Error => ("Chyba", NotificationPriority.Important),
+            _ => ("Upozornění", NotificationPriority.Normal)
+        };
+        var count = occurrences > 1 ? $" ({occurrences}×)" : string.Empty;
+        var notification = new Notification(
+            title: $"{prefix}{count} — {deviceName}",
+            body: message.ReplaceLineEndings(" ") is { Length: > 400 } oneLine ? oneLine[..400] + "…" : message.ReplaceLineEndings(" "),
+            category: NotificationCategory.System,
+            priority: priority);
+        await TryAddAsync(notificationRepository, notification, nativeNotificationService, ct);
+        return notification.Id;
+    }
+
     /// <summary>A notice-board message from an Admin/Modifier (2026-09-24) — surfaced on the Nástěnka like everything else. Important priority: a board post is a deliberate broadcast to the whole team and is meant to stand out, unlike routine System notifications.</summary>
     public static Task PublishBoardMessageAsync(
         INotificationRepository notificationRepository,

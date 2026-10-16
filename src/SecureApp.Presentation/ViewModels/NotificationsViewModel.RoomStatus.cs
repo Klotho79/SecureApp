@@ -1,7 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using SecureApp.Domain.Enums;
 using SecureApp.Presentation.Workplace;
 
 namespace SecureApp.Presentation.ViewModels;
@@ -41,6 +40,15 @@ namespace SecureApp.Presentation.ViewModels;
 /// <see cref="ActiveRoomStatusPicker"/> as a page-level overlay dialog containing the tile grid.
 /// Only one dialog open at a time (tapping another row's badge, or the same one again, swaps/closes
 /// it) — closed explicitly via its own "✕", same as any other modal in this app.
+///
+/// 2026-10-16 second follow-up ("tlacitko vse ma byt az v okne stav salu... status ma byt nezarazen
+/// na sale pokud neni uzivatel na sale zarazen"): the card (and the "Vše ›" full-board button, now
+/// living inside the dialog itself next to "✕" rather than on the dashboard card header) is always
+/// shown — no longer hidden for staff with no qualifying sál today. When nobody has a qualifying
+/// assignment, <see cref="MyRoomStatusRows"/> gets a single <see cref="MyRoomStatusItem.CreateUnassigned"/>
+/// placeholder instead of being empty: its badge reads "Nezařazen na sále", and its tile grid is
+/// still visible (so the user can see what the options would be) but disabled — see
+/// <see cref="MyRoomStatusItem.HasAssignment"/> and the dialog's FlexLayout IsEnabled binding.
 /// </summary>
 public sealed partial class NotificationsViewModel
 {
@@ -79,7 +87,7 @@ public sealed partial class NotificationsViewModel
     {
         try
         {
-            var isAdmin = _rolePreviewService.Resolve(_currentUserService.Current.Role) == Role.Admin;
+            CanSeeRoomStatus = true;
 
             var today = DateOnly.FromDateTime(DateTime.Today);
             var assignments = await _workAssignmentRepository.GetByDateRangeAsync(today, today);
@@ -90,15 +98,14 @@ public sealed partial class NotificationsViewModel
                 .Where(a => a.WorkplaceName is { } name && RoomWorkplaceKeywords.IsQualifying(name))
                 .ToList();
 
-            CanSeeRoomStatus = isAdmin || myQualifyingAssignments.Count > 0;
+            var statusOptions = await _roomStatusService.GetStatusOptionsAsync();
 
             if (myQualifyingAssignments.Count == 0)
             {
-                MyRoomStatusRows = [];
+                MyRoomStatusRows = [MyRoomStatusItem.CreateUnassigned(statusOptions)];
                 return;
             }
 
-            var statusOptions = await _roomStatusService.GetStatusOptionsAsync();
             var statuses = await _roomStatusService.ListAsync();
             var statusByWorkplace = statuses.ToDictionary(s => s.WorkplaceId);
             MyRoomStatusRows = new ObservableCollection<MyRoomStatusItem>(myQualifyingAssignments
@@ -124,7 +131,10 @@ public sealed partial class NotificationsViewModel
     {
         if (tile is null) return;
         var room = MyRoomStatusRows.FirstOrDefault(r => r.WorkplaceId == tile.WorkplaceId);
-        room?.MarkSelected(tile.Text);
+        // Defense in depth alongside the dialog's FlexLayout IsEnabled binding (see
+        // MyRoomStatusItem.HasAssignment's own remarks) — the unassigned placeholder has nothing to save.
+        if (room is null || !room.HasAssignment) return;
+        room.MarkSelected(tile.Text);
         await _roomStatusService.SetStatusAsync(tile.WorkplaceId, tile.WorkplaceName, tile.Text);
     }
 }
@@ -134,6 +144,7 @@ public sealed partial class MyRoomStatusItem : ObservableObject
 {
     public Guid WorkplaceId { get; }
     public string WorkplaceName { get; }
+    public bool HasAssignment { get; }
     public ObservableCollection<RoomStatusOptionTile> Options { get; }
     public string? UpdatedInfoText { get; }
 
@@ -149,15 +160,23 @@ public sealed partial class MyRoomStatusItem : ObservableObject
         OnPropertyChanged(nameof(HasCurrentStatus));
     }
 
-    public MyRoomStatusItem(Guid workplaceId, string workplaceName, IReadOnlyList<string> statusOptions, string? currentStatus, string? updatedByDisplayName, DateTimeOffset? updatedAtUtc)
+    public MyRoomStatusItem(Guid workplaceId, string workplaceName, IReadOnlyList<string> statusOptions, string? currentStatus, string? updatedByDisplayName, DateTimeOffset? updatedAtUtc, bool hasAssignment = true)
     {
         WorkplaceId = workplaceId;
         WorkplaceName = workplaceName;
+        HasAssignment = hasAssignment;
         CurrentStatus = currentStatus;
         UpdatedInfoText = updatedAtUtc is { } utc ? $"{updatedByDisplayName} · {FormatRelative(utc)}" : null;
         Options = new ObservableCollection<RoomStatusOptionTile>(
             statusOptions.Select(text => new RoomStatusOptionTile(workplaceId, workplaceName, text, isSelected: text == currentStatus)));
     }
+
+    /// <summary>2026-10-16 ("status ma byt nezarazen na sale pokud neni uzivatel na sale zarazen") —
+    /// stands in for a real row when today's rozpis has no qualifying sál. Still opens the dialog
+    /// (so "Vše ›" stays reachable even with nothing of your own to show), with the tile grid visible
+    /// but disabled via <see cref="HasAssignment"/> rather than hidden outright.</summary>
+    public static MyRoomStatusItem CreateUnassigned(IReadOnlyList<string> statusOptions) =>
+        new(Guid.Empty, "Stav mého sálu", statusOptions, "Nezařazen na sále", null, null, hasAssignment: false);
 
     /// <summary>Called right after a tile is tapped, before the relay round-trip finishes — same optimistic-then-persist shape <see cref="NotificationsViewModel"/>'s other commands use.</summary>
     public void MarkSelected(string status)

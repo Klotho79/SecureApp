@@ -33,15 +33,26 @@ public static class AppLog
 
     /// <summary>Records an error/exception. Safe to call from catch blocks and the global exception hook.</summary>
     public static void Error(string source, string message, Exception? exception = null)
+        => WriteLevel("ERROR", source, message, exception);
+
+    /// <summary>Recoverable problem: the app heals itself or the user was told what to do. Goes to the same errors log (level token WARN) so it is uploaded to the relay with everything else.</summary>
+    public static void Warning(string source, string message, Exception? exception = null)
+        => WriteLevel("WARN", source, message, exception);
+
+    /// <summary>The app cannot work (crash, startup failure, data-loss risk). Level token CRITICAL in the errors log.</summary>
+    public static void Critical(string source, string message, Exception? exception = null)
+        => WriteLevel("CRITICAL", source, message, exception);
+
+    private static void WriteLevel(string level, string source, string message, Exception? exception)
     {
         var sb = new StringBuilder();
-        sb.Append(Timestamp()).Append('\t').Append("ERROR").Append('\t')
+        sb.Append(Timestamp()).Append('\t').Append(level).Append('\t')
           .Append(Sanitize(source)).Append('\t').Append(Sanitize(message));
         if (exception is not null)
             sb.Append('\t').Append(Sanitize(exception.GetType().Name)).Append(": ")
               .Append(Sanitize(exception.Message)).Append(" | ").Append(Sanitize(exception.StackTrace ?? ""));
         Write("errors.log", _errorLock, sb.ToString());
-        Debug.WriteLine("APPLOG-ERROR " + sb);
+        Debug.WriteLine("APPLOG-" + level + " " + sb);
     }
 
     /// <summary>Records a numeric metric (typically a duration in ms) with optional tags — the data tuning relies on.</summary>

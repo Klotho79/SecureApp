@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SecureApp.Domain.Entities;
@@ -133,7 +133,7 @@ public sealed partial class LogbookViewModel : ObservableObject
     partial void OnStatusErrorMessageChanged(string? value)
     {
         HasStatusError = !string.IsNullOrEmpty(value);
-        if (HasStatusError) _ = _diagnosticsReporter.ReportAsync(DiagnosticLogLevel.Error, value!, nameof(LogbookViewModel));
+        if (HasStatusError) _ = _diagnosticsReporter.ReportAsync(DiagnosticLogLevel.Warning, value!, nameof(LogbookViewModel));
     }
 
     [RelayCommand]

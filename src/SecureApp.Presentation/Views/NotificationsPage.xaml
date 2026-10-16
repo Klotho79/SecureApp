@@ -31,11 +31,11 @@
                 <Button Grid.Column="2" Text="☎ Kontakty" Style="{StaticResource SecondaryButton}" FontSize="10.5" Clicked="OnContactsClicked" />
             </Grid>
 
-            <!-- Status (2026-10-14, user's own ask) — the icon opens the full "Stav sálů" board
-                 (kompletní obsazení salů se statusy a poznamkami, see RoomStatusPage). Gated: only
-                 shows for staff whose today's own rozpis (auto-synced from Opicentrum) is on a
-                 sál/ostatní/ODS/oční-type workplace; Admin always sees it, see
-                 NotificationsViewModel.RoomStatus.cs's own remarks.
+            <!-- Status (2026-10-14, user's own ask) — opens the full "Stav sálů" board
+                 (kompletní obsazení salů se statusy a poznamkami, see RoomStatusPage) via the "Vše ›"
+                 button inside the picker dialog below. Always shown (2026-10-16: no longer gated on
+                 today's rozpis — see NotificationsViewModel.RoomStatus.cs's own remarks for the
+                 "nezařazen" placeholder shown when today's own rozpis has no qualifying sál).
                  2026-10-15 design pass ("strasne osklive" → Design-canvas mockup, matched against the
                  app's own already-chosen visual direction): the Picker dropdown is gone — a small badge
                  shows the current status at a glance, and a color-coded grid of tiles below lets the
@@ -43,24 +43,23 @@
                  are intentionally untouched, per the user's own ask. -->
             <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanSeeRoomStatus}">
                 <VerticalStackLayout Spacing="14">
-                    <Grid ColumnDefinitions="*,Auto">
-                        <Label Grid.Column="0" Text="🏥 Stav mého sálu" Style="{StaticResource SectionHeader}" Margin="0" VerticalOptions="Center" />
-                        <Button Grid.Column="1" Text="Vše ›" Style="{StaticResource SecondaryButton}" FontSize="10" Padding="12,0" MinimumHeightRequest="32" MinimumWidthRequest="0" Clicked="OnRoomStatusClicked" />
-                    </Grid>
+                    <Label Text="🏥 Stav mého sálu" Style="{StaticResource SectionHeader}" Margin="0" />
 
                     <VerticalStackLayout Spacing="10" BindableLayout.ItemsSource="{Binding MyRoomStatusRows}">
                         <BindableLayout.ItemTemplate>
                             <DataTemplate x:DataType="vm:MyRoomStatusItem">
                                 <!-- Compact row only — name + current-status badge. Tap opens the full
                                      tile-grid picker as a page-level overlay dialog (see the Grid at the
-                                     end of this page), so this card stays small on the dashboard. -->
+                                     end of this page), so this card stays small on the dashboard.
+                                     When HasAssignment is false (no qualifying sál today), the name is
+                                     hidden and only the "Nezařazen na sále" badge shows. -->
                                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                                     <Grid.GestureRecognizers>
                                         <TapGestureRecognizer
                                             Command="{Binding Source={RelativeSource AncestorType={x:Type vm:NotificationsViewModel}}, Path=ToggleRoomStatusPickerCommand}"
                                             CommandParameter="{Binding .}" />
                                     </Grid.GestureRecognizers>
-                                    <Label Grid.Column="0" Text="{Binding WorkplaceName}" FontSize="12.5" FontAttributes="Bold" VerticalOptions="Center" />
+                                    <Label Grid.Column="0" Text="{Binding WorkplaceName}" FontSize="12.5" FontAttributes="Bold" VerticalOptions="Center" IsVisible="{Binding HasAssignment}" />
 
                                     <!-- Current-status badge — color-coded, same tokens as the picker dialog's tiles. -->
                                     <Border Grid.Column="1" Padding="10,5" StrokeThickness="0" StrokeShape="RoundRectangle 999" HorizontalOptions="End"
@@ -217,13 +216,16 @@
 
     <!-- Room-status picker dialog (2026-10-16) — full-screen dim backdrop + centered card, shown
          while ActiveRoomStatusPicker is set. Closed only via its own "✕" (no backdrop-tap-to-close,
-         to avoid MAUI gesture-bubbling edge cases with the tiles underneath). -->
+         to avoid MAUI gesture-bubbling edge cases with the tiles underneath).
+         2026-10-16 follow-up: "Vše ›" (full board) moved in here from the dashboard card header, so
+         it's reachable even when the card itself only has the unassigned placeholder to show. -->
     <Grid BackgroundColor="#80000000" IsVisible="{Binding HasActiveRoomStatusPicker}">
         <Border Style="{StaticResource CardBorder}" Margin="24" VerticalOptions="Center" Padding="16">
             <VerticalStackLayout Spacing="14">
-                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
                     <Label Grid.Column="0" Text="{Binding ActiveRoomStatusPicker.WorkplaceName}" Style="{StaticResource SectionHeader}" Margin="0" VerticalOptions="Center" />
-                    <Button Grid.Column="1" Text="✕" Style="{StaticResource SecondaryButton}" WidthRequest="36" Padding="0" MinimumHeightRequest="32" MinimumWidthRequest="0"
+                    <Button Grid.Column="1" Text="Vše ›" Style="{StaticResource SecondaryButton}" FontSize="10" Padding="12,0" MinimumHeightRequest="32" MinimumWidthRequest="0" Clicked="OnRoomStatusClicked" />
+                    <Button Grid.Column="2" Text="✕" Style="{StaticResource SecondaryButton}" WidthRequest="36" Padding="0" MinimumHeightRequest="32" MinimumWidthRequest="0"
                             Command="{Binding CloseRoomStatusPickerCommand}" />
                 </Grid>
 
@@ -253,8 +255,18 @@
                 </Border>
 
                 <!-- Status grid — one tile per curated option, tap = saved immediately. The selected
-                     tile stays highlighted (DisplayCategory is Neutral unless IsSelected). -->
-                <FlexLayout Wrap="Wrap" Direction="Row" JustifyContent="Start" AlignItems="Start" BindableLayout.ItemsSource="{Binding ActiveRoomStatusPicker.Options}">
+                     tile stays highlighted (DisplayCategory is Neutral unless IsSelected).
+                     2026-10-16: non-functional (disabled + dimmed), not hidden, when the picker is the
+                     "nezařazen" placeholder (see MyRoomStatusItem.HasAssignment's own remarks) — still
+                     shows what the options would be, just can't be tapped. -->
+                <FlexLayout Wrap="Wrap" Direction="Row" JustifyContent="Start" AlignItems="Start"
+                            IsEnabled="{Binding ActiveRoomStatusPicker.HasAssignment}"
+                            BindableLayout.ItemsSource="{Binding ActiveRoomStatusPicker.Options}">
+                    <FlexLayout.Triggers>
+                        <DataTrigger TargetType="FlexLayout" Binding="{Binding ActiveRoomStatusPicker.HasAssignment}" Value="False">
+                            <Setter Property="Opacity" Value="0.45" />
+                        </DataTrigger>
+                    </FlexLayout.Triggers>
                     <BindableLayout.ItemTemplate>
                         <DataTemplate x:DataType="vm:RoomStatusOptionTile">
                             <Border Margin="0,0,7,7" MinimumWidthRequest="146" HeightRequest="44" Padding="11,0" StrokeThickness="1"

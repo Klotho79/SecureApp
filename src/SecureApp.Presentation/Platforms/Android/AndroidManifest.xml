@@ -33,6 +33,14 @@
 	     Android 14 (API 34), matching the service's own foregroundServiceType="dataSync". -->
 	<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+	<!-- 2026-10-16, found live via Petr Faltus's device crash-looping on every launch of 1.69 (relay
+	     applog, device c1b2f0ab, "Unable to create service communityToolkit.maui.media.services" ←
+	     SecurityException: FGS type mediaPlayback requires FOREGROUND_SERVICE_MEDIA_PLAYBACK on
+	     Android 14+/targetSdk 34+) — CommunityToolkit.Maui.MediaElement's own Android service
+	     (used by DocumentViewerPage for video attachments) declares foregroundServiceType="mediaPlayback"
+	     in its merged manifest; this app manifest never declared the matching typed permission, so the
+	     OS refused to start it and took the whole process down as an unhandled exception at launch. -->
+	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 	<!-- Background messaging (2026-09-26) — RelayConnectionService keeps the relay connection alive
 	     while the app is closed (typed remoteMessaging, Android 14+), restarts after reboot/update,
 	     and the app can ask to be exempted from battery optimization so Doze doesn't cut it off. -->
