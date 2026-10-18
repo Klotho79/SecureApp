@@ -161,4 +161,15 @@
 	     reaches git; this Import is the only trace of it in tracked source. -->
 	<Import Project="..\..\keystore\signing.local.props" Condition="Exists('..\..\keystore\signing.local.props')" />
 
+	<!-- Windows self-update bug (2026-10-18): the resizetizer-generated copy of Package.appxmanifest is
+	     only regenerated when Package.appxmanifest itself changes, NOT when ApplicationDisplayVersion /
+	     ApplicationVersion change — so the PC build kept reporting AppInfo.Version 1.60.0.63 (build 63)
+	     forever and offered the same update again after every successful install. Dropping the stale copy
+	     before each Windows build forces it to be rebuilt from the current version numbers. -->
+	<Target Name="RefreshWindowsAppVersion" BeforeTargets="BeforeBuild" Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">
+		<ItemGroup>
+			<_StaleWinManifest Include="$(IntermediateOutputPath)resizetizer\m\Package.appxmanifest" />
+		</ItemGroup>
+		<Delete Files="@(_StaleWinManifest)" />
+	</Target>
 </Project>

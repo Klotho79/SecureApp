@@ -46,7 +46,9 @@ public sealed class NativeAppInstaller : INativeAppInstaller
             Start-Process -FilePath '{{exePath}}' -WorkingDirectory '{{installDir}}'
             Remove-Item -Path '{{scriptPath}}' -Force
             """;
-        File.WriteAllText(scriptPath, script);
+        // UTF-8 WITH BOM: Windows PowerShell 5.1 reads a BOM-less script as ANSI, which turned an install
+        // dir like "K:\Meduňa\Appka" into mojibake so nothing was copied and the app never relaunched.
+        File.WriteAllText(scriptPath, script, new System.Text.UTF8Encoding(true));
 
         Process.Start(new ProcessStartInfo
         {
