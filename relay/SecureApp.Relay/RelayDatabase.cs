@@ -38,7 +38,7 @@ public sealed record CmsAnnotationReplyRecord(Guid Id, Guid AuthorDeviceId, stri
 /// <summary>One annotation as a given viewer sees it (<c>IsMine</c>/<c>HiddenByMe</c> are relative to that viewer).</summary>
 public sealed record CmsAnnotationRecord(
     Guid Id, Guid DocumentId, Guid AuthorDeviceId, string AuthorName, string Audience, string BodyBlob, string Moderation,
-    DateTimeOffset CreatedAtUtc, DateTimeOffset UpdatedAtUtc, bool HiddenByMe, bool IsMine, List<CmsAnnotationReplyRecord> Replies);
+    DateTimeOffset CreatedAtUtc, DateTimeOffset UpdatedAtUtc, bool HiddenByMe, bool IsMine, List<CmsAnnotationReplyRecord> Replies, bool CanModerate = false);
 
 /// <summary>One active per-document CMS editor grant; <c>DocumentStatus</c> is null until the first draft exists.</summary>
 public sealed record CmsEditorGrantRecord(Guid DocumentId, Guid EditorDeviceId, string Title, string FolderPath, Guid GrantedBy, DateTimeOffset GrantedAtUtc, string? DocumentStatus);
@@ -460,6 +460,20 @@ public sealed class RelayDatabase
             )
             """);
         Execute(connection, "CREATE INDEX IF NOT EXISTS ix_cms_annotation_replies_ann ON cms_annotation_replies(annotation_id)");
+
+        // Moderation (phase 5): append-only audit of proposals and decisions, the annotation twin of
+        // library_document_reviews. moderation on cms_annotations is the current state
+        // (none | pending | incorporated | declined | kept).
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS cms_annotation_events (
+                id              TEXT PRIMARY KEY NOT NULL,
+                annotation_id   TEXT NOT NULL,
+                actor_device_id TEXT NOT NULL,
+                action          TEXT NOT NULL,
+                note            TEXT NULL,
+                at_utc          TEXT NOT NULL
+            )
+            """);
 
         // The grant belongs to the MEMBER, identified by e-mail (user's decision 2026-10-18: a member has
         // several devices but one e-mail). editor_device_id stays as the device it was assigned through
@@ -1291,6 +1305,7 @@ public sealed class RelayDatabase
     {
         var viewerKey = GetMemberKey(viewerDeviceId);
         var isAdmin = GetDevicePolicy(viewerDeviceId)?.Role == 0;
+        var isModifier = GetDevicePolicy(viewerDeviceId)?.Role == 1;
 
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
@@ -1316,14 +1331,20 @@ public sealed class RelayDatabase
             {
                 var audience = (string)reader["audience"];
                 var mine = (string)reader["author_key"] == viewerKey;
-                var visible = isAdmin || mine || audience == "all" || (audience == "selected" && Convert.ToInt32(reader["is_recipient"]) != 0);
+                var documentId = Guid.Parse((string)reader["document_id"]);
+                // Moderators of a document: Admin, Modifier, or the member currently assigned to edit it.
+                var canModerate = isAdmin || isModifier || HasActiveCmsGrant(documentId, viewerDeviceId);
+                var moderation = (string)reader["moderation"];
+                // A proposal is addressed to the moderators, whatever its audience was.
+                var visible = isAdmin || mine || audience == "all" || (audience == "selected" && Convert.ToInt32(reader["is_recipient"]) != 0)
+                              || (moderation == "pending" && canModerate);
                 if (!visible) continue;
 
                 list.Add(new CmsAnnotationRecord(
-                    Guid.Parse((string)reader["id"]), Guid.Parse((string)reader["document_id"]), Guid.Parse((string)reader["author_device_id"]),
-                    (string)reader["author_name"], audience, (string)reader["body_blob"], (string)reader["moderation"],
+                    Guid.Parse((string)reader["id"]), documentId, Guid.Parse((string)reader["author_device_id"]),
+                    (string)reader["author_name"], audience, (string)reader["body_blob"], moderation,
                     DateTimeOffset.Parse((string)reader["created_at_utc"]), DateTimeOffset.Parse((string)reader["updated_at_utc"]),
-                    Convert.ToInt32(reader["hidden"]) != 0, mine, []));
+                    Convert.ToInt32(reader["hidden"]) != 0, mine, [], canModerate));
             }
         }
 
@@ -1373,6 +1394,49 @@ public sealed class RelayDatabase
         var now = Format(DateTimeOffset.UtcNow);
         Execute(connection, "UPDATE cms_annotations SET deleted_at_utc = @now, updated_at_utc = @now WHERE id = @id", ("@id", annotationId.ToString()), ("@now", now));
         return true;
+    }
+
+    /// <summary>The author proposes the annotation for incorporation into the document. Only its author may; returns null otherwise or when it isn't proposable.</summary>
+    public CmsAnnotationRecord? ProposeCmsAnnotation(Guid annotationId, Guid deviceId, string? note)
+    {
+        var annotation = GetCmsAnnotation(annotationId, deviceId);
+        if (annotation is null || !annotation.IsMine || annotation.Moderation is "pending" or "incorporated") return null;
+        SetModeration(annotationId, deviceId, "pending", "proposed", note);
+        return GetCmsAnnotation(annotationId, deviceId);
+    }
+
+    /// <summary>
+    /// A moderator's decision on a pending proposal: <c>incorporated</c> (the editor has put it into the
+    /// document), <c>declined</c>, or <c>kept</c> (stays as a comment visible to everyone). Null when the
+    /// caller may not moderate this document or the annotation isn't pending.
+    /// </summary>
+    public CmsAnnotationRecord? ModerateCmsAnnotation(Guid annotationId, Guid moderatorDeviceId, string decision, string? note)
+    {
+        var annotation = GetCmsAnnotation(annotationId, moderatorDeviceId);
+        if (annotation is null || !annotation.CanModerate || annotation.Moderation != "pending") return null;
+        // Same rule as document review: nobody but Admin decides on their own proposal.
+        if (annotation.IsMine && GetDevicePolicy(moderatorDeviceId)?.Role != 0) return null;
+
+        using (var connection = OpenConnection())
+        {
+            if (decision == "kept")
+                Execute(connection, "UPDATE cms_annotations SET audience = 'all' WHERE id = @id", ("@id", annotationId.ToString()));
+        }
+        SetModeration(annotationId, moderatorDeviceId, decision, decision, note);
+        return GetCmsAnnotation(annotationId, moderatorDeviceId);
+    }
+
+    private void SetModeration(Guid annotationId, Guid actorDeviceId, string state, string action, string? note)
+    {
+        using var connection = OpenConnection();
+        using var transaction = connection.BeginTransaction();
+        var now = Format(DateTimeOffset.UtcNow);
+        Execute(connection, transaction, "UPDATE cms_annotations SET moderation = @state, updated_at_utc = @now WHERE id = @id",
+            ("@id", annotationId.ToString()), ("@state", state), ("@now", now));
+        Execute(connection, transaction, "INSERT INTO cms_annotation_events (id, annotation_id, actor_device_id, action, note, at_utc) VALUES (@e, @id, @actor, @action, @note, @now)",
+            ("@e", Guid.NewGuid().ToString()), ("@id", annotationId.ToString()), ("@actor", actorDeviceId.ToString()), ("@action", action),
+            ("@note", (object?)note ?? DBNull.Value), ("@now", now));
+        transaction.Commit();
     }
 
     /// <summary>Per-member "ignore": hides (or un-hides) an annotation for this member only. Returns false when it isn't visible to them.</summary>

@@ -1,4 +1,4 @@
-using System.Net.Http.Json;
+﻿using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using SecureApp.Domain.Enums;
@@ -73,6 +73,22 @@ public sealed class HttpCmsAnnotationService : ICmsAnnotationService
         return await SendForViewAsync(request, key, ct);
     }
 
+    public async Task<CmsAnnotationView> ProposeAsync(Guid annotationId, string? note, CancellationToken ct = default)
+    {
+        var key = await _vault.RetrieveSecretAsync(SharedLibraryKeyVaultKey, ct);
+        using var request = await CreateAsync(HttpMethod.Post, $"cms/annotations/{annotationId}/propose", ct);
+        request.Content = JsonContent.Create(new { Note = note }, options: HttpJsonOptions);
+        return await SendForViewAsync(request, key, ct);
+    }
+
+    public async Task<CmsAnnotationView> ModerateAsync(Guid annotationId, string decision, string? note, CancellationToken ct = default)
+    {
+        var key = await _vault.RetrieveSecretAsync(SharedLibraryKeyVaultKey, ct);
+        using var request = await CreateAsync(HttpMethod.Post, $"cms/annotations/{annotationId}/moderate", ct);
+        request.Content = JsonContent.Create(new { Decision = decision, Note = note }, options: HttpJsonOptions);
+        return await SendForViewAsync(request, key, ct);
+    }
+
     public async Task DeleteAsync(Guid annotationId, CancellationToken ct = default)
     {
         using var request = await CreateAsync(HttpMethod.Delete, $"cms/annotations/{annotationId}", ct);
@@ -89,9 +105,11 @@ public sealed class HttpCmsAnnotationService : ICmsAnnotationService
         response.EnsureSuccessStatusCode();
     }
 
-    private async Task<CmsAnnotationView> SendForViewAsync(HttpRequestMessage request, byte[] key, CancellationToken ct)
+    private async Task<CmsAnnotationView> SendForViewAsync(HttpRequestMessage request, byte[]? key, CancellationToken ct)
     {
         using var response = await _httpClient.SendAsync(request, ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.Forbidden || response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            throw new InvalidOperationException("Tuhle akci teď nelze provést (nemáte oprávnění, nebo už byla vyřízena).");
         response.EnsureSuccessStatusCode();
         var dto = await response.Content.ReadFromJsonAsync<AnnotationDto>(HttpJsonOptions, ct)
             ?? throw new InvalidOperationException("Relay vrátil prázdnou odpověď.");
@@ -108,7 +126,7 @@ public sealed class HttpCmsAnnotationService : ICmsAnnotationService
             replies.Add(new CmsAnnotationReplyView(r.Id, r.AuthorName, reply?.Text ?? Unreadable, r.CreatedAtUtc));
         }
         return new CmsAnnotationView(dto.Id, dto.DocumentId, dto.AuthorName, dto.Audience, body?.Anchor, body?.Text ?? Unreadable,
-            dto.CreatedAtUtc, dto.HiddenByMe, dto.IsMine, replies);
+            dto.CreatedAtUtc, dto.HiddenByMe, dto.IsMine, replies, dto.Moderation, dto.CanModerate);
     }
 
     private const string Unreadable = "🔒 (nešlo dešifrovat — zkontrolujte klíč sdílené knihovny)";
@@ -170,5 +188,5 @@ public sealed class HttpCmsAnnotationService : ICmsAnnotationService
 
     private sealed record AnnotationDto(
         Guid Id, Guid DocumentId, Guid AuthorDeviceId, string AuthorName, string Audience, string BodyBlob, string Moderation,
-        DateTimeOffset CreatedAtUtc, DateTimeOffset UpdatedAtUtc, bool HiddenByMe, bool IsMine, List<ReplyDto> Replies);
+        DateTimeOffset CreatedAtUtc, DateTimeOffset UpdatedAtUtc, bool HiddenByMe, bool IsMine, List<ReplyDto> Replies, bool CanModerate = false);
 }

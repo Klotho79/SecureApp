@@ -909,7 +909,27 @@ app.MapGet("/cms/editors", (HttpRequest request, RelayDatabase db) =>
 
 static CmsAnnotationDto ToAnnotationDto(CmsAnnotationRecord a) => new(
     a.Id, a.DocumentId, a.AuthorDeviceId, a.AuthorName, a.Audience, a.BodyBlob, a.Moderation, a.CreatedAtUtc, a.UpdatedAtUtc, a.HiddenByMe, a.IsMine,
-    a.Replies.Select(r => new CmsAnnotationReplyDto(r.Id, r.AuthorDeviceId, r.AuthorName, r.BodyBlob, r.CreatedAtUtc)).ToList());
+    a.Replies.Select(r => new CmsAnnotationReplyDto(r.Id, r.AuthorDeviceId, r.AuthorName, r.BodyBlob, r.CreatedAtUtc)).ToList(), a.CanModerate);
+
+app.MapPost("/cms/annotations/{id:guid}/propose", (Guid id, HttpRequest request, ProposeCmsAnnotationRequest body, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+
+    var record = db.ProposeCmsAnnotation(id, deviceId, body.Note);
+    return record is null ? Results.NotFound() : Results.Ok(ToAnnotationDto(record));
+});
+
+app.MapPost("/cms/annotations/{id:guid}/moderate", (Guid id, HttpRequest request, ModerateCmsAnnotationRequest body, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+    if (body.Decision is not ("incorporated" or "declined" or "kept"))
+        return Results.BadRequest("Decision must be incorporated, declined or kept.");
+
+    var record = db.ModerateCmsAnnotation(id, deviceId, body.Decision, body.Note);
+    return record is null ? Results.StatusCode(StatusCodes.Status403Forbidden) : Results.Ok(ToAnnotationDto(record));
+});
 
 app.MapGet("/cms/documents/{documentId:guid}/annotations", (Guid documentId, HttpRequest request, RelayDatabase db) =>
 {

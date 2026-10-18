@@ -1,4 +1,4 @@
-using SecureApp.Domain.Interfaces.Services;
+﻿using SecureApp.Domain.Interfaces.Services;
 
 namespace SecureApp.Presentation.Cms;
 
@@ -20,6 +20,8 @@ public sealed class CmsAnnotationPanel : ContentView
     public event Action<CmsAnnotationView>? ReplyRequested;
     public event Action<CmsAnnotationView>? HideToggled;
     public event Action<CmsAnnotationView>? DeleteRequested;
+    public event Action<CmsAnnotationView>? ProposeRequested;
+    public event Action<CmsAnnotationView, string>? ModerateRequested;
 
     public CmsAnnotationPanel()
     {
@@ -69,7 +71,15 @@ public sealed class CmsAnnotationPanel : ContentView
     {
         var audience = a.Audience switch { "private" => "🔒 jen autor", "selected" => "👥 vybraní", _ => "🌐 všichni" };
         var stack = new VerticalStackLayout { Spacing = 3, Opacity = a.HiddenByMe ? 0.5 : 1 };
-        stack.Children.Add(new Label { Text = $"{a.AuthorName} · {audience} · {a.CreatedAtUtc.ToLocalTime():d.M. H:mm}", FontSize = 11, TextColor = Colors.Gray });
+        var state = a.Moderation switch
+        {
+            "pending" => " · ⏳ navrženo k začlenění",
+            "incorporated" => " · ✅ začleněno do dokumentu",
+            "declined" => " · ✖ zamítnuto",
+            "kept" => " · 📌 ponecháno jako komentář",
+            _ => ""
+        };
+        stack.Children.Add(new Label { Text = $"{a.AuthorName} · {audience}{state} · {a.CreatedAtUtc.ToLocalTime():d.M. H:mm}", FontSize = 11, TextColor = Colors.Gray });
         if (a.Anchor is not null)
             stack.Children.Add(new Label { Text = $"„{a.Anchor.Exact}“", FontSize = 12, FontAttributes = FontAttributes.Italic, LineBreakMode = LineBreakMode.TailTruncation, MaxLines = 2 });
         stack.Children.Add(new Label { Text = a.Text, FontSize = 13, LineBreakMode = LineBreakMode.WordWrap });
@@ -85,6 +95,13 @@ public sealed class CmsAnnotationPanel : ContentView
         var actions = new HorizontalStackLayout { Spacing = 6 };
         actions.Children.Add(MakeButton("Odpovědět", () => ReplyRequested?.Invoke(a)));
         actions.Children.Add(MakeButton(a.HiddenByMe ? "Zobrazit" : "Ignorovat", () => HideToggled?.Invoke(a)));
+        if (a.IsMine && a.Moderation is "none" or "declined" && a.IsMine) actions.Children.Add(MakeButton("Navrhnout do dokumentu", () => ProposeRequested?.Invoke(a)));
+        if (a.CanModerate && a.Moderation == "pending" && !a.IsMine)
+        {
+            actions.Children.Add(MakeButton("Začlenit", () => ModerateRequested?.Invoke(a, "incorporated")));
+            actions.Children.Add(MakeButton("Ponechat", () => ModerateRequested?.Invoke(a, "kept")));
+            actions.Children.Add(MakeButton("Odmítnout", () => ModerateRequested?.Invoke(a, "declined")));
+        }
         if (a.IsMine) actions.Children.Add(MakeButton("Smazat", () => DeleteRequested?.Invoke(a)));
         stack.Children.Add(actions);
         return stack;

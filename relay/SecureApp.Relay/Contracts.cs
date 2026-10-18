@@ -201,9 +201,15 @@ public sealed record CmsAnnotationReplyDto(Guid Id, Guid AuthorDeviceId, string 
 
 public sealed record CmsAnnotationDto(
     Guid Id, Guid DocumentId, Guid AuthorDeviceId, string AuthorName, string Audience, string BodyBlob, string Moderation,
-    DateTimeOffset CreatedAtUtc, DateTimeOffset UpdatedAtUtc, bool HiddenByMe, bool IsMine, List<CmsAnnotationReplyDto> Replies);
+    DateTimeOffset CreatedAtUtc, DateTimeOffset UpdatedAtUtc, bool HiddenByMe, bool IsMine, List<CmsAnnotationReplyDto> Replies, bool CanModerate = false);
 
 public sealed record AddCmsAnnotationReplyRequest(string BodyBlob);
+
+/// <summary>Author's proposal of an annotation for incorporation (<c>Note</c> optional).</summary>
+public sealed record ProposeCmsAnnotationRequest(string? Note);
+
+/// <summary><c>Decision</c> is incorporated | declined | kept.</summary>
+public sealed record ModerateCmsAnnotationRequest(string Decision, string? Note);
 
 /// <summary>One assignable member: <c>DeviceId</c> is a device that represents them (all devices sharing the e-mail are covered by the grant).</summary>
 public sealed record CmsMemberDto(Guid DeviceId, string DisplayName, string? Email);

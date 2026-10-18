@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using Microsoft.Maui.Dispatching;
 using SecureApp.Presentation.Infrastructure;
 using SecureApp.Presentation.ViewModels;
@@ -51,6 +51,8 @@ public partial class DocumentViewerPage : ContentPage
 		AnnotationPanel.ReplyRequested += OnAnnotationReply;
 		AnnotationPanel.HideToggled += OnAnnotationHideToggled;
 		AnnotationPanel.DeleteRequested += OnAnnotationDelete;
+		AnnotationPanel.ProposeRequested += OnAnnotationPropose;
+		AnnotationPanel.ModerateRequested += OnAnnotationModerate;
 	}
 
 	protected override void OnAppearing()
@@ -284,6 +286,40 @@ public partial class DocumentViewerPage : ContentPage
 		try
 		{
 			await _annotations.SetHiddenAsync(annotation.Id, !annotation.HiddenByMe);
+			await ReloadAnnotationsAsync();
+		}
+		catch (Exception ex)
+		{
+			await DisplayAlertAsync("Poznámka", ex.Message, "OK");
+		}
+	}
+
+	private async void OnAnnotationPropose(SecureApp.Domain.Interfaces.Services.CmsAnnotationView annotation)
+	{
+		if (!await DisplayAlertAsync("Navrhnout do dokumentu", "Redaktor dokumentu uvidí vaši poznámku a rozhodne, jestli ji začlení do textu. Navrhnout?", "Navrhnout", "Zrušit")) return;
+		try
+		{
+			await _annotations.ProposeAsync(annotation.Id, null);
+			await ReloadAnnotationsAsync();
+		}
+		catch (Exception ex)
+		{
+			await DisplayAlertAsync("Poznámka", ex.Message, "OK");
+		}
+	}
+
+	private async void OnAnnotationModerate(SecureApp.Domain.Interfaces.Services.CmsAnnotationView annotation, string decision)
+	{
+		var question = decision switch
+		{
+			"incorporated" => "Označit poznámku jako začleněnou do dokumentu? (Samotnou úpravu textu provedete v editoru.)",
+			"kept" => "Ponechat poznámku jako komentář viditelný všem?",
+			_ => "Zamítnout návrh?"
+		};
+		if (!await DisplayAlertAsync("Moderace poznámky", question, "Ano", "Zrušit")) return;
+		try
+		{
+			await _annotations.ModerateAsync(annotation.Id, decision, null);
 			await ReloadAnnotationsAsync();
 		}
 		catch (Exception ex)
