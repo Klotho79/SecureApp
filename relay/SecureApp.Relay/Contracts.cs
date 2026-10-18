@@ -194,6 +194,9 @@ public sealed record LibraryDocumentDetailDto(LibraryDocumentDto Document, IRead
 /// <summary>Admin/Modifier assigns a CMS document to an editor. A null <c>DocumentId</c> allocates a new document id (a fresh assignment).</summary>
 public sealed record AssignCmsEditorRequest(Guid? DocumentId, Guid EditorDeviceId, string Title, string FolderPath);
 
+/// <summary>One assignable member: <c>DeviceId</c> is a device that represents them (all devices sharing the e-mail are covered by the grant).</summary>
+public sealed record CmsMemberDto(Guid DeviceId, string DisplayName, string? Email);
+
 public sealed record CmsEditorGrantDto(Guid DocumentId, Guid EditorDeviceId, string EditorDisplayName, string Title, string FolderPath, Guid GrantedBy, DateTimeOffset GrantedAtUtc, string? DocumentStatus);
 
 public sealed record CreateLibraryDocumentRequest(string Title, string FolderPath, Guid LibraryFileId, string? ChangeNote, Guid? Id = null);

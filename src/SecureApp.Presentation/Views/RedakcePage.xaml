@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8" ?>
+﻿<?xml version="1.0" encoding="UTF-8" ?>
 <ContentPage
     x:Class="SecureApp.Presentation.Views.RedakcePage"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -123,7 +123,7 @@
                     <Label Text="Zadání dokumentů" Style="{StaticResource SectionHeader}" Margin="0" />
                     <Label Text="Zadejte název dokumentu a vyberte člena, který ho vypracuje. Editor smí upravovat jen tento dokument, a to do jeho schválení." FontSize="9.5" TextColor="Gray" LineBreakMode="WordWrap" />
                     <Entry Placeholder="Název dokumentu…" Text="{Binding NewAssignmentTitle}" FontSize="10.5" />
-                    <Picker Title="Editor…" ItemsSource="{Binding AssignableMembers}" ItemDisplayBinding="{Binding DisplayName}" SelectedItem="{Binding SelectedAssignee}" FontSize="10.5" />
+                    <Picker Title="Editor…" ItemsSource="{Binding AssignableMembers}" ItemDisplayBinding="{Binding Label}" SelectedItem="{Binding SelectedAssignee}" FontSize="10.5" />
                     <Button Text="Přidělit" Command="{Binding AssignCmsEditorCommand}" HorizontalOptions="Start" />
                     <Label Text="{Binding AssignmentStatusText}" IsVisible="{Binding HasAssignmentStatus}" FontSize="9.5" LineBreakMode="WordWrap" />
                     <VerticalStackLayout Spacing="4" BindableLayout.ItemsSource="{Binding AllAssignments}">

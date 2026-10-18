@@ -45,6 +45,16 @@ public sealed class HttpCmsAssignmentService : ICmsAssignmentService
         response.EnsureSuccessStatusCode();
     }
 
+    public async Task<IReadOnlyList<CmsMember>> ListMembersAsync(CancellationToken ct = default)
+    {
+        using var request = await CreateAsync(HttpMethod.Get, "cms/members", ct);
+        using var response = await _httpClient.SendAsync(request, ct);
+        EnsureAllowed(response);
+        response.EnsureSuccessStatusCode();
+        var dtos = await response.Content.ReadFromJsonAsync<List<MemberDto>>(HttpJsonOptions, ct) ?? [];
+        return dtos.Select(m => new CmsMember(m.DeviceId, m.DisplayName, m.Email)).ToList();
+    }
+
     public Task<IReadOnlyList<CmsAssignment>> ListAllAsync(CancellationToken ct = default) => ListAsync("cms/editors", ct);
 
     public Task<IReadOnlyList<CmsAssignment>> ListMineAsync(CancellationToken ct = default) => ListAsync("cms/editors/mine", ct);
@@ -86,6 +96,8 @@ public sealed class HttpCmsAssignmentService : ICmsAssignmentService
         request.Headers.Add("X-Device-Secret", Encoding.UTF8.GetString(secretBytes));
         return request;
     }
+
+    private sealed record MemberDto(Guid DeviceId, string DisplayName, string? Email);
 
     private sealed record GrantDto(Guid DocumentId, Guid EditorDeviceId, string EditorDisplayName, string Title, string FolderPath, Guid GrantedBy, DateTimeOffset GrantedAtUtc, string? DocumentStatus);
 }

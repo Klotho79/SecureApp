@@ -14,6 +14,9 @@ public interface ICmsAssignmentService
 
     Task RevokeAsync(Guid documentId, Guid editorDeviceId, CancellationToken ct = default);
 
+    /// <summary>Members that can be assigned, one per e-mail identity (Admin/Modifier only).</summary>
+    Task<IReadOnlyList<CmsMember>> ListMembersAsync(CancellationToken ct = default);
+
     /// <summary>Every active grant (Admin/Modifier overview).</summary>
     Task<IReadOnlyList<CmsAssignment>> ListAllAsync(CancellationToken ct = default);
 

@@ -420,6 +420,11 @@ public sealed class RelayDatabase
                 end_reason        TEXT NULL
             )
             """);
+        // The grant belongs to the MEMBER, identified by e-mail (user's decision 2026-10-18: a member has
+        // several devices but one e-mail). editor_device_id stays as the device it was assigned through
+        // and as the fallback identity when no e-mail is known for that device.
+        if (!ColumnExists(connection, "cms_document_editors", "editor_email"))
+            Execute(connection, "ALTER TABLE cms_document_editors ADD COLUMN editor_email TEXT NULL");
         Execute(connection, "CREATE INDEX IF NOT EXISTS ix_cms_document_editors_doc ON cms_document_editors(document_id)");
         Execute(connection, "CREATE INDEX IF NOT EXISTS ix_cms_document_editors_editor ON cms_document_editors(editor_device_id)");
 
@@ -1156,28 +1161,94 @@ public sealed class RelayDatabase
     public CmsEditorGrantRecord GrantCmsEditor(Guid documentId, Guid editorDeviceId, string title, string folderPath, Guid grantedBy)
     {
         using var connection = OpenConnection();
-        var existing = QueryCmsGrants(connection, "WHERE e.document_id = @doc AND e.editor_device_id = @editor AND e.ended_at_utc IS NULL",
-            ("@doc", documentId.ToString()), ("@editor", editorDeviceId.ToString())).FirstOrDefault();
+        var email = GetMemberEmail(connection, editorDeviceId);
+        var (filter, filterParams) = MemberFilter(editorDeviceId, email);
+        var where = $"WHERE e.document_id = @doc AND e.ended_at_utc IS NULL AND {filter}";
+        var parameters = filterParams.Append(("@doc", (object)documentId.ToString())).ToArray();
+
+        var existing = QueryCmsGrants(connection, where, parameters).FirstOrDefault();
         if (existing is not null)
             return existing;
 
         Execute(connection,
-            "INSERT INTO cms_document_editors (document_id, editor_device_id, title, folder_path, granted_by, granted_at_utc) VALUES (@doc, @editor, @title, @folder, @by, @now)",
-            ("@doc", documentId.ToString()), ("@editor", editorDeviceId.ToString()), ("@title", title), ("@folder", folderPath),
-            ("@by", grantedBy.ToString()), ("@now", Format(DateTimeOffset.UtcNow)));
-        return QueryCmsGrants(connection, "WHERE e.document_id = @doc AND e.editor_device_id = @editor AND e.ended_at_utc IS NULL",
-            ("@doc", documentId.ToString()), ("@editor", editorDeviceId.ToString())).First();
+            "INSERT INTO cms_document_editors (document_id, editor_device_id, editor_email, title, folder_path, granted_by, granted_at_utc) VALUES (@doc, @editor, @email, @title, @folder, @by, @now)",
+            ("@doc", documentId.ToString()), ("@editor", editorDeviceId.ToString()), ("@email", (object?)email ?? DBNull.Value),
+            ("@title", title), ("@folder", folderPath), ("@by", grantedBy.ToString()), ("@now", Format(DateTimeOffset.UtcNow)));
+        return QueryCmsGrants(connection, where, parameters).First();
+    }
+
+    /// <summary>
+    /// The member identity of a device: the e-mail it was activated with (the member declares it at
+    /// installation), falling back to the e-mail of the ARIM contact the device is linked to. Lower-cased;
+    /// null when the relay knows neither.
+    /// </summary>
+    public string? GetMemberEmail(Guid deviceId)
+    {
+        using var connection = OpenConnection();
+        return GetMemberEmail(connection, deviceId);
+    }
+
+    private static string? GetMemberEmail(SqliteConnection connection, Guid deviceId)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT LOWER(TRIM(COALESCE(
+                (SELECT NULLIF(TRIM(a.email), '') FROM activation_requests a WHERE a.assigned_device_id = @id AND a.status = 'Approved' ORDER BY a.created_at_utc DESC LIMIT 1),
+                (SELECT NULLIF(TRIM(sc.email), '') FROM directory_entries e JOIN shared_contacts sc ON sc.id = e.arim_contact_id WHERE e.device_id = @id))))
+            """;
+        command.Parameters.AddWithValue("@id", deviceId.ToString());
+        return command.ExecuteScalar() as string;
+    }
+
+    /// <summary>Editing is PC-only (the editor exists nowhere else); the platform is what the device reports to the directory.</summary>
+    public bool IsPcDevice(Guid deviceId)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT platform FROM directory_entries WHERE device_id = @id";
+        command.Parameters.AddWithValue("@id", deviceId.ToString());
+        return command.ExecuteScalar() is string platform &&
+               (platform.Equals("WinUI", StringComparison.OrdinalIgnoreCase) || platform.Equals("Windows", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>SQL matching the grants that belong to the same member as <paramref name="deviceId"/>: same e-mail, or (no e-mail known) the same device.</summary>
+    private static (string Sql, (string Name, object Value)[] Parameters) MemberFilter(Guid deviceId, string? email) =>
+        ("(e.editor_device_id = @dev OR (@email IS NOT NULL AND e.editor_email = @email))",
+         [("@dev", deviceId.ToString()), ("@email", (object?)email ?? DBNull.Value)]);
+
+    /// <summary>The members an assigner can hand a document to: one entry per e-mail (the oldest-seen device represents it), or per device when no e-mail is known.</summary>
+    public IReadOnlyList<(Guid DeviceId, string DisplayName, string? Email)> GetCmsAssignableMembers()
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id FROM devices";
+        var ids = new List<Guid>();
+        using (var reader = command.ExecuteReader())
+            while (reader.Read())
+                ids.Add(Guid.Parse((string)reader["id"]));
+
+        var members = new List<(Guid, string, string?)>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var id in ids)
+        {
+            var email = GetMemberEmail(connection, id);
+            if (email is not null && !seen.Add(email)) continue;
+            members.Add((id, GetDeviceDisplayName(id), email));
+        }
+        return members.OrderBy(m => m.Item2, StringComparer.CurrentCultureIgnoreCase).ToList();
     }
 
     /// <summary>Ends an active grant (reason "revoked"). Returns false when there was none.</summary>
     public bool RevokeCmsEditor(Guid documentId, Guid editorDeviceId)
     {
         using var connection = OpenConnection();
+        var (filter, filterParams) = MemberFilter(editorDeviceId, GetMemberEmail(connection, editorDeviceId));
         using var command = connection.CreateCommand();
-        command.CommandText = "UPDATE cms_document_editors SET ended_at_utc = @now, end_reason = 'revoked' WHERE document_id = @doc AND editor_device_id = @editor AND ended_at_utc IS NULL";
+        command.CommandText = $"UPDATE cms_document_editors AS e SET ended_at_utc = @now, end_reason = 'revoked' WHERE e.document_id = @doc AND e.ended_at_utc IS NULL AND {filter}";
         command.Parameters.AddWithValue("@now", Format(DateTimeOffset.UtcNow));
         command.Parameters.AddWithValue("@doc", documentId.ToString());
-        command.Parameters.AddWithValue("@editor", editorDeviceId.ToString());
+        foreach (var (name, value) in filterParams)
+            command.Parameters.AddWithValue(name, value);
         return command.ExecuteNonQuery() > 0;
     }
 
@@ -1198,17 +1269,20 @@ public sealed class RelayDatabase
     public bool HasActiveCmsGrant(Guid documentId, Guid deviceId)
     {
         using var connection = OpenConnection();
-        return QueryCmsGrants(connection, "WHERE e.document_id = @doc AND e.editor_device_id = @editor AND e.ended_at_utc IS NULL",
-            ("@doc", documentId.ToString()), ("@editor", deviceId.ToString())).Count > 0;
+        var (filter, filterParams) = MemberFilter(deviceId, GetMemberEmail(connection, deviceId));
+        return QueryCmsGrants(connection, $"WHERE e.document_id = @doc AND e.ended_at_utc IS NULL AND {filter}",
+            filterParams.Append(("@doc", (object)documentId.ToString())).ToArray()).Count > 0;
     }
 
     /// <summary>Active grants: one editor's own ("Moje zadání") or, with <c>null</c>, everyone's (assigner overview).</summary>
     public IReadOnlyList<CmsEditorGrantRecord> GetActiveCmsGrants(Guid? editorDeviceId)
     {
         using var connection = OpenConnection();
-        return editorDeviceId is { } id
-            ? QueryCmsGrants(connection, "WHERE e.ended_at_utc IS NULL AND e.editor_device_id = @editor", ("@editor", id.ToString()))
-            : QueryCmsGrants(connection, "WHERE e.ended_at_utc IS NULL");
+        if (editorDeviceId is not { } id)
+            return QueryCmsGrants(connection, "WHERE e.ended_at_utc IS NULL");
+
+        var (filter, filterParams) = MemberFilter(id, GetMemberEmail(connection, id));
+        return QueryCmsGrants(connection, $"WHERE e.ended_at_utc IS NULL AND {filter}", filterParams);
     }
 
     private static List<CmsEditorGrantRecord> QueryCmsGrants(SqliteConnection connection, string where, params (string Name, object Value)[] parameters)

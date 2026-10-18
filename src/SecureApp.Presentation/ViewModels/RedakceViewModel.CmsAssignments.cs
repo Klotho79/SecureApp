@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SecureApp.Domain.Enums;
@@ -39,10 +39,10 @@ public sealed partial class RedakceViewModel
     public partial ObservableCollection<CmsAssignmentItem> MyAssignments { get; set; } = [];
 
     [ObservableProperty]
-    public partial ObservableCollection<DirectoryMember> AssignableMembers { get; set; } = [];
+    public partial ObservableCollection<CmsMember> AssignableMembers { get; set; } = [];
 
     [ObservableProperty]
-    public partial DirectoryMember? SelectedAssignee { get; set; }
+    public partial CmsMember? SelectedAssignee { get; set; }
 
     [ObservableProperty]
     public partial string NewAssignmentTitle { get; set; } = string.Empty;
@@ -75,7 +75,7 @@ public sealed partial class RedakceViewModel
         try
         {
             AllAssignments = new ObservableCollection<CmsAssignmentItem>((await _cmsAssignments.ListAllAsync()).Select(a => new CmsAssignmentItem(a)));
-            AssignableMembers = new ObservableCollection<DirectoryMember>((await _contactDirectory.ListMembersAsync()).OrderBy(m => m.DisplayName));
+            AssignableMembers = new ObservableCollection<CmsMember>(await _cmsAssignments.ListMembersAsync());
         }
         catch (Exception ex)
         {
@@ -94,7 +94,7 @@ public sealed partial class RedakceViewModel
 
         try
         {
-            await _cmsAssignments.AssignAsync(null, SelectedAssignee.RelayDeviceId, NewAssignmentTitle.Trim(), CmsFolder);
+            await _cmsAssignments.AssignAsync(null, SelectedAssignee.DeviceId, NewAssignmentTitle.Trim(), CmsFolder);
             AssignmentStatusText = $"Dokument „{NewAssignmentTitle.Trim()}“ je přidělen: {SelectedAssignee.DisplayName}.";
             NewAssignmentTitle = string.Empty;
             AllAssignments = new ObservableCollection<CmsAssignmentItem>((await _cmsAssignments.ListAllAsync()).Select(a => new CmsAssignmentItem(a)));

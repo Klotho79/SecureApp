@@ -843,7 +843,18 @@ app.MapDelete("/library/links/{id:guid}", (Guid id, HttpRequest request, RelayDa
 // Granting and revoking is Admin or Modifier only; a grant ends on its own when the document is approved.
 
 static bool CanEditCmsDocument(RelayDatabase db, Guid deviceId, Guid documentId) =>
-    db.GetDevicePolicy(deviceId)?.Role != 2 || db.HasActiveCmsGrant(documentId, deviceId);
+    db.GetDevicePolicy(deviceId)?.Role != 2 || (db.IsPcDevice(deviceId) && db.HasActiveCmsGrant(documentId, deviceId));
+
+// The grant belongs to the member (same e-mail on any of their devices); editing itself is PC-only.
+app.MapGet("/cms/members", (HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+    if (!CanAssignCmsEditors(db, deviceId))
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+
+    return Results.Ok(db.GetCmsAssignableMembers().Select(m => new CmsMemberDto(m.DeviceId, m.DisplayName, m.Email)).ToList());
+});
 
 static bool CanAssignCmsEditors(RelayDatabase db, Guid deviceId) =>
     db.GetDevicePolicy(deviceId)?.Role is 0 or 1;

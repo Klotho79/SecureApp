@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SecureApp.Domain.Enums;
@@ -37,7 +37,6 @@ public sealed partial class RedakceViewModel : ObservableObject
     private readonly IDiagnosticsReporter _diagnosticsReporter;
     private readonly RolePreviewService _rolePreviewService;
     private readonly ICmsAssignmentService _cmsAssignments;
-    private readonly IContactDirectoryService _contactDirectory;
 
     [ObservableProperty]
     public partial bool CanPostToBoard { get; set; }
@@ -93,11 +92,9 @@ public sealed partial class RedakceViewModel : ObservableObject
         ITransportSettingsRepository transportSettingsRepository,
         IDiagnosticsReporter diagnosticsReporter,
         RolePreviewService rolePreviewService,
-        ICmsAssignmentService cmsAssignments,
-        IContactDirectoryService contactDirectory)
+        ICmsAssignmentService cmsAssignments)
     {
         _cmsAssignments = cmsAssignments ?? throw new ArgumentNullException(nameof(cmsAssignments));
-        _contactDirectory = contactDirectory ?? throw new ArgumentNullException(nameof(contactDirectory));
         _communityBoardService = communityBoardService ?? throw new ArgumentNullException(nameof(communityBoardService));
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         _roomStatusService = roomStatusService ?? throw new ArgumentNullException(nameof(roomStatusService));
