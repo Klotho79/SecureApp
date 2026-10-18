@@ -85,6 +85,15 @@
                 </VerticalStackLayout>
             </Border>
 
+            <!-- Výukové materiály (CMS, jen PC) — tvorba nového dokumentu; existující se upravují v prohlížeči Soubory přes „Upravit“. -->
+            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanAuthorCms}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Výukové materiály" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Label Text="Vytvořte nový dokument s textem, obrázky a videem. Čtenáři ho uvidí na PC i v mobilu. Existující dokument upravíte v Souborech tlačítkem „Upravit“." FontSize="9.5" TextColor="Gray" LineBreakMode="WordWrap" />
+                    <Button Text="📝 Nový dokument" Command="{Binding OpenCmsEditorCommand}" HorizontalOptions="Start" />
+                </VerticalStackLayout>
+            </Border>
+
             <!-- Kategorie knihovny (Modifier/Admin) — přesunuto z Nastavení/Systém/Knihovna. -->
             <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanManageLibrary}">
                 <VerticalStackLayout Spacing="8">

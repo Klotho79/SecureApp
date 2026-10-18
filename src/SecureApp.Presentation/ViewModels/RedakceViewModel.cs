@@ -71,6 +71,9 @@ public sealed partial class RedakceViewModel : ObservableObject
     [ObservableProperty]
     public partial bool CanManageLibrary { get; set; }
 
+    [ObservableProperty]
+    public partial bool CanAuthorCms { get; set; }
+
     /// <summary>True once loaded and none of the cards above apply — a plain Viewer with no editorial role sees this instead of an empty page.</summary>
     [ObservableProperty]
     public partial bool HasNoEditorialAccess { get; set; }
@@ -145,12 +148,14 @@ public sealed partial class RedakceViewModel : ObservableObject
         // Same gate the Library browse page's own add button used to use (see
         // RedakceViewModel.LibraryCategories.cs's own remarks on where this moved from).
         CanManageLibrary = role != Role.Viewer;
+        // CMS authoring is PC-only (CMS_PLAN.md); the editor page re-checks the role itself.
+        CanAuthorCms = CanManageLibrary && DeviceInfo.Idiom == DeviceIdiom.Desktop;
         if (CanManageLibrary)
         {
             await RefreshLibraryCategoriesAsync();
         }
 
-        HasNoEditorialAccess = !CanPostToBoard && !CanManageRoomStatusOptions && !CanManageLogbook && !CanManageLibrary;
+        HasNoEditorialAccess = !CanPostToBoard && !CanManageRoomStatusOptions && !CanManageLogbook && !CanManageLibrary && !CanAuthorCms;
     }
 
     [RelayCommand]
@@ -223,4 +228,7 @@ public sealed partial class RedakceViewModel : ObservableObject
 
     [RelayCommand]
     private void OpenLogbookManage() => RequestNavigate?.Invoke(nameof(Views.LogbookManagePage));
+
+    [RelayCommand]
+    private void OpenCmsEditor() => RequestNavigate?.Invoke(nameof(Views.CmsEditorPage));
 }
