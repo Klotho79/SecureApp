@@ -1467,17 +1467,22 @@ public partial class App : Application
 
 		// Backgrounded with a chat still open must still notify; returning to it clears what's now seen.
 		window.Stopped += (_, _) => Notifications.ActiveChatThread.OnAppStopped();
-		window.Resumed += (_, _) => Notifications.ActiveChatThread.OnAppResumed();
+		window.Resumed += (_, _) =>
+		{
+			Notifications.ActiveChatThread.OnAppResumed();
+			ScreenCaptureGuard.Refresh(); // the OS window may have been recreated without our flag
+		};
 
 		// Milestone 4 (DLP): applied once, app-wide, as soon as the native platform window
 		// actually exists — CreateWindow itself returns before that's true (Handler/PlatformView
 		// are still null here), so this waits for Window.Created rather than calling it inline.
 		window.Created += (_, _) =>
 		{
-			var dlpService = IPlatformApplication.Current?.Services.GetService<INativeDlpService>();
-			// Admin debugging override (Settings → Admin) — time-limited, see ScreenCaptureDebugOverride.
-			if (!ScreenCaptureDebugOverride.IsActive)
-				dlpService?.PreventScreenCapture();
+			// Capture protection is chat-only (2026-10-18): follow the visible page instead of blocking
+			// app-wide. The admin override in Settings still switches it off everywhere.
+			if (window.Page is Shell shell)
+				shell.Navigated += (_, _) => ScreenCaptureGuard.Refresh();
+			ScreenCaptureGuard.Refresh();
 
 			// Milestone 5 (E2EE Chat) connect: handled entirely by RunConnectionSupervisorLoopAsync
 			// now, started from the constructor above — its very first tick fires almost immediately,

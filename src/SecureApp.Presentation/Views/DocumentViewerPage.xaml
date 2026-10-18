@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
     xmlns:controls="clr-namespace:SecureApp.Presentation.Controls"
+    xmlns:cms="clr-namespace:SecureApp.Presentation.Cms"
     xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
     x:DataType="vm:DocumentViewerViewModel"
     Title="{Binding Title}">
@@ -64,6 +65,16 @@
                 HorizontalOptions="Fill"
                 VerticalOptions="Fill" />
 
+            <!-- CMS document (CMS_PLAN.md, phase 1) — native responsive block renderer, not a raster. -->
+            <cms:CmsDocumentView
+                x:Name="CmsView"
+                Document="{Binding CmsModel}"
+                Zoom="{Binding CmsZoom}"
+                AnnotationRequested="OnAnnotationRequested"
+                IsVisible="{Binding IsCms}"
+                HorizontalOptions="Fill"
+                VerticalOptions="Fill" />
+
             <!-- Open externally (2026-10-03) — DOCX/PPTX and anything else with no in-app renderer. -->
             <VerticalStackLayout IsVisible="{Binding IsExternalOnly}" HorizontalOptions="Center" VerticalOptions="Center" Spacing="12">
                 <Label
@@ -94,6 +105,11 @@
                 HorizontalOptions="Center"
                 VerticalOptions="Center"
                 IsVisible="{Binding IsPagedDocument}" />
+            <HorizontalStackLayout x:Name="ZoomBar" Grid.Column="1" Spacing="8" HorizontalOptions="Center" IsVisible="False">
+                <Button Text="−" Style="{StaticResource SecondaryButton}" Command="{Binding ZoomOutCommand}" />
+                <Label Text="{Binding CmsZoom, StringFormat='{0:P0}'}" VerticalOptions="Center" />
+                <Button Text="+" Style="{StaticResource SecondaryButton}" Command="{Binding ZoomInCommand}" />
+            </HorizontalStackLayout>
             <Button Grid.Column="2" Text="⬇ Stáhnout" Style="{StaticResource SecondaryButton}" Command="{Binding DownloadCommand}" IsEnabled="{Binding CanDownload}" />
             <Button Grid.Column="3" Text="Další ➡" Command="{Binding NextPageCommand}" IsEnabled="{Binding CanGoToNextPage}" IsVisible="{Binding IsPagedDocument}" />
         </Grid>

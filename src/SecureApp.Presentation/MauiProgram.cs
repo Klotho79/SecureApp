@@ -235,6 +235,9 @@ public static class MauiProgram
 		// --- Milestone 3: Presentation (pages + view models) ---
 		builder.Services.AddTransient<DocumentBrowserViewModel>();
 		builder.Services.AddTransient<DocumentBrowserPage>();
+		builder.Services.AddSingleton<SecureApp.Presentation.Cms.ICmsMediaProvider, SecureApp.Presentation.Cms.LibraryCmsMediaProvider>();
+		builder.Services.AddTransient<SecureApp.Presentation.Cms.CmsDocumentSaver>();
+		builder.Services.AddTransient<CmsEditorPage>();
 		builder.Services.AddTransient<DocumentViewerViewModel>();
 		builder.Services.AddTransient<DocumentViewerPage>();
 		builder.Services.AddTransient<SettingsViewModel>();

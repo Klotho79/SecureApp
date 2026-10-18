@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="SecureApp.Presentation.Views.CmsEditorPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    Title="Editor dokumentu">
+
+    <Grid RowDefinitions="Auto,*,Auto" Padding="12" RowSpacing="8">
+
+        <!-- PC-only authoring (CMS_PLAN.md, phase 2a): media pickers, mobile-width preview, save. -->
+        <FlexLayout Grid.Row="0" Wrap="Wrap" AlignItems="Center">
+            <Button Text="🖼 Obrázek" Style="{StaticResource SecondaryButton}" Clicked="OnInsertImageClicked" Margin="0,0,8,4" />
+            <Button Text="🎬 Video" Style="{StaticResource SecondaryButton}" Clicked="OnInsertVideoClicked" Margin="0,0,8,4" />
+            <Label Text="Náhled:" VerticalOptions="Center" Margin="8,0,4,4" />
+            <Picker x:Name="PreviewPicker" WidthRequest="170" Margin="0,0,8,4" SelectedIndexChanged="OnPreviewChanged" />
+            <Button x:Name="SaveButton" Text="💾 Uložit" Clicked="OnSaveClicked" Margin="8,0,8,4" />
+            <Button Text="Zavřít" Style="{StaticResource SecondaryButton}" Clicked="OnCloseClicked" Margin="0,0,0,4" />
+        </FlexLayout>
+
+        <WebView x:Name="Editor" Grid.Row="1" Navigated="OnEditorNavigated" />
+
+        <Label x:Name="StatusLabel" Grid.Row="2" FontSize="12" LineBreakMode="WordWrap" />
+    </Grid>
+</ContentPage>

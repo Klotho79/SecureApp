@@ -10,6 +10,22 @@ public partial class DocumentBrowserPage : ContentPage
 	{
 		InitializeComponent();
 		BindingContext = _viewModel = viewModel;
+
+		// CMS authoring is PC-only (CMS_PLAN.md, phase 2a).
+		if (DeviceInfo.Idiom == DeviceIdiom.Desktop)
+		{
+			var newDocument = new ToolbarItem { Text = "📝 Nový dokument" };
+			newDocument.Clicked += async (_, _) =>
+			{
+				if (!_viewModel.CanModifyContent)
+				{
+					await DisplayAlertAsync("Nový dokument", "Vaše role nemůže vytvářet dokumenty.", "OK");
+					return;
+				}
+				await Shell.Current.GoToAsync(nameof(CmsEditorPage));
+			};
+			ToolbarItems.Add(newDocument);
+		}
 	}
 
 	protected override void OnAppearing()

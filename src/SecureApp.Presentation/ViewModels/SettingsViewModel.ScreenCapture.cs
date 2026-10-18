@@ -20,9 +20,9 @@ public sealed partial class SettingsViewModel
         _isLoadingScreenCaptureState = true;
         IsScreenCaptureAllowed = ScreenCaptureDebugOverride.IsActive;
         _isLoadingScreenCaptureState = false;
-        // Expired while the app stayed open — put the block back now rather than waiting for a relaunch.
+        // Expired while the app stayed open — let the guard re-evaluate (chat pages only, 2026-10-18).
         if (!IsScreenCaptureAllowed)
-            DlpService?.PreventScreenCapture();
+            ScreenCaptureGuard.Refresh();
         UpdateScreenCaptureStatusText();
     }
 
@@ -38,7 +38,7 @@ public sealed partial class SettingsViewModel
         else
         {
             ScreenCaptureDebugOverride.Disable();
-            DlpService?.PreventScreenCapture();
+            ScreenCaptureGuard.Refresh(); // Settings itself is not a chat page, so this stays unblocked here
         }
         UpdateScreenCaptureStatusText();
     }
@@ -46,7 +46,7 @@ public sealed partial class SettingsViewModel
     private void UpdateScreenCaptureStatusText() =>
         ScreenCaptureStatusText = ScreenCaptureDebugOverride.AllowedUntilUtc is { } until
             ? $"Snímky obrazovky povoleny do {until.ToLocalTime():d.M. H:mm} — pak se ochrana zapne sama."
-            : "Ochrana zapnutá — snímky a nahrávání obrazovky jsou blokované.";
+            : "Ochrana zapnutá jen v chatu — tam jsou snímky a nahrávání obrazovky blokované, jinde ne.";
 
     private static INativeDlpService? DlpService =>
         IPlatformApplication.Current?.Services.GetService<INativeDlpService>();

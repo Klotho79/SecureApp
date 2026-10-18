@@ -7,6 +7,7 @@ namespace SecureApp.Presentation.Views;
 public partial class DocumentViewerPage : ContentPage
 {
 	private readonly DocumentViewerViewModel _viewModel;
+	private ToolbarItem? _editItem;
 
 	// Pinch-to-zoom + one-finger pan (2026-09-30, user's own ask, replacing an earlier +/- button
 	// attempt: "plynule zvetsovani a posun pri zvetseni... jak to byva roztazenim prstu"). State
@@ -32,11 +33,12 @@ public partial class DocumentViewerPage : ContentPage
 	private bool _ignoreNextPinchDelta;
 	private double _smoothedDelta = 1;
 
-	public DocumentViewerPage(DocumentViewerViewModel viewModel)
+	public DocumentViewerPage(DocumentViewerViewModel viewModel, SecureApp.Presentation.Cms.ICmsMediaProvider cmsMediaProvider)
 	{
 		InitializeComponent();
 		BindingContext = _viewModel = viewModel;
 		_viewModel.PropertyChanged += OnViewModelPropertyChanged;
+		CmsView.MediaProvider = cmsMediaProvider;
 	}
 
 	protected override void OnAppearing()
@@ -52,6 +54,23 @@ public partial class DocumentViewerPage : ContentPage
 	/// <summary>A fresh page always starts unzoomed — a leftover zoom/pan from the previous page would land the new page's content half off-screen.</summary>
 	private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
 	{
+		// Zoom buttons are a PC affordance (phones pinch); shown only for CMS documents on desktop.
+		if (e.PropertyName == nameof(DocumentViewerViewModel.IsCms))
+		{
+			var desktop = DeviceInfo.Idiom == DeviceIdiom.Desktop;
+			ZoomBar.IsVisible = _viewModel.IsCms && desktop;
+
+			// "Upravit" opens the PC editor on this document (CMS_PLAN.md, phase 2a).
+			if (_editItem is null)
+			{
+				_editItem = new ToolbarItem { Text = "📝 Upravit" };
+				_editItem.Clicked += async (_, _) =>
+					await Shell.Current.GoToAsync($"{nameof(CmsEditorPage)}?documentId={_viewModel.DocumentId}");
+			}
+			ToolbarItems.Remove(_editItem);
+			if (_viewModel.IsCms && desktop) ToolbarItems.Add(_editItem);
+		}
+
 		if (e.PropertyName == nameof(DocumentViewerViewModel.CurrentPageImage))
 			ResetZoom();
 	}
@@ -163,6 +182,11 @@ public partial class DocumentViewerPage : ContentPage
 	// itself can fix outright. Paired with DocumentViewerViewModel's higher source render resolution
 	// (1800x2400, up from 1200x1600) so the same READABLE result needs less extreme Scale to reach.
 	private const double MaxScale = 3;
+
+	// Placeholder until phase 4 (note editor): shows the anchor the selection produced.
+	private async void OnAnnotationRequested(object? sender, SecureApp.Domain.ValueObjects.CmsAnchor anchor)
+		=> await DisplayAlertAsync("Poznámka (zatím jen ukázka ukotvení)",
+			$"Blok: {anchor.BlockId}\nPozice: {anchor.Start}–{anchor.End}\nText: „{anchor.Exact}“", "OK");
 
 	/// <summary>2026-09-30, user's own ask — rename this document from the viewer itself.</summary>
 	private async void OnRenameClicked(object? sender, EventArgs e)

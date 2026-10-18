@@ -73,6 +73,10 @@ public partial class AppShell : Shell
 		// parameter that DocumentViewerViewModel.ApplyQueryAttributes picks up.
 		Routing.RegisterRoute(nameof(DocumentViewerPage), typeof(DocumentViewerPage));
 
+		// CMS document editor (CMS_PLAN.md, phase 2a) — PC only; reached from the Documents toolbar
+		// ("Nový dokument") and from the viewer's "Upravit" on a CMS document (documentId query).
+		Routing.RegisterRoute(nameof(CmsEditorPage), typeof(CmsEditorPage));
+
 		// Document Library review queue (2026-10-01) — reached via the "📋 Ke schválení" button on
 		// LibraryManagePage, Reviewer/Admin devices only (LibraryViewModel.IsDocumentReviewer gates the button).
 		Routing.RegisterRoute(nameof(LibraryReviewQueuePage), typeof(LibraryReviewQueuePage));

@@ -8,5 +8,7 @@ public enum DocumentType
     Spreadsheet,
     PlainText,
     Other,
-    Video
+    Video,
+    /// <summary>CMS document (CMS_PLAN.md): JSON block tree, extension .cmsdoc, rendered natively — not rasterized.</summary>
+    Cms
 }

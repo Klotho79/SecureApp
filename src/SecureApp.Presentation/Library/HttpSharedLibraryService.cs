@@ -155,6 +155,18 @@ public sealed class HttpSharedLibraryService : ISharedLibraryService
                 return cached;
         }
 
+        var (plaintext, fileName) = await DownloadDecryptedAsync(libraryFileId, ct);
+
+        using var scope = _scopeFactory.CreateScope();
+        var importService = scope.ServiceProvider.GetRequiredService<IDocumentImportService>();
+        using var plaintextStream = new MemoryStream(plaintext);
+        // Tag the imported copy with its library-file id so the next open reuses it (see the cache
+        // lookup at the top of this method).
+        return await importService.ImportAsync(plaintextStream, fileName, localFolderId, libraryFileId, ct);
+    }
+
+    public async Task<(byte[] Content, string FileName)> DownloadDecryptedAsync(Guid libraryFileId, CancellationToken ct = default)
+    {
         var endpoint = await GetHttpEndpointAsync(ct);
         var uri = new Uri(endpoint, $"library/files/{libraryFileId}");
 
@@ -173,22 +185,14 @@ public sealed class HttpSharedLibraryService : ISharedLibraryService
         var key = await GetSharedKeyAsync(ct);
         var payload = new EncryptedPayload(libraryFileId, EncryptionAlgorithm.Aes256Gcm, cipherText, nonce, authTag);
 
-        byte[] plaintext;
         try
         {
-            plaintext = await _crypto.DecryptWithKeyAsync(payload, key, ct);
+            return (await _crypto.DecryptWithKeyAsync(payload, key, ct), fileName);
         }
         catch (Exception ex)
         {
             throw new InvalidOperationException("Tento soubor se nepodařilo dešifrovat — zkontrolujte, že váš klíč sdílené knihovny odpovídá klíči toho, kdo soubor nahrál.", ex);
         }
-
-        using var scope = _scopeFactory.CreateScope();
-        var importService = scope.ServiceProvider.GetRequiredService<IDocumentImportService>();
-        using var plaintextStream = new MemoryStream(plaintext);
-        // Tag the imported copy with its library-file id so the next open reuses it (see the cache
-        // lookup at the top of this method).
-        return await importService.ImportAsync(plaintextStream, fileName, localFolderId, libraryFileId, ct);
     }
 
     public async Task DeleteAsync(Guid libraryFileId, CancellationToken ct = default)

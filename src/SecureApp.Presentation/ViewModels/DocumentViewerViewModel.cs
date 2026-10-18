@@ -29,6 +29,8 @@ public sealed partial class DocumentViewerViewModel : ObservableObject, IQueryAt
 
     private Guid _documentId;
 
+    public Guid DocumentId => _documentId;
+
     [ObservableProperty]
     public partial string Title { get; set; }
 
@@ -103,9 +105,28 @@ public sealed partial class DocumentViewerViewModel : ObservableObject, IQueryAt
     [ObservableProperty]
     public partial bool IsPagedDocument { get; set; } = true;
 
-    partial void OnIsVideoChanged(bool value) => IsPagedDocument = !value && !IsExternalOnly;
+    /// <summary>CMS document (CMS_PLAN.md): rendered natively by CmsDocumentView, not rasterized, so it has no pager.</summary>
+    [ObservableProperty]
+    public partial bool IsCms { get; set; }
 
-    partial void OnIsExternalOnlyChanged(bool value) => IsPagedDocument = !value && !IsVideo;
+    [ObservableProperty]
+    public partial SecureApp.Domain.ValueObjects.CmsDocument? CmsModel { get; set; }
+
+    /// <summary>Reflow zoom for the CMS view (0.5-2.0), a per-device display preference only.</summary>
+    [ObservableProperty]
+    public partial double CmsZoom { get; set; } = 1.0;
+
+    [RelayCommand]
+    private void ZoomIn() => CmsZoom = Math.Min(2.0, Math.Round(CmsZoom + 0.1, 1));
+
+    [RelayCommand]
+    private void ZoomOut() => CmsZoom = Math.Max(0.5, Math.Round(CmsZoom - 0.1, 1));
+
+    partial void OnIsVideoChanged(bool value) => IsPagedDocument = !value && !IsExternalOnly && !IsCms;
+
+    partial void OnIsExternalOnlyChanged(bool value) => IsPagedDocument = !value && !IsVideo && !IsCms;
+
+    partial void OnIsCmsChanged(bool value) => IsPagedDocument = !value && !IsVideo && !IsExternalOnly;
 
     public DocumentViewerViewModel(
         IDocumentRepository documentRepository,
@@ -149,6 +170,7 @@ public sealed partial class DocumentViewerViewModel : ObservableObject, IQueryAt
         ErrorMessage = null;
         IsVideo = false;
         IsExternalOnly = false;
+        IsCms = false;
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
@@ -158,6 +180,15 @@ public sealed partial class DocumentViewerViewModel : ObservableObject, IQueryAt
             if (document.DocumentType == DocumentType.Video)
             {
                 await LoadVideoAsync(document);
+                return;
+            }
+            if (document.DocumentType == DocumentType.Cms)
+            {
+                var json = await _crypto.DecryptAsync(document.EncryptedContent);
+                CmsModel = System.Text.Json.JsonSerializer.Deserialize<SecureApp.Domain.ValueObjects.CmsDocument>(
+                    json, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+                IsCms = CmsModel is not null;
+                if (!IsCms) ErrorMessage = "Dokument má neplatný obsah.";
                 return;
             }
             if (document.DocumentType == DocumentType.Other)

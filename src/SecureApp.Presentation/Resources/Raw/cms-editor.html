@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CMS editor</title>
+<style>
+:root{--bg:#fff;--fg:#1d1d1f;--mute:#6b7280;--line:#e2e5ea;--acc:#2563eb;--soft:#eff4ff;--danger:#dc2626}
+@media (prefers-color-scheme:dark){:root{--bg:#1b1b1f;--fg:#ececf0;--mute:#9aa0a6;--line:#3a3a40;--acc:#60a5fa;--soft:#202938;--danger:#f87171}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 "IBM Plex Sans","Segoe UI",system-ui,sans-serif}
+#bar{position:sticky;top:0;z-index:10;display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 12px;background:var(--bg);border-bottom:1px solid var(--line)}
+#bar .sep{width:1px;height:22px;background:var(--line);margin:0 4px}
+button,select,input{font:inherit;font-size:13px;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:4px 9px}
+button{cursor:pointer}button:hover{border-color:var(--acc)}
+#wrap{padding:16px 12px 160px}
+#stage{margin:0 auto;max-width:760px}
+#title{width:100%;font-size:26px;font-weight:700;border:0;border-bottom:1px solid var(--line);border-radius:0;padding:6px 0;margin-bottom:12px;background:transparent}
+.blk{position:relative;padding:3px 4px 3px 26px;border-radius:8px;margin:2px 0}
+.blk:hover,.blk:focus-within{background:var(--soft)}
+.blk>.hd{position:absolute;left:4px;top:8px;cursor:grab;color:var(--mute);user-select:none;font-size:13px}
+.blk>.tools{position:absolute;right:4px;top:-12px;display:none;gap:4px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:2px 4px;z-index:5;align-items:center}
+.blk:hover>.tools,.blk:focus-within>.tools{display:flex}
+.tools button,.tools select,.tools input{padding:1px 6px;font-size:12px}
+[contenteditable]{outline:none;min-height:1.5em}
+[contenteditable]:empty:before{content:attr(data-ph);color:var(--mute)}
+.h1{font-size:1.75em;font-weight:700;line-height:1.25}.h2{font-size:1.4em;font-weight:700;line-height:1.3}.h3{font-size:1.2em;font-weight:700}
+ul,ol{margin:0;padding-left:1.4em}
+figure{margin:0}figure img{display:block;max-width:100%;height:auto;border-radius:6px}
+figcaption{font-style:italic;font-size:.85em;text-align:center;color:var(--mute)}
+.imgwrap{display:flex}
+.vid{background:#111;color:#fff;border-radius:8px;display:flex;align-items:center;justify-content:center;width:100%;font-size:14px}
+.row{display:grid;grid-template-columns:repeat(12,1fr);gap:12px}
+.cell{border:1px dashed var(--line);border-radius:8px;padding:4px;min-height:56px}
+#stage.compact .row{display:block}#stage.compact .cell{margin-bottom:8px}
+.drop-line{height:3px;background:var(--acc);border-radius:2px;margin:2px 0;pointer-events:none}
+.badge{position:fixed;right:10px;bottom:8px;font-size:12px;color:var(--mute);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:2px 8px}
+</style>
+</head>
+<body>
+<div id="bar">
+  <button data-cmd="bold" title="Tučně"><b>B</b></button>
+  <button data-cmd="italic" title="Kurzíva"><i>I</i></button>
+  <button data-cmd="underline" title="Podtržení"><u>U</u></button>
+  <span class="sep"></span>
+  <button data-add="paragraph">¶ Odstavec</button>
+  <button data-add="heading">H Nadpis</button>
+  <button data-add="ul">• Seznam</button>
+  <button data-add="ol">1. Seznam</button>
+  <button data-add="row">▥ Sloupce</button>
+</div>
+<div id="wrap"><div id="stage"><input id="title" placeholder="Název dokumentu"><div class="drop" id="root"></div></div></div>
+<div class="badge" id="badge"></div>
+<script>
+(function(){
+'use strict';
+const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+const uid=()=>'b-'+Math.random().toString(36).slice(2,8)+Date.now().toString(36).slice(-3);
+const root=$('#root'), stage=$('#stage'), previews={};
+let dragged=null;
+const line=document.createElement('div'); line.className='drop-line';
+
+function el(tag,cls,html){const e=document.createElement(tag); if(cls)e.className=cls; if(html!=null)e.innerHTML=html; return e;}
+const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+function runsToHtml(runs){return (runs||[]).map(r=>{let h=esc(r.t||'').replace(/\n/g,'<br>');const m=r.marks||[];if(m.includes('bold'))h='<b>'+h+'</b>';if(m.includes('italic'))h='<i>'+h+'</i>';if(m.includes('underline'))h='<u>'+h+'</u>';return h;}).join('');}
+function runs(rootEl){
+  const out=[];
+  const push=(t,m)=>{t=t.replace(/ /g,' ');if(!t)return;const last=out[out.length-1];const key=m.slice().sort().join();
+    if(last&&(last.marks||[]).slice().sort().join()===key)last.t+=t;else out.push(m.length?{t,marks:m.slice()}:{t});};
+  (function walk(n,m){n.childNodes.forEach(c=>{
+    if(c.nodeType===3){push(c.nodeValue,m);return;}
+    if(c.nodeType!==1)return;
+    const tg=c.tagName;if(tg==='BR'){push('\n',m);return;}
+    let mm=m.slice();const st=c.style||{};
+    if(tg==='B'||tg==='STRONG'||(+st.fontWeight>=600)||st.fontWeight==='bold')mm.includes('bold')||mm.push('bold');
+    if(tg==='I'||tg==='EM'||st.fontStyle==='italic')mm.includes('italic')||mm.push('italic');
+    if(tg==='U'||(st.textDecorationLine||st.textDecoration||'').includes('underline'))mm.includes('underline')||mm.push('underline');
+    walk(c,mm);});})(rootEl,[]);
+  if(!out.length)out.push({t:''});return out;
+}
+
+/* ---------- blocks ---------- */
+function shell(type,id){
+  const b=el('div','blk'); b.dataset.type=type; b.dataset.id=id||uid();
+  const hd=el('span','hd','⋮⋮'); hd.title='Přetáhnout';
+  hd.addEventListener('mousedown',()=>{b.draggable=true;});
+  b.addEventListener('dragstart',e=>{if(e.target!==b)return;dragged=b;e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain','blk');e.stopPropagation();});
+  b.addEventListener('dragend',()=>{b.draggable=false;dragged=null;line.remove();});
+  const tools=el('div','tools');
+  const del=el('button',null,'✕'); del.title='Smazat blok'; del.style.color='var(--danger)';
+  del.addEventListener('click',()=>{const p=b.parentElement;b.remove();ensureOne(p);});
+  b._tools=tools; tools.append(del); b.append(hd,tools); return b;
+}
+function ensureOne(container){ if(container===root&&!$('.blk',root)) root.append(textBlock('paragraph')); }
+function tbtn(b,label,title,fn){const x=el('button',null,label);x.title=title;x.addEventListener('click',fn);b._tools.insertBefore(x,b._tools.lastChild);return x;}
+
+function textBlock(type,level,rs,id){
+  const b=shell(type,id); const body=el('div','txt'+(type==='heading'?' h'+(level||1):''));
+  body.contentEditable='true'; body.dataset.ph=type==='heading'?'Nadpis':'Text…'; body.innerHTML=runsToHtml(rs);
+  b.dataset.level=level||1; b.append(body);
+  if(type==='heading'){const sel=el('select');['1','2','3'].forEach(v=>{const o=el('option',null,'H'+v);o.value=v;sel.append(o);});sel.value=String(level||1);
+    sel.addEventListener('change',()=>{b.dataset.level=sel.value;body.className='txt h'+sel.value;});b._tools.insertBefore(sel,b._tools.lastChild);}
+  return b;
+}
+function listBlock(ordered,items,id){
+  const b=shell('list',id); b.dataset.ordered=ordered?'1':'0';
+  const list=el(ordered?'ol':'ul'); (items&&items.length?items:[[{t:''}]]).forEach(it=>list.append(li(it))); b.append(list);
+  tbtn(b,ordered?'1.→•':'•→1.','Přepnout číslování',()=>{const o=b.dataset.ordered==='1';const n=el(o?'ul':'ol');while(list.firstChild)n.append(list.firstChild);list.replaceWith(n);b.dataset.ordered=o?'0':'1';});
+  return b;
+}
+function li(rs){const x=el('li');x.contentEditable='true';x.dataset.ph='Položka…';x.innerHTML=runsToHtml(rs);return x;}
+function imageBlock(o){
+  const b=shell('image',o.id); Object.assign(b.dataset,{media:o.mediaId,aspect:o.aspectRatio||1.5,fit:o.fit||'contain',align:o.align||'center',w:o.maxWidthPct||100,alt:o.alt||''});
+  const fig=el('figure'); const wrap=el('div','imgwrap'); const img=el('img'); img.draggable=false; img.src=previews[o.mediaId]||''; wrap.append(img);
+  const cap=el('figcaption'); cap.contentEditable='true'; cap.dataset.ph='Popisek (volitelný)'; cap.innerHTML=runsToHtml(o.caption); fig.append(wrap,cap); b.append(fig);
+  const apply=()=>{const w=+b.dataset.w;img.style.width=w+'%';wrap.style.justifyContent=b.dataset.align==='left'?'flex-start':b.dataset.align==='right'?'flex-end':'center';img.style.objectFit=b.dataset.fit;};
+  const sel=(label,key,opts)=>{const s=el('select');s.title=label;opts.forEach(([v,t])=>{const o=el('option',null,t);o.value=v;s.append(o);});s.value=String(b.dataset[key]);s.addEventListener('change',()=>{b.dataset[key]=s.value;apply();});b._tools.insertBefore(s,b._tools.lastChild);};
+  sel('Zarovnání','align',[['left','⟸'],['center','↔'],['right','⟹']]);
+  sel('Šířka','w',[['100','100 %'],['75','75 %'],['50','50 %']]);
+  sel('Přizpůsobení','fit',[['contain','celé'],['cover','oříznout']]);
+  const alt=el('input'); alt.placeholder='Alt text'; alt.value=b.dataset.alt; alt.size=14; alt.addEventListener('input',()=>{b.dataset.alt=alt.value;}); b._tools.insertBefore(alt,b._tools.lastChild);
+  apply(); return b;
+}
+function videoBlock(o){
+  const b=shell('video',o.id); Object.assign(b.dataset,{media:o.mediaId,aspect:o.aspectRatio||1.7778,name:o.name||''});
+  const v=el('div','vid','🎬 '+esc(o.name||'Video')); const set=()=>{v.style.aspectRatio=b.dataset.aspect;}; b.append(v);
+  const s=el('select');[['1.7778','16:9'],['1.3333','4:3'],['2.3333','21:9'],['0.5625','9:16'],['1','1:1']].forEach(([val,t])=>{const op=el('option',null,t);op.value=val;s.append(op);});
+  s.value=String(+(+b.dataset.aspect).toFixed(4)); if(s.value!==String(+(+b.dataset.aspect).toFixed(4))){const op=el('option',null,(+b.dataset.aspect).toFixed(2));op.value=b.dataset.aspect;s.append(op);s.value=b.dataset.aspect;}
+  s.addEventListener('change',()=>{b.dataset.aspect=s.value;set();}); b._tools.insertBefore(s,b._tools.lastChild); set(); return b;
+}
+const PRESETS={'6/6':[6,6],'7/5':[7,5],'5/7':[5,7],'4/8':[4,8],'8/4':[8,4],'4/4/4':[4,4,4]};
+function cell(blocks){const c=el('div','cell');const d=el('div','drop');c.append(d);wireDrop(d);(blocks&&blocks.length?blocks:[{type:'paragraph',id:uid(),text:[{t:''}]}]).forEach(m=>d.append(fromModel(m)));return c;}
+function rowBlock(spans,cellsModel,id){
+  const b=shell('row',id); b.dataset.spans=spans.join(','); const grid=el('div','row'); b.append(grid);
+  const sel=el('select');Object.keys(PRESETS).forEach(k=>{const o=el('option',null,k);o.value=k;sel.append(o);});
+  const cur=Object.keys(PRESETS).find(k=>PRESETS[k].join()===spans.join()); sel.value=cur||'6/6';
+  for(let i=0;i<spans.length;i++)grid.append(cell(cellsModel&&cellsModel[i]&&cellsModel[i].blocks));
+  sel.addEventListener('change',()=>{const sp=PRESETS[sel.value];b.dataset.spans=sp.join(',');
+    while(grid.children.length<sp.length)grid.append(cell());
+    while(grid.children.length>sp.length){const last=grid.lastChild,target=grid.children[sp.length-1];$$('.blk',last.firstChild).forEach(x=>target.firstChild.append(x));last.remove();}
+    layout();});
+  b._tools.insertBefore(sel,b._tools.lastChild); return b;
+}
+function fromModel(m){
+  switch(m.type){
+    case 'heading':return textBlock('heading',m.level,m.text,m.id);
+    case 'paragraph':return textBlock('paragraph',0,m.text,m.id);
+    case 'list':return listBlock(m.ordered,m.items,m.id);
+    case 'image':return imageBlock(m);
+    case 'video':return videoBlock(m);
+    case 'row':return rowBlock((m.children||[]).map(c=>c.span&&c.span.expanded||6),m.children,m.id);
+  } return textBlock('paragraph');
+}
+function toModel(b){
+  const t=b.dataset.type,id=b.dataset.id;
+  switch(t){
+    case 'heading':return{type:t,id,level:+b.dataset.level,text:runs($('.txt',b))};
+    case 'paragraph':return{type:t,id,text:runs($('.txt',b))};
+    case 'list':return{type:t,id,ordered:b.dataset.ordered==='1',items:$$('li',b).map(runs)};
+    case 'image':{const cap=$('figcaption',b);const cr=runs(cap);const has=cr.some(r=>r.t.trim());
+      return{type:t,id,mediaId:b.dataset.media,aspectRatio:+b.dataset.aspect,fit:b.dataset.fit,align:b.dataset.align,maxWidthPct:+b.dataset.w,alt:b.dataset.alt||null,caption:has?cr:null};}
+    case 'video':return{type:t,id,mediaId:b.dataset.media,aspectRatio:+b.dataset.aspect};
+    case 'row':{const sp=b.dataset.spans.split(',').map(Number);const n=sp.length;
+      return{type:t,id,gap:2,children:$$(':scope>.row>.cell',b).map((c,i)=>({span:{compact:12,medium:n===2?sp[i]:12,expanded:sp[i]},blocks:$$(':scope>.drop>.blk',c).map(toModel)}))};}
+  }
+}
+
+/* ---------- drag & drop ---------- */
+function wireDrop(c){
+  c.addEventListener('dragover',e=>{
+    if(!dragged)return; if(dragged.dataset.type==='row'&&c.closest('.cell'))return; if(dragged.contains(c))return;
+    e.preventDefault();e.stopPropagation();
+    const kids=[...c.children].filter(k=>k.classList.contains('blk')&&k!==dragged);
+    let ref=null;for(const k of kids){const r=k.getBoundingClientRect();if(e.clientY<r.top+r.height/2){ref=k;break;}}
+    c.insertBefore(line,ref);
+  });
+  c.addEventListener('drop',e=>{
+    if(!dragged||!line.parentElement)return; e.preventDefault();e.stopPropagation();
+    line.parentElement.insertBefore(dragged,line); line.remove(); ensureOne(root);
+  });
+}
+wireDrop(root);
+
+/* ---------- editing behaviour ---------- */
+function focusEnd(node){node.focus();const r=document.createRange();r.selectNodeContents(node);r.collapse(false);const s=getSelection();s.removeAllRanges();s.addRange(r);}
+function container(){const a=document.activeElement&&document.activeElement.closest&&document.activeElement.closest('.blk');return a;}
+function insertAfter(newB){
+  const cur=container();
+  if(cur){const top=cur.parentElement.closest('.cell')&&newB.dataset.type==='row'?cur.closest('.row').parentElement:cur;
+    (top.parentElement).insertBefore(newB,top.nextSibling);}
+  else root.append(newB);
+  const f=$('[contenteditable]',newB); if(f)focusEnd(f);
+}
+document.addEventListener('keydown',e=>{
+  const t=e.target; if(!t.isContentEditable)return;
+  const b=t.closest('.blk'); if(!b)return;
+  if(e.key==='Enter'&&!e.shiftKey&&t.tagName!=='FIGCAPTION'){
+    e.preventDefault();
+    if(t.tagName==='LI'){
+      if(!t.textContent.trim()&&t.parentElement.children.length>1){const p=textBlock('paragraph');b.after(p);t.remove();focusEnd($('.txt',p));return;}
+      const n=li();t.after(n);focusEnd(n);return;}
+    const p=textBlock('paragraph'); b.after(p); focusEnd($('.txt',p)); return;
+  }
+  if(e.key==='Backspace'&&!t.textContent.length){
+    if(t.tagName==='LI'&&t.parentElement.children.length>1){e.preventDefault();const prev=t.previousElementSibling||t.nextElementSibling;t.remove();focusEnd(prev);return;}
+    if(t.classList.contains('txt')||t.tagName==='LI'){const parent=b.parentElement;const all=$$('.blk',root).filter(x=>!x.contains(b));
+      if(parent===root&&root.querySelectorAll(':scope>.blk').length<=1)return;
+      e.preventDefault();const prev=b.previousElementSibling;b.remove();ensureOne(parent);const f=prev&&$('[contenteditable]:last-of-type',prev);if(f)focusEnd(f);}
+  }
+});
+document.addEventListener('paste',e=>{const t=e.target;if(!t.isContentEditable)return;e.preventDefault();document.execCommand('insertText',false,(e.clipboardData||window.clipboardData).getData('text/plain'));});
+$('#bar').addEventListener('mousedown',e=>{if(e.target.closest('button'))e.preventDefault();});
+$('#bar').addEventListener('click',e=>{
+  const bt=e.target.closest('button');if(!bt)return;
+  if(bt.dataset.cmd){document.execCommand(bt.dataset.cmd);return;}
+  const a=bt.dataset.add; if(!a)return;
+  insertAfter(a==='paragraph'?textBlock('paragraph'):a==='heading'?textBlock('heading',1):a==='ul'?listBlock(false):a==='ol'?listBlock(true):rowBlock([6,6]));
+  layout();
+});
+
+/* ---------- responsive preview ---------- */
+function layout(){
+  const w=stage.clientWidth; const cls=w<600?'compact':w<=840?'medium':'expanded';
+  stage.classList.remove('compact','medium','expanded'); stage.classList.add(cls);
+  $$('.blk[data-type=row]',root).forEach(r=>{const sp=r.dataset.spans.split(',').map(Number);const n=sp.length;
+    $$(':scope>.row>.cell',r).forEach((c,i)=>{c.style.gridColumn='span '+(cls==='expanded'?sp[i]:cls==='medium'?(n===2?sp[i]:12):12);});});
+  $('#badge').textContent=Math.round(w)+' px · '+cls;
+}
+window.addEventListener('resize',layout);
+
+/* ---------- API for the host ---------- */
+const b64=s=>btoa(unescape(encodeURIComponent(s)));
+window.editor={
+  addPreview(id,url){previews[id]=url;},
+  load(jsonText){
+    const d=JSON.parse(jsonText); $('#title').value=d.title||''; root.innerHTML='';
+    (d.blocks&&d.blocks.length?d.blocks:[{type:'paragraph',id:uid(),text:[{t:''}]}]).forEach(m=>root.append(fromModel(m)));
+    layout();
+  },
+  getJson(){return b64(JSON.stringify({title:$('#title').value.trim(),blocks:$$(':scope>.blk',root).map(toModel)}));},
+  insertImage(id,url,aspect){previews[id]=url;insertAfter(imageBlock({mediaId:id,aspectRatio:aspect}));layout();},
+  insertVideo(id,name,aspect){insertAfter(videoBlock({mediaId:id,aspectRatio:aspect,name}));layout();},
+  setPreview(px){stage.style.maxWidth=px>0?px+'px':'760px';layout();}
+};
+root.append(textBlock('paragraph')); layout();
+})();
+</script>
+</body>
+</html>

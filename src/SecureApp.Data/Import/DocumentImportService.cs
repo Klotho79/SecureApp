@@ -90,6 +90,7 @@ public sealed class DocumentImportService : IDocumentImportService
         ".xlsx" or ".xls" or ".csv" => DocumentType.Spreadsheet,
         ".txt" or ".md" or ".log" => DocumentType.PlainText,
         ".mp4" or ".mov" or ".m4v" or ".webm" or ".mkv" => DocumentType.Video,
+        ".cmsdoc" => DocumentType.Cms,
         // .docx/.pptx (and anything else unrecognized) fall into Other — no in-app renderer for
         // them, the viewer offers "open externally" instead (2026-10-03 decision: a real in-app
         // Office preview needs a commercial rendering library, deferred for now).

@@ -39,6 +39,9 @@ public interface ISharedLibraryService
     /// <summary>Downloads and decrypts a library file, then imports it as a normal local <see cref="Document"/> via the existing document-import path — so it becomes viewable through the already-built document viewer with no separate library-specific viewer needed.</summary>
     Task<Document> DownloadAndImportAsync(Guid libraryFileId, Guid? localFolderId = null, CancellationToken ct = default);
 
+    /// <summary>Downloads and decrypts a library file into memory only — no local <see cref="Document"/> is created (used for media embedded in CMS documents, which must not clutter the Documents browser).</summary>
+    Task<(byte[] Content, string FileName)> DownloadDecryptedAsync(Guid libraryFileId, CancellationToken ct = default);
+
     Task DeleteAsync(Guid libraryFileId, CancellationToken ct = default);
 
     /// <summary>Promotes a private chat attachment to the community library (2026-09-14, 2.3 "move from local archive to global") — makes it browsable (relay is_listed=1), optionally in <paramref name="folderPath"/>. Uploader or admin only; idempotent for an already-listed file.</summary>
