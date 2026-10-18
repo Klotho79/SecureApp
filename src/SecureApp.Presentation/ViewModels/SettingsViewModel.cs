@@ -261,22 +261,6 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool CanUseAdminControls { get; set; }
 
-    // --- Relay admin: device management (2.1, 2026-09-17) — see IRelayAdminService.GetRegisteredDevicesAsync's
-    // own remarks. Same "type the admin secret fresh for every action" discipline as the activations
-    // card above — TryTakeAdminSecret is shared, not duplicated.
-
-    [ObservableProperty]
-    public partial ObservableCollection<RegisteredDeviceItem> RegisteredDevices { get; set; }
-
-    [ObservableProperty]
-    public partial bool IsLoadingDevices { get; set; }
-
-    [ObservableProperty]
-    public partial bool HasNoRegisteredDevices { get; set; }
-
-    [ObservableProperty]
-    public partial bool HasRegisteredDevices { get; set; }
-
     // --- Shared diagnostics log (2026-09-10) — see IDiagnosticsReporter's own remarks. Deliberately
     // NOT gated behind IsAdmin/the admin secret: the whole point is any device can report to it and
     // any device can read it, without needing an admin password each time — same reasoning
@@ -353,8 +337,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         AdminSecretInputText = string.Empty;
         CanUseAdminControls = true;
         HasNoSharedLibraryKey = true;
-        RegisteredDevices = [];
-        HasNoRegisteredDevices = true;
         WorkplaceColorItems = [];
         InitializeUpdatesSection();
         InitializeLocalAiTranslationSection();
@@ -387,8 +369,6 @@ public sealed partial class SettingsViewModel : ObservableObject
     partial void OnIsBusyWithAdminChanged(bool value) => CanUseAdminControls = !value;
 
     partial void OnDeployStatusTextChanged(string? value) => HasDeployStatus = !string.IsNullOrEmpty(value);
-
-    partial void OnHasNoRegisteredDevicesChanged(bool value) => HasRegisteredDevices = !value;
 
     partial void OnDiagnosticLogErrorMessageChanged(string? value) => HasDiagnosticLogError = !string.IsNullOrEmpty(value);
 
@@ -514,25 +494,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         return true;
     }
 
-    /// <summary>Fetches every registered device's staleness + pending-outbox depth (2.1, 2026-09-17) — same on-demand, admin-secret-per-call pattern as <see cref="GenerateInviteAsync"/>.</summary>
-    [RelayCommand]
-    private async Task LoadRegisteredDevicesAsync()
-    {
-        AdminErrorMessage = null;
-        if (!Uri.TryCreate(RelayEndpointText, UriKind.Absolute, out var endpoint))
-        {
-            AdminErrorMessage = "Nejprve zadejte platnou adresu relay serveru výše.";
-            return;
-        }
-        if (!TryTakeAdminSecret(out var adminSecret)) return;
-        _devicesAdminSecret = adminSecret;
-        await RefreshRegisteredDevicesAsync(endpoint, adminSecret);
-    }
-
-    // Held only while Settings stays open, so viewing several devices' logs doesn't need the secret
-    // retyped each time — same session-scoped pattern as _managementAdminSecret; cleared in ClearMemberManagement.
-    private string? _devicesAdminSecret;
-
     [ObservableProperty]
     public partial string? DeviceLogTitle { get; set; }
 
@@ -548,21 +509,17 @@ public sealed partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private Task ShowDeviceEventsAsync(Guid deviceId) => ShowDeviceLogAsync(deviceId, "metrics", "události");
 
-    /// <summary>Loads one device's uploaded app log (newest first) — see Diagnostics.AppLogUploader for how it gets there.</summary>
+    /// <summary>Loads one device's uploaded app log (newest first) — see Diagnostics.AppLogUploader for how it gets there. Still admin-secret-gated at the relay, taken fresh here. 2026-10-17: device name is now looked up in the merged "Členové" list (<see cref="SettingsViewModel.Community.MemberGroups"/>) since the old separate "Zařízení" list is gone.</summary>
     private async Task ShowDeviceLogAsync(Guid deviceId, string kind, string kindLabel)
     {
         AdminErrorMessage = null;
         if (!Uri.TryCreate(RelayEndpointText, UriKind.Absolute, out var endpoint)) return;
-        if (string.IsNullOrEmpty(_devicesAdminSecret))
-        {
-            AdminErrorMessage = "Nejprve načtěte seznam zařízení (admin heslo + ⟳ Obnovit).";
-            return;
-        }
+        if (!TryTakeAdminSecret(out var adminSecret)) return;
 
-        var name = RegisteredDevices.FirstOrDefault(d => d.Id == deviceId)?.DisplayName ?? deviceId.ToString();
+        var name = MemberGroups.SelectMany(g => g.Devices).FirstOrDefault(d => d.DeviceId == deviceId)?.DisplayName ?? deviceId.ToString();
         try
         {
-            var lines = await _relayAdminService.GetDeviceAppLogAsync(endpoint, _devicesAdminSecret, deviceId, kind);
+            var lines = await _relayAdminService.GetDeviceAppLogAsync(endpoint, adminSecret, deviceId, kind);
             DeviceLogTitle = $"Log: {name} — {kindLabel} ({lines.Count} řádků, nejnovější nahoře)";
             DeviceLogText = lines.Count == 0
                 ? "Zatím nic — zařízení log ještě neodeslalo (odesílá ho samo zhruba každé 3 minuty, když je připojené)."
@@ -582,100 +539,15 @@ public sealed partial class SettingsViewModel : ObservableObject
         DeviceLogText = null;
     }
 
-    private async Task RefreshRegisteredDevicesAsync(Uri endpoint, string adminSecret)
-    {
-        IsLoadingDevices = true;
-        try
-        {
-            var devices = await _relayAdminService.GetRegisteredDevicesAsync(endpoint, adminSecret);
-            RegisteredDevices = new ObservableCollection<RegisteredDeviceItem>(GroupDevicesByPerson(devices));
-            HasNoRegisteredDevices = RegisteredDevices.Count == 0;
-        }
-        catch (Exception ex)
-        {
-            AdminErrorMessage = $"Nepodařilo se načíst seznam zařízení: {ex.Message}";
-        }
-        finally
-        {
-            IsLoadingDevices = false;
-        }
-    }
-
-    /// <summary>Platforms a person is expected to have SecureApp on — the order the coverage line lists them in. Keys are <c>DeviceInfo.Current.Platform.ToString()</c> values, as published to the relay directory.</summary>
+    /// <summary>Platforms a person is expected to have SecureApp on. Keys are <c>DeviceInfo.Current.Platform.ToString()</c> values, as published to the relay directory. Used by <see cref="SettingsViewModel.Community.LoadMembersAsync"/> to format each device row's platform suffix.</summary>
     private static readonly (string Key, string Label)[] _coveredPlatforms =
         [("Android", "Android"), ("WinUI", "PC"), ("iOS", "iPhone"), ("MacCatalyst", "Mac")];
-
-    /// <summary>
-    /// Orders the admin device list by person (2026-10-09) — devices that reconciled against the same
-    /// "Soukromé kontakty ARIM" row (<see cref="RegisteredDevice.ArimContactId"/>) sit together, and the
-    /// first row of each person carries a header with which platforms that person has and which are
-    /// missing ("is this person missing from PC/iPhone/Mac"). Devices never reconciled go last under
-    /// their own header. A flat list with per-row headers instead of a grouped CollectionView —
-    /// grouped CollectionViews have been unreliable on Android and this card needs nothing they add.
-    /// </summary>
-    private List<RegisteredDeviceItem> GroupDevicesByPerson(IReadOnlyList<RegisteredDevice> devices)
-    {
-        var result = new List<RegisteredDeviceItem>(devices.Count);
-
-        var people = devices
-            .Where(d => d.ArimContactId is not null)
-            .GroupBy(d => d.ArimContactId!.Value)
-            .OrderBy(g => g.Select(d => d.ArimContactName).FirstOrDefault(n => !string.IsNullOrWhiteSpace(n)) ?? "", StringComparer.CurrentCultureIgnoreCase);
-        foreach (var person in people)
-        {
-            var name = person.Select(d => d.ArimContactName).FirstOrDefault(n => !string.IsNullOrWhiteSpace(n)) ?? "Neznámý kontakt";
-            var present = person.Select(d => d.Platform).Where(p => p is not null).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            var coverage = string.Join("  ·  ", _coveredPlatforms.Select(p => (present.Contains(p.Key) ? "✓ " : "✗ ") + p.Label));
-            AddGroup($"👤 {name}", coverage, person);
-        }
-
-        var unlinked = devices.Where(d => d.ArimContactId is null).ToList();
-        if (unlinked.Count > 0)
-            AddGroup("❔ Nepřiřazená zařízení", "Zatím neuložila profil proti kontaktům ARIM.", unlinked);
-
-        return result;
-
-        void AddGroup(string header, string coverage, IEnumerable<RegisteredDevice> groupDevices)
-        {
-            var first = true;
-            foreach (var device in groupDevices.OrderBy(d => d.Platform).ThenBy(d => d.DirectoryDisplayName ?? d.DisplayName))
-            {
-                var item = ToRegisteredDeviceItem(device);
-                result.Add(first ? item with { GroupHeader = header, GroupCoverageText = coverage } : item);
-                first = false;
-            }
-        }
-    }
 
     private static string DescribePlatform(string? platform) => platform switch
     {
         null or "" => "neznámá platforma",
         _ => _coveredPlatforms.FirstOrDefault(p => string.Equals(p.Key, platform, StringComparison.OrdinalIgnoreCase)).Label ?? platform
     };
-
-    private RegisteredDeviceItem ToRegisteredDeviceItem(RegisteredDevice device)
-    {
-        // DirectoryDisplayName/LastActiveAtUtc are null exactly when this device is currently hidden
-        // from every OTHER device's member picker/directory too (see RegisteredDevice's own remarks)
-        // — that staleness, not CreatedAtUtc, is what actually marks a ghost identity worth deregistering.
-        var statusText = device.LastActiveAtUtc is { } lastActive
-            ? $"Aktivní v adresáři — naposledy {lastActive.LocalDateTime:g}"
-            : "Nikdy nepublikoval do adresáře, nebo je dávno neaktivní";
-        var pendingText = device.PendingOutboxCount > 0
-            ? $"⚠ {device.PendingOutboxCount} zpráv čeká na doručení tomuto zařízení"
-            : "Žádné čekající zprávy";
-
-        return new RegisteredDeviceItem(
-            device.Id,
-            $"{device.DirectoryDisplayName ?? device.DisplayName}  ({DescribePlatform(device.Platform)})",
-            statusText,
-            pendingText,
-            device.PendingOutboxCount > 0,
-            device.LastActiveAtUtc is null,
-            DeregisterDeviceCommand,
-            ShowDeviceErrorsCommand,
-            ShowDeviceEventsCommand);
-    }
 
     /// <summary>
     /// Deletes the device's credential, directory entry, and purges its stuck outbox queue (2.1,
@@ -695,7 +567,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             return;
         }
 
-        var target = RegisteredDevices.FirstOrDefault(d => d.Id == deviceId);
+        var target = MemberGroups.SelectMany(g => g.Devices).FirstOrDefault(d => d.DeviceId == deviceId);
         var confirmed = await Shell.Current.DisplayAlert(
             "Odregistrovat zařízení",
             $"Opravdu odregistrovat '{target?.DisplayName ?? deviceId.ToString()}'? Zařízení se bude muset znovu aktivovat od začátku a jeho čekající zprávy budou zahozeny. Tuto akci nelze vrátit zpět.",
@@ -708,7 +580,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         {
             await _relayAdminService.DeregisterDeviceAsync(endpoint, adminSecret, deviceId);
             AppLog.Event("admin.device.deregistered", ("device", deviceId));
-            await RefreshRegisteredDevicesAsync(endpoint, adminSecret);
+            await LoadMembersAsync();
         }
         catch (Exception ex)
         {
@@ -1089,15 +961,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         TransportConnectionState.Reconnecting => "Připojování znovu…",
         _ => "Odpojeno"
     };
-}
-
-/// <summary>One row in the admin's device-management list (2.1, 2026-09-17) — <see cref="StatusText"/>/<see cref="PendingText"/> are pre-formatted here (not in XAML) so the CollectionView's DataTemplate needs no value converters, this codebase's established "no converters" convention.</summary>
-public sealed record RegisteredDeviceItem(Guid Id, string DisplayName, string StatusText, string PendingText, bool HasPendingMessages, bool IsStale, ICommand DeregisterCommand, ICommand ShowErrorsCommand, ICommand ShowEventsCommand)
-{
-    /// <summary>Person header (2026-10-09), set only on the first device row of each person — see <c>SettingsViewModel.GroupDevicesByPerson</c>.</summary>
-    public string? GroupHeader { get; init; }
-    public string? GroupCoverageText { get; init; }
-    public bool HasGroupHeader => GroupHeader is not null;
 }
 
 /// <summary>One row in the "Diagnostický log" list (2026-09-10) — display-only, no per-row command, unlike <see cref="RegisteredDeviceItem"/>. <see cref="Level"/> stays the English enum name (<c>Error</c>/<c>Warning</c>/<c>Info</c>) — the XAML template colors it, doesn't translate it, same "wire-level concept stays English" call this codebase already made for <c>TransportConnectionState</c>. <see cref="HasContext"/> is precomputed here (not a converter) so the DataTemplate's <c>IsVisible</c> binding stays a plain bool — this codebase's established preference over introducing a new <c>IValueConverter</c> for one spot.</summary>

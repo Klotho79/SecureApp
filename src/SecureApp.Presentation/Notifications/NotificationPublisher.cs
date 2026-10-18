@@ -116,14 +116,23 @@ public static class NotificationPublisher
         return TryAddAsync(notificationRepository, notification, nativeNotificationService, ct);
     }
 
-    /// <summary>A genuine system-level problem (e.g. an auto-heal failure — see <c>App.xaml.cs</c>'s own diagnostics-reporter call sites) surfaced into the same feed the user already checks for everything else, instead of only living in the separate Settings diagnostics log. <see cref="NotificationPriority.Important"/> — system errors belong in the IMPORTANT section, not buried among ordinary chat traffic.</summary>
+    /// <summary>A genuine system-level problem (e.g. an auto-heal failure — see <c>App.xaml.cs</c>'s own diagnostics-reporter call sites) surfaced into the same feed the user already checks for everything else, instead of only living in the separate Settings diagnostics log. <see cref="NotificationPriority.Important"/> — system errors belong in the IMPORTANT section, not buried among ordinary chat traffic.
+    /// <para>2026-10-17, user's own ask ("systemove zpravy a logy nema jit nikomu krom admina"): gated
+    /// on the CALLING device's own role — an ordinary member's device never gets a Notification Hub row
+    /// (or OS notification) for this, only an Admin device does. Same policy <c>App.SyncAdminAlertsAsync</c>
+    /// already enforces for cross-device diagnostic alerts; this closes the gap for same-device system
+    /// warnings (Opicentrum sync/note-push failures) that used to show to whichever member hit them.</para>
+    /// </summary>
     public static Task PublishSystemWarningAsync(
         INotificationRepository notificationRepository,
+        ICurrentUserService currentUserService,
         string title,
         string body,
         INativeNotificationService? nativeNotificationService = null,
         CancellationToken ct = default)
     {
+        if (currentUserService.Current.Role != Role.Admin) return Task.CompletedTask;
+
         // Normal, not Important (2026-09-21, user's own ask) — system notifications (sync results,
         // relay events, ...) are informational and must never count toward the Důležité badge; see
         // NotificationRepository's own remarks for the matching query-level exclusion (defense in

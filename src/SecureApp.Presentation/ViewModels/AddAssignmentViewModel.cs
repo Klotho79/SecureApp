@@ -300,7 +300,7 @@ public sealed partial class AddAssignmentViewModel : ObservableObject, IQueryAtt
             var reason = result.Status == OpicentrumNotePushStatus.DayNotEditable
                 ? result.ErrorMessage ?? "Tento den nemá na webu editovatelné políčko poznámky."
                 : $"Nepodařilo se zapsat poznámku na web: {result.ErrorMessage}";
-            await NotificationPublisher.PublishSystemWarningAsync(_notificationRepository, "Poznámka se nepropsala do Opicentra", $"{date:d. M. yyyy}: {reason}");
+            await NotificationPublisher.PublishSystemWarningAsync(_notificationRepository, _currentUserService, "Poznámka se nepropsala do Opicentra", $"{date:d. M. yyyy}: {reason}");
         }
         catch
         {

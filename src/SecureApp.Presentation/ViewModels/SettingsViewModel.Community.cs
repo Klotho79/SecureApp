@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SecureApp.Domain.Enums;
@@ -121,18 +122,20 @@ public sealed partial class SettingsViewModel
 
     public bool IsAdminDebugSubTab => AdminSubTab == 0;
     public bool IsAdminLogsSubTab => AdminSubTab == 1;
+    // 2026-10-17, user's own ask ("potom sloucilo se menu clenove a zarizeni") — the former separate
+    // "Zařízení" sub-tab (index 3) is gone; its content now lives nested under each member on THIS
+    // tab, see MemberPolicyItem/AdminMemberGroupItem's own remarks. Every sub-tab after it shifted
+    // down by one, same renumbering discipline as the Rozpis-removal precedent above.
     public bool IsAdminMembersSubTab => AdminSubTab == 2;
-    public bool IsAdminDevicesSubTab => AdminSubTab == 3;
-    public bool IsAdminDeploySubTab => AdminSubTab == 4;
-    public bool IsAdminAiSubTab => AdminSubTab == 5;
-    public bool IsAdminNewMemberSubTab => AdminSubTab == 6;
+    public bool IsAdminDeploySubTab => AdminSubTab == 3;
+    public bool IsAdminAiSubTab => AdminSubTab == 4;
+    public bool IsAdminNewMemberSubTab => AdminSubTab == 5;
 
     partial void OnAdminSubTabChanged(int value)
     {
         OnPropertyChanged(nameof(IsAdminDebugSubTab));
         OnPropertyChanged(nameof(IsAdminLogsSubTab));
         OnPropertyChanged(nameof(IsAdminMembersSubTab));
-        OnPropertyChanged(nameof(IsAdminDevicesSubTab));
         OnPropertyChanged(nameof(IsAdminDeploySubTab));
         OnPropertyChanged(nameof(IsAdminAiSubTab));
         OnPropertyChanged(nameof(IsAdminNewMemberSubTab));
@@ -308,15 +311,24 @@ public sealed partial class SettingsViewModel
         catch { return Colors.Transparent; }
     }
 
-    // Held for the duration of a member-management session so the admin types the secret once (at
-    // "Nacist cleny") rather than again for every per-member save — the same "reuse within one
-    // logical action" exception the activation-approval flow already makes, just spanning the whole
-    // management screen. Cleared by ClearMemberManagement (called from the page's OnDisappearing).
-    private string? _managementAdminSecret;
-
     // --- Member management (Admin only) ----------------------------------------------------------
+    //
+    // 2026-10-17, user's own ask: "nezobrazovali vsichni clenove ale bylo roll nenu se cleny a
+    // vybrany by se zobrazil a potom sloucilo se menu clenove a zarizeni.... a ukazalo se to pod
+    // clenem vsechna zarizeni... spolecny mail" — replaces the old flat "every member, every device"
+    // list with a Picker of PEOPLE (MemberGroups); selecting one shows just their shared e-mail
+    // (ArimContactEmail, once) and every one of THEIR devices nested underneath, each combining the
+    // role/tab-policy editor this screen always had with the staleness/log/deregister actions that
+    // used to live on the separate "Zařízení" sub-tab — see MemberPolicyItem/AdminMemberGroupItem's
+    // own remarks for the merged shape.
 
-    public ObservableCollection<MemberPolicyItem> ManagedMembers { get; } = [];
+    public ObservableCollection<AdminMemberGroupItem> MemberGroups { get; } = [];
+
+    [ObservableProperty]
+    public partial AdminMemberGroupItem? SelectedMemberGroup { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsLoadingMembers { get; set; }
 
     [ObservableProperty]
     public partial string? MemberManagementStatusText { get; set; }
@@ -326,28 +338,75 @@ public sealed partial class SettingsViewModel
 
     partial void OnMemberManagementStatusTextChanged(string? value) => HasMemberManagementStatus = !string.IsNullOrEmpty(value);
 
+    /// <summary>
+    /// Loads BOTH the role/policy data (<see cref="IRelayAdminService.GetManagedDevicesAsync"/>) and
+    /// the staleness/pending-outbox data (<see cref="IRelayAdminService.GetRegisteredDevicesAsync"/>)
+    /// and merges them one row per device (joined by DeviceId — both calls read from the same
+    /// underlying `devices` table, see RelayDatabase.GetManagedDevices/GetAllDevicesWithStatus's own
+    /// remarks, so every device appears in both), then groups by the same ArimContactId both already
+    /// carry into one <see cref="AdminMemberGroupItem"/> per person. 2026-10-17, user's own ask:
+    /// neither call needs the admin secret to LOAD — only <see cref="SaveMemberPolicyAsync"/> and
+    /// <see cref="DeregisterDeviceAsync"/> below still take it, fresh per call.
+    /// </summary>
     [RelayCommand]
-    private async Task LoadManagedMembersAsync()
+    private async Task LoadMembersAsync()
     {
         if (!Uri.TryCreate(RelayEndpointText, UriKind.Absolute, out var endpoint))
         {
             MemberManagementStatusText = "Nejprve zadejte platnou adresu relay serveru.";
             return;
         }
-        if (!TryTakeAdminSecret(out var adminSecret))
-        {
-            MemberManagementStatusText = "Nejprve zadejte admin heslo.";
-            return;
-        }
-        _managementAdminSecret = adminSecret;
 
+        IsLoadingMembers = true;
         try
         {
-            var members = await _relayAdminService.GetManagedDevicesAsync(endpoint, adminSecret);
-            ManagedMembers.Clear();
-            foreach (var m in members)
-                ManagedMembers.Add(new MemberPolicyItem(m.DeviceId, m.DisplayName, m.Role, m.HiddenTabs, m.LastSeenUtc, m.IsDocumentReviewer, m.AppVersion, m.IsPiccTeam, m.HasSharedLibraryKey));
-            MemberManagementStatusText = members.Count == 0 ? "Zatím žádní členové." : $"Načteno členů: {members.Count}.";
+            var managed = await _relayAdminService.GetManagedDevicesAsync(endpoint);
+            var registered = await _relayAdminService.GetRegisteredDevicesAsync(endpoint);
+            var registeredById = registered.ToDictionary(d => d.Id);
+
+            var rows = managed.Select(m =>
+            {
+                registeredById.TryGetValue(m.DeviceId, out var reg);
+                var platformSuffix = !string.IsNullOrEmpty(reg?.Platform) ? $"  ({DescribePlatform(reg.Platform)})" : "";
+                var statusText = reg?.LastActiveAtUtc is { } lastActive
+                    ? $"Aktivní v adresáři — naposledy {lastActive.LocalDateTime:g}"
+                    : "Nikdy nepublikoval do adresáře, nebo je dávno neaktivní";
+                var pendingCount = reg?.PendingOutboxCount ?? 0;
+                var pendingText = pendingCount > 0
+                    ? $"⚠ {pendingCount} zpráv čeká na doručení tomuto zařízení"
+                    : "Žádné čekající zprávy";
+
+                return new MemberPolicyItem(
+                    m.DeviceId, m.DisplayName + platformSuffix, m.Role, m.HiddenTabs, m.LastSeenUtc,
+                    m.IsDocumentReviewer, m.AppVersion, m.IsPiccTeam, m.HasSharedLibraryKey,
+                    statusText, pendingText, pendingCount > 0, reg?.LastActiveAtUtc is null,
+                    DeregisterDeviceCommand, ShowDeviceErrorsCommand, ShowDeviceEventsCommand);
+            }).ToList();
+
+            var previousName = SelectedMemberGroup?.DisplayName;
+            var groups = new List<AdminMemberGroupItem>();
+
+            var byPerson = rows.Zip(managed, (item, m) => (item, m))
+                .Where(x => x.m.ArimContactId is not null)
+                .GroupBy(x => x.m.ArimContactId!.Value)
+                .OrderBy(g => g.Select(x => x.m.ArimContactName).FirstOrDefault(n => !string.IsNullOrWhiteSpace(n)) ?? "", StringComparer.CurrentCultureIgnoreCase);
+            foreach (var person in byPerson)
+            {
+                var name = person.Select(x => x.m.ArimContactName).FirstOrDefault(n => !string.IsNullOrWhiteSpace(n)) ?? "Neznámý kontakt";
+                var email = person.Select(x => x.m.ArimContactEmail).FirstOrDefault(e => !string.IsNullOrWhiteSpace(e));
+                groups.Add(new AdminMemberGroupItem(name, email, person.Select(x => x.item).ToList()));
+            }
+
+            var unlinked = rows.Zip(managed, (item, m) => (item, m)).Where(x => x.m.ArimContactId is null).Select(x => x.item).ToList();
+            if (unlinked.Count > 0)
+                groups.Add(new AdminMemberGroupItem("❔ Nepřiřazená zařízení", null, unlinked));
+
+            MemberGroups.Clear();
+            foreach (var g in groups)
+                MemberGroups.Add(g);
+            SelectedMemberGroup = MemberGroups.FirstOrDefault(g => g.DisplayName == previousName) ?? MemberGroups.FirstOrDefault();
+
+            MemberManagementStatusText = managed.Count == 0 ? "Zatím žádní členové." : $"Načteno členů: {managed.Count} zařízení, {groups.Count} osob.";
 
             // The admin opening this screen is, by definition, online right now and (almost always)
             // holds the shared library key — so this is the ideal moment to make sure every listed
@@ -361,6 +420,10 @@ public sealed partial class SettingsViewModel
         {
             MemberManagementStatusText = $"Načtení se nezdařilo: {ex.Message}";
         }
+        finally
+        {
+            IsLoadingMembers = false;
+        }
     }
 
     [RelayCommand]
@@ -372,15 +435,15 @@ public sealed partial class SettingsViewModel
             MemberManagementStatusText = "Neplatná adresa relay serveru.";
             return;
         }
-        if (string.IsNullOrEmpty(_managementAdminSecret))
+        if (!TryTakeAdminSecret(out var adminSecret))
         {
-            MemberManagementStatusText = "Znovu načtěte členy — vypršelo admin heslo.";
+            MemberManagementStatusText = "Nejprve zadejte admin heslo.";
             return;
         }
 
         try
         {
-            await _relayAdminService.SetDevicePolicyAsync(endpoint, _managementAdminSecret, member.DeviceId, member.SelectedRole, member.HiddenTabs, member.IsDocumentReviewer, member.IsPiccTeam);
+            await _relayAdminService.SetDevicePolicyAsync(endpoint, adminSecret, member.DeviceId, member.SelectedRole, member.HiddenTabs, member.IsDocumentReviewer, member.IsPiccTeam);
             member.StatusText = "Uloženo ✓";
             MemberManagementStatusText = $"Uloženo pro {member.DisplayName}.";
         }
@@ -416,12 +479,11 @@ public sealed partial class SettingsViewModel
         }
     }
 
-    /// <summary>Called from the page's OnDisappearing so the admin secret held for the management session doesn't outlive it.</summary>
+    /// <summary>Called from the page's OnDisappearing.</summary>
     public void ClearMemberManagement()
     {
-        _managementAdminSecret = null;
-        _devicesAdminSecret = null;
-        ManagedMembers.Clear();
+        MemberGroups.Clear();
+        SelectedMemberGroup = null;
         MemberManagementStatusText = null;
     }
 }
@@ -441,10 +503,48 @@ public sealed class AccentSwatchItem
     public Color SwatchColor { get; }
 }
 
-/// <summary>One member row in the admin's "Správa členů" screen — editable role + per-tab visibility.</summary>
+/// <summary>
+/// One member group in the merged "Členové" admin screen (2026-10-17) — see the "Member management"
+/// section's own remarks above for why this replaced the old flat "every member, every device" list.
+/// <see cref="Email"/> is the ONE shared e-mail for this person (<c>ManagedDevice.ArimContactEmail</c>,
+/// the same "Soukromé kontakty ARIM" field every device record already carries), shown once above
+/// their device list rather than per-device — the user's own explicit call ("Jeden e-mail na člena,
+/// ne na zařízení"). <see cref="Devices"/> holds every one of that person's devices, each already
+/// merged with its staleness/log/deregister data — see <see cref="MemberPolicyItem"/>'s own remarks.
+/// The "❔ Nepřiřazená zařízení" pseudo-group (devices with no ArimContactId yet) has a null Email.
+/// </summary>
+public sealed class AdminMemberGroupItem
+{
+    public AdminMemberGroupItem(string displayName, string? email, IReadOnlyList<MemberPolicyItem> devices)
+    {
+        DisplayName = displayName;
+        Email = email;
+        Devices = new ObservableCollection<MemberPolicyItem>(devices);
+    }
+
+    public string DisplayName { get; }
+    public string? Email { get; }
+    public bool HasEmail => !string.IsNullOrWhiteSpace(Email);
+    public ObservableCollection<MemberPolicyItem> Devices { get; }
+}
+
+/// <summary>
+/// One device row in the admin's merged "Členové" screen — editable role + per-tab visibility
+/// (always available), PLUS, 2026-10-17, the staleness/pending-outbox/log/deregister data that used
+/// to live on the separate "Zařízení" sub-tab before the user asked to merge the two
+/// ("potom sloucilo se menu clenove a zarizeni... a ukazalo se to pod clenem vsechna zarizeni") —
+/// see <c>SettingsViewModel.Community.LoadMembersAsync</c> for how the two data sources (role/policy
+/// vs. staleness) are joined into one of these per device. <see cref="DeviceStatusText"/>/
+/// <see cref="PendingText"/> are named distinctly from <see cref="StatusText"/> (this class's
+/// pre-existing "Save result" message) to avoid a collision between the two unrelated meanings.
+/// </summary>
 public sealed partial class MemberPolicyItem : ObservableObject
 {
-    public MemberPolicyItem(Guid deviceId, string displayName, Role? role, IReadOnlyList<string> hiddenTabs, DateTimeOffset? lastSeenUtc, bool isDocumentReviewer = false, string? appVersion = null, bool isPiccTeam = false, bool hasSharedLibraryKey = false)
+    public MemberPolicyItem(
+        Guid deviceId, string displayName, Role? role, IReadOnlyList<string> hiddenTabs, DateTimeOffset? lastSeenUtc,
+        bool isDocumentReviewer = false, string? appVersion = null, bool isPiccTeam = false, bool hasSharedLibraryKey = false,
+        string? deviceStatusText = null, string? pendingText = null, bool hasPendingMessages = false, bool isStale = false,
+        ICommand? deregisterCommand = null, ICommand? showErrorsCommand = null, ICommand? showEventsCommand = null)
     {
         DeviceId = deviceId;
         DisplayName = displayName;
@@ -469,6 +569,14 @@ public sealed partial class MemberPolicyItem : ObservableObject
         // IsVisible in SettingsPage.xaml — no point showing it for a member who already has the key.
         HasSharedLibraryKey = hasSharedLibraryKey;
         SharedLibraryKeyText = hasSharedLibraryKey ? "🔑 má klíč sdílené knihovny" : "🔒 NEMÁ klíč sdílené knihovny";
+
+        DeviceStatusText = deviceStatusText ?? "";
+        PendingText = pendingText ?? "";
+        HasPendingMessages = hasPendingMessages;
+        IsStale = isStale;
+        DeregisterCommand = deregisterCommand;
+        ShowErrorsCommand = showErrorsCommand;
+        ShowEventsCommand = showEventsCommand;
     }
 
     public Guid DeviceId { get; }
@@ -479,6 +587,15 @@ public sealed partial class MemberPolicyItem : ObservableObject
     /// <summary>Converter-free inverse of <see cref="HasSharedLibraryKey"/> for the resend button's IsVisible, same style as the rest of this file's own derived bools.</summary>
     public bool MissingSharedLibraryKey => !HasSharedLibraryKey;
     public string SharedLibraryKeyText { get; }
+
+    /// <summary>Directory staleness (2.1, 2026-09-17) — see the old <c>RegisteredDeviceItem.StatusText</c> this replaces.</summary>
+    public string DeviceStatusText { get; }
+    public string PendingText { get; }
+    public bool HasPendingMessages { get; }
+    public bool IsStale { get; }
+    public ICommand? DeregisterCommand { get; }
+    public ICommand? ShowErrorsCommand { get; }
+    public ICommand? ShowEventsCommand { get; }
 
     /// <summary>Picker source: index 0 = "ponechat na zařízení" (null), then the three real roles.</summary>
     public IReadOnlyList<string> RoleChoices { get; } = ["Neurčeno (ponechat)", "Admin", "Modifier", "Viewer"];

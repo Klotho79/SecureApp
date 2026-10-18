@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
+using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Domain.ValueObjects;
 
@@ -15,9 +17,33 @@ public sealed class HttpRelayAdminService : IRelayAdminService
 
     private readonly HttpClient _httpClient = new();
 
-    // Deliberately no ISecureVaultKeyStore dependency (2026-09-07) — see IRelayAdminService's own
-    // remarks: the admin secret is never persisted by this class at all, only ever passed straight
-    // through to the one HTTP call that needs it.
+    // Still deliberately no persisted admin secret (2026-09-07) — see IRelayAdminService's own
+    // remarks: every WRITE call below keeps taking it as a plain parameter, supplied fresh by the
+    // caller for that one call only. ISecureVaultKeyStore/ITransportSettingsRepository (2026-10-17)
+    // are new — the two READ-only calls (GetManagedDevicesAsync/GetRegisteredDevicesAsync) no longer
+    // need the admin secret at all, just this device's own already-stored device-auth credential
+    // (same X-Device-Id/X-Device-Secret headers HttpRoomStatusService.AddDeviceAuthAsync uses), since
+    // the relay now accepts an Admin-role device on that alone (see Program.IsAdminAuthorizedOrAdminDevice).
+    private readonly ISecureVaultKeyStore _vault;
+    private readonly ITransportSettingsRepository _transportSettingsRepository;
+
+    public HttpRelayAdminService(ISecureVaultKeyStore vault, ITransportSettingsRepository transportSettingsRepository)
+    {
+        _vault = vault ?? throw new ArgumentNullException(nameof(vault));
+        _transportSettingsRepository = transportSettingsRepository ?? throw new ArgumentNullException(nameof(transportSettingsRepository));
+    }
+
+    private async Task AddDeviceAuthAsync(HttpRequestMessage request, CancellationToken ct)
+    {
+        var configuration = await _transportSettingsRepository.GetAsync(ct);
+        var deviceId = configuration?.AssignedDeviceId
+            ?? throw new InvalidOperationException("Nejprve se zaregistrujte u relay serveru v Nastavení.");
+        var secretBytes = await _vault.RetrieveSecretAsync(RelayDeviceVaultKeys.DeviceSecret, ct)
+            ?? throw new InvalidOperationException("V úložišti chybí tajný klíč zařízení pro relay.");
+
+        request.Headers.Add("X-Device-Id", deviceId.ToString());
+        request.Headers.Add("X-Device-Secret", Encoding.UTF8.GetString(secretBytes));
+    }
 
     public async Task<(string InviteCode, DateTimeOffset ExpiresAtUtc)> CreateInviteAsync(Uri endpoint, string adminSecret, string? displayNameHint, int validForMinutes, CancellationToken ct = default)
     {
@@ -56,18 +82,17 @@ public sealed class HttpRelayAdminService : IRelayAdminService
         response.EnsureSuccessStatusCode();
     }
 
-    public async Task<IReadOnlyList<RegisteredDevice>> GetRegisteredDevicesAsync(Uri endpoint, string adminSecret, CancellationToken ct = default)
+    public async Task<IReadOnlyList<RegisteredDevice>> GetRegisteredDevicesAsync(Uri endpoint, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
-        ArgumentException.ThrowIfNullOrWhiteSpace(adminSecret);
 
         var listUri = new Uri(ToHttpUri(endpoint), "admin/devices");
         using var request = new HttpRequestMessage(HttpMethod.Get, listUri);
-        request.Headers.Add("X-Admin-Secret", adminSecret);
+        await AddDeviceAuthAsync(request, ct);
 
         using var response = await _httpClient.SendAsync(request, ct);
         if (response.StatusCode == HttpStatusCode.Unauthorized)
-            throw new InvalidOperationException("Relay odmítl zadané admin heslo.");
+            throw new InvalidOperationException("Toto zařízení nemá roli Admin na relay serveru.");
         response.EnsureSuccessStatusCode();
 
         var results = await response.Content.ReadFromJsonAsync<List<RegisteredDeviceSummary>>(HttpJsonOptions, ct) ?? [];
@@ -105,25 +130,25 @@ public sealed class HttpRelayAdminService : IRelayAdminService
         return await response.Content.ReadFromJsonAsync<List<string>>(HttpJsonOptions, ct) ?? [];
     }
 
-    public async Task<IReadOnlyList<ManagedDevice>> GetManagedDevicesAsync(Uri endpoint, string adminSecret, CancellationToken ct = default)
+    public async Task<IReadOnlyList<ManagedDevice>> GetManagedDevicesAsync(Uri endpoint, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
-        ArgumentException.ThrowIfNullOrWhiteSpace(adminSecret);
 
         var uri = new Uri(ToHttpUri(endpoint), "admin/users");
         using var request = new HttpRequestMessage(HttpMethod.Get, uri);
-        request.Headers.Add("X-Admin-Secret", adminSecret);
+        await AddDeviceAuthAsync(request, ct);
 
         using var response = await _httpClient.SendAsync(request, ct);
         if (response.StatusCode == HttpStatusCode.Unauthorized)
-            throw new InvalidOperationException("Relay odmítl zadané admin heslo.");
+            throw new InvalidOperationException("Toto zařízení nemá roli Admin na relay serveru.");
         response.EnsureSuccessStatusCode();
 
         var results = await response.Content.ReadFromJsonAsync<List<ManagedDeviceSummary>>(HttpJsonOptions, ct) ?? [];
         return results.Select(d => new ManagedDevice(
             d.DeviceId, d.DisplayName,
             d.Role is null ? null : (SecureApp.Domain.Enums.Role)d.Role.Value,
-            d.HiddenTabs ?? [], d.LastSeenUtc, d.DocumentReviewer, d.AppVersion, d.PiccTeam, d.HasSharedLibraryKey)).ToList();
+            d.HiddenTabs ?? [], d.LastSeenUtc, d.DocumentReviewer, d.AppVersion, d.PiccTeam, d.HasSharedLibraryKey,
+            d.ArimContactId, d.ArimContactName, d.ArimContactEmail)).ToList();
     }
 
     public async Task SetDevicePolicyAsync(Uri endpoint, string adminSecret, Guid deviceId, SecureApp.Domain.Enums.Role? role, IReadOnlyList<string> hiddenTabs, bool? isDocumentReviewer = null, bool? isPiccTeam = null, CancellationToken ct = default)
@@ -182,7 +207,7 @@ public sealed class HttpRelayAdminService : IRelayAdminService
         return await response.Content.ReadFromJsonAsync<List<DocumentDownloadEntry>>(HttpJsonOptions, ct) ?? [];
     }
 
-    private sealed record ManagedDeviceSummary(Guid DeviceId, string DisplayName, int? Role, List<string>? HiddenTabs, DateTimeOffset? LastSeenUtc, bool DocumentReviewer = false, string? AppVersion = null, bool PiccTeam = false, bool HasSharedLibraryKey = false);
+    private sealed record ManagedDeviceSummary(Guid DeviceId, string DisplayName, int? Role, List<string>? HiddenTabs, DateTimeOffset? LastSeenUtc, bool DocumentReviewer = false, string? AppVersion = null, bool PiccTeam = false, bool HasSharedLibraryKey = false, Guid? ArimContactId = null, string? ArimContactName = null, string? ArimContactEmail = null);
 
     // Mirrors WebSocketMessageTransport.ToHttpUri — the Settings UI stores/edits one ws:// address
     // for both the WebSocket connection and every HTTP admin/device call, so this needs the same

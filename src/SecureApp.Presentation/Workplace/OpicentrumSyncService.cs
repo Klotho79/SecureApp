@@ -99,15 +99,31 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
     private readonly ISecureVaultKeyStore _vault;
     private readonly IWorkAssignmentRepository _assignmentRepository;
     private readonly INotificationRepository _notificationRepository;
+    private readonly ICurrentUserService _currentUserService;
 
     private readonly INativeNotificationService _nativeNotificationService;
 
-    public OpicentrumSyncService(ISecureVaultKeyStore vault, IWorkAssignmentRepository assignmentRepository, INotificationRepository notificationRepository, INativeNotificationService nativeNotificationService)
+    // 2026-10-17, user's own ask ("upozorneni ne pokazde a poprve" — a repeatedly-failing sync must
+    // not re-notify on every single Rozpis page open, only the FIRST failure of a streak) — reset to
+    // false the moment a sync actually succeeds (see SyncAsync's WriteBackAsync return), so the next
+    // failure after a recovery is treated as a fresh "first" failure again.
+    private bool _hasNotifiedSyncFailure;
+
+    public OpicentrumSyncService(ISecureVaultKeyStore vault, IWorkAssignmentRepository assignmentRepository, INotificationRepository notificationRepository, ICurrentUserService currentUserService, INativeNotificationService nativeNotificationService)
     {
         _vault = vault ?? throw new ArgumentNullException(nameof(vault));
         _assignmentRepository = assignmentRepository ?? throw new ArgumentNullException(nameof(assignmentRepository));
         _notificationRepository = notificationRepository ?? throw new ArgumentNullException(nameof(notificationRepository));
+        _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         _nativeNotificationService = nativeNotificationService ?? throw new ArgumentNullException(nameof(nativeNotificationService));
+    }
+
+    /// <summary>See <see cref="_hasNotifiedSyncFailure"/>'s own remarks — swallows every notify after the first in an ongoing failure streak.</summary>
+    private async Task NotifySyncFailureOnceAsync(string error, CancellationToken ct)
+    {
+        if (_hasNotifiedSyncFailure) return;
+        _hasNotifiedSyncFailure = true;
+        await NotificationPublisher.PublishSystemWarningAsync(_notificationRepository, _currentUserService, "Synchronizace rozpisu selhala", error, ct: ct);
     }
 
     public async Task<bool> HasCredentialsAsync(CancellationToken ct = default)
@@ -152,7 +168,7 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
             if (myName is null)
             {
                 const string error = "Přihlášení do Opicentra se nezdařilo — zkontrolujte uživatelské jméno a heslo v Nastavení.";
-                await NotificationPublisher.PublishSystemWarningAsync(_notificationRepository, "Synchronizace rozpisu selhala", error, ct: ct);
+                await NotifySyncFailureOnceAsync(error, ct);
                 return new OpicentrumSyncResult(false, 0, 0, error);
             }
 
@@ -206,17 +222,19 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
                 // a new member who WAS on the real roster). A failure to identify the user is a real
                 // failure and has to say so, naming what it searched for so the mismatch is obvious.
                 var error = $"V Opicentru se nepodařilo najít osobu „{myName}“ — rozpis proto zůstal prázdný. Zkontrolujte, zda jste na webu uveden pod stejným jménem.";
-                await NotificationPublisher.PublishSystemWarningAsync(_notificationRepository, "Synchronizace rozpisu selhala", error, ct: ct);
+                await NotifySyncFailureOnceAsync(error, ct);
                 return new OpicentrumSyncResult(false, 0, 0, error);
             }
 
             stage = "zápis do místní databáze";
-            return await WriteBackAsync(resolved, ct);
+            var result = await WriteBackAsync(resolved, ct);
+            _hasNotifiedSyncFailure = false; // a successful sync ends the current failure streak
+            return result;
         }
         catch (Exception ex)
         {
             var error = $"Synchronizace s Opicentrem selhala (krok: {stage}; {ex.GetType().Name}): {ex.Message}";
-            try { await NotificationPublisher.PublishSystemWarningAsync(_notificationRepository, "Synchronizace rozpisu selhala", error, ct: ct); }
+            try { await NotifySyncFailureOnceAsync(error, ct); }
             catch { /* best-effort — the sync failure itself is already the thing being reported */ }
             return new OpicentrumSyncResult(false, 0, 0, error);
         }

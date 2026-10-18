@@ -577,7 +577,7 @@ app.MapGet("/activation/status/{id:guid}", (Guid id, RelayDatabase db) =>
 
 app.MapGet("/admin/activation-requests", (HttpRequest request, RelayDatabase db) =>
 {
-    if (!IsAdminAuthorized(request, adminSecret))
+    if (!IsAdminAuthorizedOrAdminDevice(request, adminSecret, db))
         return Results.Unauthorized();
 
     var pending = db.GetPendingActivationRequests();
@@ -631,7 +631,7 @@ app.MapPost("/admin/activation-requests/{id:guid}/reject", (Guid id, HttpRequest
 
 app.MapGet("/admin/devices", (HttpRequest request, RelayDatabase db) =>
 {
-    if (!IsAdminAuthorized(request, adminSecret))
+    if (!IsAdminAuthorizedOrAdminDevice(request, adminSecret, db))
         return Results.Unauthorized();
 
     var devices = db.GetAllDevicesWithStatus();
@@ -996,11 +996,11 @@ app.MapGet("/me/policy", (HttpRequest request, RelayDatabase db) =>
 
 app.MapGet("/admin/users", (HttpRequest request, RelayDatabase db) =>
 {
-    if (!IsAdminAuthorized(request, adminSecret))
+    if (!IsAdminAuthorizedOrAdminDevice(request, adminSecret, db))
         return Results.Unauthorized();
 
     var devices = db.GetManagedDevices()
-        .Select(d => new ManagedDeviceDto(d.DeviceId, d.DisplayName, d.Role, d.HiddenTabs, d.LastSeenUtc, d.DocumentReviewer, d.AppVersion, d.PiccTeam, d.HasSharedLibraryKey))
+        .Select(d => new ManagedDeviceDto(d.DeviceId, d.DisplayName, d.Role, d.HiddenTabs, d.LastSeenUtc, d.DocumentReviewer, d.AppVersion, d.PiccTeam, d.HasSharedLibraryKey, d.ArimContactId, d.ArimContactName, d.ArimContactEmail))
         .ToList();
     return Results.Ok(devices);
 });
@@ -1610,6 +1610,21 @@ static bool IsAdminAuthorized(HttpRequest request, string adminSecret)
     var providedBytes = Encoding.UTF8.GetBytes(provided);
     var expectedBytes = Encoding.UTF8.GetBytes(adminSecret);
     return providedBytes.Length == expectedBytes.Length && CryptographicOperations.FixedTimeEquals(providedBytes, expectedBytes);
+}
+
+/// <summary>
+/// 2026-10-17, user's own ask ("nacteni clenu atd nepotrebuje admin key az ulozeni nastaveni ano") —
+/// a READ of the member/device list no longer needs the shared <c>X-Admin-Secret</c>: an already
+/// device-authenticated caller whose own assigned role is Admin (0) is let through on the strength
+/// of that alone. The admin secret still works too (kept for any non-interactive/scripted caller),
+/// and every WRITE endpoint (<c>/admin/users/{id}/policy</c>, <c>/admin/devices/{id}/deregister</c>,
+/// ...) is deliberately untouched — those still call <see cref="IsAdminAuthorized"/> alone.
+/// </summary>
+static bool IsAdminAuthorizedOrAdminDevice(HttpRequest request, string adminSecret, RelayDatabase db)
+{
+    if (IsAdminAuthorized(request, adminSecret))
+        return true;
+    return TryGetDeviceAuth(request, db, out var deviceId) && db.GetDevicePolicy(deviceId)?.Role == 0;
 }
 
 /// <summary>Device-bearer auth for the HTTP (non-WebSocket) endpoints — the WS channel authenticates via its own first-frame handshake instead; this reuses the same underlying <see cref="RelayDatabase.TryAuthenticate"/> check.</summary>

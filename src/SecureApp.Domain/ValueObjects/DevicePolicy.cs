@@ -32,6 +32,10 @@ public sealed record DevicePolicy(Role? Role, IReadOnlyList<string> HiddenTabs, 
 /// them reporting broken Nástěnka/library content) is the SAME self-reported flag, piggybacked on the
 /// same publish call for the same reason: the relay can't know a device's local vault state any other
 /// way, and a device already reports things about itself this way (<see cref="AppVersion"/>/Platform).
+/// <see cref="ArimContactId"/>/<see cref="ArimContactName"/>/<see cref="ArimContactEmail"/> (2026-10-17) —
+/// the same "Soukromé kontakty ARIM" link <see cref="RegisteredDevice"/> already carries, added here
+/// too so the admin's "Členové" and "Zařízení" screens can be merged and grouped by the same person
+/// instead of listing every device flat.
 /// </summary>
 public sealed record ManagedDevice(
     Guid DeviceId,
@@ -42,7 +46,10 @@ public sealed record ManagedDevice(
     bool IsDocumentReviewer = false,
     string? AppVersion = null,
     bool IsPiccTeam = false,
-    bool HasSharedLibraryKey = false);
+    bool HasSharedLibraryKey = false,
+    Guid? ArimContactId = null,
+    string? ArimContactName = null,
+    string? ArimContactEmail = null);
 
 /// <summary>
 /// One notice-board post, decrypted for display (2026-09-24). <see cref="AuthorDisplayName"/> is

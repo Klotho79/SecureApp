@@ -1568,8 +1568,8 @@ public sealed class RelayDatabase
             ("@now", Format(DateTimeOffset.UtcNow)));
     }
 
-    /// <summary>Every registered device with whatever policy it currently has, for the admin's own management screen. Names come from the live directory (a device that has never published shows its registration-time name instead).</summary>
-    public IReadOnlyList<(Guid DeviceId, string DisplayName, int? Role, IReadOnlyList<string> HiddenTabs, DateTimeOffset? LastSeenUtc, bool DocumentReviewer, bool PiccTeam, string? AppVersion, bool HasSharedLibraryKey)> GetManagedDevices()
+    /// <summary>Every registered device with whatever policy it currently has, for the admin's own management screen. Names come from the live directory (a device that has never published shows its registration-time name instead). <c>ArimContactId</c>/<c>ArimContactName</c>/<c>ArimContactEmail</c> (2026-10-17) — same join <see cref="GetAllDevicesWithStatus"/> already does, added here too so "Členové" can be grouped/merged by the same person as "Zařízení".</summary>
+    public IReadOnlyList<(Guid DeviceId, string DisplayName, int? Role, IReadOnlyList<string> HiddenTabs, DateTimeOffset? LastSeenUtc, bool DocumentReviewer, bool PiccTeam, string? AppVersion, bool HasSharedLibraryKey, Guid? ArimContactId, string? ArimContactName, string? ArimContactEmail)> GetManagedDevices()
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
@@ -1582,14 +1582,18 @@ public sealed class RelayDatabase
                    p.picc_team         AS picc_team,
                    e.updated_at_utc    AS last_seen,
                    e.app_version       AS app_version,
-                   e.has_shared_library_key AS has_shared_library_key
+                   e.has_shared_library_key AS has_shared_library_key,
+                   e.arim_contact_id   AS arim_contact_id,
+                   sc.display_name     AS arim_contact_name,
+                   sc.email            AS arim_contact_email
             FROM devices d
             LEFT JOIN directory_entries e ON e.device_id = d.id
             LEFT JOIN device_policy    p ON p.device_id = d.id
+            LEFT JOIN shared_contacts  sc ON sc.id = e.arim_contact_id
             ORDER BY display_name COLLATE NOCASE
             """;
 
-        var results = new List<(Guid, string, int?, IReadOnlyList<string>, DateTimeOffset?, bool, bool, string?, bool)>();
+        var results = new List<(Guid, string, int?, IReadOnlyList<string>, DateTimeOffset?, bool, bool, string?, bool, Guid?, string?, string?)>();
         using var reader = command.ExecuteReader();
         while (reader.Read())
         {
@@ -1602,7 +1606,10 @@ public sealed class RelayDatabase
                 reader["document_reviewer"] is not DBNull && Convert.ToInt32(reader["document_reviewer"]) != 0,
                 reader["picc_team"] is not DBNull && Convert.ToInt32(reader["picc_team"]) != 0,
                 reader["app_version"] is DBNull ? null : (string)reader["app_version"],
-                reader["has_shared_library_key"] is not DBNull && Convert.ToInt32(reader["has_shared_library_key"]) != 0));
+                reader["has_shared_library_key"] is not DBNull && Convert.ToInt32(reader["has_shared_library_key"]) != 0,
+                reader["arim_contact_id"] is DBNull ? null : Guid.Parse((string)reader["arim_contact_id"]),
+                reader["arim_contact_name"] is DBNull ? null : (string)reader["arim_contact_name"],
+                reader["arim_contact_email"] is DBNull ? null : (string)reader["arim_contact_email"]));
         }
 
         return results;

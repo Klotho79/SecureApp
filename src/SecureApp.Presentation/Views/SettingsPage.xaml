@@ -564,15 +564,7 @@
                             </DataTrigger>
                         </Button.Triggers>
                     </Button>
-                    <Button Text="Zařízení" Style="{StaticResource SubTabButton}" Command="{Binding SelectAdminSubTabCommand}" CommandParameter="3">
-                        <Button.Triggers>
-                            <DataTrigger TargetType="Button" Binding="{Binding IsAdminDevicesSubTab}" Value="True">
-                                <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
-                                <Setter Property="TextColor" Value="{StaticResource White}" />
-                            </DataTrigger>
-                        </Button.Triggers>
-                    </Button>
-                    <Button Text="Nasazení" Style="{StaticResource SubTabButton}" Command="{Binding SelectAdminSubTabCommand}" CommandParameter="4">
+                    <Button Text="Nasazení" Style="{StaticResource SubTabButton}" Command="{Binding SelectAdminSubTabCommand}" CommandParameter="3">
                         <Button.Triggers>
                             <DataTrigger TargetType="Button" Binding="{Binding IsAdminDeploySubTab}" Value="True">
                                 <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
@@ -580,7 +572,7 @@
                             </DataTrigger>
                         </Button.Triggers>
                     </Button>
-                    <Button Text="AI překlad" Style="{StaticResource SubTabButton}" IsVisible="{Binding CanConfigureLocalAiTranslation}" Command="{Binding SelectAdminSubTabCommand}" CommandParameter="5">
+                    <Button Text="AI překlad" Style="{StaticResource SubTabButton}" IsVisible="{Binding CanConfigureLocalAiTranslation}" Command="{Binding SelectAdminSubTabCommand}" CommandParameter="4">
                         <Button.Triggers>
                             <DataTrigger TargetType="Button" Binding="{Binding IsAdminAiSubTab}" Value="True">
                                 <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
@@ -588,7 +580,7 @@
                             </DataTrigger>
                         </Button.Triggers>
                     </Button>
-                    <Button Text="Nový člen" Style="{StaticResource SubTabButton}" Command="{Binding SelectAdminSubTabCommand}" CommandParameter="6">
+                    <Button Text="Nový člen" Style="{StaticResource SubTabButton}" Command="{Binding SelectAdminSubTabCommand}" CommandParameter="5">
                         <Button.Triggers>
                             <DataTrigger TargetType="Button" Binding="{Binding IsAdminNewMemberSubTab}" Value="True">
                                 <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
@@ -704,15 +696,26 @@
                 </VerticalStackLayout>
 
                 <VerticalStackLayout Spacing="12" IsVisible="{Binding IsAdminMembersSubTab}">
-                <!-- Správa členů — role + per-tab visibility per member. -->
+                <!-- Členové (2026-10-17: sloučeno s dřívější samostatnou záložkou "Zařízení", user's
+                     own ask) — vyberte člena z rolovacího menu, uvidíte jeho sdílený e-mail jednou
+                     nahoře a VŠECHNA jeho zařízení pod tím, každé s rolí/viditelností záložek i se
+                     stavem/logy/odregistrováním, co dřív bylo na samostatné záložce. -->
                 <Border Style="{StaticResource CardBorder}">
                     <VerticalStackLayout Spacing="8">
-                        <Label Text="Admin: Správa členů" Style="{StaticResource SectionHeader}" Margin="0" />
-                        <Label Text="Přidělte roli a vyberte, které záložky člen uvidí. Zadejte admin heslo výše a načtěte členy." FontSize="9.5" TextColor="Gray" />
-                        <Button Text="⟳ Načíst členy" Style="{StaticResource SecondaryButton}" Command="{Binding LoadManagedMembersCommand}" />
+                        <Label Text="Admin: Členové" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Label Text="Vyberte člena — uvidíte jeho e-mail a všechna jeho zařízení, u každého roli, viditelnost záložek, stav a možnost odregistrovat." FontSize="9.5" TextColor="Gray" />
+                        <Button Text="⟳ Načíst členy" Style="{StaticResource SecondaryButton}" Command="{Binding LoadMembersCommand}" />
+                        <controls:DelayedActivityIndicator IsBusy="{Binding IsLoadingMembers}" HorizontalOptions="Center" />
                         <Label Text="{Binding MemberManagementStatusText}" IsVisible="{Binding HasMemberManagementStatus}" FontSize="9.5" TextColor="Gray" LineBreakMode="WordWrap" />
 
-                        <CollectionView ItemsSource="{Binding ManagedMembers}">
+                        <Picker Title="Člen" ItemsSource="{Binding MemberGroups}" ItemDisplayBinding="{Binding DisplayName}" SelectedItem="{Binding SelectedMemberGroup}" />
+
+                        <!-- Sdílený e-mail (2026-10-17, user's own ask: "Jeden e-mail na člena, ne na
+                             zařízení") — jednou nahoře nad seznamem zařízení vybraného člena, zdroj je
+                             kontakt ARIM. -->
+                        <Label Text="{Binding SelectedMemberGroup.Email, StringFormat='✉ {0}'}" IsVisible="{Binding SelectedMemberGroup.HasEmail}" FontSize="10.5" FontAttributes="Bold" />
+
+                        <CollectionView ItemsSource="{Binding SelectedMemberGroup.Devices}">
                             <CollectionView.ItemsLayout>
                                 <LinearItemsLayout Orientation="Vertical" ItemSpacing="8" />
                             </CollectionView.ItemsLayout>
@@ -723,6 +726,20 @@
                                             <Label Text="{Binding DisplayName}" FontAttributes="Bold" FontSize="11.5" />
                                             <Label Text="{Binding LastSeenText}" FontSize="9" TextColor="Gray" />
                                             <Label Text="{Binding AppVersionText}" FontSize="9" TextColor="Gray" />
+                                            <!-- Staleness/pending outbox (2.1, 2026-09-17) — merged in here 2026-10-17 from the former separate "Zařízení" tab. -->
+                                            <Label Text="{Binding DeviceStatusText}" FontSize="9" TextColor="Gray" />
+                                            <Label Text="{Binding PendingText}" FontSize="9"
+                                                   TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}">
+                                                <Label.Triggers>
+                                                    <DataTrigger TargetType="Label" Binding="{Binding HasPendingMessages}" Value="False">
+                                                        <Setter Property="TextColor" Value="Gray" />
+                                                    </DataTrigger>
+                                                </Label.Triggers>
+                                            </Label>
+                                            <Grid ColumnDefinitions="*,*" ColumnSpacing="8" Margin="0,4,0,0">
+                                                <Button Grid.Column="0" Text="📄 Log chyb" Style="{StaticResource SecondaryButton}" Command="{Binding ShowErrorsCommand}" CommandParameter="{Binding DeviceId}" />
+                                                <Button Grid.Column="1" Text="📊 Log událostí" Style="{StaticResource SecondaryButton}" Command="{Binding ShowEventsCommand}" CommandParameter="{Binding DeviceId}" />
+                                            </Grid>
                                             <!-- Shared library key status (2026-10-12) — see ManagedDevice's own remarks. The resend
                                                  button only shows when missing; there's nothing to "resend" for a member who already has it. -->
                                             <Label Text="{Binding SharedLibraryKeyText}" FontSize="9">
@@ -753,62 +770,10 @@
                                                     Command="{Binding Source={RelativeSource AncestorType={x:Type vm:SettingsViewModel}}, Path=SaveMemberPolicyCommand}"
                                                     CommandParameter="{Binding .}" />
                                             <Label Text="{Binding StatusText}" FontSize="9" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" />
-                                        </VerticalStackLayout>
-                                    </Border>
-                                </DataTemplate>
-                            </CollectionView.ItemTemplate>
-                        </CollectionView>
-                    </VerticalStackLayout>
-                </Border>
-                </VerticalStackLayout>
-
-                <VerticalStackLayout Spacing="12" IsVisible="{Binding IsAdminDevicesSubTab}">
-                <!-- Zařízení — staleness + pending outbox, deregister a dead device. -->
-                <Border Style="{StaticResource CardBorder}">
-                    <VerticalStackLayout Spacing="8">
-                        <Label Text="Admin: Zařízení" Style="{StaticResource SectionHeader}" Margin="0" />
-                        <Label Text="Seznam registrovaných zařízení — kdy naposledy zařízení bylo aktivní v adresáři a kolik zpráv na něj čeká. Nedostupné zařízení lze odsud rovnou odregistrovat." FontSize="9.5" TextColor="Gray" />
-
-                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                            <Button Grid.Column="1" Text="⟳ Obnovit" Style="{StaticResource SecondaryButton}" Command="{Binding LoadRegisteredDevicesCommand}" />
-                        </Grid>
-                        <controls:DelayedActivityIndicator IsBusy="{Binding IsLoadingDevices}" HorizontalOptions="Center" />
-
-                        <Label Text="Žádná zařízení nenalezena." FontSize="9.5" TextColor="Gray" IsVisible="{Binding HasNoRegisteredDevices}" />
-
-                        <CollectionView ItemsSource="{Binding RegisteredDevices}" IsVisible="{Binding HasRegisteredDevices}">
-                            <CollectionView.ItemsLayout>
-                                <LinearItemsLayout Orientation="Vertical" ItemSpacing="8" />
-                            </CollectionView.ItemsLayout>
-                            <CollectionView.ItemTemplate>
-                                <DataTemplate x:DataType="vm:RegisteredDeviceItem">
-                                    <VerticalStackLayout Spacing="6">
-                                    <!-- Person header (2026-10-09) — only on the first device of each ARIM contact, see SettingsViewModel.GroupDevicesByPerson. -->
-                                    <VerticalStackLayout Spacing="2" Margin="0,8,0,0" IsVisible="{Binding HasGroupHeader}">
-                                        <Label Text="{Binding GroupHeader}" FontAttributes="Bold" FontSize="12" />
-                                        <Label Text="{Binding GroupCoverageText}" FontSize="9.5" TextColor="Gray" />
-                                    </VerticalStackLayout>
-                                    <Border Style="{StaticResource CardBorder}" Margin="0" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
-                                        <VerticalStackLayout Spacing="4">
-                                            <Label Text="{Binding DisplayName}" FontAttributes="Bold" FontSize="11.5" />
-                                            <Label Text="{Binding StatusText}" FontSize="9" TextColor="Gray" />
-                                            <Label Text="{Binding PendingText}" FontSize="9"
-                                                   TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}">
-                                                <Label.Triggers>
-                                                    <DataTrigger TargetType="Label" Binding="{Binding HasPendingMessages}" Value="False">
-                                                        <Setter Property="TextColor" Value="Gray" />
-                                                    </DataTrigger>
-                                                </Label.Triggers>
-                                            </Label>
-                                            <Grid ColumnDefinitions="*,*" ColumnSpacing="8" Margin="0,4,0,0">
-                                                <Button Grid.Column="0" Text="📄 Log chyb" Style="{StaticResource SecondaryButton}" Command="{Binding ShowErrorsCommand}" CommandParameter="{Binding Id}" />
-                                                <Button Grid.Column="1" Text="📊 Log událostí" Style="{StaticResource SecondaryButton}" Command="{Binding ShowEventsCommand}" CommandParameter="{Binding Id}" />
-                                            </Grid>
                                             <Label Text="Zadej admin heslo výše, pak:" FontSize="8.5" TextColor="Gray" Margin="0,4,0,0" />
-                                            <Button Text="🗑 Odregistrovat" Style="{StaticResource SecondaryButton}" Command="{Binding DeregisterCommand}" CommandParameter="{Binding Id}" />
+                                            <Button Text="🗑 Odregistrovat" Style="{StaticResource SecondaryButton}" Command="{Binding DeregisterCommand}" CommandParameter="{Binding DeviceId}" />
                                         </VerticalStackLayout>
                                     </Border>
-                                    </VerticalStackLayout>
                                 </DataTemplate>
                             </CollectionView.ItemTemplate>
                         </CollectionView>

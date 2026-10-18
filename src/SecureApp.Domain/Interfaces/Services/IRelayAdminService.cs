@@ -26,8 +26,9 @@ public interface IRelayAdminService
     /// </summary>
     Task RequestDeployAsync(Uri endpoint, string adminSecret, CancellationToken ct = default);
 
-    /// <summary>Every registered device with its directory staleness + pending-outbox depth (2.1, 2026-09-17) — see <see cref="ValueObjects.RegisteredDevice"/>'s own remarks. Lets an admin actually see a ghost identity forming instead of only discovering it mid-incident.</summary>
-    Task<IReadOnlyList<RegisteredDevice>> GetRegisteredDevicesAsync(Uri endpoint, string adminSecret, CancellationToken ct = default);
+    /// <summary>Every registered device with its directory staleness + pending-outbox depth (2.1, 2026-09-17) — see <see cref="ValueObjects.RegisteredDevice"/>'s own remarks. Lets an admin actually see a ghost identity forming instead of only discovering it mid-incident.
+    /// 2026-10-17, user's own ask: no longer takes the admin secret — the relay now accepts this device's own auth as long as its assigned role is Admin (see <c>Program.IsAdminAuthorizedOrAdminDevice</c>'s own remarks); only the WRITE calls below still take <c>adminSecret</c>.</summary>
+    Task<IReadOnlyList<RegisteredDevice>> GetRegisteredDevicesAsync(Uri endpoint, CancellationToken ct = default);
 
     /// <summary>Deregisters a device entirely — deletes its credential, its directory entry, and purges its stuck outbox queue (see <c>RelayDatabase.DeregisterDevice</c>'s own remarks). Idempotent: deregistering an already-gone device is not an error.</summary>
     Task DeregisterDeviceAsync(Uri endpoint, string adminSecret, Guid deviceId, CancellationToken ct = default);
@@ -58,8 +59,9 @@ public interface IRelayAdminService
     /// </summary>
     Task<(string ConfigurationText, string? PickupCode)> CreateWireGuardClientAsync(Uri endpoint, string adminSecret, string memberName, Enums.Role? role = null, CancellationToken ct = default);
 
-    /// <summary>Every member with their admin-assigned role + hidden tabs (2026-09-24) — the data behind the "Správa členů" screen.</summary>
-    Task<IReadOnlyList<ManagedDevice>> GetManagedDevicesAsync(Uri endpoint, string adminSecret, CancellationToken ct = default);
+    /// <summary>Every member with their admin-assigned role + hidden tabs (2026-09-24) — the data behind the "Správa členů" screen.
+    /// 2026-10-17, user's own ask: no longer takes the admin secret, same reasoning as <see cref="GetRegisteredDevicesAsync"/> above.</summary>
+    Task<IReadOnlyList<ManagedDevice>> GetManagedDevicesAsync(Uri endpoint, CancellationToken ct = default);
 
     /// <summary>Sets one member's role, which tabs they may not see, whether they may review Document Library submissions (2026-10-01), and (2026-10-12) whether they're on the PICC team. A null <paramref name="role"/> hands the role decision back to that device; <paramref name="hiddenTabs"/> is the full set of AppShell preference keys to hide; a null <paramref name="isDocumentReviewer"/>/<paramref name="isPiccTeam"/> leaves that capability unchanged.</summary>
     Task SetDevicePolicyAsync(Uri endpoint, string adminSecret, Guid deviceId, Enums.Role? role, IReadOnlyList<string> hiddenTabs, bool? isDocumentReviewer = null, bool? isPiccTeam = null, CancellationToken ct = default);
