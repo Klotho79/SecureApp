@@ -31,6 +31,8 @@ public partial class CmsEditorPage : ContentPage, IQueryAttributable
 
     private readonly Dictionary<string, PendingCmsMedia> _pending = new();
     private Guid? _localDocumentId;
+    private Guid? _assignedDocumentId;
+    private string? _assignedTitle;
     private CmsDocument? _original;
     private bool _loaded;
     private bool _saving;
@@ -55,6 +57,12 @@ public partial class CmsEditorPage : ContentPage, IQueryAttributable
     {
         if (query.TryGetValue("documentId", out var value) && Guid.TryParse(value?.ToString(), out var id))
             _localDocumentId = id;
+        // "Moje zadání": the document id and title come from the editor grant (CMS_PLAN.md, phase 2c).
+        if (query.TryGetValue("assignedDocumentId", out var assigned) && Guid.TryParse(assigned?.ToString(), out var assignedId))
+        {
+            _assignedDocumentId = assignedId;
+            _assignedTitle = query.TryGetValue("assignedTitle", out var t) ? Uri.UnescapeDataString(t?.ToString() ?? "") : null;
+        }
     }
 
     protected override async void OnAppearing()
@@ -64,7 +72,8 @@ public partial class CmsEditorPage : ContentPage, IQueryAttributable
 
         await _currentUser.InitializeAsync();
         var role = _rolePreview.Resolve(_currentUser.Current.Role);
-        if (!RoleAccessPolicy.IsAllowed(role, RbacAction.UploadLibraryFile))
+        // An assigned editor (even a Viewer) may open the editor; the relay enforces the actual grant.
+        if (_assignedDocumentId is null && !RoleAccessPolicy.IsAllowed(role, RbacAction.UploadLibraryFile))
         {
             await DisplayAlertAsync("Editor", "Vaše role nemůže vytvářet ani upravovat dokumenty.", "OK");
             await Shell.Current.GoToAsync("..");
@@ -90,7 +99,9 @@ public partial class CmsEditorPage : ContentPage, IQueryAttributable
 
         try
         {
-            if (_localDocumentId is { } id)
+            if (_assignedDocumentId is { } assigned)
+                await LoadAssignmentAsync(assigned, _assignedTitle ?? "Nový dokument");
+            else if (_localDocumentId is { } id)
                 await LoadExistingAsync(id);
         }
         catch (Exception ex)
@@ -106,6 +117,27 @@ public partial class CmsEditorPage : ContentPage, IQueryAttributable
         var plaintext = await _crypto.DecryptAsync(document.EncryptedContent);
         _original = JsonSerializer.Deserialize<CmsDocument>(plaintext, CmsDocumentSaver.Json)
             ?? throw new InvalidOperationException("Dokument má neplatný obsah.");
+        await ShowOriginalAsync();
+    }
+
+    /// <summary>Opens an assignment: continues the latest server draft when one exists, otherwise starts an empty document with the assigned title.</summary>
+    private async Task LoadAssignmentAsync(Guid documentId, string title)
+    {
+        SetStatus("Načítám zadání…");
+        _original = await _saver.LoadLatestAsync(documentId);
+        if (_original is not null)
+        {
+            await ShowOriginalAsync();
+            return;
+        }
+
+        await RunJsAsync($"editor.load({Js(JsonSerializer.Serialize(new { title, blocks = Array.Empty<object>() }, CmsDocumentSaver.Json))})");
+        SetStatus(string.Empty);
+    }
+
+    private async Task ShowOriginalAsync()
+    {
+        if (_original is null) return;
 
         foreach (var (mediaId, media) in _original.Media.Where(m => m.Value.Kind == "image"))
         {
@@ -197,7 +229,7 @@ public partial class CmsEditorPage : ContentPage, IQueryAttributable
             var json = Encoding.UTF8.GetString(Convert.FromBase64String(encoded));
 
             var progress = new Progress<string>(m => SetStatus(m));
-            var saved = await _saver.SaveAsync(json, _original, _localDocumentId, _pending, progress);
+            var saved = await _saver.SaveAsync(json, _original, _localDocumentId, _pending, progress, _assignedDocumentId);
 
             _localDocumentId = saved.Id;
             _pending.Clear();

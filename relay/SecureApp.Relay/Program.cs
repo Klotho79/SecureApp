@@ -838,12 +838,68 @@ app.MapDelete("/library/links/{id:guid}", (Guid id, HttpRequest request, RelayDa
 // per-device document_reviewer policy flag, separate from Role — see device_policy's own remarks and
 // LibraryReviewPolicy.CanReview (self-review is never allowed, regardless of capability).
 
+// --- CMS per-document editor grants (phase 2c). An explicit Viewer (device_policy role 2) may only
+// stage/submit a document while holding an active grant on it; Admin/Modifier/unset keep today's behaviour.
+// Granting and revoking is Admin or Modifier only; a grant ends on its own when the document is approved.
+
+static bool CanEditCmsDocument(RelayDatabase db, Guid deviceId, Guid documentId) =>
+    db.GetDevicePolicy(deviceId)?.Role != 2 || db.HasActiveCmsGrant(documentId, deviceId);
+
+static bool CanAssignCmsEditors(RelayDatabase db, Guid deviceId) =>
+    db.GetDevicePolicy(deviceId)?.Role is 0 or 1;
+
+CmsEditorGrantDto ToCmsGrantDto(CmsEditorGrantRecord g, RelayDatabase db) =>
+    new(g.DocumentId, g.EditorDeviceId, db.GetDeviceDisplayName(g.EditorDeviceId), g.Title, g.FolderPath, g.GrantedBy, g.GrantedAtUtc, g.DocumentStatus);
+
+app.MapPost("/cms/editors", (HttpRequest request, AssignCmsEditorRequest body, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+    if (!CanAssignCmsEditors(db, deviceId))
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+    if (string.IsNullOrWhiteSpace(body.Title))
+        return Results.BadRequest("Title is required.");
+
+    var grant = db.GrantCmsEditor(body.DocumentId ?? Guid.NewGuid(), body.EditorDeviceId, body.Title.Trim(), body.FolderPath ?? "", deviceId);
+    return Results.Ok(ToCmsGrantDto(grant, db));
+});
+
+app.MapDelete("/cms/editors/{documentId:guid}/{editorDeviceId:guid}", (Guid documentId, Guid editorDeviceId, HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+    if (!CanAssignCmsEditors(db, deviceId))
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+
+    return db.RevokeCmsEditor(documentId, editorDeviceId) ? Results.NoContent() : Results.NotFound();
+});
+
+app.MapGet("/cms/editors/mine", (HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+
+    return Results.Ok(db.GetActiveCmsGrants(deviceId).Select(g => ToCmsGrantDto(g, db)).ToList());
+});
+
+app.MapGet("/cms/editors", (HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+    if (!CanAssignCmsEditors(db, deviceId))
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+
+    return Results.Ok(db.GetActiveCmsGrants(null).Select(g => ToCmsGrantDto(g, db)).ToList());
+});
+
 app.MapPost("/library-documents", (HttpRequest request, CreateLibraryDocumentRequest body, RelayDatabase db) =>
 {
     if (!TryGetDeviceAuth(request, db, out var deviceId))
         return Results.Unauthorized();
     if (string.IsNullOrWhiteSpace(body.Title))
         return Results.BadRequest("Title is required.");
+    if (!CanEditCmsDocument(db, deviceId, body.Id ?? Guid.Empty))
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
     if (db.GetLibraryFile(body.LibraryFileId) is null)
         return Results.BadRequest("LibraryFileId does not refer to an uploaded file.");
 
@@ -858,6 +914,8 @@ app.MapPost("/library-documents/{id:guid}/versions", (Guid id, HttpRequest reque
 {
     if (!TryGetDeviceAuth(request, db, out var deviceId))
         return Results.Unauthorized();
+    if (!CanEditCmsDocument(db, deviceId, id))
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
     if (db.GetLibraryFile(body.LibraryFileId) is null)
         return Results.BadRequest("LibraryFileId does not refer to an uploaded file.");
 
@@ -869,6 +927,8 @@ app.MapPost("/library-documents/{id:guid}/submit", (Guid id, HttpRequest request
 {
     if (!TryGetDeviceAuth(request, db, out var deviceId))
         return Results.Unauthorized();
+    if (!CanEditCmsDocument(db, deviceId, id))
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
 
     var record = db.SubmitLibraryDocumentForReview(id, deviceId);
     return record is null ? Results.NotFound() : Results.Ok(ToLibraryDocumentDto(record));

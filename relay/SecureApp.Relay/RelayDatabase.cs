@@ -33,6 +33,9 @@ public sealed record LibraryLinkRecord(
     Guid CreatedByDeviceId,
     DateTimeOffset CreatedAtUtc);
 
+/// <summary>One active per-document CMS editor grant; <c>DocumentStatus</c> is null until the first draft exists.</summary>
+public sealed record CmsEditorGrantRecord(Guid DocumentId, Guid EditorDeviceId, string Title, string FolderPath, Guid GrantedBy, DateTimeOffset GrantedAtUtc, string? DocumentStatus);
+
 /// <summary>One reviewable Document Library entry — see <c>library_documents</c>'s schema in <see cref="RelayDatabase.Initialize"/>.</summary>
 public sealed record LibraryDocumentRecord(
     Guid Id, string Title, string FolderPath, string Status,
@@ -401,6 +404,24 @@ public sealed class RelayDatabase
                 decided_at_utc          TEXT NOT NULL
             )
             """);
+
+        // CMS per-document editor grants (CMS_PLAN.md, phase 2c). Active grant = ended_at_utc IS NULL; it
+        // ends automatically when the document is approved (ApproveLibraryDocumentVersion) or when an
+        // Admin/Modifier revokes it. title is the assignment's working title until the first draft exists.
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS cms_document_editors (
+                document_id       TEXT NOT NULL,
+                editor_device_id  TEXT NOT NULL,
+                title             TEXT NOT NULL,
+                folder_path       TEXT NOT NULL,
+                granted_by        TEXT NOT NULL,
+                granted_at_utc    TEXT NOT NULL,
+                ended_at_utc      TEXT NULL,
+                end_reason        TEXT NULL
+            )
+            """);
+        Execute(connection, "CREATE INDEX IF NOT EXISTS ix_cms_document_editors_doc ON cms_document_editors(document_id)");
+        Execute(connection, "CREATE INDEX IF NOT EXISTS ix_cms_document_editors_editor ON cms_document_editors(editor_device_id)");
 
         // Notice board (2026-09-24) — Admin/Modifier post a message that every member sees on the
         // Nastenka tab. content_blob is OPAQUE to the relay: the client encrypts it with the shared
@@ -1131,6 +1152,88 @@ public sealed class RelayDatabase
         return new LibraryDocumentRecord(id, title, folderPath, "Draft", null, null, createdByDeviceId, null, null, now, now);
     }
 
+    /// <summary>Gives <paramref name="editorDeviceId"/> editing rights on the CMS document. Idempotent: an already active grant is returned unchanged.</summary>
+    public CmsEditorGrantRecord GrantCmsEditor(Guid documentId, Guid editorDeviceId, string title, string folderPath, Guid grantedBy)
+    {
+        using var connection = OpenConnection();
+        var existing = QueryCmsGrants(connection, "WHERE e.document_id = @doc AND e.editor_device_id = @editor AND e.ended_at_utc IS NULL",
+            ("@doc", documentId.ToString()), ("@editor", editorDeviceId.ToString())).FirstOrDefault();
+        if (existing is not null)
+            return existing;
+
+        Execute(connection,
+            "INSERT INTO cms_document_editors (document_id, editor_device_id, title, folder_path, granted_by, granted_at_utc) VALUES (@doc, @editor, @title, @folder, @by, @now)",
+            ("@doc", documentId.ToString()), ("@editor", editorDeviceId.ToString()), ("@title", title), ("@folder", folderPath),
+            ("@by", grantedBy.ToString()), ("@now", Format(DateTimeOffset.UtcNow)));
+        return QueryCmsGrants(connection, "WHERE e.document_id = @doc AND e.editor_device_id = @editor AND e.ended_at_utc IS NULL",
+            ("@doc", documentId.ToString()), ("@editor", editorDeviceId.ToString())).First();
+    }
+
+    /// <summary>Ends an active grant (reason "revoked"). Returns false when there was none.</summary>
+    public bool RevokeCmsEditor(Guid documentId, Guid editorDeviceId)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE cms_document_editors SET ended_at_utc = @now, end_reason = 'revoked' WHERE document_id = @doc AND editor_device_id = @editor AND ended_at_utc IS NULL";
+        command.Parameters.AddWithValue("@now", Format(DateTimeOffset.UtcNow));
+        command.Parameters.AddWithValue("@doc", documentId.ToString());
+        command.Parameters.AddWithValue("@editor", editorDeviceId.ToString());
+        return command.ExecuteNonQuery() > 0;
+    }
+
+    public string GetDeviceDisplayName(Guid deviceId)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT COALESCE(e.display_name, d.display_name, 'Neznámý')
+            FROM (SELECT @id AS id) x
+            LEFT JOIN directory_entries e ON e.device_id = x.id
+            LEFT JOIN devices d ON d.id = x.id
+            """;
+        command.Parameters.AddWithValue("@id", deviceId.ToString());
+        return command.ExecuteScalar() as string ?? "Neznámý";
+    }
+
+    public bool HasActiveCmsGrant(Guid documentId, Guid deviceId)
+    {
+        using var connection = OpenConnection();
+        return QueryCmsGrants(connection, "WHERE e.document_id = @doc AND e.editor_device_id = @editor AND e.ended_at_utc IS NULL",
+            ("@doc", documentId.ToString()), ("@editor", deviceId.ToString())).Count > 0;
+    }
+
+    /// <summary>Active grants: one editor's own ("Moje zadání") or, with <c>null</c>, everyone's (assigner overview).</summary>
+    public IReadOnlyList<CmsEditorGrantRecord> GetActiveCmsGrants(Guid? editorDeviceId)
+    {
+        using var connection = OpenConnection();
+        return editorDeviceId is { } id
+            ? QueryCmsGrants(connection, "WHERE e.ended_at_utc IS NULL AND e.editor_device_id = @editor", ("@editor", id.ToString()))
+            : QueryCmsGrants(connection, "WHERE e.ended_at_utc IS NULL");
+    }
+
+    private static List<CmsEditorGrantRecord> QueryCmsGrants(SqliteConnection connection, string where, params (string Name, object Value)[] parameters)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT e.document_id, e.editor_device_id, e.title, e.folder_path, e.granted_by, e.granted_at_utc, d.status
+            FROM cms_document_editors e LEFT JOIN library_documents d ON d.id = e.document_id
+            {where} ORDER BY e.granted_at_utc DESC
+            """;
+        foreach (var (name, value) in parameters)
+            command.Parameters.AddWithValue(name, value);
+
+        var list = new List<CmsEditorGrantRecord>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            list.Add(new CmsEditorGrantRecord(
+                Guid.Parse((string)reader["document_id"]), Guid.Parse((string)reader["editor_device_id"]),
+                (string)reader["title"], (string)reader["folder_path"], Guid.Parse((string)reader["granted_by"]),
+                DateTimeOffset.Parse((string)reader["granted_at_utc"]), reader["status"] is DBNull ? null : (string)reader["status"]));
+        }
+        return list;
+    }
+
     /// <summary>Stages a new version (e.g. revising a Rejected document) and resets status to Draft. Returns null if the document doesn't exist.</summary>
     public LibraryDocumentRecord? AddLibraryDocumentVersion(Guid documentId, Guid libraryFileId, Guid authorDeviceId, string? changeNote)
     {
@@ -1213,6 +1316,11 @@ public sealed class RelayDatabase
             ("@id", documentId.ToString()), ("@versionId", latestVersion.Id.ToString()), ("@fileId", latestVersion.LibraryFileId.ToString()), ("@now", Format(now)));
 
         InsertReview(connection, transaction, documentId, latestVersion.Id, reviewerDeviceId, "Approved", comment, now);
+
+        // Editor rights last "until approval" (user's decision 2026-10-18); a revision needs a new grant.
+        Execute(connection, transaction,
+            "UPDATE cms_document_editors SET ended_at_utc = @now, end_reason = 'approved' WHERE document_id = @id AND ended_at_utc IS NULL",
+            ("@id", documentId.ToString()), ("@now", Format(now)));
 
         var result = GetLibraryDocument(connection, transaction, documentId);
         transaction.Commit();

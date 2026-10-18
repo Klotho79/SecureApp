@@ -191,6 +191,11 @@ public sealed record LibraryDocumentReviewEntryDto(Guid Id, Guid LibraryDocument
 public sealed record LibraryDocumentDetailDto(LibraryDocumentDto Document, IReadOnlyList<LibraryDocumentVersionDto> Versions, IReadOnlyList<LibraryDocumentReviewEntryDto> Reviews);
 
 /// <summary>Creates a new Draft document from an already-uploaded (private, listed=false) library file.</summary>
+/// <summary>Admin/Modifier assigns a CMS document to an editor. A null <c>DocumentId</c> allocates a new document id (a fresh assignment).</summary>
+public sealed record AssignCmsEditorRequest(Guid? DocumentId, Guid EditorDeviceId, string Title, string FolderPath);
+
+public sealed record CmsEditorGrantDto(Guid DocumentId, Guid EditorDeviceId, string EditorDisplayName, string Title, string FolderPath, Guid GrantedBy, DateTimeOffset GrantedAtUtc, string? DocumentStatus);
+
 public sealed record CreateLibraryDocumentRequest(string Title, string FolderPath, Guid LibraryFileId, string? ChangeNote, Guid? Id = null);
 
 /// <summary>Stages a new version on an existing document from an already-uploaded private library file. Resets status to Draft.</summary>

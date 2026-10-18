@@ -36,6 +36,8 @@ public sealed partial class RedakceViewModel : ObservableObject
     private readonly ITransportSettingsRepository _transportSettingsRepository;
     private readonly IDiagnosticsReporter _diagnosticsReporter;
     private readonly RolePreviewService _rolePreviewService;
+    private readonly ICmsAssignmentService _cmsAssignments;
+    private readonly IContactDirectoryService _contactDirectory;
 
     [ObservableProperty]
     public partial bool CanPostToBoard { get; set; }
@@ -90,8 +92,12 @@ public sealed partial class RedakceViewModel : ObservableObject
         ISharedLibraryService sharedLibraryService,
         ITransportSettingsRepository transportSettingsRepository,
         IDiagnosticsReporter diagnosticsReporter,
-        RolePreviewService rolePreviewService)
+        RolePreviewService rolePreviewService,
+        ICmsAssignmentService cmsAssignments,
+        IContactDirectoryService contactDirectory)
     {
+        _cmsAssignments = cmsAssignments ?? throw new ArgumentNullException(nameof(cmsAssignments));
+        _contactDirectory = contactDirectory ?? throw new ArgumentNullException(nameof(contactDirectory));
         _communityBoardService = communityBoardService ?? throw new ArgumentNullException(nameof(communityBoardService));
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         _roomStatusService = roomStatusService ?? throw new ArgumentNullException(nameof(roomStatusService));
@@ -155,7 +161,9 @@ public sealed partial class RedakceViewModel : ObservableObject
             await RefreshLibraryCategoriesAsync();
         }
 
-        HasNoEditorialAccess = !CanPostToBoard && !CanManageRoomStatusOptions && !CanManageLogbook && !CanManageLibrary && !CanAuthorCms;
+        await LoadCmsAssignmentsAsync(role);
+
+        HasNoEditorialAccess = !CanPostToBoard && !CanManageRoomStatusOptions && !CanManageLogbook && !CanManageLibrary && !CanAuthorCms && !HasMyAssignments;
     }
 
     [RelayCommand]

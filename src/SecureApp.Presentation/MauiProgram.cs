@@ -206,6 +206,7 @@ public static class MauiProgram
 		// Document Library content-approval workflow (2026-10-01 — see ILibraryReviewService's own
 		// remarks). Same registration shape as ISharedLibraryService, which it's layered alongside.
 		builder.Services.AddSingleton<ILibraryReviewService, SecureApp.Presentation.Library.HttpLibraryReviewService>();
+		builder.Services.AddSingleton<ICmsAssignmentService, SecureApp.Presentation.Library.HttpCmsAssignmentService>();
 
 		// Admin-only, Windows-only local-AI PDF translation (2026-10-05 — see ILibraryTranslationService's
 		// own remarks). AddScoped, mirroring IDocumentRenderingService's own registration (which this

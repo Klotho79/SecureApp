@@ -94,6 +94,57 @@
                 </VerticalStackLayout>
             </Border>
 
+            <!-- Moje zadání (kdokoli s přiděleným dokumentem, jen PC) — právo trvá do schválení dokumentu. -->
+            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding HasMyAssignments}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Moje zadání" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Label Text="Dokumenty, které vám byly přiděleny k vypracování. Právo upravovat trvá do schválení dokumentu." FontSize="9.5" TextColor="Gray" LineBreakMode="WordWrap" />
+                    <VerticalStackLayout Spacing="6" BindableLayout.ItemsSource="{Binding MyAssignments}">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="vm:CmsAssignmentItem">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                    <VerticalStackLayout Grid.Column="0" Spacing="0">
+                                        <Label Text="{Binding Title}" FontSize="10.5" FontAttributes="Bold" />
+                                        <Label Text="{Binding StatusText}" FontSize="9.5" TextColor="Gray" />
+                                    </VerticalStackLayout>
+                                    <Button Grid.Column="1" Text="✏ Vypracovat" Style="{StaticResource SecondaryButton}"
+                                            Command="{Binding Source={RelativeSource AncestorType={x:Type vm:RedakceViewModel}}, Path=OpenMyAssignmentCommand}"
+                                            CommandParameter="{Binding .}" />
+                                </Grid>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Zadání dokumentů (Admin/Modifier, jen PC) — přidělení a odebrání editora. -->
+            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanAssignCms}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Zadání dokumentů" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Label Text="Zadejte název dokumentu a vyberte člena, který ho vypracuje. Editor smí upravovat jen tento dokument, a to do jeho schválení." FontSize="9.5" TextColor="Gray" LineBreakMode="WordWrap" />
+                    <Entry Placeholder="Název dokumentu…" Text="{Binding NewAssignmentTitle}" FontSize="10.5" />
+                    <Picker Title="Editor…" ItemsSource="{Binding AssignableMembers}" ItemDisplayBinding="{Binding DisplayName}" SelectedItem="{Binding SelectedAssignee}" FontSize="10.5" />
+                    <Button Text="Přidělit" Command="{Binding AssignCmsEditorCommand}" HorizontalOptions="Start" />
+                    <Label Text="{Binding AssignmentStatusText}" IsVisible="{Binding HasAssignmentStatus}" FontSize="9.5" LineBreakMode="WordWrap" />
+                    <VerticalStackLayout Spacing="4" BindableLayout.ItemsSource="{Binding AllAssignments}">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="vm:CmsAssignmentItem">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                    <VerticalStackLayout Grid.Column="0" Spacing="0">
+                                        <Label Text="{Binding Title}" FontSize="10.5" FontAttributes="Bold" />
+                                        <Label FontSize="9.5" TextColor="Gray" Text="{Binding EditorName, StringFormat='Editor: {0}'}" />
+                                        <Label Text="{Binding StatusText}" FontSize="9.5" TextColor="Gray" />
+                                    </VerticalStackLayout>
+                                    <Button Grid.Column="1" Text="Odebrat" Style="{StaticResource SecondaryButton}"
+                                            Command="{Binding Source={RelativeSource AncestorType={x:Type vm:RedakceViewModel}}, Path=RevokeCmsEditorCommand}"
+                                            CommandParameter="{Binding .}" />
+                                </Grid>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+            </Border>
+
             <!-- Kategorie knihovny (Modifier/Admin) — přesunuto z Nastavení/Systém/Knihovna. -->
             <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanManageLibrary}">
                 <VerticalStackLayout Spacing="8">

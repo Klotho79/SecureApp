@@ -43,6 +43,7 @@ public sealed class CmsDocumentSaver
         Guid? originalLocalDocumentId,
         IReadOnlyDictionary<string, PendingCmsMedia> pending,
         IProgress<string>? progress = null,
+        Guid? assignedDocumentId = null,
         CancellationToken ct = default)
     {
         var root = JsonNode.Parse(editorJson) as JsonObject ?? throw new InvalidOperationException("Editor vrátil neplatná data.");
@@ -73,7 +74,7 @@ public sealed class CmsDocumentSaver
         }
 
         var version = "v-" + DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmss");
-        var document = new CmsDocument(1, original?.DocumentId ?? Guid.NewGuid(), version, original?.VersionId, title, "cs", blocks, media);
+        var document = new CmsDocument(1, original?.DocumentId ?? assignedDocumentId ?? Guid.NewGuid(), version, original?.VersionId, title, "cs", blocks, media);
 
         progress?.Report("Ukládám dokument…");
         var bytes = JsonSerializer.SerializeToUtf8Bytes(document, Json);
@@ -96,6 +97,23 @@ public sealed class CmsDocumentSaver
         }
 
         return saved;
+    }
+
+    /// <summary>The newest staged version of a server-side document (the editor's continuing draft), or null when none exists yet.</summary>
+    public async Task<CmsDocument?> LoadLatestAsync(Guid documentId, CancellationToken ct = default)
+    {
+        try
+        {
+            var detail = await _review.GetDetailAsync(documentId, ct);
+            var latest = detail.Versions.OrderByDescending(v => v.VersionNumber).FirstOrDefault();
+            if (latest is null) return null;
+            var (content, _) = await _library.DownloadDecryptedAsync(latest.LibraryFileId, ct);
+            return JsonSerializer.Deserialize<CmsDocument>(content, Json);
+        }
+        catch (InvalidOperationException)
+        {
+            return null; // relay doesn't know the document yet
+        }
     }
 
     /// <summary>Moves the staged draft of <paramref name="documentId"/> into the reviewer queue (readers only see a document after approval).</summary>
