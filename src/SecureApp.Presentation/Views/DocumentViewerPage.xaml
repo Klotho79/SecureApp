@@ -66,14 +66,16 @@
                 VerticalOptions="Fill" />
 
             <!-- CMS document (CMS_PLAN.md, phase 1) — native responsive block renderer, not a raster. -->
-            <cms:CmsDocumentView
-                x:Name="CmsView"
-                Document="{Binding CmsModel}"
-                Zoom="{Binding CmsZoom}"
-                AnnotationRequested="OnAnnotationRequested"
-                IsVisible="{Binding IsCms}"
-                HorizontalOptions="Fill"
-                VerticalOptions="Fill" />
+            <Grid RowDefinitions="*,Auto" IsVisible="{Binding IsCms}" HorizontalOptions="Fill" VerticalOptions="Fill">
+                <cms:CmsDocumentView
+                    x:Name="CmsView"
+                    Document="{Binding CmsModel}"
+                    Zoom="{Binding CmsZoom}"
+                    AnnotationRequested="OnAnnotationRequested"
+                    HorizontalOptions="Fill"
+                    VerticalOptions="Fill" />
+                <cms:CmsAnnotationPanel x:Name="AnnotationPanel" Grid.Row="1" Margin="0,8,0,0" />
+            </Grid>
 
             <!-- Open externally (2026-10-03) — DOCX/PPTX and anything else with no in-app renderer. -->
             <VerticalStackLayout IsVisible="{Binding IsExternalOnly}" HorizontalOptions="Center" VerticalOptions="Center" Spacing="12">

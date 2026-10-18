@@ -124,7 +124,23 @@ public sealed class CmsDocumentView : ContentView
     {
         var text = new SelectableText(blockId, plain, runs, baseOffset, fontSize, bold);
         text.TokenTapped += OnTokenTapped;
+        _texts.Add(text);
+        text.SetMarks(MarksFor(blockId));
         return text;
+    }
+
+    private readonly List<SelectableText> _texts = [];
+    private IReadOnlyList<CmsAnchor> _marks = [];
+
+    private IEnumerable<(int Start, int End)> MarksFor(string blockId) =>
+        _marks.Where(a => a.BlockId == blockId).Select(a => (a.Start, a.End));
+
+    /// <summary>Marks the passages that carry annotations (kept across rebuilds, e.g. when the width class changes).</summary>
+    public void SetAnnotationMarks(IEnumerable<CmsAnchor> anchors)
+    {
+        _marks = anchors.ToList();
+        foreach (var text in _texts)
+            text.SetMarks(MarksFor(text.BlockId));
     }
 
     protected override void OnSizeAllocated(double width, double height)
@@ -148,6 +164,7 @@ public sealed class CmsDocumentView : ContentView
         _buildVersion++;
         ClearSelection();
         _stack.Children.Clear();
+        _texts.Clear();
         if (Document is null) return;
 
         _stack.WidthRequest = _contentWidth > 0 ? _contentWidth : -1;

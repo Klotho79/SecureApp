@@ -903,6 +903,72 @@ app.MapGet("/cms/editors", (HttpRequest request, RelayDatabase db) =>
     return Results.Ok(db.GetActiveCmsGrants(null).Select(g => ToCmsGrantDto(g, db)).ToList());
 });
 
+// --- CMS annotations (phase 4): the relay stores opaque bodies and enforces who may see them. Any
+// registered member may annotate; audience private = author only, selected = author + recipients, all =
+// everyone; Admin sees everything. "Ignore" (hide) is per member and never changes the annotation.
+
+static CmsAnnotationDto ToAnnotationDto(CmsAnnotationRecord a) => new(
+    a.Id, a.DocumentId, a.AuthorDeviceId, a.AuthorName, a.Audience, a.BodyBlob, a.Moderation, a.CreatedAtUtc, a.UpdatedAtUtc, a.HiddenByMe, a.IsMine,
+    a.Replies.Select(r => new CmsAnnotationReplyDto(r.Id, r.AuthorDeviceId, r.AuthorName, r.BodyBlob, r.CreatedAtUtc)).ToList());
+
+app.MapGet("/cms/documents/{documentId:guid}/annotations", (Guid documentId, HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+
+    return Results.Ok(db.GetCmsAnnotations(documentId, deviceId).Select(ToAnnotationDto).ToList());
+});
+
+app.MapPost("/cms/documents/{documentId:guid}/annotations", (Guid documentId, HttpRequest request, CreateCmsAnnotationRequest body, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+    if (body.Audience is not ("private" or "selected" or "all"))
+        return Results.BadRequest("Audience must be private, selected or all.");
+    if (string.IsNullOrWhiteSpace(body.BodyBlob) || body.BodyBlob.Length > 64 * 1024)
+        return Results.BadRequest("BodyBlob is required (max 64 KB).");
+    if (body.Audience == "selected" && (body.RecipientDeviceIds is null || body.RecipientDeviceIds.Count == 0))
+        return Results.BadRequest("Select at least one recipient.");
+
+    var record = db.CreateCmsAnnotation(body.Id ?? Guid.NewGuid(), documentId, deviceId, body.Audience, body.RecipientDeviceIds ?? [], body.BodyBlob);
+    return Results.Ok(ToAnnotationDto(record));
+});
+
+app.MapPost("/cms/annotations/{id:guid}/replies", (Guid id, HttpRequest request, AddCmsAnnotationReplyRequest body, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+    if (string.IsNullOrWhiteSpace(body.BodyBlob) || body.BodyBlob.Length > 64 * 1024)
+        return Results.BadRequest("BodyBlob is required (max 64 KB).");
+
+    var record = db.AddCmsAnnotationReply(id, deviceId, body.BodyBlob);
+    return record is null ? Results.NotFound() : Results.Ok(ToAnnotationDto(record));
+});
+
+app.MapDelete("/cms/annotations/{id:guid}", (Guid id, HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+
+    return db.DeleteCmsAnnotation(id, deviceId) ? Results.NoContent() : Results.NotFound();
+});
+
+app.MapPut("/cms/annotations/{id:guid}/hide", (Guid id, HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+
+    return db.SetCmsAnnotationHidden(id, deviceId, true) ? Results.NoContent() : Results.NotFound();
+});
+
+app.MapDelete("/cms/annotations/{id:guid}/hide", (Guid id, HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+
+    return db.SetCmsAnnotationHidden(id, deviceId, false) ? Results.NoContent() : Results.NotFound();
+});
+
 app.MapPost("/library-documents", (HttpRequest request, CreateLibraryDocumentRequest body, RelayDatabase db) =>
 {
     if (!TryGetDeviceAuth(request, db, out var deviceId))

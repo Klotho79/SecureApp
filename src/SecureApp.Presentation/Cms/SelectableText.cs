@@ -55,12 +55,40 @@ internal sealed class SelectableText : ContentView
         Content = flex;
     }
 
+    private static readonly Color MarkColor = Color.FromArgb("#55FACC15");
+
+    private bool[] _marked = [];
+    private int _selFrom = -1;
+    private int _selTo = -1;
+
     /// <summary>Highlights tokens <paramref name="from"/>..<paramref name="to"/> inclusive; pass -1 to clear.</summary>
     public void Highlight(int from, int to)
     {
-        var lo = Math.Min(from, to);
-        var hi = Math.Max(from, to);
+        _selFrom = from;
+        _selTo = to;
+        Repaint();
+    }
+
+    /// <summary>Marks the text covered by annotations (character ranges into <see cref="BlockPlain"/>), shown in a different tint than the current selection.</summary>
+    public void SetMarks(IEnumerable<(int Start, int End)> ranges)
+    {
+        var marked = new bool[_labels.Length];
+        foreach (var (start, end) in ranges)
+            for (var i = 0; i < Tokens.Count; i++)
+                if (Tokens[i].IsWord && Tokens[i].Start < end && Tokens[i].End > start)
+                    marked[i] = true;
+        _marked = marked;
+        Repaint();
+    }
+
+    private void Repaint()
+    {
+        var lo = Math.Min(_selFrom, _selTo);
+        var hi = Math.Max(_selFrom, _selTo);
         for (var i = 0; i < _labels.Length; i++)
-            _labels[i].BackgroundColor = from >= 0 && i >= lo && i <= hi ? HighlightColor : Colors.Transparent;
+        {
+            var selected = _selFrom >= 0 && i >= lo && i <= hi;
+            _labels[i].BackgroundColor = selected ? HighlightColor : i < _marked.Length && _marked[i] ? MarkColor : Colors.Transparent;
+        }
     }
 }

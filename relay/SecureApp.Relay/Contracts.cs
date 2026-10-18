@@ -194,6 +194,17 @@ public sealed record LibraryDocumentDetailDto(LibraryDocumentDto Document, IRead
 /// <summary>Admin/Modifier assigns a CMS document to an editor. A null <c>DocumentId</c> allocates a new document id (a fresh assignment).</summary>
 public sealed record AssignCmsEditorRequest(Guid? DocumentId, Guid EditorDeviceId, string Title, string FolderPath);
 
+/// <summary><c>Audience</c> is private | selected | all; <c>RecipientDeviceIds</c> only matters for "selected" (each is resolved to that member's identity). <c>BodyBlob</c> is opaque to the relay.</summary>
+public sealed record CreateCmsAnnotationRequest(Guid? Id, string Audience, List<Guid>? RecipientDeviceIds, string BodyBlob);
+
+public sealed record CmsAnnotationReplyDto(Guid Id, Guid AuthorDeviceId, string AuthorName, string BodyBlob, DateTimeOffset CreatedAtUtc);
+
+public sealed record CmsAnnotationDto(
+    Guid Id, Guid DocumentId, Guid AuthorDeviceId, string AuthorName, string Audience, string BodyBlob, string Moderation,
+    DateTimeOffset CreatedAtUtc, DateTimeOffset UpdatedAtUtc, bool HiddenByMe, bool IsMine, List<CmsAnnotationReplyDto> Replies);
+
+public sealed record AddCmsAnnotationReplyRequest(string BodyBlob);
+
 /// <summary>One assignable member: <c>DeviceId</c> is a device that represents them (all devices sharing the e-mail are covered by the grant).</summary>
 public sealed record CmsMemberDto(Guid DeviceId, string DisplayName, string? Email);
 

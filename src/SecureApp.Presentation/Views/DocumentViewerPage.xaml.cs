@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using Microsoft.Maui.Dispatching;
+using SecureApp.Presentation.Infrastructure;
 using SecureApp.Presentation.ViewModels;
 
 namespace SecureApp.Presentation.Views;
@@ -33,12 +34,23 @@ public partial class DocumentViewerPage : ContentPage
 	private bool _ignoreNextPinchDelta;
 	private double _smoothedDelta = 1;
 
-	public DocumentViewerPage(DocumentViewerViewModel viewModel, SecureApp.Presentation.Cms.ICmsMediaProvider cmsMediaProvider)
+	private readonly SecureApp.Domain.Interfaces.Services.ICmsAnnotationService _annotations;
+	private readonly SecureApp.Domain.Interfaces.Services.IContactDirectoryService _directory;
+
+	public DocumentViewerPage(
+		DocumentViewerViewModel viewModel, SecureApp.Presentation.Cms.ICmsMediaProvider cmsMediaProvider,
+		SecureApp.Domain.Interfaces.Services.ICmsAnnotationService annotations,
+		SecureApp.Domain.Interfaces.Services.IContactDirectoryService directory)
 	{
 		InitializeComponent();
 		BindingContext = _viewModel = viewModel;
 		_viewModel.PropertyChanged += OnViewModelPropertyChanged;
 		CmsView.MediaProvider = cmsMediaProvider;
+		_annotations = annotations;
+		_directory = directory;
+		AnnotationPanel.ReplyRequested += OnAnnotationReply;
+		AnnotationPanel.HideToggled += OnAnnotationHideToggled;
+		AnnotationPanel.DeleteRequested += OnAnnotationDelete;
 	}
 
 	protected override void OnAppearing()
@@ -70,6 +82,9 @@ public partial class DocumentViewerPage : ContentPage
 			ToolbarItems.Remove(_editItem);
 			if (_viewModel.IsCms && desktop) ToolbarItems.Add(_editItem);
 		}
+
+		if (e.PropertyName == nameof(DocumentViewerViewModel.CmsModel) && _viewModel.CmsModel is not null)
+			_ = ReloadAnnotationsAsync();
 
 		if (e.PropertyName == nameof(DocumentViewerViewModel.CurrentPageImage))
 			ResetZoom();
@@ -183,10 +198,113 @@ public partial class DocumentViewerPage : ContentPage
 	// (1800x2400, up from 1200x1600) so the same READABLE result needs less extreme Scale to reach.
 	private const double MaxScale = 3;
 
-	// Placeholder until phase 4 (note editor): shows the anchor the selection produced.
+	// --- Annotations (CMS_PLAN.md, phase 4) ---
+
+	private async Task ReloadAnnotationsAsync()
+	{
+		if (_viewModel.CmsModel is not { } document) return;
+		try
+		{
+			var items = await _annotations.ListAsync(document.DocumentId);
+			AnnotationPanel.SetItems(items);
+			CmsView.SetAnnotationMarks(items.Where(a => !a.HiddenByMe && a.Anchor is not null).Select(a => a.Anchor!));
+		}
+		catch (Exception ex)
+		{
+			AppLog.Error("CmsAnnotations.List", "load failed", ex); // the document itself must stay readable offline
+		}
+	}
+
 	private async void OnAnnotationRequested(object? sender, SecureApp.Domain.ValueObjects.CmsAnchor anchor)
-		=> await DisplayAlertAsync("Poznámka (zatím jen ukázka ukotvení)",
-			$"Blok: {anchor.BlockId}\nPozice: {anchor.Start}–{anchor.End}\nText: „{anchor.Exact}“", "OK");
+	{
+		if (_viewModel.CmsModel is not { } document) return;
+		try
+		{
+			var text = await DisplayPromptAsync("Poznámka", $"„{anchor.Exact}“", "Uložit", "Zrušit", maxLength: 2000, keyboard: Keyboard.Text);
+			if (string.IsNullOrWhiteSpace(text)) return;
+
+			var choice = await DisplayActionSheetAsync("Kdo poznámku uvidí?", "Zrušit", null, "Všichni", "Vybraní členové", "Jen já");
+			if (choice is null or "Zrušit") return;
+
+			var audience = choice switch { "Všichni" => "all", "Vybraní členové" => "selected", _ => "private" };
+			var recipients = new List<Guid>();
+			if (audience == "selected")
+			{
+				recipients = await PickRecipientsAsync();
+				if (recipients.Count == 0) return;
+			}
+
+			await _annotations.CreateAsync(document.DocumentId, anchor, text, audience, recipients);
+			CmsView.ClearSelection();
+			await ReloadAnnotationsAsync();
+		}
+		catch (Exception ex)
+		{
+			await DisplayAlertAsync("Poznámka", $"Uložení se nezdařilo: {ex.Message}", "OK");
+		}
+	}
+
+	/// <summary>Picks members one at a time (an action sheet has no multi-select); each member may own several devices, all of which are sent.</summary>
+	private async Task<List<Guid>> PickRecipientsAsync()
+	{
+		var members = (await _directory.ListMembersAsync())
+			.GroupBy(m => m.DisplayName)
+			.ToDictionary(g => g.Key, g => g.Select(m => m.RelayDeviceId).ToList());
+		var picked = new List<string>();
+		while (true)
+		{
+			var remaining = members.Keys.Except(picked).OrderBy(n => n).ToArray();
+			if (remaining.Length == 0) break;
+			var title = picked.Count == 0 ? "Komu poznámku ukázat?" : $"Vybráno: {string.Join(", ", picked)}";
+			var name = await DisplayActionSheetAsync(title, "Zrušit", picked.Count > 0 ? "Hotovo" : null, remaining);
+			if (name is null or "Zrušit") { if (picked.Count == 0) return []; break; }
+			if (name == "Hotovo") break;
+			picked.Add(name);
+		}
+		return picked.SelectMany(n => members[n]).ToList();
+	}
+
+	private async void OnAnnotationReply(SecureApp.Domain.Interfaces.Services.CmsAnnotationView annotation)
+	{
+		var text = await DisplayPromptAsync("Odpověď", annotation.Anchor is null ? annotation.Text : $"„{annotation.Anchor.Exact}“", "Odeslat", "Zrušit", maxLength: 2000, keyboard: Keyboard.Text);
+		if (string.IsNullOrWhiteSpace(text)) return;
+		try
+		{
+			await _annotations.ReplyAsync(annotation.Id, text);
+			await ReloadAnnotationsAsync();
+		}
+		catch (Exception ex)
+		{
+			await DisplayAlertAsync("Odpověď", $"Odeslání se nezdařilo: {ex.Message}", "OK");
+		}
+	}
+
+	private async void OnAnnotationHideToggled(SecureApp.Domain.Interfaces.Services.CmsAnnotationView annotation)
+	{
+		try
+		{
+			await _annotations.SetHiddenAsync(annotation.Id, !annotation.HiddenByMe);
+			await ReloadAnnotationsAsync();
+		}
+		catch (Exception ex)
+		{
+			await DisplayAlertAsync("Poznámka", ex.Message, "OK");
+		}
+	}
+
+	private async void OnAnnotationDelete(SecureApp.Domain.Interfaces.Services.CmsAnnotationView annotation)
+	{
+		if (!await DisplayAlertAsync("Smazat poznámku", "Poznámka zmizí všem, kdo ji vidí. Smazat?", "Smazat", "Zrušit")) return;
+		try
+		{
+			await _annotations.DeleteAsync(annotation.Id);
+			await ReloadAnnotationsAsync();
+		}
+		catch (Exception ex)
+		{
+			await DisplayAlertAsync("Poznámka", ex.Message, "OK");
+		}
+	}
 
 	/// <summary>2026-09-30, user's own ask — rename this document from the viewer itself.</summary>
 	private async void OnRenameClicked(object? sender, EventArgs e)

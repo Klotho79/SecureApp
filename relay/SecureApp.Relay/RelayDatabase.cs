@@ -33,6 +33,13 @@ public sealed record LibraryLinkRecord(
     Guid CreatedByDeviceId,
     DateTimeOffset CreatedAtUtc);
 
+public sealed record CmsAnnotationReplyRecord(Guid Id, Guid AuthorDeviceId, string AuthorName, string BodyBlob, DateTimeOffset CreatedAtUtc);
+
+/// <summary>One annotation as a given viewer sees it (<c>IsMine</c>/<c>HiddenByMe</c> are relative to that viewer).</summary>
+public sealed record CmsAnnotationRecord(
+    Guid Id, Guid DocumentId, Guid AuthorDeviceId, string AuthorName, string Audience, string BodyBlob, string Moderation,
+    DateTimeOffset CreatedAtUtc, DateTimeOffset UpdatedAtUtc, bool HiddenByMe, bool IsMine, List<CmsAnnotationReplyRecord> Replies);
+
 /// <summary>One active per-document CMS editor grant; <c>DocumentStatus</c> is null until the first draft exists.</summary>
 public sealed record CmsEditorGrantRecord(Guid DocumentId, Guid EditorDeviceId, string Title, string FolderPath, Guid GrantedBy, DateTimeOffset GrantedAtUtc, string? DocumentStatus);
 
@@ -420,6 +427,40 @@ public sealed class RelayDatabase
                 end_reason        TEXT NULL
             )
             """);
+        // CMS annotations (CMS_PLAN.md, phase 4). body_blob is opaque to the relay (anchor + text, encrypted
+        // with the shared community key like board posts; per-recipient envelopes are phase 6). The relay
+        // does enforce VISIBILITY: audience 'private' = author only, 'selected' = author + the recipients,
+        // 'all' = every member; Admin sees everything. A member is identified by e-mail (see
+        // cms_document_editors), falling back to "dev:<deviceId>". annotation_hides is the per-member
+        // "ignore" — deliberately a separate record, never a field on the annotation.
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS cms_annotations (
+                id                TEXT PRIMARY KEY NOT NULL,
+                document_id       TEXT NOT NULL,
+                author_device_id  TEXT NOT NULL,
+                author_key        TEXT NOT NULL,
+                audience          TEXT NOT NULL,
+                body_blob         TEXT NOT NULL,
+                moderation        TEXT NOT NULL DEFAULT 'none',
+                created_at_utc    TEXT NOT NULL,
+                updated_at_utc    TEXT NOT NULL,
+                deleted_at_utc    TEXT NULL
+            )
+            """);
+        Execute(connection, "CREATE INDEX IF NOT EXISTS ix_cms_annotations_doc ON cms_annotations(document_id)");
+        Execute(connection, "CREATE TABLE IF NOT EXISTS cms_annotation_recipients (annotation_id TEXT NOT NULL, member_key TEXT NOT NULL, PRIMARY KEY (annotation_id, member_key))");
+        Execute(connection, "CREATE TABLE IF NOT EXISTS cms_annotation_hides (annotation_id TEXT NOT NULL, member_key TEXT NOT NULL, hidden_at_utc TEXT NOT NULL, PRIMARY KEY (annotation_id, member_key))");
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS cms_annotation_replies (
+                id                TEXT PRIMARY KEY NOT NULL,
+                annotation_id     TEXT NOT NULL,
+                author_device_id  TEXT NOT NULL,
+                body_blob         TEXT NOT NULL,
+                created_at_utc    TEXT NOT NULL
+            )
+            """);
+        Execute(connection, "CREATE INDEX IF NOT EXISTS ix_cms_annotation_replies_ann ON cms_annotation_replies(annotation_id)");
+
         // The grant belongs to the MEMBER, identified by e-mail (user's decision 2026-10-18: a member has
         // several devices but one e-mail). editor_device_id stays as the device it was assigned through
         // and as the fallback identity when no e-mail is known for that device.
@@ -1215,6 +1256,138 @@ public sealed class RelayDatabase
     private static (string Sql, (string Name, object Value)[] Parameters) MemberFilter(Guid deviceId, string? email) =>
         ("(e.editor_device_id = @dev OR (@email IS NOT NULL AND e.editor_email = @email))",
          [("@dev", deviceId.ToString()), ("@email", (object?)email ?? DBNull.Value)]);
+
+    /// <summary>Member key used for annotation visibility: the e-mail identity, or "dev:&lt;deviceId&gt;" when none is known.</summary>
+    public string GetMemberKey(Guid deviceId) => GetMemberEmail(deviceId) ?? $"dev:{deviceId}";
+
+    public CmsAnnotationRecord CreateCmsAnnotation(Guid id, Guid documentId, Guid authorDeviceId, string audience, IReadOnlyCollection<Guid> recipientDeviceIds, string bodyBlob)
+    {
+        using var connection = OpenConnection();
+        using var transaction = connection.BeginTransaction();
+        var authorKey = GetMemberKey(authorDeviceId);
+        var now = Format(DateTimeOffset.UtcNow);
+
+        Execute(connection, transaction,
+            "INSERT INTO cms_annotations (id, document_id, author_device_id, author_key, audience, body_blob, created_at_utc, updated_at_utc) VALUES (@id, @doc, @author, @key, @aud, @blob, @now, @now)",
+            ("@id", id.ToString()), ("@doc", documentId.ToString()), ("@author", authorDeviceId.ToString()), ("@key", authorKey),
+            ("@aud", audience), ("@blob", bodyBlob), ("@now", now));
+        if (audience == "selected")
+        {
+            foreach (var key in recipientDeviceIds.Select(GetMemberKey).Distinct())
+                Execute(connection, transaction, "INSERT OR IGNORE INTO cms_annotation_recipients (annotation_id, member_key) VALUES (@id, @key)", ("@id", id.ToString()), ("@key", key));
+        }
+        transaction.Commit();
+        return GetCmsAnnotation(id, authorDeviceId)!;
+    }
+
+    /// <summary>One annotation as seen by <paramref name="viewerDeviceId"/>, or null when it doesn't exist or isn't visible to them.</summary>
+    public CmsAnnotationRecord? GetCmsAnnotation(Guid id, Guid viewerDeviceId) =>
+        QueryCmsAnnotations("a.id = @id", [("@id", id.ToString())], viewerDeviceId).FirstOrDefault();
+
+    public IReadOnlyList<CmsAnnotationRecord> GetCmsAnnotations(Guid documentId, Guid viewerDeviceId) =>
+        QueryCmsAnnotations("a.document_id = @doc", [("@doc", documentId.ToString())], viewerDeviceId);
+
+    private List<CmsAnnotationRecord> QueryCmsAnnotations(string where, (string Name, object Value)[] parameters, Guid viewerDeviceId)
+    {
+        var viewerKey = GetMemberKey(viewerDeviceId);
+        var isAdmin = GetDevicePolicy(viewerDeviceId)?.Role == 0;
+
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT a.id, a.document_id, a.author_device_id, a.author_key, a.audience, a.body_blob, a.moderation, a.created_at_utc, a.updated_at_utc,
+                   EXISTS (SELECT 1 FROM cms_annotation_hides h WHERE h.annotation_id = a.id AND h.member_key = @viewer) AS hidden,
+                   EXISTS (SELECT 1 FROM cms_annotation_recipients r WHERE r.annotation_id = a.id AND r.member_key = @viewer) AS is_recipient,
+                   COALESCE(e.display_name, d.display_name, 'Neznámý') AS author_name
+            FROM cms_annotations a
+            LEFT JOIN directory_entries e ON e.device_id = a.author_device_id
+            LEFT JOIN devices d ON d.id = a.author_device_id
+            WHERE a.deleted_at_utc IS NULL AND {where}
+            ORDER BY a.created_at_utc
+            """;
+        command.Parameters.AddWithValue("@viewer", viewerKey);
+        foreach (var (name, value) in parameters)
+            command.Parameters.AddWithValue(name, value);
+
+        var list = new List<CmsAnnotationRecord>();
+        using (var reader = command.ExecuteReader())
+        {
+            while (reader.Read())
+            {
+                var audience = (string)reader["audience"];
+                var mine = (string)reader["author_key"] == viewerKey;
+                var visible = isAdmin || mine || audience == "all" || (audience == "selected" && Convert.ToInt32(reader["is_recipient"]) != 0);
+                if (!visible) continue;
+
+                list.Add(new CmsAnnotationRecord(
+                    Guid.Parse((string)reader["id"]), Guid.Parse((string)reader["document_id"]), Guid.Parse((string)reader["author_device_id"]),
+                    (string)reader["author_name"], audience, (string)reader["body_blob"], (string)reader["moderation"],
+                    DateTimeOffset.Parse((string)reader["created_at_utc"]), DateTimeOffset.Parse((string)reader["updated_at_utc"]),
+                    Convert.ToInt32(reader["hidden"]) != 0, mine, []));
+            }
+        }
+
+        // Replies for the visible annotations only.
+        foreach (var annotation in list)
+        {
+            using var replyCommand = connection.CreateCommand();
+            replyCommand.CommandText = """
+                SELECT r.id, r.author_device_id, r.body_blob, r.created_at_utc, COALESCE(e.display_name, d.display_name, 'Neznámý') AS author_name
+                FROM cms_annotation_replies r
+                LEFT JOIN directory_entries e ON e.device_id = r.author_device_id
+                LEFT JOIN devices d ON d.id = r.author_device_id
+                WHERE r.annotation_id = @id ORDER BY r.created_at_utc
+                """;
+            replyCommand.Parameters.AddWithValue("@id", annotation.Id.ToString());
+            using var replyReader = replyCommand.ExecuteReader();
+            while (replyReader.Read())
+            {
+                annotation.Replies.Add(new CmsAnnotationReplyRecord(
+                    Guid.Parse((string)replyReader["id"]), Guid.Parse((string)replyReader["author_device_id"]),
+                    (string)replyReader["author_name"], (string)replyReader["body_blob"], DateTimeOffset.Parse((string)replyReader["created_at_utc"])));
+            }
+        }
+        return list;
+    }
+
+    /// <summary>Appends a reply. Returns null when the annotation doesn't exist or isn't visible to the replier.</summary>
+    public CmsAnnotationRecord? AddCmsAnnotationReply(Guid annotationId, Guid authorDeviceId, string bodyBlob)
+    {
+        if (GetCmsAnnotation(annotationId, authorDeviceId) is null) return null;
+        using var connection = OpenConnection();
+        var now = Format(DateTimeOffset.UtcNow);
+        Execute(connection, "INSERT INTO cms_annotation_replies (id, annotation_id, author_device_id, body_blob, created_at_utc) VALUES (@id, @ann, @author, @blob, @now)",
+            ("@id", Guid.NewGuid().ToString()), ("@ann", annotationId.ToString()), ("@author", authorDeviceId.ToString()), ("@blob", bodyBlob), ("@now", now));
+        Execute(connection, "UPDATE cms_annotations SET updated_at_utc = @now WHERE id = @id", ("@id", annotationId.ToString()), ("@now", now));
+        return GetCmsAnnotation(annotationId, authorDeviceId);
+    }
+
+    /// <summary>Soft-deletes an annotation. Allowed for its author (same member) and for Admin; returns false otherwise.</summary>
+    public bool DeleteCmsAnnotation(Guid annotationId, Guid deviceId)
+    {
+        var annotation = GetCmsAnnotation(annotationId, deviceId);
+        var isAdmin = GetDevicePolicy(deviceId)?.Role == 0;
+        if (annotation is null || (!annotation.IsMine && !isAdmin)) return false;
+
+        using var connection = OpenConnection();
+        var now = Format(DateTimeOffset.UtcNow);
+        Execute(connection, "UPDATE cms_annotations SET deleted_at_utc = @now, updated_at_utc = @now WHERE id = @id", ("@id", annotationId.ToString()), ("@now", now));
+        return true;
+    }
+
+    /// <summary>Per-member "ignore": hides (or un-hides) an annotation for this member only. Returns false when it isn't visible to them.</summary>
+    public bool SetCmsAnnotationHidden(Guid annotationId, Guid deviceId, bool hidden)
+    {
+        if (GetCmsAnnotation(annotationId, deviceId) is null) return false;
+        using var connection = OpenConnection();
+        var key = GetMemberKey(deviceId);
+        if (hidden)
+            Execute(connection, "INSERT OR REPLACE INTO cms_annotation_hides (annotation_id, member_key, hidden_at_utc) VALUES (@id, @key, @now)",
+                ("@id", annotationId.ToString()), ("@key", key), ("@now", Format(DateTimeOffset.UtcNow)));
+        else
+            Execute(connection, "DELETE FROM cms_annotation_hides WHERE annotation_id = @id AND member_key = @key", ("@id", annotationId.ToString()), ("@key", key));
+        return true;
+    }
 
     /// <summary>The members an assigner can hand a document to: one entry per e-mail (the oldest-seen device represents it), or per device when no e-mail is known.</summary>
     public IReadOnlyList<(Guid DeviceId, string DisplayName, string? Email)> GetCmsAssignableMembers()
