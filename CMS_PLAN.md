@@ -64,8 +64,8 @@ Zbývá: ověření na reálných zařízeních (vzhled, výkon, zda klepnutí n
 ### Fáze 2 — stav (2026-10-18)
 - **2a editor — IMPLEMENTOVÁNO, V APLIKACI NEOVĚŘENO:** `Resources/Raw/cms-editor.html` (vanilla JS, bez npm/CDN; TipTap se nepoužil — žádná závislost, bloky mají vlastní model), `CmsEditorPage` (WebView, výběr obrázku/videa, náhled šířek 360–768, uložení), `CmsDocumentSaver` (nahrání médií do sdílené knihovny jako nezařazené soubory, sestavení `CmsDocument`, import jako lokální `.cmsdoc`), `CmsImageProcessor` (varianty 480/960/1800 px, EXIF orientace). Vstupy: tlačítko „📝 Nový dokument“ v Dokumentech a „📝 Upravit“ ve čtečce (jen PC). JS prošel testem v headless Edge (načtení → úprava → export, stabilní `id` bloků, značky, sloupce, nested bloky, přepnutí třídy šířky, export→import→export identické). C# build čistý (Windows, Android).
 - **Nevyzkoušeno v reálném WebView2 uvnitř aplikace:** návrat hodnoty z `EvaluateJavaScriptAsync` (použit base64, aby se obešlo escapování), velikost předávaných dat, file pickery, uložení end-to-end, drag & drop myší.
-- **2b — ZBÝVÁ:** místo lokálního importu uložit jako konceptní verzi přes `/library-documents/*` (teď se ukládá jako obyčejný lokální dokument a při úpravě se starý lokální dokument nahradí novým).
-- **2c — ZBÝVÁ:** editorská práva per dokument (relay `cms_document_editors`, vynucení, admin/Modifier UI, „Moje zadání“). Do té doby edituje každý, kdo smí nahrávat do knihovny.
+- **2b — IMPLEMENTOVÁNO (1.73/1.74):** uložení jako konceptní verze přes `/library-documents/*` (`CmsDocumentSaver.StageDraftAsync`, `SubmitForReviewAsync`, `LoadLatestAsync`); id dokumentu CMS = id dokumentu knihovny.
+- **2c — IMPLEMENTOVÁNO (1.74):** editorská práva per dokument a per člen (e-mail), jen PC; relay `cms_document_editors`, `/cms/editors*`, `/cms/members`; v Redakci karty „Výukové materiály“, „Moje zadání“, „Zadání dokumentů“; grant zaniká schválením. Ověřeno testy na dočasné DB, celý tok se druhým účtem (Viewer) ještě ne.
 - Známá omezení: video se nahrává bez překódování (fáze 3), nejde vložit obrázek mezi dva sloupce přetažením z plochy, žádné undo mimo vestavěné v prohlížeči, bez potvrzení při zavření s neuloženými změnami jen obecné varování.
 
 ### Fáze 2 — Editor na PC
@@ -81,14 +81,20 @@ Zbývá: ověření na reálných zařízeních (vzhled, výkon, zda klepnutí n
 - Přehrávač: `CommunityToolkit.Maui.MediaElement`, ovládání (play, osa, rychlost, fullscreen `contain` s respektem safe-area), range requests.
 - Hotovo, když: video 16:9, 21:9 a svislé se přehraje bez deformace na PC i obou telefonech.
 
-### Fáze 4 — Poznámky (základ)
+### Fáze 4 — Poznámky (základ) — IMPLEMENTOVÁNO (1.74), mezi zařízeními NEOVĚŘENO
+Hotovo: tabulky `cms_annotations/_recipients/_hides/_replies`, viditelnost private/selected/all (Admin vidí vše), ignorování per člen, odpovědi, soft delete, těla šifrovaná sdíleným klíčem knihovny, značky v textu, panel pod dokumentem. **Zbývá:** živý push (WS `annotation-changed`), offline cache/kurzor, boční panel (PC) / bottom sheet (mobil), filtry.
+
+### Fáze 4 — původní zadání
 - Relay: tabulky `document_annotations`, `annotation_events`, `annotation_hides`, `annotation_recipients`; endpointy zápis + `GET ?since=cursor` + WS `annotation-changed`.
 - Klient: lokální cache v SQLCipher, kurzor na dokument, ukotvení, vlákna odpovědí.
 - UI: PC boční panel 320 px + značky v textu; mobil bottom sheet (compact), boční panel (medium+).
 - Viditelnost `private | selected | all`, skrýt poznámku / autora, filtry Moje / Sdílené se mnou / Všechny / Skryté.
 - Hotovo, když: dvě zařízení si v reálném čase vymění poznámku, offline zařízení ji dostane po připojení.
 
-### Fáze 5 — Moderace a začlenění
+### Fáze 5 — Moderace a začlenění — relay + klient IMPLEMENTOVÁNO (commit f27396f), NEVYDÁNO (není v 1.74)
+Hotovo: stavy none/pending/incorporated/declined/kept, audit `cms_annotation_events`, moderátor = Admin/Modifier/aktivní grant, bez samomoderace mimo Admina, „ponechat“ nastaví publikum na všechny. **Zbývá:** samostatná obrazovka fronty s diffem, hromadné akce, skutečné začlenění do nové verze dokumentu (zatím jen změna stavu), notifikace autorovi.
+
+### Fáze 5 — původní zadání
 - Obrazovka „Poznámky ke schválení“ (fronta, kontext, diff, Začlenit / Odmítnout / Ponechat sdílené, hromadné akce).
 - Začlenění vytvoří novou verzi (komentář, úprava textu nebo nový blok), poznámka → `incorporated`, autor dostane notifikaci.
 - Audit přes `annotation_events` (obdoba `library_document_reviews`).
