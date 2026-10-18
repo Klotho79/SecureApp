@@ -847,7 +847,10 @@ app.MapPost("/library-documents", (HttpRequest request, CreateLibraryDocumentReq
     if (db.GetLibraryFile(body.LibraryFileId) is null)
         return Results.BadRequest("LibraryFileId does not refer to an uploaded file.");
 
-    var record = db.CreateLibraryDocument(body.Title, body.FolderPath, body.LibraryFileId, deviceId, body.ChangeNote);
+    if (body.Id is { } requestedId && db.GetLibraryDocument(requestedId) is not null)
+        return Results.Conflict("A document with this id already exists.");
+
+    var record = db.CreateLibraryDocument(body.Title, body.FolderPath, body.LibraryFileId, deviceId, body.ChangeNote, body.Id);
     return Results.Ok(ToLibraryDocumentDto(record));
 });
 

@@ -202,7 +202,11 @@ public partial class CmsEditorPage : ContentPage, IQueryAttributable
             _localDocumentId = saved.Id;
             _pending.Clear();
             _original = JsonSerializer.Deserialize<CmsDocument>(await _crypto.DecryptAsync(saved.EncryptedContent), CmsDocumentSaver.Json);
-            SetStatus($"Uloženo ({DateTime.Now:HH:mm:ss}).");
+            SetStatus(_saver.LastStageError is { } stageError
+                ? $"Uloženo jen v tomto počítači ({DateTime.Now:HH:mm:ss}) — koncept na server se nepodařilo uložit: {stageError}"
+                : $"Uloženo jako koncept ({DateTime.Now:HH:mm:ss}). Čtenáři ho uvidí po „Odeslat ke schválení“ a schválení.",
+                error: _saver.LastStageError is not null);
+            SubmitButton.IsEnabled = _saver.LastStageError is null && _original is not null;
         }
         catch (Exception ex)
         {
@@ -213,6 +217,24 @@ public partial class CmsEditorPage : ContentPage, IQueryAttributable
         {
             _saving = false;
             SaveButton.IsEnabled = true;
+        }
+    }
+
+    private async void OnSubmitClicked(object? sender, EventArgs e)
+    {
+        if (_original is null) return;
+        if (!await DisplayAlertAsync("Odeslat ke schválení", "Dokument půjde ke schválení a po schválení ho uvidí ostatní. Pokračovat?", "Odeslat", "Zrušit")) return;
+        SubmitButton.IsEnabled = false;
+        try
+        {
+            await _saver.SubmitForReviewAsync(_original.DocumentId);
+            SetStatus("Odesláno ke schválení.");
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("CmsEditor.Submit", "submit failed", ex);
+            SetStatus($"Odeslání se nezdařilo: {ex.Message}", error: true);
+            SubmitButton.IsEnabled = true;
         }
     }
 

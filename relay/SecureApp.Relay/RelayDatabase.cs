@@ -1110,11 +1110,12 @@ public sealed class RelayDatabase
     // since only one version is ever in flight at a time (ReviewAsync only acts once a document is
     // PendingReview, and SubmitLibraryDocumentForReview requires Draft first).
 
-    public LibraryDocumentRecord CreateLibraryDocument(string title, string folderPath, Guid libraryFileId, Guid createdByDeviceId, string? changeNote)
+    public LibraryDocumentRecord CreateLibraryDocument(string title, string folderPath, Guid libraryFileId, Guid createdByDeviceId, string? changeNote, Guid? documentId = null)
     {
         using var connection = OpenConnection();
         using var transaction = connection.BeginTransaction();
-        var id = Guid.NewGuid();
+        // CMS documents (2026-10-18) pick their own id so the library document id equals CmsDocument.DocumentId.
+        var id = documentId ?? Guid.NewGuid();
         var now = DateTimeOffset.UtcNow;
 
         Execute(connection, transaction,

@@ -12,7 +12,8 @@ namespace SecureApp.Domain.Interfaces.Services;
 public interface ILibraryReviewService
 {
     /// <summary>Creates a new Draft document whose first version is the already-uploaded (private, <c>listed:false</c>) library file <paramref name="libraryFileId"/>.</summary>
-    Task<LibraryDocumentSummary> CreateDraftAsync(string title, string folderPath, Guid libraryFileId, string? changeNote, CancellationToken ct = default);
+    /// <param name="documentId">Optional id to give the new document (CMS documents use their own <c>DocumentId</c>); the relay answers 409 if it already exists.</param>
+    Task<LibraryDocumentSummary> CreateDraftAsync(string title, string folderPath, Guid libraryFileId, string? changeNote, CancellationToken ct = default, Guid? documentId = null);
 
     /// <summary>Stages a new version on an existing document (e.g. a Rejected one being revised) from an already-uploaded private library file. Resets status to Draft.</summary>
     Task<LibraryDocumentSummary> AddVersionAsync(Guid documentId, Guid libraryFileId, string? changeNote, CancellationToken ct = default);

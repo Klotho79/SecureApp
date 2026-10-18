@@ -191,7 +191,7 @@ public sealed record LibraryDocumentReviewEntryDto(Guid Id, Guid LibraryDocument
 public sealed record LibraryDocumentDetailDto(LibraryDocumentDto Document, IReadOnlyList<LibraryDocumentVersionDto> Versions, IReadOnlyList<LibraryDocumentReviewEntryDto> Reviews);
 
 /// <summary>Creates a new Draft document from an already-uploaded (private, listed=false) library file.</summary>
-public sealed record CreateLibraryDocumentRequest(string Title, string FolderPath, Guid LibraryFileId, string? ChangeNote);
+public sealed record CreateLibraryDocumentRequest(string Title, string FolderPath, Guid LibraryFileId, string? ChangeNote, Guid? Id = null);
 
 /// <summary>Stages a new version on an existing document from an already-uploaded private library file. Resets status to Draft.</summary>
 public sealed record AddLibraryDocumentVersionRequest(Guid LibraryFileId, string? ChangeNote);

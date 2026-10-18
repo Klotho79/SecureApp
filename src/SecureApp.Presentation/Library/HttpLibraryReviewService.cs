@@ -30,12 +30,12 @@ public sealed class HttpLibraryReviewService : ILibraryReviewService
         _vault = vault ?? throw new ArgumentNullException(nameof(vault));
     }
 
-    public async Task<LibraryDocumentSummary> CreateDraftAsync(string title, string folderPath, Guid libraryFileId, string? changeNote, CancellationToken ct = default)
+    public async Task<LibraryDocumentSummary> CreateDraftAsync(string title, string folderPath, Guid libraryFileId, string? changeNote, CancellationToken ct = default, Guid? documentId = null)
     {
         var endpoint = await GetHttpEndpointAsync(ct);
         using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(endpoint, "library-documents"))
         {
-            Content = JsonContent.Create(new { Title = title, FolderPath = folderPath, LibraryFileId = libraryFileId, ChangeNote = changeNote }, options: HttpJsonOptions),
+            Content = JsonContent.Create(new { Title = title, FolderPath = folderPath, LibraryFileId = libraryFileId, ChangeNote = changeNote, Id = documentId }, options: HttpJsonOptions),
         };
         await AddDeviceAuthAsync(request, ct);
         using var response = await _httpClient.SendAsync(request, ct);

@@ -14,6 +14,7 @@
             <Label Text="Náhled:" VerticalOptions="Center" Margin="8,0,4,4" />
             <Picker x:Name="PreviewPicker" WidthRequest="170" Margin="0,0,8,4" SelectedIndexChanged="OnPreviewChanged" />
             <Button x:Name="SaveButton" Text="💾 Uložit" Clicked="OnSaveClicked" Margin="8,0,8,4" />
+            <Button x:Name="SubmitButton" Text="📤 Odeslat ke schválení" IsEnabled="False" Style="{StaticResource SecondaryButton}" Clicked="OnSubmitClicked" Margin="0,0,8,4" />
             <Button Text="Zavřít" Style="{StaticResource SecondaryButton}" Clicked="OnCloseClicked" Margin="0,0,0,4" />
         </FlexLayout>
 

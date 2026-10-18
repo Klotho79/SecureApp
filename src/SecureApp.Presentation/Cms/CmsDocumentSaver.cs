@@ -18,12 +18,17 @@ public sealed class CmsDocumentSaver
 {
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
+    /// <summary>Why the last save could not stage its server draft (null = it did). The local copy is saved either way.</summary>
+    public string? LastStageError { get; private set; }
+
     private readonly ISharedLibraryService _library;
     private readonly IDocumentImportService _import;
     private readonly IDocumentRepository _documents;
+    private readonly ILibraryReviewService _review;
 
-    public CmsDocumentSaver(ISharedLibraryService library, IDocumentImportService import, IDocumentRepository documents)
+    public CmsDocumentSaver(ISharedLibraryService library, IDocumentImportService import, IDocumentRepository documents, ILibraryReviewService review)
     {
+        _review = review ?? throw new ArgumentNullException(nameof(review));
         _library = library ?? throw new ArgumentNullException(nameof(library));
         _import = import ?? throw new ArgumentNullException(nameof(import));
         _documents = documents ?? throw new ArgumentNullException(nameof(documents));
@@ -78,8 +83,45 @@ public sealed class CmsDocumentSaver
         if (originalLocalDocumentId is { } oldId && oldId != saved.Id)
             await _documents.DeleteAsync(oldId, ct);
 
+        // The local copy is already safe; a relay problem must not make the author think the edit was lost.
+        progress?.Report("Ukládám koncept na server…");
+        try
+        {
+            await StageDraftAsync(document, bytes, ct);
+            LastStageError = null;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            LastStageError = ex.Message;
+        }
+
         return saved;
     }
+
+    /// <summary>Moves the staged draft of <paramref name="documentId"/> into the reviewer queue (readers only see a document after approval).</summary>
+    public Task SubmitForReviewAsync(Guid documentId, CancellationToken ct = default) =>
+        _review.SubmitForReviewAsync(documentId, ct);
+
+    /// <summary>
+    /// Uploads the serialized document as an unlisted library file and stages it as the document's next
+    /// version. The library document id IS <see cref="CmsDocument.DocumentId"/>, so a revision needs no
+    /// extra lookup: try to add a version, and when the relay doesn't know the document yet, create it.
+    /// </summary>
+    private async Task StageDraftAsync(CmsDocument document, byte[] bytes, CancellationToken ct)
+    {
+        using var stream = new MemoryStream(bytes);
+        var uploaded = await _library.UploadAsync(LibraryFolder, SafeFileName(document.Title) + ".cmsdoc", ["cms"], stream, listed: false, ct: ct);
+        try
+        {
+            await _review.AddVersionAsync(document.DocumentId, uploaded.Id, null, ct);
+        }
+        catch (InvalidOperationException)
+        {
+            await _review.CreateDraftAsync(document.Title, LibraryFolder, uploaded.Id, null, ct, document.DocumentId);
+        }
+    }
+
+    private const string LibraryFolder = "Výukové materiály";
 
     private async Task<CmsMedia> UploadAsync(PendingCmsMedia p, CancellationToken ct)
     {
