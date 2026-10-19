@@ -1400,12 +1400,13 @@ public sealed class RelayDatabase
         return GetCmsAnnotation(annotationId, authorDeviceId);
     }
 
-    /// <summary>Soft-deletes an annotation. Allowed for its author (same member) and for Admin; returns false otherwise.</summary>
+    /// <summary>Soft-deletes an annotation. Allowed for its author (same member) and for Admin/Modifier (same moderation right as incorporate/decline/keep); returns false otherwise.</summary>
     public bool DeleteCmsAnnotation(Guid annotationId, Guid deviceId)
     {
         var annotation = GetCmsAnnotation(annotationId, deviceId);
-        var isAdmin = GetDevicePolicy(deviceId)?.Role == 0;
-        if (annotation is null || (!annotation.IsMine && !isAdmin)) return false;
+        var policy = GetDevicePolicy(deviceId);
+        var canModerate = policy?.Role is 0 or 1;
+        if (annotation is null || (!annotation.IsMine && !canModerate)) return false;
 
         using var connection = OpenConnection();
         var now = Format(DateTimeOffset.UtcNow);
