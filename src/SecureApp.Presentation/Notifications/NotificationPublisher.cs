@@ -214,6 +214,33 @@ public static class NotificationPublisher
         return TryAddAsync(notificationRepository, notification, nativeNotificationService, ct);
     }
 
+    /// <summary>
+    /// This device's own annotation (CMS_PLAN.md, phase 5) was decided by a moderator — incorporated,
+    /// declined or kept. No cross-device push exists, so the author's own device notices this itself
+    /// via a background poll (<c>App.RunBackgroundCmsAnnotationCheckAsync</c>), the same shape as
+    /// <see cref="PublishScheduleChangeAsync"/>.
+    /// </summary>
+    public static Task PublishCmsAnnotationModeratedAsync(
+        INotificationRepository notificationRepository,
+        string documentTitle,
+        string decision,
+        INativeNotificationService? nativeNotificationService = null,
+        CancellationToken ct = default)
+    {
+        var verb = decision switch
+        {
+            "incorporated" => "začleněna do dokumentu",
+            "declined" => "zamítnuta",
+            _ => "ponechána jako komentář",
+        };
+        var notification = new Notification(
+            title: "Poznámka vyřízena",
+            body: $"Vaše poznámka k „{documentTitle}“ byla {verb}.",
+            category: NotificationCategory.Library,
+            priority: NotificationPriority.Normal);
+        return TryAddAsync(notificationRepository, notification, nativeNotificationService, ct);
+    }
+
     /// <summary>The Opicentrum sync changed the user's own schedule (2026-09-26) — tapping it opens the Rozpis. Important when a change falls within the coming week.</summary>
     public static Task PublishScheduleChangeAsync(
         INotificationRepository notificationRepository,

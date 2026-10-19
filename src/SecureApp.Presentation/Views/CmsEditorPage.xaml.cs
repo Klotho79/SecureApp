@@ -29,18 +29,21 @@ public partial class CmsEditorPage : ContentPage, IQueryAttributable
     private readonly ICmsMediaProvider _mediaProvider;
     private readonly ICmsVideoProcessor _videoProcessor;
     private readonly CmsDocumentSaver _saver;
+    private readonly ICmsAnnotationService _annotations;
 
     private readonly Dictionary<string, PendingCmsMedia> _pending = new();
     private Guid? _localDocumentId;
     private Guid? _assignedDocumentId;
     private string? _assignedTitle;
+    private Guid? _pendingAnnotationId;
     private CmsDocument? _original;
     private bool _loaded;
     private bool _saving;
 
     public CmsEditorPage(
         IDocumentRepository documents, ICryptoService crypto, ICurrentUserService currentUser,
-        RolePreviewService rolePreview, ICmsMediaProvider mediaProvider, ICmsVideoProcessor videoProcessor, CmsDocumentSaver saver)
+        RolePreviewService rolePreview, ICmsMediaProvider mediaProvider, ICmsVideoProcessor videoProcessor, CmsDocumentSaver saver,
+        ICmsAnnotationService annotations)
     {
         InitializeComponent();
         _documents = documents;
@@ -50,6 +53,7 @@ public partial class CmsEditorPage : ContentPage, IQueryAttributable
         _mediaProvider = mediaProvider;
         _videoProcessor = videoProcessor;
         _saver = saver;
+        _annotations = annotations;
 
         PreviewPicker.ItemsSource = PreviewSizes.Select(s => s.Label).ToList();
         PreviewPicker.SelectedIndex = 0;
@@ -65,6 +69,22 @@ public partial class CmsEditorPage : ContentPage, IQueryAttributable
             _assignedDocumentId = assignedId;
             _assignedTitle = query.TryGetValue("assignedTitle", out var t) ? Uri.UnescapeDataString(t?.ToString() ?? "") : null;
         }
+        // "Začlenit" z fronty ke schválení (CMS_PLAN.md, phase 5): banner s textem poznámky, žádné automatické promítnutí do textu.
+        if (query.TryGetValue("pendingAnnotationId", out var pending) && Guid.TryParse(pending?.ToString(), out var pendingId))
+        {
+            _pendingAnnotationId = pendingId;
+            var quote = query.TryGetValue("pendingAnnotationQuote", out var q) ? Uri.UnescapeDataString(q?.ToString() ?? "") : "";
+            var text = query.TryGetValue("pendingAnnotationText", out var t2) ? Uri.UnescapeDataString(t2?.ToString() ?? "") : "";
+            PendingAnnotationQuoteLabel.Text = string.IsNullOrEmpty(quote) ? "" : $"„{quote}“";
+            PendingAnnotationTextLabel.Text = text;
+            PendingAnnotationBanner.IsVisible = true;
+        }
+    }
+
+    private void OnDismissPendingAnnotationClicked(object? sender, EventArgs e)
+    {
+        _pendingAnnotationId = null;
+        PendingAnnotationBanner.IsVisible = false;
     }
 
     protected override async void OnAppearing()
@@ -243,11 +263,28 @@ public partial class CmsEditorPage : ContentPage, IQueryAttributable
             _localDocumentId = saved.Id;
             _pending.Clear();
             _original = JsonSerializer.Deserialize<CmsDocument>(await _crypto.DecryptAsync(saved.EncryptedContent), CmsDocumentSaver.Json);
+            var stageOk = _saver.LastStageError is null;
             SetStatus(_saver.LastStageError is { } stageError
                 ? $"Uloženo jen v tomto počítači ({DateTime.Now:HH:mm:ss}) — koncept na server se nepodařilo uložit: {stageError}"
                 : $"Uloženo jako koncept ({DateTime.Now:HH:mm:ss}). Čtenáři ho uvidí po „Odeslat ke schválení“ a schválení.",
-                error: _saver.LastStageError is not null);
-            SubmitButton.IsEnabled = _saver.LastStageError is null && _original is not null;
+                error: !stageOk);
+            SubmitButton.IsEnabled = stageOk && _original is not null;
+
+            // Fáze 5: jen když se koncept opravdu uložil na server a redaktor přišel z fronty ke schválení.
+            if (stageOk && _pendingAnnotationId is { } annotationId && _original is not null)
+            {
+                try
+                {
+                    await _annotations.ModerateAsync(annotationId, "incorporated", null, _original.VersionId);
+                    _pendingAnnotationId = null;
+                    PendingAnnotationBanner.IsVisible = false;
+                    SetStatus("Uloženo a poznámka je označena jako začleněná.");
+                }
+                catch (Exception ex)
+                {
+                    SetStatus($"Dokument je uložen, ale poznámku se nepodařilo označit jako začleněnou: {ex.Message}", error: true);
+                }
+            }
         }
         catch (Exception ex)
         {

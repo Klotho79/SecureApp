@@ -95,10 +95,10 @@ public sealed class CmsAnnotationPanel : ContentView
         var actions = new HorizontalStackLayout { Spacing = 6 };
         actions.Children.Add(MakeButton("Odpovědět", () => ReplyRequested?.Invoke(a)));
         actions.Children.Add(MakeButton(a.HiddenByMe ? "Zobrazit" : "Ignorovat", () => HideToggled?.Invoke(a)));
-        if (a.IsMine && a.Moderation is "none" or "declined" && a.IsMine) actions.Children.Add(MakeButton("Navrhnout do dokumentu", () => ProposeRequested?.Invoke(a)));
+        if (a.IsMine && a.Moderation is "none" or "declined") actions.Children.Add(MakeButton("Navrhnout do dokumentu", () => ProposeRequested?.Invoke(a)));
+        // "Začlenit" needs the editor (ruční úprava bloku) — only in the shared queue (CmsAnnotationQueuePage), not here.
         if (a.CanModerate && a.Moderation == "pending" && !a.IsMine)
         {
-            actions.Children.Add(MakeButton("Začlenit", () => ModerateRequested?.Invoke(a, "incorporated")));
             actions.Children.Add(MakeButton("Ponechat", () => ModerateRequested?.Invoke(a, "kept")));
             actions.Children.Add(MakeButton("Odmítnout", () => ModerateRequested?.Invoke(a, "declined")));
         }

@@ -236,4 +236,7 @@ public sealed partial class RedakceViewModel : ObservableObject
 
     [RelayCommand]
     private void OpenCmsEditor() => RequestNavigate?.Invoke(nameof(Views.CmsEditorPage));
+
+    [RelayCommand]
+    private void OpenCmsAnnotationQueue() => RequestNavigate?.Invoke(nameof(Views.CmsAnnotationQueuePage));
 }

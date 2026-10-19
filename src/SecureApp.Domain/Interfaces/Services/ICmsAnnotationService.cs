@@ -22,13 +22,20 @@ public interface ICmsAnnotationService
     Task<CmsAnnotationView> ProposeAsync(Guid annotationId, string? note, CancellationToken ct = default);
 
     /// <summary>A moderator's decision on a proposal: "incorporated", "declined" or "kept" (stays as a comment for everyone).</summary>
-    Task<CmsAnnotationView> ModerateAsync(Guid annotationId, string decision, string? note, CancellationToken ct = default);
+    /// <param name="incorporatedInVersionId">Only meaningful for "incorporated" — the CMS document VersionId the moderator just saved after working the annotation's text into it.</param>
+    Task<CmsAnnotationView> ModerateAsync(Guid annotationId, string decision, string? note, string? incorporatedInVersionId = null, CancellationToken ct = default);
 
     /// <summary>Deletes the annotation (its author or Admin).</summary>
     Task DeleteAsync(Guid annotationId, CancellationToken ct = default);
 
     /// <summary>Per-member "ignore": hides the annotation for this member only.</summary>
     Task SetHiddenAsync(Guid annotationId, bool hidden, CancellationToken ct = default);
+
+    /// <summary>The shared moderation queue (CMS_PLAN.md, phase 5) — all pending proposals across every document. Admin/Modifier only; empty for anyone else.</summary>
+    Task<IReadOnlyList<CmsPendingAnnotationView>> ListPendingAsync(CancellationToken ct = default);
+
+    /// <summary>The caller's own annotations that have been proposed or decided — lets this device notice a moderation decision happened (no cross-device push exists).</summary>
+    Task<IReadOnlyList<CmsMyAnnotationView>> ListMyModeratedAsync(CancellationToken ct = default);
 }
 
 public sealed record CmsAnnotationReplyView(Guid Id, string AuthorName, string Text, DateTimeOffset CreatedAtUtc);
@@ -37,4 +44,9 @@ public sealed record CmsAnnotationReplyView(Guid Id, string AuthorName, string T
 public sealed record CmsAnnotationView(
     Guid Id, Guid DocumentId, string AuthorName, string Audience, CmsAnchor? Anchor, string Text,
     DateTimeOffset CreatedAtUtc, bool HiddenByMe, bool IsMine, IReadOnlyList<CmsAnnotationReplyView> Replies,
-    string Moderation = "none", bool CanModerate = false);
+    string Moderation = "none", bool CanModerate = false, string? IncorporatedInVersionId = null);
+
+/// <summary>One pending proposal in the shared moderation queue; <see cref="Text"/>/<see cref="Anchor"/> are null when the body could not be decrypted.</summary>
+public sealed record CmsPendingAnnotationView(Guid AnnotationId, Guid DocumentId, string DocumentTitle, string AuthorName, CmsAnchor? Anchor, string Text, DateTimeOffset CreatedAtUtc);
+
+public sealed record CmsMyAnnotationView(Guid AnnotationId, string DocumentTitle, string Moderation, DateTimeOffset UpdatedAtUtc);

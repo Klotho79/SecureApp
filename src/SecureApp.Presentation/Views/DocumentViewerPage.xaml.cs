@@ -316,7 +316,6 @@ public partial class DocumentViewerPage : ContentPage
 	{
 		var question = decision switch
 		{
-			"incorporated" => "Označit poznámku jako začleněnou do dokumentu? (Samotnou úpravu textu provedete v editoru.)",
 			"kept" => "Ponechat poznámku jako komentář viditelný všem?",
 			_ => "Zamítnout návrh?"
 		};

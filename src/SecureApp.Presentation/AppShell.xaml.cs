@@ -86,6 +86,10 @@ public partial class AppShell : Shell
 		// LibraryManagePage, Reviewer/Admin devices only (LibraryViewModel.IsDocumentReviewer gates the button).
 		Routing.RegisterRoute(nameof(LibraryReviewQueuePage), typeof(LibraryReviewQueuePage));
 
+		// CMS annotation moderation queue (CMS_PLAN.md, phase 5) — reached via "📋 Otevřít frontu" on
+		// RedakcePage, Admin/Modifier only (RedakceViewModel.CanAssignCms gates the button).
+		Routing.RegisterRoute(nameof(CmsAnnotationQueuePage), typeof(CmsAnnotationQueuePage));
+
 		// Upload/drafts/review-queue entry (2026-10-02) — reached via the "✏ Spravovat" button on
 		// LibraryPage (LibraryViewModel.CanManageLibrary gates the button).
 		Routing.RegisterRoute(nameof(LibraryManagePage), typeof(LibraryManagePage));

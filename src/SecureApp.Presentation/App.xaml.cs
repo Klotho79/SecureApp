@@ -388,6 +388,7 @@ public partial class App : Application
 				{
 					await RunBackgroundOpicentrumSyncAsync(services);
 					await RunBackgroundUpdateCheckAsync(services);
+					await RunBackgroundCmsAnnotationCheckAsync(services);
 				}
 			}
 			catch
@@ -500,6 +501,56 @@ public partial class App : Application
 		catch (Exception ex)
 		{
 			AppLog.Error(nameof(RunBackgroundUpdateCheckAsync), "background update check/download failed", ex);
+		}
+	}
+
+	private const string LastBackgroundCmsAnnotationCheckPreferenceKey = "cms_annotation_last_bg_check_utc";
+	private const string LastCmsAnnotationStatesPreferenceKey = "cms_annotation_last_seen_states";
+	private static readonly TimeSpan _backgroundCmsAnnotationCheckInterval = TimeSpan.FromMinutes(30);
+
+	/// <summary>
+	/// CMS_PLAN.md phase 5's "notifikace autorovi": no cross-device push exists anywhere in this app
+	/// (see <see cref="NotificationPublisher.PublishCmsAnnotationModeratedAsync"/>'s own remarks), so the
+	/// author's own device notices a moderation decision on its own annotations the same way
+	/// <see cref="RunBackgroundOpicentrumSyncAsync"/> notices its own schedule changed: poll, diff
+	/// against the last-seen state per annotation id (stored as JSON in Preferences, since there can be
+	/// several), and notify only on an actual transition away from "pending".
+	/// </summary>
+	private static async Task RunBackgroundCmsAnnotationCheckAsync(IServiceProvider services)
+	{
+		try
+		{
+			var prefs = Microsoft.Maui.Storage.Preferences.Default;
+			var lastTicks = prefs.Get(LastBackgroundCmsAnnotationCheckPreferenceKey, 0L);
+			if (lastTicks > 0 && DateTimeOffset.UtcNow - new DateTimeOffset(lastTicks, TimeSpan.Zero) < _backgroundCmsAnnotationCheckInterval) return;
+
+			var annotations = services.GetService<ICmsAnnotationService>();
+			if (annotations is null) return;
+			prefs.Set(LastBackgroundCmsAnnotationCheckPreferenceKey, DateTimeOffset.UtcNow.UtcTicks);
+
+			var mine = await annotations.ListMyModeratedAsync();
+			if (mine.Count == 0) return;
+
+			var storedJson = prefs.Get(LastCmsAnnotationStatesPreferenceKey, "{}");
+			var lastSeen = System.Text.Json.JsonSerializer.Deserialize<Dictionary<Guid, string>>(storedJson) ?? [];
+
+			using var scope = services.CreateScope();
+			var notifications = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
+			var native = services.GetService<INativeNotificationService>();
+
+			foreach (var a in mine)
+			{
+				var seenBefore = lastSeen.TryGetValue(a.AnnotationId, out var previous) ? previous : "none";
+				if (seenBefore == "pending" && a.Moderation is "incorporated" or "declined" or "kept")
+					await NotificationPublisher.PublishCmsAnnotationModeratedAsync(notifications, a.DocumentTitle, a.Moderation, native);
+				lastSeen[a.AnnotationId] = a.Moderation;
+			}
+
+			prefs.Set(LastCmsAnnotationStatesPreferenceKey, System.Text.Json.JsonSerializer.Serialize(lastSeen));
+		}
+		catch (Exception ex)
+		{
+			AppLog.Error(nameof(RunBackgroundCmsAnnotationCheckAsync), "background CMS annotation check failed", ex);
 		}
 	}
 

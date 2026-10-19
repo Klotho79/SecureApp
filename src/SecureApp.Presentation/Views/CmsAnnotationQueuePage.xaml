@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="SecureApp.Presentation.Views.CmsAnnotationQueuePage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
+    x:DataType="vm:CmsAnnotationQueueViewModel"
+    Title="Poznámky ke schválení">
+
+    <Grid RowDefinitions="*,Auto" Padding="0">
+
+        <RefreshView Grid.Row="0" IsRefreshing="{Binding IsLoading}" Command="{Binding LoadCommand}">
+            <ScrollView>
+                <VerticalStackLayout Padding="16" Spacing="12">
+
+                    <Label
+                        Text="{Binding StatusErrorMessage}"
+                        IsVisible="{Binding HasStatusError}"
+                        TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}"
+                        LineBreakMode="WordWrap" />
+
+                    <Label
+                        Text="Žádné poznámky nečekají na schválení."
+                        IsVisible="{Binding IsEmpty}"
+                        Margin="0,32"
+                        HorizontalOptions="Center"
+                        HorizontalTextAlignment="Center"
+                        TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
+
+                    <Label Text="Zaškrtněte víc poznámek a hromadně je ponechte nebo odmítněte dole. „Začlenit“ otevře dokument v editoru — text se promítne ručně." FontSize="9.5" TextColor="Gray" LineBreakMode="WordWrap" />
+
+                    <CollectionView x:Name="Queue" ItemsSource="{Binding PendingItems}" SelectionMode="Multiple" SelectionChanged="OnSelectionChanged">
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:CmsAnnotationQueueItem">
+                                <Border Style="{StaticResource CardBorder}" Margin="0,0,0,10">
+                                    <VerticalStackLayout Spacing="6">
+                                        <Label Text="{Binding DocumentTitle}" FontSize="12" FontAttributes="Bold" LineBreakMode="TailTruncation" />
+                                        <Label Text="{Binding AuthorName, StringFormat='Navrhl/a: {0}'}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
+                                        <Label Text="{Binding ContextQuote, StringFormat='„{0}“'}" FontSize="11" FontAttributes="Italic" LineBreakMode="WordWrap" MaxLines="2" />
+                                        <Label Text="{Binding Text}" FontSize="12.5" LineBreakMode="WordWrap" />
+                                        <Label Text="{Binding CreatedAtText}" FontSize="9" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
+
+                                        <Button Text="✎ Začlenit (otevřít editor)" Style="{StaticResource SecondaryButton}" HorizontalOptions="Start"
+                                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:CmsAnnotationQueueViewModel}}, Path=IncorporateCommand}"
+                                                CommandParameter="{Binding .}" />
+                                    </VerticalStackLayout>
+                                </Border>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+
+                </VerticalStackLayout>
+            </ScrollView>
+        </RefreshView>
+
+        <Grid Grid.Row="1" ColumnDefinitions="*,*" ColumnSpacing="8" Padding="16,10" BackgroundColor="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray900}}">
+            <Button Grid.Column="0" x:Name="KeepSelectedButton" Text="Ponechat vybrané" IsEnabled="False" Clicked="OnKeepSelectedClicked" />
+            <Button Grid.Column="1" x:Name="DeclineSelectedButton" Text="Odmítnout vybrané" Style="{StaticResource SecondaryButton}" IsEnabled="False" Clicked="OnDeclineSelectedClicked" />
+        </Grid>
+
+    </Grid>
+</ContentPage>

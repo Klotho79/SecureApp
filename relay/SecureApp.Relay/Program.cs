@@ -909,7 +909,32 @@ app.MapGet("/cms/editors", (HttpRequest request, RelayDatabase db) =>
 
 static CmsAnnotationDto ToAnnotationDto(CmsAnnotationRecord a) => new(
     a.Id, a.DocumentId, a.AuthorDeviceId, a.AuthorName, a.Audience, a.BodyBlob, a.Moderation, a.CreatedAtUtc, a.UpdatedAtUtc, a.HiddenByMe, a.IsMine,
-    a.Replies.Select(r => new CmsAnnotationReplyDto(r.Id, r.AuthorDeviceId, r.AuthorName, r.BodyBlob, r.CreatedAtUtc)).ToList(), a.CanModerate);
+    a.Replies.Select(r => new CmsAnnotationReplyDto(r.Id, r.AuthorDeviceId, r.AuthorName, r.BodyBlob, r.CreatedAtUtc)).ToList(), a.CanModerate,
+    a.IncorporatedInVersionId);
+
+// Shared moderation queue (phase 5): Admin/Modifier only, same right as assigning CMS editors.
+app.MapGet("/cms/annotations/pending", (HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+    if (!CanAssignCmsEditors(db, deviceId))
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+
+    return Results.Ok(db.GetPendingCmsAnnotations()
+        .Select(a => new CmsPendingAnnotationDto(a.Id, a.DocumentId, a.DocumentTitle, a.AuthorName, a.BodyBlob, a.CreatedAtUtc))
+        .ToList());
+});
+
+// Lets a device notice, on its own, that one of ITS OWN annotations was moderated (no cross-device push exists).
+app.MapGet("/cms/my-annotations", (HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+
+    return Results.Ok(db.GetMyCmsAnnotations(deviceId)
+        .Select(a => new CmsMyAnnotationDto(a.Id, a.DocumentTitle, a.Moderation, a.UpdatedAtUtc))
+        .ToList());
+});
 
 app.MapPost("/cms/annotations/{id:guid}/propose", (Guid id, HttpRequest request, ProposeCmsAnnotationRequest body, RelayDatabase db) =>
 {
@@ -927,7 +952,7 @@ app.MapPost("/cms/annotations/{id:guid}/moderate", (Guid id, HttpRequest request
     if (body.Decision is not ("incorporated" or "declined" or "kept"))
         return Results.BadRequest("Decision must be incorporated, declined or kept.");
 
-    var record = db.ModerateCmsAnnotation(id, deviceId, body.Decision, body.Note);
+    var record = db.ModerateCmsAnnotation(id, deviceId, body.Decision, body.Note, body.IncorporatedInVersionId);
     return record is null ? Results.StatusCode(StatusCodes.Status403Forbidden) : Results.Ok(ToAnnotationDto(record));
 });
 

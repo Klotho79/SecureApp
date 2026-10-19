@@ -145,6 +145,15 @@
                 </VerticalStackLayout>
             </Border>
 
+            <!-- Poznámky ke schválení (fáze 5, jen Admin/Modifier) — fronta přes všechny dokumenty, hromadné Ponechat/Odmítnout, Začlenit otevře editor. -->
+            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanAssignCms}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Poznámky ke schválení" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Label Text="Návrhy čtenářů na začlenění poznámky do výukového dokumentu, napříč všemi dokumenty." FontSize="9.5" TextColor="Gray" LineBreakMode="WordWrap" />
+                    <Button Text="📋 Otevřít frontu" Style="{StaticResource SecondaryButton}" Command="{Binding OpenCmsAnnotationQueueCommand}" HorizontalOptions="Start" />
+                </VerticalStackLayout>
+            </Border>
+
             <!-- Kategorie knihovny (Modifier/Admin) — přesunuto z Nastavení/Systém/Knihovna. -->
             <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanManageLibrary}">
                 <VerticalStackLayout Spacing="8">

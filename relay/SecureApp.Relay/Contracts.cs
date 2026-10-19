@@ -201,15 +201,22 @@ public sealed record CmsAnnotationReplyDto(Guid Id, Guid AuthorDeviceId, string 
 
 public sealed record CmsAnnotationDto(
     Guid Id, Guid DocumentId, Guid AuthorDeviceId, string AuthorName, string Audience, string BodyBlob, string Moderation,
-    DateTimeOffset CreatedAtUtc, DateTimeOffset UpdatedAtUtc, bool HiddenByMe, bool IsMine, List<CmsAnnotationReplyDto> Replies, bool CanModerate = false);
+    DateTimeOffset CreatedAtUtc, DateTimeOffset UpdatedAtUtc, bool HiddenByMe, bool IsMine, List<CmsAnnotationReplyDto> Replies,
+    bool CanModerate = false, string? IncorporatedInVersionId = null);
 
 public sealed record AddCmsAnnotationReplyRequest(string BodyBlob);
 
 /// <summary>Author's proposal of an annotation for incorporation (<c>Note</c> optional).</summary>
 public sealed record ProposeCmsAnnotationRequest(string? Note);
 
-/// <summary><c>Decision</c> is incorporated | declined | kept.</summary>
-public sealed record ModerateCmsAnnotationRequest(string Decision, string? Note);
+/// <summary><c>Decision</c> is incorporated | declined | kept. <c>IncorporatedInVersionId</c> only matters for "incorporated" — the CMS document VersionId the moderator just saved.</summary>
+public sealed record ModerateCmsAnnotationRequest(string Decision, string? Note, string? IncorporatedInVersionId = null);
+
+/// <summary>One pending annotation in the shared moderation queue (<c>GET /cms/annotations/pending</c>, Admin/Modifier only).</summary>
+public sealed record CmsPendingAnnotationDto(Guid Id, Guid DocumentId, string DocumentTitle, string AuthorName, string BodyBlob, DateTimeOffset CreatedAtUtc);
+
+/// <summary>One of the caller's own annotations that has been proposed/decided (<c>GET /cms/my-annotations</c>).</summary>
+public sealed record CmsMyAnnotationDto(Guid Id, string DocumentTitle, string Moderation, DateTimeOffset UpdatedAtUtc);
 
 /// <summary>One assignable member: <c>DeviceId</c> is a device that represents them (all devices sharing the e-mail are covered by the grant).</summary>
 public sealed record CmsMemberDto(Guid DeviceId, string DisplayName, string? Email);

@@ -289,6 +289,10 @@ public static class MauiProgram
 		builder.Services.AddTransient<LibraryReviewQueueViewModel>();
 		builder.Services.AddTransient<LibraryReviewQueuePage>();
 
+		// CMS annotation moderation queue (CMS_PLAN.md, phase 5).
+		builder.Services.AddTransient<CmsAnnotationQueueViewModel>();
+		builder.Services.AddTransient<CmsAnnotationQueuePage>();
+
 		// Logbook (2026-09-09) — see GroupChat's own registration comment above for the pattern this follows.
 		builder.Services.AddTransient<LogbookViewModel>();
 		builder.Services.AddTransient<LogbookPage>();

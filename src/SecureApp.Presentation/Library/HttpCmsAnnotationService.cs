@@ -81,12 +81,39 @@ public sealed class HttpCmsAnnotationService : ICmsAnnotationService
         return await SendForViewAsync(request, key, ct);
     }
 
-    public async Task<CmsAnnotationView> ModerateAsync(Guid annotationId, string decision, string? note, CancellationToken ct = default)
+    public async Task<CmsAnnotationView> ModerateAsync(Guid annotationId, string decision, string? note, string? incorporatedInVersionId = null, CancellationToken ct = default)
     {
         var key = await _vault.RetrieveSecretAsync(SharedLibraryKeyVaultKey, ct);
         using var request = await CreateAsync(HttpMethod.Post, $"cms/annotations/{annotationId}/moderate", ct);
-        request.Content = JsonContent.Create(new { Decision = decision, Note = note }, options: HttpJsonOptions);
+        request.Content = JsonContent.Create(new { Decision = decision, Note = note, IncorporatedInVersionId = incorporatedInVersionId }, options: HttpJsonOptions);
         return await SendForViewAsync(request, key, ct);
+    }
+
+    public async Task<IReadOnlyList<CmsPendingAnnotationView>> ListPendingAsync(CancellationToken ct = default)
+    {
+        var key = await _vault.RetrieveSecretAsync(SharedLibraryKeyVaultKey, ct);
+        using var request = await CreateAsync(HttpMethod.Get, "cms/annotations/pending", ct);
+        using var response = await _httpClient.SendAsync(request, ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.Forbidden) return [];
+        response.EnsureSuccessStatusCode();
+        var dtos = await response.Content.ReadFromJsonAsync<List<PendingAnnotationDto>>(HttpJsonOptions, ct) ?? [];
+
+        var result = new List<CmsPendingAnnotationView>(dtos.Count);
+        foreach (var dto in dtos)
+        {
+            var body = key is null ? null : await TryDecryptAsync(dto.BodyBlob, key, ct);
+            result.Add(new CmsPendingAnnotationView(dto.Id, dto.DocumentId, dto.DocumentTitle, dto.AuthorName, body?.Anchor, body?.Text ?? Unreadable, dto.CreatedAtUtc));
+        }
+        return result;
+    }
+
+    public async Task<IReadOnlyList<CmsMyAnnotationView>> ListMyModeratedAsync(CancellationToken ct = default)
+    {
+        using var request = await CreateAsync(HttpMethod.Get, "cms/my-annotations", ct);
+        using var response = await _httpClient.SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
+        var dtos = await response.Content.ReadFromJsonAsync<List<MyAnnotationDto>>(HttpJsonOptions, ct) ?? [];
+        return dtos.Select(d => new CmsMyAnnotationView(d.Id, d.DocumentTitle, d.Moderation, d.UpdatedAtUtc)).ToList();
     }
 
     public async Task DeleteAsync(Guid annotationId, CancellationToken ct = default)
@@ -126,7 +153,7 @@ public sealed class HttpCmsAnnotationService : ICmsAnnotationService
             replies.Add(new CmsAnnotationReplyView(r.Id, r.AuthorName, reply?.Text ?? Unreadable, r.CreatedAtUtc));
         }
         return new CmsAnnotationView(dto.Id, dto.DocumentId, dto.AuthorName, dto.Audience, body?.Anchor, body?.Text ?? Unreadable,
-            dto.CreatedAtUtc, dto.HiddenByMe, dto.IsMine, replies, dto.Moderation, dto.CanModerate);
+            dto.CreatedAtUtc, dto.HiddenByMe, dto.IsMine, replies, dto.Moderation, dto.CanModerate, dto.IncorporatedInVersionId);
     }
 
     private const string Unreadable = "🔒 (nešlo dešifrovat — zkontrolujte klíč sdílené knihovny)";
@@ -188,5 +215,10 @@ public sealed class HttpCmsAnnotationService : ICmsAnnotationService
 
     private sealed record AnnotationDto(
         Guid Id, Guid DocumentId, Guid AuthorDeviceId, string AuthorName, string Audience, string BodyBlob, string Moderation,
-        DateTimeOffset CreatedAtUtc, DateTimeOffset UpdatedAtUtc, bool HiddenByMe, bool IsMine, List<ReplyDto> Replies, bool CanModerate = false);
+        DateTimeOffset CreatedAtUtc, DateTimeOffset UpdatedAtUtc, bool HiddenByMe, bool IsMine, List<ReplyDto> Replies,
+        bool CanModerate = false, string? IncorporatedInVersionId = null);
+
+    private sealed record PendingAnnotationDto(Guid Id, Guid DocumentId, string DocumentTitle, string AuthorName, string BodyBlob, DateTimeOffset CreatedAtUtc);
+
+    private sealed record MyAnnotationDto(Guid Id, string DocumentTitle, string Moderation, DateTimeOffset UpdatedAtUtc);
 }

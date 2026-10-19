@@ -5,7 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     Title="Editor dokumentu">
 
-    <Grid RowDefinitions="Auto,*,Auto" Padding="12" RowSpacing="8">
+    <Grid RowDefinitions="Auto,Auto,*,Auto" Padding="12" RowSpacing="8">
 
         <!-- PC-only authoring (CMS_PLAN.md, phase 2a): media pickers, mobile-width preview, save. -->
         <FlexLayout Grid.Row="0" Wrap="Wrap" AlignItems="Center">
@@ -18,8 +18,20 @@
             <Button Text="Zavřít" Style="{StaticResource SecondaryButton}" Clicked="OnCloseClicked" Margin="0,0,0,4" />
         </FlexLayout>
 
-        <WebView x:Name="Editor" Grid.Row="1" Navigated="OnEditorNavigated" />
+        <!-- Fáze 5 — "Začlenit" z fronty ke schválení: ukáže poznámku, kterou má redaktor ručně promítnout do textu. -->
+        <Border x:Name="PendingAnnotationBanner" Grid.Row="1" Style="{StaticResource CardBorder}" IsVisible="False" Padding="10">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <VerticalStackLayout Grid.Column="0" Spacing="2">
+                    <Label Text="Poznámka ke začlenění:" FontSize="10.5" FontAttributes="Bold" />
+                    <Label x:Name="PendingAnnotationQuoteLabel" FontSize="10.5" FontAttributes="Italic" LineBreakMode="WordWrap" />
+                    <Label x:Name="PendingAnnotationTextLabel" FontSize="11.5" LineBreakMode="WordWrap" />
+                </VerticalStackLayout>
+                <Button Grid.Column="1" Text="Zavřít poznámku" Style="{StaticResource SecondaryButton}" Clicked="OnDismissPendingAnnotationClicked" VerticalOptions="Start" />
+            </Grid>
+        </Border>
 
-        <Label x:Name="StatusLabel" Grid.Row="2" FontSize="12" LineBreakMode="WordWrap" />
+        <WebView x:Name="Editor" Grid.Row="2" Navigated="OnEditorNavigated" />
+
+        <Label x:Name="StatusLabel" Grid.Row="3" FontSize="12" LineBreakMode="WordWrap" />
     </Grid>
 </ContentPage>

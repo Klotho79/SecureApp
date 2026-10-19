@@ -38,7 +38,15 @@ public sealed record CmsAnnotationReplyRecord(Guid Id, Guid AuthorDeviceId, stri
 /// <summary>One annotation as a given viewer sees it (<c>IsMine</c>/<c>HiddenByMe</c> are relative to that viewer).</summary>
 public sealed record CmsAnnotationRecord(
     Guid Id, Guid DocumentId, Guid AuthorDeviceId, string AuthorName, string Audience, string BodyBlob, string Moderation,
-    DateTimeOffset CreatedAtUtc, DateTimeOffset UpdatedAtUtc, bool HiddenByMe, bool IsMine, List<CmsAnnotationReplyRecord> Replies, bool CanModerate = false);
+    DateTimeOffset CreatedAtUtc, DateTimeOffset UpdatedAtUtc, bool HiddenByMe, bool IsMine, List<CmsAnnotationReplyRecord> Replies,
+    bool CanModerate = false, string? IncorporatedInVersionId = null);
+
+/// <summary>One pending annotation across all documents, for the shared "Poznámky ke schválení" queue (Admin/Modifier only).</summary>
+public sealed record CmsPendingAnnotationRecord(
+    Guid Id, Guid DocumentId, string DocumentTitle, string AuthorName, string BodyBlob, DateTimeOffset CreatedAtUtc);
+
+/// <summary>One of the caller's own annotations that has been proposed/decided, for the author's own-device moderation-status poll.</summary>
+public sealed record CmsMyAnnotationRecord(Guid Id, string DocumentTitle, string Moderation, DateTimeOffset UpdatedAtUtc);
 
 /// <summary>One active per-document CMS editor grant; <c>DocumentStatus</c> is null until the first draft exists.</summary>
 public sealed record CmsEditorGrantRecord(Guid DocumentId, Guid EditorDeviceId, string Title, string FolderPath, Guid GrantedBy, DateTimeOffset GrantedAtUtc, string? DocumentStatus);
@@ -448,6 +456,12 @@ public sealed class RelayDatabase
             )
             """);
         Execute(connection, "CREATE INDEX IF NOT EXISTS ix_cms_annotations_doc ON cms_annotations(document_id)");
+        // Phase 5: set only when moderation='incorporated' — the CMS document VersionId the moderator
+        // saved after manually working the annotation's text into a block (CmsEditorPage's "pending
+        // annotation" banner). Purely informational; it does not gate anything.
+        if (!ColumnExists(connection, "cms_annotations", "incorporated_in_version_id"))
+            Execute(connection, "ALTER TABLE cms_annotations ADD COLUMN incorporated_in_version_id TEXT NULL");
+        Execute(connection, "CREATE INDEX IF NOT EXISTS ix_cms_annotations_moderation ON cms_annotations(moderation)");
         Execute(connection, "CREATE TABLE IF NOT EXISTS cms_annotation_recipients (annotation_id TEXT NOT NULL, member_key TEXT NOT NULL, PRIMARY KEY (annotation_id, member_key))");
         Execute(connection, "CREATE TABLE IF NOT EXISTS cms_annotation_hides (annotation_id TEXT NOT NULL, member_key TEXT NOT NULL, hidden_at_utc TEXT NOT NULL, PRIMARY KEY (annotation_id, member_key))");
         Execute(connection, """
@@ -1311,6 +1325,7 @@ public sealed class RelayDatabase
         using var command = connection.CreateCommand();
         command.CommandText = $"""
             SELECT a.id, a.document_id, a.author_device_id, a.author_key, a.audience, a.body_blob, a.moderation, a.created_at_utc, a.updated_at_utc,
+                   a.incorporated_in_version_id,
                    EXISTS (SELECT 1 FROM cms_annotation_hides h WHERE h.annotation_id = a.id AND h.member_key = @viewer) AS hidden,
                    EXISTS (SELECT 1 FROM cms_annotation_recipients r WHERE r.annotation_id = a.id AND r.member_key = @viewer) AS is_recipient,
                    COALESCE(e.display_name, d.display_name, 'Neznámý') AS author_name
@@ -1332,8 +1347,9 @@ public sealed class RelayDatabase
                 var audience = (string)reader["audience"];
                 var mine = (string)reader["author_key"] == viewerKey;
                 var documentId = Guid.Parse((string)reader["document_id"]);
-                // Moderators of a document: Admin, Modifier, or the member currently assigned to edit it.
-                var canModerate = isAdmin || isModifier || HasActiveCmsGrant(documentId, viewerDeviceId);
+                // Moderators: Admin or Modifier only. An editor with an active grant may edit the
+                // document but not approve/decline/incorporate proposals on it (user's decision).
+                var canModerate = isAdmin || isModifier;
                 var moderation = (string)reader["moderation"];
                 // A proposal is addressed to the moderators, whatever its audience was.
                 var visible = isAdmin || mine || audience == "all" || (audience == "selected" && Convert.ToInt32(reader["is_recipient"]) != 0)
@@ -1344,7 +1360,8 @@ public sealed class RelayDatabase
                     Guid.Parse((string)reader["id"]), documentId, Guid.Parse((string)reader["author_device_id"]),
                     (string)reader["author_name"], audience, (string)reader["body_blob"], moderation,
                     DateTimeOffset.Parse((string)reader["created_at_utc"]), DateTimeOffset.Parse((string)reader["updated_at_utc"]),
-                    Convert.ToInt32(reader["hidden"]) != 0, mine, [], canModerate));
+                    Convert.ToInt32(reader["hidden"]) != 0, mine, [], canModerate,
+                    reader["incorporated_in_version_id"] as string));
             }
         }
 
@@ -1410,7 +1427,7 @@ public sealed class RelayDatabase
     /// document), <c>declined</c>, or <c>kept</c> (stays as a comment visible to everyone). Null when the
     /// caller may not moderate this document or the annotation isn't pending.
     /// </summary>
-    public CmsAnnotationRecord? ModerateCmsAnnotation(Guid annotationId, Guid moderatorDeviceId, string decision, string? note)
+    public CmsAnnotationRecord? ModerateCmsAnnotation(Guid annotationId, Guid moderatorDeviceId, string decision, string? note, string? incorporatedInVersionId = null)
     {
         var annotation = GetCmsAnnotation(annotationId, moderatorDeviceId);
         if (annotation is null || !annotation.CanModerate || annotation.Moderation != "pending") return null;
@@ -1421,9 +1438,64 @@ public sealed class RelayDatabase
         {
             if (decision == "kept")
                 Execute(connection, "UPDATE cms_annotations SET audience = 'all' WHERE id = @id", ("@id", annotationId.ToString()));
+            if (decision == "incorporated" && incorporatedInVersionId is not null)
+                Execute(connection, "UPDATE cms_annotations SET incorporated_in_version_id = @v WHERE id = @id",
+                    ("@id", annotationId.ToString()), ("@v", incorporatedInVersionId));
         }
         SetModeration(annotationId, moderatorDeviceId, decision, decision, note);
         return GetCmsAnnotation(annotationId, moderatorDeviceId);
+    }
+
+    /// <summary>All pending proposals across every document, for the shared moderation queue (caller must already be checked as Admin/Modifier).</summary>
+    public IReadOnlyList<CmsPendingAnnotationRecord> GetPendingCmsAnnotations()
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT a.id, a.document_id, COALESCE(ld.title, 'Neznámý dokument') AS document_title,
+                   COALESCE(e.display_name, d.display_name, 'Neznámý') AS author_name, a.body_blob, a.created_at_utc
+            FROM cms_annotations a
+            LEFT JOIN library_documents ld ON ld.id = a.document_id
+            LEFT JOIN directory_entries e ON e.device_id = a.author_device_id
+            LEFT JOIN devices d ON d.id = a.author_device_id
+            WHERE a.deleted_at_utc IS NULL AND a.moderation = 'pending'
+            ORDER BY a.created_at_utc
+            """;
+        var list = new List<CmsPendingAnnotationRecord>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            list.Add(new CmsPendingAnnotationRecord(
+                Guid.Parse((string)reader["id"]), Guid.Parse((string)reader["document_id"]), (string)reader["document_title"],
+                (string)reader["author_name"], (string)reader["body_blob"], DateTimeOffset.Parse((string)reader["created_at_utc"])));
+        }
+        return list;
+    }
+
+    /// <summary>The caller's own annotations that have been proposed or decided — used by the author's device to notice a moderation decision happened.</summary>
+    public IReadOnlyList<CmsMyAnnotationRecord> GetMyCmsAnnotations(Guid deviceId)
+    {
+        var myKey = GetMemberKey(deviceId);
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT a.id, COALESCE(ld.title, 'Neznámý dokument') AS document_title, a.moderation, a.updated_at_utc
+            FROM cms_annotations a
+            LEFT JOIN library_documents ld ON ld.id = a.document_id
+            WHERE a.deleted_at_utc IS NULL AND a.author_key = @key AND a.moderation != 'none'
+            ORDER BY a.updated_at_utc DESC
+            LIMIT 200
+            """;
+        command.Parameters.AddWithValue("@key", myKey);
+        var list = new List<CmsMyAnnotationRecord>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            list.Add(new CmsMyAnnotationRecord(
+                Guid.Parse((string)reader["id"]), (string)reader["document_title"], (string)reader["moderation"],
+                DateTimeOffset.Parse((string)reader["updated_at_utc"])));
+        }
+        return list;
     }
 
     private void SetModeration(Guid annotationId, Guid actorDeviceId, string state, string action, string? note)
