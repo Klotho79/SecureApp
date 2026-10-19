@@ -82,6 +82,22 @@ public sealed class MessagingService : IMessagingService
 
         var handshakeCipherText = await _ratchet.InitiateHandshakeAsync(session.Id, peerIdentityPublicKey, ct);
 
+        // 2026-10-19 bugfix (live report: "porad se nedokoncilo parovani s Faltus" — relay-side
+        // diagnostics showed the PEER's side repeatedly, successfully accepting this device's invite
+        // (AcceptSessionAsync → Activate(), every single resync), while this device's OWN session for
+        // that peer stayed PendingHandshake forever). Root cause: ChatSession.Activate() was called
+        // ONLY from AcceptSessionAsync — the RESPONDING side. The INITIATING side (here) never had any
+        // path back to Active at all; nothing in the whole codebase ever flips it once the deterministic
+        // initiator/acceptor tie-break (App.xaml.cs) picks this device as initiator for a given peer,
+        // which it does the SAME way every time for that pair, so it never self-corrects. An initiator's
+        // own X3DH-derived sending chain is usable immediately — same reasoning CanSend already applies
+        // (sending has never actually been gated on session state) — so this is safe to mark Active
+        // right away rather than waiting for some ack that nothing in this protocol ever sends back.
+        // Without this, the stale-session sweep and pairing watchdog treated an already-working pairing
+        // as permanently stuck, closing and recreating it every hour forever.
+        session.Activate();
+        await _sessionRepository.UpdateAsync(session, ct);
+
         await _auditLogger.LogAsync(AuditAction.ChatSessionEstablished, details: $"role=initiator;peer={peerDisplayName}", ct: ct);
         return (session, handshakeCipherText);
     }

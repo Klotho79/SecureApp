@@ -188,12 +188,19 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
             // see MergeSluzbyAsync's own remarks for how a day ends up with one.
             var resolved = new Dictionary<DateOnly, (AssignmentType Type, string? WorkplaceName, string? OnCallWorkplaceName)>();
 
+            // A second (or third...) REAL workplace on the same date (2026-10-19, user's own live
+            // report: "jsem na 2 pracovištích" — being rostered onto more than one sál the same day is
+            // a normal, expected case, not a data glitch). `resolved` can only ever carry one
+            // WorkplaceName per date, so every name beyond the first goes here instead and becomes its
+            // own extra WorkAssignment row in WriteBackAsync — see that method's own remarks.
+            var extraWorkplaces = new Dictionary<DateOnly, List<string>>();
+
             // Everyone on duty per day, for the widget — collected from the same pages, see DutyRosterStore.
             var onDuty = new Dictionary<DateOnly, List<DutyEntry>>();
             var shifted = new Dictionary<DateOnly, List<DutyEntry>>();
 
             stage = "stažení pracovišť (pracoviste.php)";
-            await MergePracovisteAsync(http, rangeStart, rangeEnd, myName, myId, resolved, shifted, ct);
+            await MergePracovisteAsync(http, rangeStart, rangeEnd, myName, myId, resolved, extraWorkplaces, shifted, ct);
             stage = "stažení služeb (sluzby7.php)";
             await MergeSluzbyAsync(http, rangeStart, rangeEnd, myName, resolved, onDuty, ct);
             try
@@ -227,7 +234,7 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
             }
 
             stage = "zápis do místní databáze";
-            var result = await WriteBackAsync(resolved, ct);
+            var result = await WriteBackAsync(resolved, extraWorkplaces, ct);
             _hasNotifiedSyncFailure = false; // a successful sync ends the current failure streak
             return result;
         }
@@ -562,9 +569,26 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
     /// Matches by name, and additionally by person id when both are known — see
     /// <see cref="OpicentrumParsing"/>'s remarks for why the id alone (what this used to rely on) left
     /// every non-editor account without workplaces.
+    ///
+    /// 2026-10-19 bugfix (live report: "na opicentru jsem se zařadil na oční... apka píše že
+    /// synchronizovala, ale v rozdělení se to neprojevilo, obsazení sálu je stale nezařazen"): this used
+    /// to write <c>resolved[entry.Date]</c> for every matching row as it was encountered, so if the same
+    /// person appeared TWICE for the same day on the real page — a real room AND the leftover
+    /// "NEZAŘAZENÍ" bucket, which the hand-maintained portal doesn't always clean up the instant someone
+    /// is moved onto a room — whichever row happened to come LATER in the HTML silently won, even when
+    /// that was just "Nezařazen". Every matching entry for a date is now collected first and a real room
+    /// name always wins over "Nezařazen", regardless of row order.
+    ///
+    /// Same-day follow-up ("Jsem na 2 pracovištích") — a person can genuinely be rostered onto more
+    /// than one real sál the same day (the portal marks their name green in that case). Every distinct
+    /// real name found is kept: the first becomes this date's entry in <paramref name="resolved"/>
+    /// exactly as before, and any further ones go into <paramref name="extraWorkplaces"/> for
+    /// <see cref="WriteBackAsync"/> to write as their own additional rows.
     /// </summary>
-    private static async Task MergePracovisteAsync(HttpClient http, DateOnly rangeStart, DateOnly rangeEnd, string myName, int? myId, Dictionary<DateOnly, (AssignmentType Type, string? WorkplaceName, string? OnCallWorkplaceName)> resolved, Dictionary<DateOnly, List<DutyEntry>> shifted, CancellationToken ct)
+    private static async Task MergePracovisteAsync(HttpClient http, DateOnly rangeStart, DateOnly rangeEnd, string myName, int? myId, Dictionary<DateOnly, (AssignmentType Type, string? WorkplaceName, string? OnCallWorkplaceName)> resolved, Dictionary<DateOnly, List<string>> extraWorkplaces, Dictionary<DateOnly, List<DutyEntry>> shifted, CancellationToken ct)
     {
+        var myEntriesByDate = new Dictionary<DateOnly, List<string>>();
+
         foreach (var monday in DistinctMondaysInRange(rangeStart, rangeEnd))
         {
             string html;
@@ -578,9 +602,28 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
                 if (entry.WorkplaceName.StartsWith("Odpolední", StringComparison.OrdinalIgnoreCase))
                     AddDuty(shifted, entry.Date, entry.WorkplaceName, entry.PersonName);
                 var isMe =(myId is not null && entry.PersonId == myId) || NamesMatch(entry.PersonName, myName);
-                if (isMe)
-                    resolved[entry.Date] = (AssignmentType.Work, entry.WorkplaceName, null);
+                if (!isMe) continue;
+                if (!myEntriesByDate.TryGetValue(entry.Date, out var names)) myEntriesByDate[entry.Date] = names = [];
+                names.Add(entry.WorkplaceName);
             }
+        }
+
+        foreach (var (date, names) in myEntriesByDate)
+        {
+            var distinctReal = names
+                .Where(n => !string.Equals(n, "Nezařazen", StringComparison.OrdinalIgnoreCase))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (distinctReal.Count == 0)
+            {
+                resolved[date] = (AssignmentType.Work, "Nezařazen", null);
+                continue;
+            }
+
+            resolved[date] = (AssignmentType.Work, distinctReal[0], null);
+            if (distinctReal.Count > 1)
+                extraWorkplaces[date] = distinctReal.Skip(1).ToList();
         }
     }
 
@@ -688,7 +731,19 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
         }
     }
 
-    private async Task<OpicentrumSyncResult> WriteBackAsync(Dictionary<DateOnly, (AssignmentType Type, string? WorkplaceName, string? OnCallWorkplaceName)> resolved, CancellationToken ct)
+    /// <summary>
+    /// <paramref name="extraWorkplaces"/> (2026-10-19, "Jsem na 2 pracovištích") holds any real
+    /// workplace name BEYOND the one already carried in <paramref name="resolved"/> for that date —
+    /// each becomes its own additional <see cref="WorkAssignment"/> row, which is what
+    /// <see cref="ViewModels.RoomStatusViewModel"/>/<see cref="ViewModels.NotificationsViewModel"/>'s
+    /// own "every qualifying row counts" logic already expected on the read side. Existing rows for a
+    /// date are now grouped (not a 1:1 dictionary, since a date can legitimately have more than one row
+    /// once this ships) — the oldest one is treated as "the" primary row to update in place exactly as
+    /// before, any others are left alone and only checked so an extra isn't added twice. An extra is
+    /// never auto-removed if Opicentrum later drops back to one room for an already-synced date — same
+    /// bias as the rest of this class toward never silently destroying a locally-stored row.
+    /// </summary>
+    private async Task<OpicentrumSyncResult> WriteBackAsync(Dictionary<DateOnly, (AssignmentType Type, string? WorkplaceName, string? OnCallWorkplaceName)> resolved, Dictionary<DateOnly, List<string>> extraWorkplaces, CancellationToken ct)
     {
         if (resolved.Count == 0)
             return new OpicentrumSyncResult(true, 0, 0, null);
@@ -696,7 +751,9 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
         var minDate = resolved.Keys.Min();
         var maxDate = resolved.Keys.Max();
         var existing = await _assignmentRepository.GetByDateRangeAsync(minDate, maxDate, ct);
-        var existingByDate = existing.ToDictionary(a => a.Date);
+        var existingByDate = existing
+            .GroupBy(a => a.Date)
+            .ToDictionary(g => g.Key, g => g.OrderBy(a => a.CreatedAtUtc).ToList());
 
         var created = 0;
         var updated = 0;
@@ -704,22 +761,29 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
 
         foreach (var (date, (type, workplaceName, onCallWorkplaceName)) in resolved.OrderBy(r => r.Key))
         {
-            if (existingByDate.TryGetValue(date, out var current))
+            existingByDate.TryGetValue(date, out var rowsForDate);
+            var current = rowsForDate?.FirstOrDefault();
+
+            if (current is not null)
             {
                 if (current.Type == type && current.WorkplaceName == workplaceName && current.OnCallWorkplaceName == onCallWorkplaceName)
-                    continue; // already matches — no write, no noise
-
-                var previousLabel = DescribeAssignment(current.Type, current.WorkplaceName, current.OnCallWorkplaceName);
-                var newLabel = DescribeAssignment(type, workplaceName, onCallWorkplaceName);
-                // WorkplaceId intentionally cleared (null) — the imported name is Opicentrum's own
-                // label, which isn't guaranteed to correspond to this device's shared Workplace
-                // catalog entry; Note is deliberately preserved (the user's own instruction: "vytvoří
-                // se poznamka do zalozky system" — the overwrite is recorded as a Notification, not by
-                // clobbering whatever the user wrote here themselves).
-                current.Update(type, current.StartTime, current.EndTime, null, workplaceName, current.Note, onCallWorkplaceName);
-                await _assignmentRepository.UpdateAsync(current, ct);
-                updated++;
-                changes.Add((date, previousLabel, newLabel));
+                {
+                    // already matches — no write, no noise
+                }
+                else
+                {
+                    var previousLabel = DescribeAssignment(current.Type, current.WorkplaceName, current.OnCallWorkplaceName);
+                    var newLabel = DescribeAssignment(type, workplaceName, onCallWorkplaceName);
+                    // WorkplaceId intentionally cleared (null) — the imported name is Opicentrum's own
+                    // label, which isn't guaranteed to correspond to this device's shared Workplace
+                    // catalog entry; Note is deliberately preserved (the user's own instruction: "vytvoří
+                    // se poznamka do zalozky system" — the overwrite is recorded as a Notification, not by
+                    // clobbering whatever the user wrote here themselves).
+                    current.Update(type, current.StartTime, current.EndTime, null, workplaceName, current.Note, onCallWorkplaceName);
+                    await _assignmentRepository.UpdateAsync(current, ct);
+                    updated++;
+                    changes.Add((date, previousLabel, newLabel));
+                }
             }
             else
             {
@@ -728,6 +792,23 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
                 var assignment = new WorkAssignment(date, type, workplaceName: workplaceName, onCallWorkplaceName: onCallWorkplaceName);
                 await _assignmentRepository.AddAsync(assignment, ct);
                 created++;
+                existingByDate[date] = [assignment];
+            }
+        }
+
+        foreach (var (date, names) in extraWorkplaces)
+        {
+            existingByDate.TryGetValue(date, out var rowsForDate);
+            foreach (var name in names)
+            {
+                if (rowsForDate?.Any(a => string.Equals(a.WorkplaceName, name, StringComparison.OrdinalIgnoreCase)) == true)
+                    continue; // this extra room already has its own row — nothing to do
+
+                var assignment = new WorkAssignment(date, AssignmentType.Work, workplaceName: name);
+                await _assignmentRepository.AddAsync(assignment, ct);
+                created++;
+                (rowsForDate ??= []).Add(assignment);
+                existingByDate[date] = rowsForDate;
             }
         }
 

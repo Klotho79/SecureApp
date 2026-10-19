@@ -192,6 +192,28 @@ public static class NotificationPublisher
         return TryAddAsync(notificationRepository, notification, nativeNotificationService, ct);
     }
 
+    /// <summary>
+    /// This device's own background update download finished (2026-10-19, user's own ask: "pokud je
+    /// na wifi rovnou stahni v pozadi aktualizaci a po stazeni posli jednorazove upozorneni" — every
+    /// user, not just the admin, so unlike <see cref="PublishSystemWarningAsync"/> this is never
+    /// role-gated). One per version — see <c>App.RunBackgroundUpdateCheckAsync</c>'s own
+    /// "already handled this version code" guard for why this itself is never called twice for the
+    /// same version.
+    /// </summary>
+    public static Task PublishUpdateReadyAsync(
+        INotificationRepository notificationRepository,
+        string versionName,
+        INativeNotificationService? nativeNotificationService = null,
+        CancellationToken ct = default)
+    {
+        var notification = new Notification(
+            title: "Aktualizace stažena",
+            body: $"Verze {versionName} je stažená a připravená — otevřete Nastavení a dokončete instalaci.",
+            category: NotificationCategory.System,
+            priority: NotificationPriority.Normal);
+        return TryAddAsync(notificationRepository, notification, nativeNotificationService, ct);
+    }
+
     /// <summary>The Opicentrum sync changed the user's own schedule (2026-09-26) — tapping it opens the Rozpis. Important when a change falls within the coming week.</summary>
     public static Task PublishScheduleChangeAsync(
         INotificationRepository notificationRepository,

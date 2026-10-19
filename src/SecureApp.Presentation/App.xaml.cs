@@ -385,7 +385,10 @@ public partial class App : Application
 				}
 
 				if (services is not null)
+				{
 					await RunBackgroundOpicentrumSyncAsync(services);
+					await RunBackgroundUpdateCheckAsync(services);
+				}
 			}
 			catch
 			{
@@ -427,6 +430,76 @@ public partial class App : Application
 		catch (Exception ex)
 		{
 			AppLog.Error(nameof(RunBackgroundOpicentrumSyncAsync), "background Opicentrum sync failed", ex);
+		}
+	}
+
+	private const string LastBackgroundUpdateCheckPreferenceKey = "update_last_bg_check_utc";
+	private const string AutoHandledUpdateVersionPreferenceKey = "update_auto_handled_version_code";
+	private static readonly TimeSpan _backgroundUpdateCheckInterval = TimeSpan.FromMinutes(30);
+
+	/// <summary>
+	/// Automatic background update download (2026-10-19, user's own ask: "pokud je na wifi rovnou
+	/// stahni v pozadi aktualizaci a po stazeni posli jednorazove upozorneni" — every user, not just
+	/// whoever remembers to open Settings and tap "Zkontrolovat aktualizaci"). Checked at most every
+	/// 30 min, and only ever acted on over WiFi — a sideloaded APK or a Windows build can be a sizeable
+	/// download, never spent on someone's mobile data automatically. <see cref="AutoHandledUpdateVersionPreferenceKey"/>
+	/// records the newest version code already downloaded/notified so the SAME release is never
+	/// re-downloaded or re-notified on every later tick — only a genuinely NEWER version code triggers
+	/// this again.
+	///
+	/// Android hands straight off to <see cref="INativeUpdateDownloader"/> (the existing foreground
+	/// Service from 2026-09-24) — it already owns its own progress notification and posts exactly one
+	/// "ready to install" notification on completion, so nothing more is needed here. Everywhere else
+	/// (Windows — no such service exists there) this downloads the update itself, right in this
+	/// background tick, and posts a single <see cref="NotificationPublisher.PublishUpdateReadyAsync"/>
+	/// — deliberately NOT auto-installing: on Windows that closes and relaunches the whole app with no
+	/// warning (see <c>SettingsViewModel.DownloadAndInstallUpdateAsync</c>'s own remarks), which is fine
+	/// for an explicit user tap but not for something firing unattended in the background.
+	/// </summary>
+	private static async Task RunBackgroundUpdateCheckAsync(IServiceProvider services)
+	{
+		try
+		{
+			var prefs = Microsoft.Maui.Storage.Preferences.Default;
+			var lastTicks = prefs.Get(LastBackgroundUpdateCheckPreferenceKey, 0L);
+			if (lastTicks > 0 && DateTimeOffset.UtcNow - new DateTimeOffset(lastTicks, TimeSpan.Zero) < _backgroundUpdateCheckInterval) return;
+
+			if (!Microsoft.Maui.Networking.Connectivity.Current.ConnectionProfiles.Contains(Microsoft.Maui.Networking.ConnectionProfile.WiFi))
+				return;
+
+			var updateService = services.GetService<IUpdateService>();
+			if (updateService is null) return;
+
+			prefs.Set(LastBackgroundUpdateCheckPreferenceKey, DateTimeOffset.UtcNow.UtcTicks);
+
+			var result = await updateService.CheckForUpdateAsync();
+			if (!result.IsUpdateAvailable || result.LatestVersionCode is not { } versionCode) return;
+
+			var alreadyHandled = prefs.Get(AutoHandledUpdateVersionPreferenceKey, 0);
+			if (alreadyHandled >= versionCode) return;
+			prefs.Set(AutoHandledUpdateVersionPreferenceKey, versionCode);
+
+			var versionName = result.LatestVersionName ?? string.Empty;
+			var nativeDownloader = services.GetService<INativeUpdateDownloader>();
+			if (nativeDownloader is not null)
+			{
+				var url = await updateService.GetDownloadUrlAsync();
+				nativeDownloader.StartBackgroundDownload(url, versionCode, versionName);
+				AppLog.Event("update.bg-download.started", ("platform", "native-service"), ("versionCode", versionCode));
+				return;
+			}
+
+			await updateService.DownloadUpdateAsync();
+			AppLog.Event("update.bg-download.done", ("platform", "in-process"), ("versionCode", versionCode));
+
+			using var scope = services.CreateScope();
+			var notifications = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
+			var native = services.GetService<INativeNotificationService>();
+			await NotificationPublisher.PublishUpdateReadyAsync(notifications, versionName, native);
+		}
+		catch (Exception ex)
+		{
+			AppLog.Error(nameof(RunBackgroundUpdateCheckAsync), "background update check/download failed", ex);
 		}
 	}
 
@@ -764,6 +837,15 @@ public partial class App : Application
 	/// a handshake still pending after 15 min is reported as a Warning and after 60 min as an Error to the
 	/// shared diagnostics log, once per session per tier. Nothing is shown to the affected user — the
 	/// admin's own device turns these entries into a notification (see <see cref="SyncAdminAlertsAsync"/>).
+	///
+	/// 2026-10-19 bugfix (live report: "porad chodi upozorneni ikdyz jsem psal ze stacji 1 a pak za 3
+	/// dny" — the 3-day repeat cooldown wasn't holding): the message used to embed the LIVE elapsed
+	/// minute count ("...už 37 min."), which changes every single time this runs (and <see cref="_reportedStuckPairings"/>
+	/// resets on every app restart, so a long-stuck pairing re-logs often). <see cref="SyncAdminAlertsAsync"/>'s
+	/// cooldown groups by exact message text, so a different number every time meant it never recognized
+	/// two reports of the SAME stuck pairing as the same problem — the cooldown never actually engaged.
+	/// Now logs a fixed per-tier label ("15+"/"60+") instead of the exact minute count, so repeats of the
+	/// same pairing/tier always produce byte-identical text and group correctly.
 	/// </summary>
 	private static void ReportStuckPairings(IReadOnlyList<ChatSession> sessions)
 	{
@@ -776,8 +858,9 @@ public partial class App : Application
 				var level = minutes >= 60 ? DiagnosticLogLevel.Error : minutes >= 15 ? DiagnosticLogLevel.Warning : (DiagnosticLogLevel?)null;
 				if (level is null) continue;
 				if (!_reportedStuckPairings.Add($"{s.Id}:{level}")) continue;
+				var thresholdLabel = minutes >= 60 ? "60+" : "15+";
 				ReportFireAndForget(level.Value,
-					$"Párování s {s.PeerDisplayName} se nedokončilo už {minutes} min.",
+					$"Párování s {s.PeerDisplayName} se nedokončilo už {thresholdLabel} min.",
 					PairingWatchdogContext, null);
 			}
 		}
