@@ -168,7 +168,10 @@ public sealed class CmsDocumentSaver
             switch (block)
             {
                 case CmsImageBlock i: into.Add(i.MediaId); break;
-                case CmsVideoBlock v: into.Add(v.MediaId); break;
+                case CmsVideoBlock v:
+                    into.Add(v.MediaId);
+                    if (v.PosterMediaId is { } poster) into.Add(poster);
+                    break;
                 case CmsRowBlock r:
                     foreach (var cell in r.Children) CollectMediaIds(cell.Blocks, into);
                     break;

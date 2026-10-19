@@ -40,6 +40,9 @@ public sealed class CmsDocumentView : ContentView
     /// <summary>Raised when the reader asks to annotate the current selection (phase 4 will open the note editor).</summary>
     public event EventHandler<CmsAnchor>? AnnotationRequested;
 
+    /// <summary>Raised when the reader taps an inline image, carrying the local path of its largest stored variant (phase 3, pinch-zoom lives in the host's full-screen viewer, not here).</summary>
+    public event EventHandler<string>? ImageTapped;
+
     private readonly Border _selectionBar = new() { IsVisible = false, VerticalOptions = LayoutOptions.End, Margin = new Thickness(PagePadding), Padding = new Thickness(12, 8), StrokeThickness = 1 };
     private readonly Label _selectionQuote = new() { LineBreakMode = LineBreakMode.TailTruncation, MaxLines = 2, VerticalOptions = LayoutOptions.Center };
 
@@ -234,6 +237,17 @@ public sealed class CmsDocumentView : ContentView
                 if (path is not null && version == _buildVersion)
                     MainThread.BeginInvokeOnMainThread(() => image.Source = ImageSource.FromFile(path));
             });
+
+            // Tap to open full-screen (phase 3): always the LARGEST stored variant, regardless of
+            // what's currently shown inline at this column width — a target width no real screen
+            // reaches guarantees CmsImageProcessor's biggest variant (1800px) comes back.
+            var tap = new TapGestureRecognizer();
+            tap.Tapped += (_, _) => _ = LoadAsync(async () =>
+            {
+                var fullPath = await provider.GetImagePathAsync(media, 4000);
+                if (fullPath is not null) MainThread.BeginInvokeOnMainThread(() => ImageTapped?.Invoke(this, fullPath));
+            });
+            image.GestureRecognizers.Add(tap);
         }
 
         View content = box;
@@ -270,16 +284,41 @@ public sealed class CmsDocumentView : ContentView
 
     private View BuildVideo(CmsVideoBlock block, int version)
     {
-        var player = new MediaElement { ShouldAutoPlay = false, ShouldShowPlaybackControls = true, Aspect = Aspect.AspectFit };
-        var box = ReserveAspect(player, block.AspectRatio);
+        // The poster shows immediately (it's a small decrypted JPEG, same provider path as any image);
+        // the actual video — potentially a large file — is only fetched once the reader taps play, so
+        // just scrolling past a video never spends bandwidth on it.
+        var player = new MediaElement { ShouldAutoPlay = false, ShouldShowPlaybackControls = true, Aspect = Aspect.AspectFit, IsVisible = false };
+        var poster = new Image { Aspect = Aspect.AspectFit, BackgroundColor = Color.FromArgb("#111111") };
+        var playIcon = new Label { Text = "▶", FontSize = 36, TextColor = Colors.White, HorizontalOptions = LayoutOptions.Center, VerticalOptions = LayoutOptions.Center };
+        var overlay = new Grid { Children = { poster, playIcon } };
+        var box = ReserveAspect(new Grid { Children = { player, overlay } }, block.AspectRatio);
 
-        if (Document?.Media.TryGetValue(block.MediaId, out var media) == true && MediaProvider is { } provider)
+        var loaded = false;
+        var tap = new TapGestureRecognizer();
+        tap.Tapped += (_, _) => _ = LoadAsync(async () =>
+        {
+            if (loaded || Document?.Media.TryGetValue(block.MediaId, out var media) != true || media is null || MediaProvider is not { } provider) return;
+            loaded = true;
+            var path = await provider.GetVideoPathAsync(media);
+            if (path is null || version != _buildVersion) return;
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                player.Source = MediaSource.FromFile(path);
+                player.IsVisible = true;
+                overlay.IsVisible = false;
+                player.Play();
+            });
+        });
+        overlay.GestureRecognizers.Add(tap);
+
+        if (block.PosterMediaId is { } posterId && Document?.Media.TryGetValue(posterId, out var posterMedia) == true && MediaProvider is { } posterProvider)
         {
             _ = LoadAsync(async () =>
             {
-                var path = await provider.GetVideoPathAsync(media);
+                var targetPx = (int)(_contentWidth * Microsoft.Maui.Devices.DeviceDisplay.Current.MainDisplayInfo.Density);
+                var path = await posterProvider.GetImagePathAsync(posterMedia, targetPx);
                 if (path is not null && version == _buildVersion)
-                    MainThread.BeginInvokeOnMainThread(() => player.Source = MediaSource.FromFile(path));
+                    MainThread.BeginInvokeOnMainThread(() => poster.Source = ImageSource.FromFile(path));
             });
         }
 

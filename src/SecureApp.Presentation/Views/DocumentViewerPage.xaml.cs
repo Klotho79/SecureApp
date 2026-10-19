@@ -217,6 +217,10 @@ public partial class DocumentViewerPage : ContentPage
 		}
 	}
 
+	/// <summary>Full-screen pinch-zoom for a tapped CMS inline image (CMS_PLAN.md, phase 3).</summary>
+	private async void OnCmsImageTapped(object? sender, string path) =>
+		await Shell.Current.GoToAsync($"{nameof(CmsImageViewerPage)}?path={Uri.EscapeDataString(path)}");
+
 	private async void OnAnnotationRequested(object? sender, SecureApp.Domain.ValueObjects.CmsAnchor anchor)
 	{
 		if (_viewModel.CmsModel is not { } document) return;

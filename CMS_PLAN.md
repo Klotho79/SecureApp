@@ -54,7 +54,7 @@ Datově: relay tabulka `cms_document_editors(document_id, user_id, granted_by, g
 ### Fáze 1 — Nativní čtečka (bez editoru) — IMPLEMENTOVÁNO (2026-10-18), NEOVĚŘENO NA ZAŘÍZENÍ
 Hotovo: `DocumentType.Cms` (přípona `.cmsdoc`), `CmsDocumentView` (`Presentation/Cms/`), `ICmsMediaProvider` (obrázky/video ze sdílené knihovny, cache na disku), větev ve `DocumentViewerPage`, tlačítka zoomu jen na PC, `ISharedLibraryService.DownloadDecryptedAsync`. Build čistý (Windows i Android), JSON se deserializuje včetně polymorfních bloků.
 1b (2026-10-18) — výběr textu IMPLEMENTOVÁN, NEOVĚŘEN NA ZAŘÍZENÍ: text se vykresluje po slovech (`SelectableText`, jeden `Label` na slovo ve `FlexLayout`), takže není systémový výběr ani menu „Kopírovat“. Klepnutí na slovo = výběr, druhé klepnutí na jiné slovo ve stejném textu = rozsah, další klepnutí = znovu, klepnutí na jediné vybrané slovo = zrušit. Spodní lišta ukáže citaci a tlačítko „💬 Poznámka“ (zatím jen ukázka ukotvení). Čistá logika (`CmsText`: tokenizace, rozsah, `CmsAnchor` s kontextem) je v Domain a prošla scratch testem. Omezení spiku: výběr jen v rámci jednoho odstavce/nadpisu/položky seznamu; velký dokument = tisíce `Label`ů (ověřit výkon na S9+; případná náhrada kreslením přes Skia).
-Zbývá: ověření na reálných zařízeních (vzhled, výkon, zda klepnutí na slovo spolehlivě funguje na PC i Androidu), poster videa a pinch-zoom obrázku (fáze 3).
+Zbývá: ověření na reálných zařízeních (vzhled, výkon, zda klepnutí na slovo spolehlivě funguje na PC i Androidu). Poster videa a pinch-zoom obrázku viz fáze 3 (kód hotov).
 - Renderer bloků v MAUI (`CollectionView` + šablona na typ bloku), třídy šířky, přeskládání řádků.
 - Obrázky s rezervovaným místem podle `aspectRatio`, výběr varianty podle šířky.
 - Reflow zoom + fit-to-width na PC (jen preference zařízení).
@@ -75,10 +75,9 @@ Zbývá: ověření na reálných zařízeních (vzhled, výkon, zda klepnutí n
 - Editorská práva per dokument (sekce výše): tabulka `cms_document_editors`, vynucení na relay, admin UI „Zadat dokument / přidělit editora / odebrat“, editorská obrazovka „Moje zadání“, automatický zánik grantu při publikaci.
 - Hotovo, když: autor vytvoří dokument od nuly, uloží koncept, otevře ho čtečkou z fáze 1.
 
-### Fáze 3 — Média
-- Import obrázků: generování variant (480/960/1800 px).
-- Import videí: ffmpeg na PC → MP4 H.264+AAC, 720p (volitelně 1080p), faststart, poster, titulky.
-- Přehrávač: `CommunityToolkit.Maui.MediaElement`, ovládání (play, osa, rychlost, fullscreen `contain` s respektem safe-area), range requests.
+### Fáze 3 — Média — KÓD HOTOV (2026-10-19), NEVYDÁNO, NEOVĚŘENO NA ZAŘÍZENÍ
+Hotovo: `ICmsVideoProcessor`/`FfmpegCmsVideoProcessor` (Windows-only, `Xabe.FFmpeg` + `Xabe.FFmpeg.Downloader` stahuje ffmpeg/ffprobe do AppData při prvním použití) — transkódování na MP4 H.264+AAC, `-movflags +faststart`, `-pix_fmt yuv420p`, škálování nikdy nahoru, delší strana max 1280 px s respektem orientace (16:9/21:9 omezí šířku, svislé video omezí výšku), poster snímek extrahován z výstupu. `UnsupportedCmsVideoProcessor` na ostatních platformách (editor je PC-only). `CmsEditorPage.OnInsertVideoClicked` překóduje při vložení, poster se uploaduje jako běžné CMS obrázkové médium (`CmsVideoBlock.PosterMediaId`), editor (`cms-editor.html`) ho zobrazí jako náhled. `CmsDocumentView.BuildVideo`: poster se zobrazí hned, samotné video (`MediaElement`) se stáhne a spustí až po kliknutí. Pinch-zoom obrázku: `Controls/PinchZoomController.cs` (stejná ověřená logika jako `DocumentViewerPage`), `CmsImageViewerPage` (celoobrazovkový náhled, Shell route, otevře se klepnutím na obrázek v `CmsDocumentView`). Build čistý (Windows i Android).
+Zbývá: titulky (captions) — `CmsVideoBlock.CaptionsMediaId` existuje v modelu, ale žádná upload/UI cesta; volitelné 1080p; ověření na reálném PC + obou telefonech (vyžaduje build+release); doplnit `PdfPig`/`QuestPDF`-styl `NU1903` audit, pokud bude vadit (nesouvisí s touto fází, transitive z `System.IO.Packaging`).
 - Hotovo, když: video 16:9, 21:9 a svislé se přehraje bez deformace na PC i obou telefonech.
 
 ### Fáze 4 — Poznámky (základ) — IMPLEMENTOVÁNO (1.74), mezi zařízeními NEOVĚŘENO

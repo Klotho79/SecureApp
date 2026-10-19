@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="SecureApp.Presentation.Views.CmsImageViewerPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    BackgroundColor="Black"
+    Shell.NavBarIsVisible="False">
+
+    <!-- Full-screen pinch-zoom for a CMS inline image (CMS_PLAN.md, phase 3) — reached by tapping the
+         image in CmsDocumentView. Gesture math lives in Controls/PinchZoomController.cs, shared with
+         DocumentViewerPage's own proven implementation. -->
+    <Grid>
+        <Image x:Name="FullImage" Aspect="AspectFit" HorizontalOptions="Fill" VerticalOptions="Fill" />
+        <Button
+            Text="✕"
+            Clicked="OnCloseClicked"
+            HorizontalOptions="End"
+            VerticalOptions="Start"
+            Margin="12"
+            WidthRequest="40"
+            HeightRequest="40"
+            CornerRadius="20"
+            Padding="0"
+            BackgroundColor="#80000000"
+            TextColor="White" />
+    </Grid>
+</ContentPage>

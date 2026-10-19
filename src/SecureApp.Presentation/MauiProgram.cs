@@ -238,8 +238,14 @@ public static class MauiProgram
 		builder.Services.AddTransient<DocumentBrowserViewModel>();
 		builder.Services.AddTransient<DocumentBrowserPage>();
 		builder.Services.AddSingleton<SecureApp.Presentation.Cms.ICmsMediaProvider, SecureApp.Presentation.Cms.LibraryCmsMediaProvider>();
+#if WINDOWS
+		builder.Services.AddSingleton<SecureApp.Presentation.Cms.ICmsVideoProcessor, SecureApp.Presentation.Cms.FfmpegCmsVideoProcessor>();
+#else
+		builder.Services.AddSingleton<SecureApp.Presentation.Cms.ICmsVideoProcessor, SecureApp.Presentation.Cms.UnsupportedCmsVideoProcessor>();
+#endif
 		builder.Services.AddTransient<SecureApp.Presentation.Cms.CmsDocumentSaver>();
 		builder.Services.AddTransient<CmsEditorPage>();
+		builder.Services.AddTransient<SecureApp.Presentation.Views.CmsImageViewerPage>();
 		builder.Services.AddTransient<DocumentViewerViewModel>();
 		builder.Services.AddTransient<DocumentViewerPage>();
 		builder.Services.AddTransient<SettingsViewModel>();

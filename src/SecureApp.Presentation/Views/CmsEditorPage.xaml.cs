@@ -27,6 +27,7 @@ public partial class CmsEditorPage : ContentPage, IQueryAttributable
     private readonly ICurrentUserService _currentUser;
     private readonly RolePreviewService _rolePreview;
     private readonly ICmsMediaProvider _mediaProvider;
+    private readonly ICmsVideoProcessor _videoProcessor;
     private readonly CmsDocumentSaver _saver;
 
     private readonly Dictionary<string, PendingCmsMedia> _pending = new();
@@ -39,7 +40,7 @@ public partial class CmsEditorPage : ContentPage, IQueryAttributable
 
     public CmsEditorPage(
         IDocumentRepository documents, ICryptoService crypto, ICurrentUserService currentUser,
-        RolePreviewService rolePreview, ICmsMediaProvider mediaProvider, CmsDocumentSaver saver)
+        RolePreviewService rolePreview, ICmsMediaProvider mediaProvider, ICmsVideoProcessor videoProcessor, CmsDocumentSaver saver)
     {
         InitializeComponent();
         _documents = documents;
@@ -47,6 +48,7 @@ public partial class CmsEditorPage : ContentPage, IQueryAttributable
         _currentUser = currentUser;
         _rolePreview = rolePreview;
         _mediaProvider = mediaProvider;
+        _videoProcessor = videoProcessor;
         _saver = saver;
 
         PreviewPicker.ItemsSource = PreviewSizes.Select(s => s.Label).ToList();
@@ -198,12 +200,19 @@ public partial class CmsEditorPage : ContentPage, IQueryAttributable
             var file = await FilePicker.PickAsync(new PickOptions { PickerTitle = "Vyberte video", FileTypes = types });
             if (file is null) return;
 
-            var id = "m-" + Guid.NewGuid().ToString("N")[..8];
-            var mime = Path.GetExtension(file.FileName).ToLowerInvariant() == ".webm" ? "video/webm" : "video/mp4";
-            _pending[id] = new PendingCmsMedia("video", file.FileName, mime, FilePath: file.FullPath);
+            var progress = new Progress<string>(m => SetStatus(m));
+            var processed = await _videoProcessor.ProcessAsync(file.FullPath, progress);
 
-            await RunJsAsync($"editor.insertVideo({Js(id)}, {Js(file.FileName)}, 1.7778)");
-            SetStatus("Video se nahrává beze změny (bez překódování) — poměr stran nastavte v nástrojích bloku.");
+            var id = "m-" + Guid.NewGuid().ToString("N")[..8];
+            _pending[id] = new PendingCmsMedia("video", file.FileName, "video/mp4", FilePath: processed.OutputPath);
+
+            var posterId = id + "-poster";
+            _pending[posterId] = new PendingCmsMedia("image", Path.GetFileNameWithoutExtension(file.FileName) + "-poster.jpg", "image/jpeg", Bytes: processed.PosterJpeg);
+
+            var posterUrl = "data:image/jpeg;base64," + Convert.ToBase64String(processed.PosterJpeg);
+            var aspect = processed.AspectRatio.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            await RunJsAsync($"editor.insertVideo({Js(id)}, {Js(file.FileName)}, {aspect}, {Js(posterId)}, {Js(posterUrl)}, {processed.DurationSec})");
+            SetStatus("Video překódováno a vloženo.");
         }
         catch (Exception ex)
         {

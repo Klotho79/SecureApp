@@ -77,6 +77,10 @@ public partial class AppShell : Shell
 		// ("Nový dokument") and from the viewer's "Upravit" on a CMS document (documentId query).
 		Routing.RegisterRoute(nameof(CmsEditorPage), typeof(CmsEditorPage));
 
+		// Full-screen pinch-zoom for a CMS inline image (CMS_PLAN.md, phase 3) — reached by tapping
+		// the image in CmsDocumentView, a local file path query parameter.
+		Routing.RegisterRoute(nameof(CmsImageViewerPage), typeof(CmsImageViewerPage));
+
 		// Document Library review queue (2026-10-01) — reached via the "📋 Ke schválení" button on
 		// LibraryManagePage, Reviewer/Admin devices only (LibraryViewModel.IsDocumentReviewer gates the button).
 		Routing.RegisterRoute(nameof(LibraryReviewQueuePage), typeof(LibraryReviewQueuePage));
