@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.78",
+    "code": 81,
+    "date": "19. 10. 2026",
+    "items": [
+      "Oprava pádu appky v Rozpisu (a na widgetu) při 2 současných pracovištích za den.",
+      "Redakce: fronta „Poznámky ke schválení“, hromadné Ponechat/Odmítnout, skutečné začlenění poznámky do nové verze dokumentu přes editor, notifikace autorovi o rozhodnutí."
+    ]
+  },
+  {
     "version": "1.77",
     "code": 80,
     "date": "19. 10. 2026",
