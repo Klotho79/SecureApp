@@ -1,0 +1,30 @@
+[
+  {
+    "version": "1.77",
+    "code": 80,
+    "date": "19. 10. 2026",
+    "items": [
+      "Nová stránka „Co je nové“ v Nastavení — seznam změn přímo v appce, bez nutnosti otevírat cokoliv jiného."
+    ]
+  },
+  {
+    "version": "1.76",
+    "code": 79,
+    "date": "19. 10. 2026",
+    "items": [
+      "Opicentrum: víc pracovišť za den se už neztrácí a reálný sál už nepřepisuje záznam „Nezařazen“.",
+      "Opravena opakující se upozornění na chyby (watchdog párování měl nestabilní text, cooldown 3 dny se neuplatnil).",
+      "Oprava skutečné příčiny nedokončeného párování — iniciující strana se nikdy neoznačila jako aktivní.",
+      "Automatické stahování aktualizací na WiFi + jednorázové upozornění po stažení."
+    ]
+  },
+  {
+    "version": "1.75",
+    "code": 78,
+    "date": "19. 10. 2026",
+    "items": [
+      "CMS fáze 3: překódování videa (ffmpeg), náhledový poster, pinch-zoom u obrázků v čtenáři dokumentů.",
+      "Admin upozornění na chyby: opakovaný problém se slučuje do jednoho s počitadlem výskytů."
+    ]
+  }
+]

@@ -435,6 +435,7 @@
                     <VerticalStackLayout Spacing="8">
                         <Label Text="Aktualizace appky" Style="{StaticResource SectionHeader}" Margin="0" />
                         <Label Text="{Binding CurrentVersionText}" FontSize="9.5" TextColor="Gray" />
+                        <Button Text="📋 Co je nové" Style="{StaticResource SecondaryButton}" Command="{Binding OpenChangelogCommand}" />
                         <Button Text="Zkontrolovat aktualizaci" Style="{StaticResource SecondaryButton}" Command="{Binding CheckForUpdateCommand}" IsEnabled="{Binding CanCheckForUpdate}" />
                         <Button Text="Stáhnout a nainstalovat" Style="{StaticResource SecondaryButton}" Command="{Binding DownloadAndInstallUpdateCommand}" IsVisible="{Binding IsUpdateAvailable}" IsEnabled="{Binding CanDownloadUpdate}" />
                         <ProgressBar Progress="{Binding UpdateDownloadProgress}" IsVisible="{Binding IsDownloadingUpdate}" />

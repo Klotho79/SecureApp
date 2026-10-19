@@ -313,6 +313,10 @@ public sealed partial class SettingsViewModel
         }
     }
 
+    /// <summary>"Co je nové" (2026-10-19, user's own ask: "Log do apky... jsem chtel") — opens the bundled, offline changelog page right next to the update controls.</summary>
+    [RelayCommand]
+    private async Task OpenChangelogAsync() => await Shell.Current.GoToAsync(nameof(Views.ChangelogPage));
+
     [RelayCommand]
     private async Task CheckForUpdateAsync()
     {

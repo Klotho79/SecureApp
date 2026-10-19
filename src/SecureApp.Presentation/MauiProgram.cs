@@ -246,6 +246,8 @@ public static class MauiProgram
 		builder.Services.AddTransient<SecureApp.Presentation.Cms.CmsDocumentSaver>();
 		builder.Services.AddTransient<CmsEditorPage>();
 		builder.Services.AddTransient<SecureApp.Presentation.Views.CmsImageViewerPage>();
+		builder.Services.AddTransient<ChangelogViewModel>();
+		builder.Services.AddTransient<SecureApp.Presentation.Views.ChangelogPage>();
 		builder.Services.AddTransient<DocumentViewerViewModel>();
 		builder.Services.AddTransient<DocumentViewerPage>();
 		builder.Services.AddTransient<SettingsViewModel>();

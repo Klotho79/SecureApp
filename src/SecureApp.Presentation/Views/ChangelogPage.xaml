@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="SecureApp.Presentation.Views.ChangelogPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
+    xmlns:controls="clr-namespace:SecureApp.Presentation.Controls"
+    x:DataType="vm:ChangelogViewModel"
+    Title="Co je nové">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="16" Spacing="12">
+
+            <controls:DelayedActivityIndicator IsBusy="{Binding IsLoading}" HorizontalOptions="Center" />
+            <Label Text="Seznam změn se nepodařilo načíst." FontSize="9.5" TextColor="Gray" IsVisible="{Binding HasError}" />
+
+            <VerticalStackLayout Spacing="10" BindableLayout.ItemsSource="{Binding Releases}">
+                <BindableLayout.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ChangelogDisplayItem">
+                        <Border Style="{StaticResource CardBorder}" Margin="0" Padding="12,10">
+                            <VerticalStackLayout Spacing="6">
+                                <Label Text="{Binding Header}" FontSize="11" FontAttributes="Bold" />
+                                <Label Text="{Binding BodyText}" FontSize="10" />
+                            </VerticalStackLayout>
+                        </Border>
+                    </DataTemplate>
+                </BindableLayout.ItemTemplate>
+            </VerticalStackLayout>
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>
