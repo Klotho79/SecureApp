@@ -790,7 +790,13 @@ public partial class App : Application
 	private const string AdminAlertsWatermarkPreferenceKey = "admin_alerts_last_utc_ticks";
 	private const string AdminAlertGroupsPreferenceKey = "admin_alert_groups";
 
-	private sealed record AdminAlertGroup(Guid NotificationId, int Count);
+	/// <summary>A repeat of an already-notified problem is still written to the shared diagnostics log
+	/// every time (2026-10-19, user's ask) — re-notifying the admin about it that often would just be
+	/// noise, so a repeat gets a fresh notification at most once per this window; in between, the count
+	/// on the existing notification's group just keeps growing silently.</summary>
+	private static readonly TimeSpan AdminAlertRepeatCooldown = TimeSpan.FromDays(3);
+
+	private sealed record AdminAlertGroup(Guid NotificationId, int Count, DateTimeOffset LastNotifiedUtc);
 
 	private static Dictionary<string, AdminAlertGroup> LoadAdminAlertGroups(Microsoft.Maui.Storage.IPreferences prefs)
 	{
@@ -856,19 +862,30 @@ public partial class App : Application
 			var groups = LoadAdminAlertGroups(prefs);
 			var notifications = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
 			var native = services.GetService<INativeNotificationService>();
+			var now = DateTimeOffset.UtcNow;
 			foreach (var g in fresh.Take(8))
 			{
 				var last = g.Last();
 				var key = $"{g.Key.DeviceDisplayName}|{g.Key.Message}";
 				var previous = groups.GetValueOrDefault(key);
 				var total = (previous?.Count ?? 0) + g.Count();
+
+				// Same problem, still within the cooldown since it was last actually notified: it's
+				// already in the shared diagnostics log, so just keep the running count — no new
+				// notification, no archiving the one still showing.
+				if (previous is not null && now - previous.LastNotifiedUtc < AdminAlertRepeatCooldown)
+				{
+					groups[key] = previous with { Count = total };
+					continue;
+				}
+
 				if (previous is not null && await notifications.GetByIdAsync(previous.NotificationId) is { } old)
 				{
 					old.Archive();
 					await notifications.UpdateAsync(old);
 				}
 				var id = await NotificationPublisher.PublishAdminAlertAsync(notifications, last.Level, g.Key.DeviceDisplayName, g.Key.Message, total, native);
-				groups[key] = new AdminAlertGroup(id, total);
+				groups[key] = new AdminAlertGroup(id, total, now);
 			}
 			if (fresh.Count > 8)
 				await NotificationPublisher.PublishAdminAlertAsync(notifications, DiagnosticLogLevel.Warning, "více zařízení", $"Dalších {fresh.Count - 8} různých upozornění v Nastavení → Diagnostika.", 1, native);
