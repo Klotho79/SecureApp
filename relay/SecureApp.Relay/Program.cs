@@ -951,6 +951,10 @@ app.MapPost("/cms/annotations/{id:guid}/moderate", (Guid id, HttpRequest request
         return Results.Unauthorized();
     if (body.Decision is not ("incorporated" or "declined" or "kept"))
         return Results.BadRequest("Decision must be incorporated, declined or kept.");
+    // "incorporated" must always point at the version the moderator actually saved — otherwise the
+    // state flips with nothing to show for it, the exact phase-5 gap this field exists to close.
+    if (body.Decision == "incorporated" && string.IsNullOrWhiteSpace(body.IncorporatedInVersionId))
+        return Results.BadRequest("IncorporatedInVersionId is required when decision is incorporated.");
 
     var record = db.ModerateCmsAnnotation(id, deviceId, body.Decision, body.Note, body.IncorporatedInVersionId);
     return record is null ? Results.StatusCode(StatusCodes.Status403Forbidden) : Results.Ok(ToAnnotationDto(record));

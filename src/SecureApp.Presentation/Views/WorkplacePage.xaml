@@ -41,6 +41,12 @@
                          a normal shift followed later the same day by on-call; see
                          WorkAssignment.OnCallWorkplaceName's own remarks. -->
                     <Label Text="{Binding Today.OnCallText}" FontSize="10.5" FontAttributes="Bold" IsVisible="{Binding Today.HasOnCall}" TextColor="{AppThemeBinding Light={StaticResource Warn}, Dark={StaticResource WarnDark}}" />
+                    <!-- 2026-10-19, user's own ask: i se 2+ pracovišti za den musí jít ovládat/potvrzovat
+                         stav sálu, pokud je mezi nimi nějaký sál — otevírá stejnou celou tabuli jako
+                         Nástěnka (nekopíruje její mřížku dlaždic sem). -->
+                    <Button Text="🏥 Stav sálu" Style="{StaticResource SecondaryButton}" HorizontalOptions="Start"
+                            IsVisible="{Binding Today.HasQualifyingRoom}"
+                            Command="{Binding OpenRoomStatusCommand}" />
                 </VerticalStackLayout>
             </Border>
 

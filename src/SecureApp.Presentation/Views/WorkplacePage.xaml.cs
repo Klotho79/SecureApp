@@ -11,6 +11,7 @@ public partial class WorkplacePage : ContentPage
         InitializeComponent();
         BindingContext = _viewModel = viewModel;
         _viewModel.RequestOpenDay += OnRequestOpenDay;
+        _viewModel.RequestOpenRoomStatus += OnRequestOpenRoomStatus;
     }
 
     protected override void OnAppearing()
@@ -27,4 +28,6 @@ public partial class WorkplacePage : ContentPage
             : $"{nameof(AddAssignmentPage)}?date={dateText}";
         await Shell.Current.GoToAsync(route);
     }
+
+    private async void OnRequestOpenRoomStatus() => await Shell.Current.GoToAsync(nameof(RoomStatusPage));
 }

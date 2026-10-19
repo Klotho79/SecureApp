@@ -529,24 +529,30 @@ public partial class App : Application
 			prefs.Set(LastBackgroundCmsAnnotationCheckPreferenceKey, DateTimeOffset.UtcNow.UtcTicks);
 
 			var mine = await annotations.ListMyModeratedAsync();
-			if (mine.Count == 0) return;
 
 			var storedJson = prefs.Get(LastCmsAnnotationStatesPreferenceKey, "{}");
-			var lastSeen = System.Text.Json.JsonSerializer.Deserialize<Dictionary<Guid, string>>(storedJson) ?? [];
+			var previouslySeen = System.Text.Json.JsonSerializer.Deserialize<Dictionary<Guid, string>>(storedJson) ?? [];
 
-			using var scope = services.CreateScope();
-			var notifications = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
-			var native = services.GetService<INativeNotificationService>();
-
-			foreach (var a in mine)
+			if (mine.Count > 0)
 			{
-				var seenBefore = lastSeen.TryGetValue(a.AnnotationId, out var previous) ? previous : "none";
-				if (seenBefore == "pending" && a.Moderation is "incorporated" or "declined" or "kept")
-					await NotificationPublisher.PublishCmsAnnotationModeratedAsync(notifications, a.DocumentTitle, a.Moderation, native);
-				lastSeen[a.AnnotationId] = a.Moderation;
+				using var scope = services.CreateScope();
+				var notifications = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
+				var native = services.GetService<INativeNotificationService>();
+
+				foreach (var a in mine)
+				{
+					var seenBefore = previouslySeen.TryGetValue(a.AnnotationId, out var previous) ? previous : "none";
+					if (seenBefore == "pending" && a.Moderation is "incorporated" or "declined" or "kept")
+						await NotificationPublisher.PublishCmsAnnotationModeratedAsync(notifications, a.DocumentTitle, a.Moderation, native);
+				}
 			}
 
-			prefs.Set(LastCmsAnnotationStatesPreferenceKey, System.Text.Json.JsonSerializer.Serialize(lastSeen));
+			// Rebuilt from scratch every run (not merged into the old dict) so an annotation that has
+			// fallen out of ListMyModeratedAsync's own top-200-by-recency window stops being tracked here
+			// too — otherwise this JSON blob in Preferences would grow forever, one entry per annotation
+			// ever seen, never shrinking.
+			var freshSeen = mine.ToDictionary(a => a.AnnotationId, a => a.Moderation);
+			prefs.Set(LastCmsAnnotationStatesPreferenceKey, System.Text.Json.JsonSerializer.Serialize(freshSeen));
 		}
 		catch (Exception ex)
 		{

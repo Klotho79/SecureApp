@@ -84,6 +84,9 @@ public sealed partial class WorkplaceViewModel : ObservableObject
     /// <summary>Raised so the Page pushes the add/edit form for a given date (+ existing assignment id, if any) — same MAUI-free-ViewModel split this codebase already established elsewhere.</summary>
     public event Action<DateOnly, Guid?>? RequestOpenDay;
 
+    /// <summary>Raised so the Page opens the full "Stav sálů" board — see <see cref="OpenRoomStatus"/>.</summary>
+    public event Action? RequestOpenRoomStatus;
+
     public WorkplaceViewModel(IWorkAssignmentRepository repository, IOpicentrumSyncService opicentrumSyncService)
     {
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
@@ -175,6 +178,10 @@ public sealed partial class WorkplaceViewModel : ObservableObject
         RequestOpenDay?.Invoke(cell.Date, cell.AssignmentId);
     }
 
+    /// <summary>"Dnes" card's room-status button (only visible when <see cref="AssignmentDayItem.HasQualifyingRoom"/> is true) — opens the same full board Nástěnka's own "Stav sálů" icon does, rather than duplicating its tile-grid UI here.</summary>
+    [RelayCommand]
+    private void OpenRoomStatus() => RequestOpenRoomStatus?.Invoke();
+
     [RelayCommand]
     private async Task ShowWeekViewAsync()
     {
@@ -247,16 +254,18 @@ public sealed partial class WorkplaceViewModel : ObservableObject
             var assignments = await _repository.GetByDateRangeAsync(rangeStart, rangeEnd);
             // A day can now legitimately hold 2+ rows (multiple concurrent workplaces — OpicentrumSyncService's
             // own WriteBackAsync), so a plain ToDictionary(a => a.Date) throws on the first such day
-            // (Argument_AddingDuplicateWithKey). This cell only shows one color/label per day, so the oldest
-            // row is the "primary" one — same convention WriteBackAsync itself already uses.
-            var byDate = assignments.GroupBy(a => a.Date).ToDictionary(g => g.Key, g => g.OrderBy(a => a.CreatedAtUtc).First());
+            // (Argument_AddingDuplicateWithKey). ToItem itself takes every row for the day (user's own ask,
+            // 2026-10-19: "zobrazovat vsechny obsazene pozice") — color/type/time still follow the oldest
+            // ("primary") row, same convention WriteBackAsync itself already uses.
+            var byDate = assignments.GroupBy(a => a.Date)
+                .ToDictionary(g => g.Key, g => (IReadOnlyList<WorkAssignment>)g.OrderBy(a => a.CreatedAtUtc).ToList());
 
-            Today = ToItem(today, byDate.GetValueOrDefault(today), AssignmentColorCatalog.NoAssignmentCardColor);
+            Today = ToItem(today, byDate.GetValueOrDefault(today) ?? [], AssignmentColorCatalog.NoAssignmentCardColor);
             WeekDays = new ObservableCollection<AssignmentDayItem>(
                 Enumerable.Range(0, 7).Select(offset =>
                 {
                     var date = _weekStart.AddDays(offset);
-                    return ToItem(date, byDate.GetValueOrDefault(date), AssignmentColorCatalog.NoAssignmentSurfaceColor);
+                    return ToItem(date, byDate.GetValueOrDefault(date) ?? [], AssignmentColorCatalog.NoAssignmentSurfaceColor);
                 }));
             WeekLabel = FormatWeekLabel(_weekStart, _weekStart.AddDays(6));
         }
@@ -329,12 +338,18 @@ public sealed partial class WorkplaceViewModel : ObservableObject
             OpenMonthDayCommand);
     }
 
-    private AssignmentDayItem ToItem(DateOnly date, WorkAssignment? assignment, Color noAssignmentColor)
+    /// <param name="dayAssignments">Every concurrent assignment on this date, oldest first — color/type/time
+    /// still follow the oldest ("primary") one, but <see cref="AssignmentDayItem.WorkplaceText"/> and
+    /// <see cref="AssignmentDayItem.HasQualifyingRoom"/> look at all of them (user's own ask, 2026-10-19:
+    /// "zobrazovat vsechny obsazene pozice... pokud je jedna z nich sál musí být dostupná možnost ovládat
+    /// a potvrzovat stav sálu").</param>
+    private AssignmentDayItem ToItem(DateOnly date, IReadOnlyList<WorkAssignment> dayAssignments, Color noAssignmentColor)
     {
         var isToday = date == DateOnly.FromDateTime(DateTime.Today);
         var dayLabel = $"{CzechDayAbbreviations[(int)date.DayOfWeek == 0 ? 6 : (int)date.DayOfWeek - 1]} {date.Day}. {date.Month}.";
         var dayKind = CzechCalendar.DayKindLabel(date);
 
+        var assignment = dayAssignments.Count > 0 ? dayAssignments[0] : null;
         if (assignment is null)
         {
             return new AssignmentDayItem(date, dayLabel, isToday, false, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, noAssignmentColor, noAssignmentColor, null, OpenDayCommand, DayKindText: dayKind);
@@ -358,9 +373,27 @@ public sealed partial class WorkplaceViewModel : ObservableObject
             workplaceText = string.Empty;
         }
 
+        // 2+ concurrent workplaces the same day: show every distinct name, not just the primary row's,
+        // unless the weekend/holiday special case right above already claimed the line for on-call.
+        if (workplaceText.Length > 0)
+        {
+            var allNames = dayAssignments
+                .Select(a => a.WorkplaceName)
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (allNames.Count > 1)
+                workplaceText = string.Join(" + ", allNames);
+        }
+
         var onCallText = string.IsNullOrEmpty(onCallWorkplace)
             ? string.Empty
             : $"{AssignmentTypeCatalog.Glyph(AssignmentType.OnCall)} {AssignmentTypeCatalog.Label(AssignmentType.OnCall)}: {onCallWorkplace}";
+
+        // Room-status control: if ANY of this day's concurrent positions is a qualifying sál, surface it —
+        // same RoomWorkplaceKeywords rule Nástěnka's own MyRoomStatusRows (NotificationsViewModel.RoomStatus)
+        // already uses, so the two screens agree on what counts as "a sál".
+        var hasQualifyingRoom = dayAssignments.Any(a => a.WorkplaceName is { } n && RoomWorkplaceKeywords.IsQualifying(n));
 
         return new AssignmentDayItem(
             date,
@@ -377,7 +410,8 @@ public sealed partial class WorkplaceViewModel : ObservableObject
             assignment.Id,
             OpenDayCommand,
             onCallText,
-            dayKind);
+            dayKind,
+            hasQualifyingRoom);
     }
 
     private static IEnumerable<AssignmentLegendItem> BuildLegendItems() =>
@@ -443,7 +477,8 @@ public sealed record AssignmentDayItem(
     Guid? AssignmentId,
     ICommand OpenCommand,
     string OnCallText = "",
-    string DayKindText = "")
+    string DayKindText = "",
+    bool HasQualifyingRoom = false)
 {
     public bool HasWorkplace => !string.IsNullOrEmpty(WorkplaceText);
     public bool HasTime => !string.IsNullOrEmpty(TimeText);
