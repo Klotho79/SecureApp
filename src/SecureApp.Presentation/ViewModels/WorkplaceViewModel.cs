@@ -245,7 +245,11 @@ public sealed partial class WorkplaceViewModel : ObservableObject
             var (rangeStart, rangeEnd) = CurrentWeekSyncRange();
 
             var assignments = await _repository.GetByDateRangeAsync(rangeStart, rangeEnd);
-            var byDate = assignments.ToDictionary(a => a.Date);
+            // A day can now legitimately hold 2+ rows (multiple concurrent workplaces — OpicentrumSyncService's
+            // own WriteBackAsync), so a plain ToDictionary(a => a.Date) throws on the first such day
+            // (Argument_AddingDuplicateWithKey). This cell only shows one color/label per day, so the oldest
+            // row is the "primary" one — same convention WriteBackAsync itself already uses.
+            var byDate = assignments.GroupBy(a => a.Date).ToDictionary(g => g.Key, g => g.OrderBy(a => a.CreatedAtUtc).First());
 
             Today = ToItem(today, byDate.GetValueOrDefault(today), AssignmentColorCatalog.NoAssignmentCardColor);
             WeekDays = new ObservableCollection<AssignmentDayItem>(
@@ -277,7 +281,8 @@ public sealed partial class WorkplaceViewModel : ObservableObject
             var (gridStart, gridEnd) = CurrentMonthSyncRange();
 
             var assignments = await _repository.GetByDateRangeAsync(gridStart, gridEnd);
-            var byDate = assignments.ToDictionary(a => a.Date);
+            // See RenderWeekLocalAsync's own remarks — a day can hold 2+ rows now, plain ToDictionary throws.
+            var byDate = assignments.GroupBy(a => a.Date).ToDictionary(g => g.Key, g => g.OrderBy(a => a.CreatedAtUtc).First());
 
             MonthDays = new ObservableCollection<MonthDayCell>(
                 Enumerable.Range(0, 42).Select(offset =>

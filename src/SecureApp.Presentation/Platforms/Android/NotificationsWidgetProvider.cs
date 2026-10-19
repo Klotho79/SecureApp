@@ -168,7 +168,9 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
             // own remarks for the matching highlight.
             var today = DateOnly.FromDateTime(DateTime.Today);
             var rangeAssignments = await workAssignmentRepository.GetByDateRangeAsync(today, today.AddDays(DayCount - 1));
-            var byDate = rangeAssignments.ToDictionary(a => a.Date);
+            // A day can hold 2+ rows now (multiple concurrent workplaces) — see WorkplaceViewModel's own
+            // remarks on the same ToDictionary crash this used to have.
+            var byDate = rangeAssignments.GroupBy(a => a.Date).ToDictionary(g => g.Key, g => g.OrderBy(a => a.CreatedAtUtc).First());
 
             var views = new RemoteViews(context.PackageName, Resource.Layout.widget_notifications);
 
