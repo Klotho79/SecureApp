@@ -128,8 +128,34 @@ public partial class ChatListPage : ContentPage
     private void OnSessionSelected(object? sender, SelectionChangedEventArgs e)
     {
         SessionsView.SelectedItem = null;
-        if (e.CurrentSelection.FirstOrDefault() is not ChatSessionItem session) return;
+        if (e.CurrentSelection.FirstOrDefault() is ChatSessionItem session)
+            OpenSession(session);
+    }
 
+    /// <summary>
+    /// Live-verified on S23+/Android 16 (2026-10-20, user's report: "klepnu na chat s Faltus a
+    /// neotevira se"): adb-replayed taps landed on the row (confirmed via logcat — GestureDetector
+    /// recognized a genuine TAP on the app's own view, no exception anywhere) yet CollectionView's own
+    /// SelectionChanged never fired, even on a freshly-launched page instance (ruling out the
+    /// press-and-hold reveal's _revealedItem getting stuck). The ↺ Button INSIDE the same row opened
+    /// its confirm dialog instantly on the very same tap gesture — so the row itself is responsive,
+    /// only the CollectionView's native item-click dispatch is not. Prime suspect: this row's Border
+    /// already carries a PointerGestureRecognizer (the 2026-10-09 press-and-hold reveal) — that
+    /// recognizer's own comment claimed "so the row's normal tap-to-open selection is left alone", an
+    /// assumption this device disproves (its OnTouchListener evidently consumes the tap before
+    /// Android's RecyclerView click dispatch sees it). Fix: don't depend on SelectionChanged firing at
+    /// all for 1:1 rows — a TapGestureRecognizer added to that SAME Border (see XAML) drives opening
+    /// directly, sharing the identical press-and-hold suppression logic below. SelectionChanged is
+    /// kept (harmless no-op double-open at worst) since it may still be what fires on other platforms.
+    /// </summary>
+    private void OnSessionRowTapped(object? sender, TappedEventArgs e)
+    {
+        if (sender is BindableObject { BindingContext: ChatSessionItem session })
+            OpenSession(session);
+    }
+
+    private void OpenSession(ChatSessionItem session)
+    {
         // Lifting the finger after a press-and-hold reveal still counts as a tap on Android (the
         // click fires on ACTION_UP) — swallow that one so peeking at a name doesn't open the chat.
         // Checks both orders, since which of the two events fires first on ACTION_UP isn't guaranteed.

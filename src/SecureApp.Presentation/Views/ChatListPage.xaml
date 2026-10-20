@@ -104,6 +104,11 @@
                                             <PointerGestureRecognizer PointerPressed="OnSessionPointerPressed"
                                                                       PointerReleased="OnSessionPointerReleased"
                                                                       PointerExited="OnSessionPointerReleased" />
+                                            <!-- 2026-10-20: CollectionView's own SelectionChanged stopped firing for
+                                                 this row on Android (verified live on S23+/Android 16) once the
+                                                 PointerGestureRecognizer above was added — see OnSessionRowTapped's
+                                                 own remarks. This drives opening the chat directly instead. -->
+                                            <TapGestureRecognizer Tapped="OnSessionRowTapped" />
                                         </Border.GestureRecognizers>
                                         <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="10">
                                             <Border Grid.Column="0" WidthRequest="34" HeightRequest="34" Padding="0" StrokeShape="RoundRectangle 17" Stroke="Transparent" BackgroundColor="{AppThemeBinding Light={StaticResource AccentSoft}, Dark={StaticResource AccentSoftDark}}" VerticalOptions="Center">
