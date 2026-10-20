@@ -87,6 +87,10 @@ public sealed partial class ChatViewModel : ChatThreadViewModelBase<ChatMessageI
         Title = "Chat"; // "Chat" is used identically in Czech, kept as-is
     }
 
+    /// <summary>True while this 1:1 session's handshake hasn't completed yet — see the banner this drives in ChatThreadView.xaml, set in LoadAsync.</summary>
+    [ObservableProperty]
+    public partial bool IsPendingHandshake { get; set; }
+
     public void ApplyQueryAttributes(IDictionary<string, object> query)
     {
         if (query.TryGetValue("chatSessionId", out var value) && Guid.TryParse(value?.ToString(), out var id))
@@ -192,6 +196,13 @@ public sealed partial class ChatViewModel : ChatThreadViewModelBase<ChatMessageI
                 ("bg", System.Math.Round(bgMs, 1)), ("cells", loaded.Items.Count), ("reused", reused));
 
             var session = loaded.Session ?? await _sessionRepository.GetByIdAsync(_chatSessionId);
+            // 2026-10-20 (live report: "klepnu na chat s Faltus a neotevira se, nevim jestli uz
+            // doslo ke sparovani") — a session stuck in PendingHandshake (the self-healing watchdog
+            // in App.RunStaleSessionSweepAsync was already retrying it, just slowly — up to an hour
+            // between retries) opened into a thread that looked IDENTICAL to a normal empty chat:
+            // no messages, no title change, nothing distinguishing "handshake never finished" from
+            // "nothing happened when I tapped". This banner makes that state visible instead of silent.
+            IsPendingHandshake = session?.State == ChatSessionState.PendingHandshake;
             _ = RefreshInBackgroundAsync(session);
         }
         catch (Exception ex)

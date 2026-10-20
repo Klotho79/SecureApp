@@ -10,13 +10,23 @@
 
     <Grid RowDefinitions="Auto,*,Auto,Auto" Padding="0" RowSpacing="0">
 
-        <Label
-            Grid.Row="0"
-            Text="{Binding StatusErrorMessage}"
-            IsVisible="{Binding HasStatusError}"
-            Margin="20,12,20,0"
-            TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}"
-            LineBreakMode="WordWrap" />
+        <VerticalStackLayout Grid.Row="0" Spacing="0">
+            <Label
+                Text="{Binding StatusErrorMessage}"
+                IsVisible="{Binding HasStatusError}"
+                Margin="20,12,20,0"
+                TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}"
+                LineBreakMode="WordWrap" />
+
+            <!-- Handshake not finished yet (2026-10-20): without this, an opened chat with zero
+                 messages looked identical whether pairing had completed or not — see ChatViewModel.LoadAsync. -->
+            <Border IsVisible="{Binding IsPendingHandshake}" Margin="12,10,12,0" Padding="10,8" StrokeShape="RoundRectangle 10"
+                    BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}"
+                    Stroke="{AppThemeBinding Light={StaticResource Gray100}, Dark={StaticResource Gray600}}">
+                <Label Text="⏳ Párování ještě neproběhlo — zprávu odešlete, jakmile se spojení automaticky navodí." FontSize="10.5"
+                       TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" LineBreakMode="WordWrap" />
+            </Border>
+        </VerticalStackLayout>
 
         <Grid Grid.Row="1">
             <controls:DelayedActivityIndicator IsBusy="{Binding IsLoading}" HorizontalOptions="Center" VerticalOptions="Center" />
