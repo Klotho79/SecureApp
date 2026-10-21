@@ -5,8 +5,13 @@ using System.Text.RegularExpressions;
 
 namespace SecureApp.Presentation.Workplace;
 
-/// <summary>One person found in one workplace cell of pracoviste.php's weekly roster.</summary>
-internal sealed record PracovisteEntry(DateOnly Date, string WorkplaceName, string PersonName, int? PersonId);
+/// <summary>
+/// One person found in one workplace cell of pracoviste.php's weekly roster. <paramref name="WorkplaceId"/>
+/// (2026-10-21, roster-board feature) is the site's own numeric "sal" id, e.g. 1 for "Sál č. 1" or 999 for
+/// "NEZAŘAZENÍ" — captured from the same editor-only <c>onmousedown</c> attribute <see cref="PersonId"/>
+/// comes from, so it shares that attribute's "optional, editor accounts only" caveat.
+/// </summary>
+internal sealed record PracovisteEntry(DateOnly Date, string WorkplaceName, string PersonName, int? PersonId, int? WorkplaceId);
 
 /// <summary>
 /// Pure HTML/name parsing for <see cref="OpicentrumSyncService"/> — no I/O, no MAUI, so it can be
@@ -60,12 +65,12 @@ internal static partial class OpicentrumParsing
             for (var i = 1; i < cells.Count; i++)
             {
                 DateOnly? columnDate = columnDates is not null && i - 1 < columnDates.Count ? columnDates[i - 1] : null;
-                foreach (var (name, personId, cellDate) in ExtractPeople(cells[i].Groups["inner"].Value))
+                foreach (var (name, personId, cellDate, workplaceId) in ExtractPeople(cells[i].Groups["inner"].Value))
                 {
                     // The header column is authoritative; the editor-only attribute date is a fallback
                     // for a page whose header could not be read.
                     if ((columnDate ?? cellDate) is { } date)
-                        entries.Add(new PracovisteEntry(date, workplaceName, name, personId));
+                        entries.Add(new PracovisteEntry(date, workplaceName, name, personId, workplaceId));
                 }
             }
         }
@@ -78,13 +83,14 @@ internal static partial class OpicentrumParsing
     /// block (<c>&lt;div&gt;</c> or after a <c>&lt;br&gt;</c>), possibly underlined (L3 supervisors), possibly with a
     /// bold shift-code suffix ("Petr Faltus&amp;nbsp;&lt;b&gt;S6&lt;/b&gt;") that is not part of the name.
     /// </summary>
-    private static IEnumerable<(string Name, int? PersonId, DateOnly? Date)> ExtractPeople(string cellHtml)
+    private static IEnumerable<(string Name, int? PersonId, DateOnly? Date, int? WorkplaceId)> ExtractPeople(string cellHtml)
     {
         foreach (var chunk in PersonChunkSplitRegex().Split(cellHtml))
         {
             var attr = PersonAttributeRegex().Match(chunk);
             int? personId = attr.Success ? int.Parse(attr.Groups["osoba"].Value, CultureInfo.InvariantCulture) : null;
             DateOnly? date = attr.Success && DateOnly.TryParseExact(attr.Groups["date"].Value, "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : null;
+            int? workplaceId = attr.Success && attr.Groups["sal1"].Success ? int.Parse(attr.Groups["sal1"].Value, CultureInfo.InvariantCulture) : null;
 
             var names = CleanText(ShiftCodeSuffixRegex().Replace(chunk, " "))
                 .Split(';')
@@ -93,7 +99,7 @@ internal static partial class OpicentrumParsing
                 .ToList();
 
             foreach (var name in names)
-                yield return (name, names.Count == 1 ? personId : null, date);
+                yield return (name, names.Count == 1 ? personId : null, date, names.Count == 1 ? workplaceId : null);
         }
     }
 
@@ -156,8 +162,14 @@ internal static partial class OpicentrumParsing
     [GeneratedRegex(@"(?=<div\b)|</div>|<br\s*/?>", RegexOptions.IgnoreCase)]
     private static partial Regex PersonChunkSplitRegex();
 
-    /// <summary>The roster editor's click handler — present only for accounts allowed to edit the roster, so optional.</summary>
-    [GeneratedRegex(@"datumupravovany=(?<date>\d{8});\s*osoba=(?<osoba>\d+)")]
+    /// <summary>
+    /// The roster editor's click handler — present only for accounts allowed to edit the roster, so
+    /// optional. <c>sal1</c> (2026-10-21) is the site's own numeric workplace id, carried in the same
+    /// attribute right after <c>osoba</c> on every observed chunk — made its own optional group rather
+    /// than required, so a page where it's ever absent still yields <see cref="PracovisteEntry.PersonId"/>
+    /// as before, just without a <see cref="PracovisteEntry.WorkplaceId"/>.
+    /// </summary>
+    [GeneratedRegex(@"datumupravovany=(?<date>\d{8});\s*osoba=(?<osoba>\d+)(?:;\s*sal1=(?<sal1>\d+))?")]
     private static partial Regex PersonAttributeRegex();
 
     /// <summary>The bold shift code after a name ("&amp;nbsp;&lt;b&gt;S6&lt;/b&gt;").</summary>

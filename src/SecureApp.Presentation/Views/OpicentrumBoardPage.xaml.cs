@@ -1,0 +1,51 @@
+using SecureApp.Presentation.ViewModels;
+
+namespace SecureApp.Presentation.Views;
+
+public partial class OpicentrumBoardPage : ContentPage
+{
+    private readonly OpicentrumBoardViewModel _viewModel;
+
+    public OpicentrumBoardPage(OpicentrumBoardViewModel viewModel)
+    {
+        InitializeComponent();
+        BindingContext = _viewModel = viewModel;
+    }
+
+    protected override void OnAppearing()
+    {
+        base.OnAppearing();
+        _viewModel.LoadCommand.Execute(null);
+    }
+
+    /// <summary>
+    /// Two native action sheets stand in for a real drag gesture (2026-10-21) — a literal drag
+    /// inside a <c>ScrollView Orientation="Both"</c> would fight the scroll view's own pan gesture,
+    /// which is a much worse trade than one extra tap. First choice picks move-vs-also-assign
+    /// (<c>keepSourceAssignment</c>), second picks the target workplace — both map directly onto
+    /// <see cref="OpicentrumBoardViewModel.MovePersonAsync"/>'s own parameters.
+    /// </summary>
+    private async void OnPersonChipTapped(object? sender, TappedEventArgs e)
+    {
+        if (sender is not BindableObject element || element.BindingContext is not OpicentrumRosterPersonChip chip)
+            return;
+
+        var mode = await DisplayActionSheet(chip.PersonName, "Zrušit", null, "Přesunout", "Přiřadit i na další pracoviště");
+        if (mode is null or "Zrušit") return;
+        var keepSourceAssignment = mode == "Přiřadit i na další pracoviště";
+
+        var targets = _viewModel.GetTargetWorkplaceNames(chip.WorkplaceId);
+        if (targets.Count == 0)
+        {
+            await DisplayAlert(chip.PersonName, "Žádné jiné pracoviště k dispozici — zkuste nejprve Obnovit.", "OK");
+            return;
+        }
+
+        var target = await DisplayActionSheet("Kam přesunout?", "Zrušit", null, targets.ToArray());
+        if (target is null or "Zrušit") return;
+
+        var ok = await _viewModel.MovePersonAsync(chip, target, keepSourceAssignment);
+        if (!ok)
+            await DisplayAlert("Nezdařilo se", _viewModel.PositionsErrorText ?? "Přesun se nezdařil.", "OK");
+    }
+}

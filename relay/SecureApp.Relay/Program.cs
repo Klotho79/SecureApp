@@ -1256,6 +1256,62 @@ app.MapGet("/picc/roster-pointer", (HttpRequest request, RelayDatabase db) =>
     return pointer is null ? Results.NotFound() : Results.Ok(new PiccRosterPointerResponse(pointer.Value.LibraryFileId, pointer.Value.UpdatedAtUtc));
 });
 
+// Opicentrum roster/volno board cache (2026-10-21) — unlike /picc/status above, BOTH verbs are
+// Admin/Modifier-gated: the user's own explicit scope decision for this board was "Admin + Modifier"
+// access, not open read. Same singleton-blob contract otherwise.
+
+app.MapPost("/opicentrum-roster-board", (HttpRequest request, SetOpicentrumRosterBoardRequest body, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+
+    var role = db.GetDevicePolicy(deviceId)?.Role;
+    if (role is not (0 or 1)) // Admin or Modifier only
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+
+    db.SetOpicentrumRosterBoard(deviceId, body.ContentBlob);
+    return Results.NoContent();
+});
+
+app.MapGet("/opicentrum-roster-board", (HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+
+    var role = db.GetDevicePolicy(deviceId)?.Role;
+    if (role is not (0 or 1))
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+
+    var status = db.GetOpicentrumRosterBoard();
+    return status is null ? Results.NotFound() : Results.Ok(new OpicentrumRosterBoardResponse(status.Value.ContentBlob, status.Value.UpdatedAtUtc));
+});
+
+app.MapPost("/opicentrum-volno-board", (HttpRequest request, SetOpicentrumVolnoBoardRequest body, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+
+    var role = db.GetDevicePolicy(deviceId)?.Role;
+    if (role is not (0 or 1))
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+
+    db.SetOpicentrumVolnoBoard(deviceId, body.ContentBlob);
+    return Results.NoContent();
+});
+
+app.MapGet("/opicentrum-volno-board", (HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+
+    var role = db.GetDevicePolicy(deviceId)?.Role;
+    if (role is not (0 or 1))
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+
+    var status = db.GetOpicentrumVolnoBoard();
+    return status is null ? Results.NotFound() : Results.Ok(new OpicentrumVolnoBoardResponse(status.Value.ContentBlob, status.Value.UpdatedAtUtc));
+});
+
 // Notice board. Posting is gated on the caller's assigned role (Admin=0/Modifier=1) — reading is
 // open to any member. content_blob is opaque ciphertext (encrypted client-side with the shared
 // community key), so the relay never sees the message text.

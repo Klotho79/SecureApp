@@ -169,6 +169,16 @@ public sealed record PiccStatusResponse(string ContentBlob, DateTimeOffset Updat
 public sealed record SetPiccRosterPointerRequest(Guid LibraryFileId);
 public sealed record PiccRosterPointerResponse(Guid LibraryFileId, DateTimeOffset UpdatedAtUtc);
 
+/// <summary>
+/// Opicentrum roster/volno board cache (2026-10-21) — same singleton-blob shape as
+/// <see cref="SetPiccStatusRequest"/>/<see cref="PiccStatusResponse"/>; <c>ContentBlob</c> is opaque
+/// JSON (plaintext, same trust level as room_status — not E2E ciphertext like board posts).
+/// </summary>
+public sealed record SetOpicentrumRosterBoardRequest(string ContentBlob);
+public sealed record OpicentrumRosterBoardResponse(string ContentBlob, DateTimeOffset UpdatedAtUtc);
+public sealed record SetOpicentrumVolnoBoardRequest(string ContentBlob);
+public sealed record OpicentrumVolnoBoardResponse(string ContentBlob, DateTimeOffset UpdatedAtUtc);
+
 // --- Document Library content-approval workflow (2026-10-01) — see the library_documents/
 // library_document_versions/library_document_reviews tables' own remarks. Layered alongside the
 // existing /library/files/* family; every version's actual encrypted content is an ordinary

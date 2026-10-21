@@ -67,4 +67,41 @@ public interface IOpicentrumSyncService
     /// credentials or the login fails.
     /// </summary>
     Task<IReadOnlyList<string>> FetchWorkplaceNamesForDateAsync(DateOnly date, CancellationToken ct = default);
+
+    /// <summary>
+    /// The full pracoviste.php roster for the week containing <paramref name="weekOf"/> — every
+    /// workplace, every person, including the NEZAŘAZENÍ (unassigned) bucket as an ordinary workplace
+    /// row with id 999 — shaped for <c>IOpicentrumRosterBoardService</c>'s relay cache rather than for
+    /// local <c>WorkAssignment</c> storage (2026-10-21, the admin roster-board ask: "nahled na
+    /// kompletni obsazeni pozic vcetne nezarazenych"). Pure fetch — does not touch the relay itself,
+    /// same division of responsibility as <see cref="FetchWorkplaceNamesAsync"/>. Throws
+    /// <see cref="InvalidOperationException"/> with a user-facing message when there are no
+    /// credentials or the login fails.
+    /// </summary>
+    Task<OpicentrumRosterBoardSnapshot> FetchFullRosterBoardAsync(DateOnly weekOf, CancellationToken ct = default);
+
+    /// <summary>
+    /// Moves (or additionally assigns) <paramref name="personId"/> on <paramref name="date"/> from
+    /// workplace <paramref name="sourceWorkplaceId"/> to <paramref name="targetWorkplaceId"/> — the
+    /// real pracoviste.php roster-editor action, reverse-engineered live 2026-10-21 from the user's
+    /// own browser session (see <c>OpicentrumSyncService.MoveRosterPersonAsync</c>'s own remarks for
+    /// the exact URL shape and how <paramref name="keepSourceAssignment"/> maps to the site's
+    /// left-click-vs-right-click distinction). This is a genuine write to the real hospital schedule,
+    /// confirmed by re-fetching before returning <see cref="OpicentrumMoveStatus.Success"/> — same
+    /// discipline as <see cref="PushNoteAsync"/>. <paramref name="targetWorkplaceId"/> of 999 means
+    /// "move to NEZAŘAZENÍ" and uses the site's own hardcoded action code for that case regardless of
+    /// <paramref name="keepSourceAssignment"/>.
+    /// </summary>
+    Task<OpicentrumMoveResult> MoveRosterPersonAsync(DateOnly date, int personId, int sourceWorkplaceId, int targetWorkplaceId, bool keepSourceAssignment, CancellationToken ct = default);
+
+    /// <summary>
+    /// Every staff member's leave entries for <paramref name="month"/> from spravavolna.php's monthly
+    /// grid — generalizes the per-person row/cell regexes <see cref="SyncAsync"/> already uses for
+    /// just the logged-in user's own leave into a loop over every person id the page lists (2026-10-21,
+    /// the admin roster-board ask: "nahled... obsluhu volna" — this covers the "nahled" half; writing
+    /// another person's entry is a tracked follow-up, see <c>IOpicentrumVolnoBoardService</c>'s own
+    /// remarks on why). Read-only; throws <see cref="InvalidOperationException"/> with a user-facing
+    /// message when there are no credentials or the login fails.
+    /// </summary>
+    Task<OpicentrumVolnoSnapshot> FetchVolnoForMonthAsync(DateOnly month, CancellationToken ct = default);
 }

@@ -542,6 +542,29 @@ public sealed class RelayDatabase
             )
             """);
 
+        // Opicentrum roster/volno board cache (2026-10-21) — same singleton-row shape as picc_status
+        // above, one row each (fixed id="current"). Unlike picc_status, BOTH read and write are
+        // Admin/Modifier-gated (see /opicentrum-roster-board and /opicentrum-volno-board in Program.cs)
+        // — the user's own explicit scope decision was "Admin + Modifier" access to this board, not
+        // open read like the PICC doctor name or the notice board. content_blob is plaintext JSON
+        // (a roster/leave snapshot, same trust level as room_status), not ciphertext.
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS opicentrum_roster_board (
+                id                 TEXT PRIMARY KEY NOT NULL,
+                content_blob       TEXT NOT NULL,
+                updated_by_device  TEXT NOT NULL,
+                updated_at_utc     TEXT NOT NULL
+            )
+            """);
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS opicentrum_volno_board (
+                id                 TEXT PRIMARY KEY NOT NULL,
+                content_blob       TEXT NOT NULL,
+                updated_by_device  TEXT NOT NULL,
+                updated_at_utc     TEXT NOT NULL
+            )
+            """);
+
         // Shared-library-key escrow (2026-09-11) — the robust, fully-automatic way a device gets the
         // community's shared library key with zero user action, replacing the fragile peer-to-peer-
         // over-the-chat-ratchet delivery that kept failing on broken sessions / both-devices-online
@@ -2236,6 +2259,60 @@ public sealed class RelayDatabase
         if (!reader.Read())
             return null;
         return (Guid.Parse((string)reader["library_file_id"]), DateTimeOffset.Parse((string)reader["updated_at_utc"]));
+    }
+
+    // --- Opicentrum roster/volno board cache (2026-10-21) — see opicentrum_roster_board/
+    // opicentrum_volno_board's own remarks. Same singleton-row shape as PICC above; the role check
+    // that gates both GET and POST lives in Program.cs, not here (consistent with every other table).
+
+    private const string OpicentrumBoardSingletonRowId = "current";
+
+    public void SetOpicentrumRosterBoard(Guid updatedByDeviceId, string contentBlob)
+    {
+        using var connection = OpenConnection();
+        Execute(connection,
+            """
+            INSERT INTO opicentrum_roster_board (id, content_blob, updated_by_device, updated_at_utc) VALUES (@id, @blob, @by, @now)
+            ON CONFLICT(id) DO UPDATE SET content_blob = @blob, updated_by_device = @by, updated_at_utc = @now
+            """,
+            ("@id", OpicentrumBoardSingletonRowId), ("@blob", contentBlob), ("@by", updatedByDeviceId.ToString()), ("@now", Format(DateTimeOffset.UtcNow)));
+    }
+
+    public (string ContentBlob, DateTimeOffset UpdatedAtUtc)? GetOpicentrumRosterBoard()
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT content_blob, updated_at_utc FROM opicentrum_roster_board WHERE id = @id";
+        command.Parameters.AddWithValue("@id", OpicentrumBoardSingletonRowId);
+
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+            return null;
+        return ((string)reader["content_blob"], DateTimeOffset.Parse((string)reader["updated_at_utc"]));
+    }
+
+    public void SetOpicentrumVolnoBoard(Guid updatedByDeviceId, string contentBlob)
+    {
+        using var connection = OpenConnection();
+        Execute(connection,
+            """
+            INSERT INTO opicentrum_volno_board (id, content_blob, updated_by_device, updated_at_utc) VALUES (@id, @blob, @by, @now)
+            ON CONFLICT(id) DO UPDATE SET content_blob = @blob, updated_by_device = @by, updated_at_utc = @now
+            """,
+            ("@id", OpicentrumBoardSingletonRowId), ("@blob", contentBlob), ("@by", updatedByDeviceId.ToString()), ("@now", Format(DateTimeOffset.UtcNow)));
+    }
+
+    public (string ContentBlob, DateTimeOffset UpdatedAtUtc)? GetOpicentrumVolnoBoard()
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT content_blob, updated_at_utc FROM opicentrum_volno_board WHERE id = @id";
+        command.Parameters.AddWithValue("@id", OpicentrumBoardSingletonRowId);
+
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+            return null;
+        return ((string)reader["content_blob"], DateTimeOffset.Parse((string)reader["updated_at_utc"]));
     }
 
     /// <summary>How long since a device last refreshed its directory entry before it's treated as INACTIVE and hidden from the member listing (2026-09-14, the user's ask: "server hlásí jen aktivní uživatele"). A live device republishes on every relay (re)connect — the client forces a reconnect every ~5 min — so an active device is always fresh; only a wiped/abandoned identity (like the ghost founder that caused the black-hole incident) ever goes stale. Generous enough (2 days) that a device merely offline over a weekend reappears the moment it reconnects and republishes.</summary>

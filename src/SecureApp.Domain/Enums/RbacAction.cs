@@ -52,5 +52,24 @@ public enum RbacAction
     /// against ARIM (<c>SettingsViewModel</c>'s Save flow) — that's every role's own identity, not
     /// general contact-list editing, so it's deliberately a separate, ungated code path.
     /// </summary>
-    EditContact
+    EditContact,
+
+    /// <summary>
+    /// Moving a person between workplaces on the Opicentrum roster board, or assigning them to an
+    /// additional one — 2026-10-21. This writes through to the real opicentrum.cz schedule (see
+    /// <c>OpicentrumSyncService.MoveRosterPersonAsync</c>'s own remarks), so it gets the same
+    /// default-deny-for-Viewer treatment as every other unlisted action; the board page itself is
+    /// already Admin+Modifier-only (gated separately, before this action even applies), so in
+    /// practice this is defense-in-depth at the actual write call, not the primary gate.
+    /// </summary>
+    EditOpicentrumRoster,
+
+    /// <summary>
+    /// Editing another person's "volno" (leave) entry on spravavolna.php — reserved for a follow-up
+    /// once that page's real write mechanism is reverse-engineered the same way pracoviste.php's was
+    /// (see <c>OpicentrumSyncService.MoveRosterPersonAsync</c>'s own remarks for that investigation);
+    /// not called from anywhere yet, added now so the roster-board work doesn't need a second RBAC
+    /// pass later. This round only ships a read-only volno overview.
+    /// </summary>
+    EditOpicentrumVolno
 }

@@ -154,6 +154,7 @@ public sealed partial class NotificationsViewModel : ObservableObject
             }
 
             await LoadRoomStatusAsync();
+            UpdateOpicentrumBoardVisibility();
         }
         finally
         {

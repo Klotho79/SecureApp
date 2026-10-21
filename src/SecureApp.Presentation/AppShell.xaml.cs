@@ -137,6 +137,10 @@ public partial class AppShell : Shell
 		// like Smart Search below, not tied to any one tab.
 		Routing.RegisterRoute(nameof(RoomStatusPage), typeof(RoomStatusPage));
 
+		// Opicentrum roster/volno board (2026-10-21) — reached via a gated nav button on
+		// NotificationsPage; global like Stav sálů above, not tied to any one tab.
+		Routing.RegisterRoute(nameof(OpicentrumBoardPage), typeof(OpicentrumBoardPage));
+
 		// Smart Search (2026-09-20, Phase 4 — see NOTIFICATION_HUB_SPEC.md) — reached via the 🔍
 		// button on NotificationsPage; global, not tied to any one tab, so a plain pushed route
 		// rather than a TabBar entry.

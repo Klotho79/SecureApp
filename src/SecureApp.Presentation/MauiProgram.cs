@@ -234,6 +234,11 @@ public static class MauiProgram
 		// Opicentrum/ARO portal sync (2026-09-21, Phase 5 follow-up — see IOpicentrumSyncService's own remarks).
 		builder.Services.AddSingleton<IOpicentrumSyncService, OpicentrumSyncService>();
 
+		// Opicentrum roster/volno board cache (2026-10-21 — see IOpicentrumRosterBoardService's own
+		// remarks on why this is a relay-cached snapshot rather than a per-device live scrape).
+		builder.Services.AddSingleton<IOpicentrumRosterBoardService, SecureApp.Presentation.Workplace.HttpOpicentrumRosterBoardService>();
+		builder.Services.AddSingleton<IOpicentrumVolnoBoardService, SecureApp.Presentation.Workplace.HttpOpicentrumVolnoBoardService>();
+
 		// --- Milestone 3: Presentation (pages + view models) ---
 		builder.Services.AddTransient<DocumentBrowserViewModel>();
 		builder.Services.AddTransient<DocumentBrowserPage>();
@@ -318,6 +323,11 @@ public static class MauiProgram
 		// a gated "Status" nav button (see NotificationsViewModel.RoomStatus.cs's own remarks).
 		builder.Services.AddTransient<RoomStatusViewModel>();
 		builder.Services.AddTransient<RoomStatusPage>();
+
+		// Opicentrum roster/volno board (2026-10-21) — reached via a gated nav button on Nástěnka
+		// (see NotificationsViewModel.OpicentrumBoard.cs's own remarks), Admin/Modifier only.
+		builder.Services.AddTransient<OpicentrumBoardViewModel>();
+		builder.Services.AddTransient<OpicentrumBoardPage>();
 
 		// Redakce (2026-10-13) — consolidated edit/post tab, its own standalone tab like Nástěnka above.
 		builder.Services.AddTransient<RedakceViewModel>();

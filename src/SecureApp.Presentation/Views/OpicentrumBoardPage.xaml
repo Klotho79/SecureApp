@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="SecureApp.Presentation.Views.OpicentrumBoardPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
+    xmlns:controls="clr-namespace:SecureApp.Presentation.Controls"
+    x:DataType="vm:OpicentrumBoardViewModel"
+    Title="Opicentrum">
+
+    <Grid RowDefinitions="Auto,*" Padding="16,12,16,0" RowSpacing="8">
+
+        <!-- Admin/Modifier only — see OpicentrumBoardViewModel's own remarks. -->
+        <VerticalStackLayout Grid.Row="0" Grid.RowSpan="2" VerticalOptions="Center" Padding="24" IsVisible="{Binding IsAccessDenied}">
+            <Label Text="Tato stránka je dostupná jen pro Admin/Modifier." HorizontalTextAlignment="Center" FontSize="12" TextColor="Gray" />
+        </VerticalStackLayout>
+
+        <VerticalStackLayout Grid.Row="0" Spacing="8" IsVisible="{Binding IsAccessGranted}">
+            <!-- Sub-tabs — same Button+DataTrigger convention as SettingsViewModel's SystemSubTab. -->
+            <FlexLayout Wrap="Wrap">
+                <Button Text="Pozice" Style="{StaticResource SubTabButton}" Command="{Binding SelectSubTabCommand}" CommandParameter="0">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button" Binding="{Binding IsPositionsSubTab}" Value="True">
+                            <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                            <Setter Property="TextColor" Value="{StaticResource White}" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+                <Button Text="Volno" Style="{StaticResource SubTabButton}" Command="{Binding SelectSubTabCommand}" CommandParameter="1">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button" Binding="{Binding IsVolnoSubTab}" Value="True">
+                            <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                            <Setter Property="TextColor" Value="{StaticResource White}" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+            </FlexLayout>
+        </VerticalStackLayout>
+
+        <!-- ============================ POZICE ============================ -->
+        <Grid Grid.Row="1" RowDefinitions="Auto,Auto,*" RowSpacing="6" IsVisible="{Binding IsPositionsSubTab}">
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto">
+                <Label Grid.Column="0" Text="{Binding PositionsLastUpdatedText, StringFormat='Aktualizováno: {0}'}" FontSize="9" TextColor="Gray" VerticalOptions="Center" />
+                <controls:DelayedActivityIndicator Grid.Column="1" IsBusy="{Binding IsPositionsRefreshing}" />
+                <Button Grid.Column="2" Text="Obnovit" Style="{StaticResource SecondaryButton}" FontSize="10" Padding="10,4" MinimumHeightRequest="30"
+                        Command="{Binding RefreshPositionsCommand}" IsEnabled="{Binding CanRefreshPositions}" />
+            </Grid>
+
+            <Label Grid.Row="1" Text="{Binding PositionsErrorText}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" IsVisible="{Binding HasPositionsError}" LineBreakMode="WordWrap" />
+
+            <controls:DelayedActivityIndicator Grid.Row="2" IsBusy="{Binding IsPositionsLoading}" HorizontalOptions="Center" VerticalOptions="Center" />
+            <Label Grid.Row="2" Text="Zatím žádná data — stiskněte Obnovit." FontSize="10" TextColor="Gray" HorizontalOptions="Center" VerticalOptions="Center" IsVisible="{Binding HasNoPositionsData}" />
+
+            <!-- Pannable board — ScrollView(Both) gives the "window bigger than the display, can pan
+                 around" the user asked for; no CollectionView/Grid-ItemsSource (not supported for a
+                 2D templated grid in MAUI), nested BindableLayout instead, same idiom this codebase
+                 already uses everywhere else instead of CollectionView for templated lists. -->
+            <ScrollView Grid.Row="2" Orientation="Both" IsVisible="{Binding HasPositionsData}">
+                <VerticalStackLayout Spacing="2">
+                    <!-- Header row: day labels, aligned with each row's own cell widths below. -->
+                    <HorizontalStackLayout Spacing="2">
+                        <BoxView WidthRequest="130" HeightRequest="1" Color="Transparent" />
+                        <HorizontalStackLayout Spacing="2" BindableLayout.ItemsSource="{Binding PositionsDayHeaders}">
+                            <BindableLayout.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                    <Label Text="{Binding .}" WidthRequest="140" FontSize="10" FontAttributes="Bold" HorizontalTextAlignment="Center" />
+                                </DataTemplate>
+                            </BindableLayout.ItemTemplate>
+                        </HorizontalStackLayout>
+                    </HorizontalStackLayout>
+
+                    <VerticalStackLayout Spacing="2" BindableLayout.ItemsSource="{Binding PositionsRows}">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="vm:OpicentrumRosterRowItem">
+                                <HorizontalStackLayout Spacing="2">
+                                    <Label Text="{Binding WorkplaceName}" WidthRequest="130" FontSize="10" FontAttributes="Bold" VerticalOptions="Center" LineBreakMode="TailTruncation" />
+                                    <HorizontalStackLayout Spacing="2" BindableLayout.ItemsSource="{Binding Cells}">
+                                        <BindableLayout.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:OpicentrumRosterCellItem">
+                                                <Border Style="{StaticResource CardBorder}" WidthRequest="140" Margin="0" Padding="4">
+                                                    <FlexLayout Wrap="Wrap" BindableLayout.ItemsSource="{Binding People}">
+                                                        <BindableLayout.ItemTemplate>
+                                                            <DataTemplate x:DataType="vm:OpicentrumRosterPersonChip">
+                                                                <Border BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}"
+                                                                        StrokeShape="RoundRectangle 6" Stroke="Transparent" Padding="5,3" Margin="0,0,3,3">
+                                                                    <Border.GestureRecognizers>
+                                                                        <TapGestureRecognizer Tapped="OnPersonChipTapped" />
+                                                                    </Border.GestureRecognizers>
+                                                                    <Label Text="{Binding PersonName}" FontSize="9" LineBreakMode="TailTruncation" MaxLines="1" />
+                                                                </Border>
+                                                            </DataTemplate>
+                                                        </BindableLayout.ItemTemplate>
+                                                    </FlexLayout>
+                                                </Border>
+                                            </DataTemplate>
+                                        </BindableLayout.ItemTemplate>
+                                    </HorizontalStackLayout>
+                                </HorizontalStackLayout>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+            </ScrollView>
+        </Grid>
+
+        <!-- ============================ VOLNO ============================ -->
+        <Grid Grid.Row="1" RowDefinitions="Auto,Auto,*" RowSpacing="6" IsVisible="{Binding IsVolnoSubTab}">
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto">
+                <Label Grid.Column="0" Text="{Binding VolnoLastUpdatedText, StringFormat='Aktualizováno: {0}'}" FontSize="9" TextColor="Gray" VerticalOptions="Center" />
+                <controls:DelayedActivityIndicator Grid.Column="1" IsBusy="{Binding IsVolnoRefreshing}" />
+                <Button Grid.Column="2" Text="Obnovit" Style="{StaticResource SecondaryButton}" FontSize="10" Padding="10,4" MinimumHeightRequest="30"
+                        Command="{Binding RefreshVolnoCommand}" IsEnabled="{Binding CanRefreshVolno}" />
+            </Grid>
+
+            <Label Grid.Row="1" Text="{Binding VolnoErrorText}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" IsVisible="{Binding HasVolnoError}" LineBreakMode="WordWrap" />
+
+            <controls:DelayedActivityIndicator Grid.Row="2" IsBusy="{Binding IsVolnoLoading}" HorizontalOptions="Center" VerticalOptions="Center" />
+            <Label Grid.Row="2" Text="Zatím žádná data — stiskněte Obnovit." FontSize="10" TextColor="Gray" HorizontalOptions="Center" VerticalOptions="Center" IsVisible="{Binding HasNoVolnoData}" />
+
+            <!-- Read-only this round — see OpicentrumBoardViewModel.Volno.cs's own remarks. -->
+            <ScrollView Grid.Row="2" Orientation="Both" IsVisible="{Binding HasVolnoData}">
+                <VerticalStackLayout Spacing="2">
+                    <HorizontalStackLayout Spacing="2">
+                        <BoxView WidthRequest="130" HeightRequest="1" Color="Transparent" />
+                        <HorizontalStackLayout Spacing="2" BindableLayout.ItemsSource="{Binding VolnoDayHeaders}">
+                            <BindableLayout.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                    <Label Text="{Binding .}" WidthRequest="30" FontSize="9" FontAttributes="Bold" HorizontalTextAlignment="Center" />
+                                </DataTemplate>
+                            </BindableLayout.ItemTemplate>
+                        </HorizontalStackLayout>
+                    </HorizontalStackLayout>
+
+                    <VerticalStackLayout Spacing="2" BindableLayout.ItemsSource="{Binding VolnoRows}">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="vm:OpicentrumVolnoRowItem">
+                                <HorizontalStackLayout Spacing="2">
+                                    <Label Text="{Binding PersonName}" WidthRequest="130" FontSize="10" LineBreakMode="TailTruncation" VerticalOptions="Center" />
+                                    <HorizontalStackLayout Spacing="2" BindableLayout.ItemsSource="{Binding DayCodes}">
+                                        <BindableLayout.ItemTemplate>
+                                            <DataTemplate x:DataType="x:String">
+                                                <Border BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}"
+                                                        StrokeShape="RoundRectangle 4" Stroke="Transparent" WidthRequest="30" HeightRequest="24" Padding="0">
+                                                    <Label Text="{Binding .}" FontSize="8" HorizontalTextAlignment="Center" VerticalTextAlignment="Center" />
+                                                </Border>
+                                            </DataTemplate>
+                                        </BindableLayout.ItemTemplate>
+                                    </HorizontalStackLayout>
+                                </HorizontalStackLayout>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+            </ScrollView>
+        </Grid>
+
+    </Grid>
+</ContentPage>
