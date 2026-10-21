@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.Input;
 using SecureApp.Domain.Enums;
 using SecureApp.Domain.Policies;
 using SecureApp.Domain.ValueObjects;
+using SecureApp.Presentation.Workplace;
 
 namespace SecureApp.Presentation.ViewModels;
 
@@ -18,6 +19,7 @@ public sealed partial class OpicentrumBoardViewModel
     private static readonly CultureInfo Czech = new("cs-CZ");
 
     private Dictionary<string, int> _workplaceIdByName = new(StringComparer.OrdinalIgnoreCase);
+    private OpicentrumRosterBoardSnapshot? _currentPositionsSnapshot;
 
     [ObservableProperty]
     public partial bool IsPositionsLoading { get; set; }
@@ -54,18 +56,36 @@ public sealed partial class OpicentrumBoardViewModel
 
     partial void OnPositionsErrorTextChanged(string? value) => OnPropertyChanged(nameof(HasPositionsError));
 
-    /// <summary>Cache-only — never scrapes opicentrum.cz itself. Called from <see cref="LoadAsync"/>.</summary>
+    /// <summary>
+    /// Local-first (2026-10-21, user's own ask — opening "Pozice" was "neuvěřitelně pomalé" because
+    /// it waited on a relay round trip every single time): render whatever this device already has
+    /// cached IMMEDIATELY, then reconcile with the relay's own cache in the background — only
+    /// re-renders if the relay's copy is actually newer (another device's edit, or the periodic
+    /// background publish job — see <c>App.RunBackgroundOpicentrumRosterBoardPublishAsync</c>).
+    /// Never scrapes opicentrum.cz itself; that only ever happens from <see cref="RefreshPositionsAsync"/>.
+    /// </summary>
     private async Task LoadPositionsAsync()
     {
         IsPositionsLoading = true;
         PositionsErrorText = null;
         try
         {
-            ApplyPositionsSnapshot(await _rosterBoardCacheService.GetCachedAsync());
+            var local = OpicentrumRosterBoardLocalCache.Load();
+            if (local is not null)
+                ApplyPositionsSnapshot(local);
+
+            var fromRelay = await _rosterBoardCacheService.GetCachedAsync();
+            if (fromRelay is not null && (local is null || fromRelay.UpdatedAtUtc > local.UpdatedAtUtc))
+            {
+                ApplyPositionsSnapshot(fromRelay);
+                OpicentrumRosterBoardLocalCache.Save(fromRelay);
+            }
         }
         catch (Exception ex)
         {
-            PositionsErrorText = $"Načtení z cache se nezdařilo: {ex.Message}";
+            // A relay hiccup here isn't worth surfacing if the local cache already rendered something.
+            if (_currentPositionsSnapshot is null)
+                PositionsErrorText = $"Načtení z cache se nezdařilo: {ex.Message}";
         }
         finally
         {
@@ -84,6 +104,7 @@ public sealed partial class OpicentrumBoardViewModel
             var today = DateOnly.FromDateTime(DateTime.Today);
             var snapshot = await _opicentrumSyncService.FetchFullRosterBoardAsync(today);
             await _rosterBoardCacheService.PublishAsync(snapshot);
+            OpicentrumRosterBoardLocalCache.Save(snapshot);
             ApplyPositionsSnapshot(snapshot);
         }
         catch (Exception ex)
@@ -98,6 +119,7 @@ public sealed partial class OpicentrumBoardViewModel
 
     private void ApplyPositionsSnapshot(OpicentrumRosterBoardSnapshot? snapshot)
     {
+        _currentPositionsSnapshot = snapshot;
         if (snapshot is null || snapshot.Days.Count == 0)
         {
             HasPositionsData = false;
@@ -176,10 +198,57 @@ public sealed partial class OpicentrumBoardViewModel
             return false;
         }
 
-        // Re-fetch + re-publish so the move is reflected immediately on this device AND every
-        // other device's relay cache, instead of waiting for the next background cycle.
-        await RefreshPositionsAsync();
+        // Work with the already-loaded snapshot, patched locally (2026-10-21, user's own ask: "u
+        // uprav ale pracuj s ulozenou aktualizovanou verzi") — a second full live re-scrape here,
+        // just to refresh the UI after a write whose own success is already known, was the real
+        // reason the board felt "neuveritelne pomale". The actual write to opicentrum.cz above is
+        // still live and unavoidable; everything after it is now local-only.
+        if (_currentPositionsSnapshot is { } current)
+        {
+            var patched = PatchMove(current, chip, targetId, targetWorkplaceName, keepSourceAssignment);
+            ApplyPositionsSnapshot(patched);
+            OpicentrumRosterBoardLocalCache.Save(patched);
+            try { await _rosterBoardCacheService.PublishAsync(patched); }
+            catch { /* best-effort — the real write already succeeded; other devices catch up via the background job */ }
+        }
         return true;
+    }
+
+    /// <summary>Applies one move/also-assign to an in-memory snapshot without touching the network — see <see cref="MovePersonAsync"/>'s own remarks.</summary>
+    private static OpicentrumRosterBoardSnapshot PatchMove(OpicentrumRosterBoardSnapshot snapshot, OpicentrumRosterPersonChip chip, int targetWorkplaceId, string targetWorkplaceName, bool keepSourceAssignment)
+    {
+        var days = snapshot.Days.Select(day =>
+        {
+            if (day.Date != chip.Date) return day;
+
+            var workplaces = day.Workplaces.ToList();
+
+            if (!keepSourceAssignment)
+            {
+                var sourceIndex = workplaces.FindIndex(w => w.WorkplaceId == chip.WorkplaceId);
+                if (sourceIndex >= 0)
+                {
+                    var source = workplaces[sourceIndex];
+                    workplaces[sourceIndex] = source with { People = source.People.Where(p => p.PersonId != chip.PersonId).ToList() };
+                }
+            }
+
+            var targetIndex = workplaces.FindIndex(w => w.WorkplaceId == targetWorkplaceId);
+            if (targetIndex >= 0)
+            {
+                var target = workplaces[targetIndex];
+                if (!target.People.Any(p => p.PersonId == chip.PersonId))
+                    workplaces[targetIndex] = target with { People = [..target.People, new OpicentrumRosterPerson(chip.PersonId, chip.PersonName)] };
+            }
+            else
+            {
+                workplaces.Add(new OpicentrumRosterWorkplace(targetWorkplaceId, targetWorkplaceName, [new OpicentrumRosterPerson(chip.PersonId, chip.PersonName)]));
+            }
+
+            return day with { Workplaces = workplaces };
+        }).ToList();
+
+        return snapshot with { Days = days, UpdatedAtUtc = DateTimeOffset.UtcNow };
     }
 
     private static string FormatRelativeTime(DateTimeOffset utc)

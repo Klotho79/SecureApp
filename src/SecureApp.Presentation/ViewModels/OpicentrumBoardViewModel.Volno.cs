@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SecureApp.Domain.ValueObjects;
+using SecureApp.Presentation.Workplace;
 
 namespace SecureApp.Presentation.ViewModels;
 
@@ -49,17 +50,28 @@ public sealed partial class OpicentrumBoardViewModel
 
     partial void OnVolnoErrorTextChanged(string? value) => OnPropertyChanged(nameof(HasVolnoError));
 
+    /// <summary>Local-first, same reasoning as <c>OpicentrumBoardViewModel.Positions.cs</c>'s <c>LoadPositionsAsync</c>.</summary>
     private async Task LoadVolnoAsync()
     {
         IsVolnoLoading = true;
         VolnoErrorText = null;
         try
         {
-            ApplyVolnoSnapshot(await _volnoBoardCacheService.GetCachedAsync());
+            var local = OpicentrumVolnoBoardLocalCache.Load();
+            if (local is not null)
+                ApplyVolnoSnapshot(local);
+
+            var fromRelay = await _volnoBoardCacheService.GetCachedAsync();
+            if (fromRelay is not null && (local is null || fromRelay.UpdatedAtUtc > local.UpdatedAtUtc))
+            {
+                ApplyVolnoSnapshot(fromRelay);
+                OpicentrumVolnoBoardLocalCache.Save(fromRelay);
+            }
         }
         catch (Exception ex)
         {
-            VolnoErrorText = $"Načtení z cache se nezdařilo: {ex.Message}";
+            if (VolnoRows.Count == 0)
+                VolnoErrorText = $"Načtení z cache se nezdařilo: {ex.Message}";
         }
         finally
         {
@@ -77,6 +89,7 @@ public sealed partial class OpicentrumBoardViewModel
             var month = DateOnly.FromDateTime(DateTime.Today);
             var snapshot = await _opicentrumSyncService.FetchVolnoForMonthAsync(month);
             await _volnoBoardCacheService.PublishAsync(snapshot);
+            OpicentrumVolnoBoardLocalCache.Save(snapshot);
             ApplyVolnoSnapshot(snapshot);
         }
         catch (Exception ex)

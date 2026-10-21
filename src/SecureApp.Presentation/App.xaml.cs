@@ -467,6 +467,7 @@ public partial class App : Application
 			var today = DateOnly.FromDateTime(DateTime.Today);
 			var snapshot = await sync.FetchFullRosterBoardAsync(today);
 			await cache.PublishAsync(snapshot);
+			Workplace.OpicentrumRosterBoardLocalCache.Save(snapshot);
 			AppLog.Event("opicentrum.roster-board.bg-publish", ("weekOf", snapshot.WeekOf.ToString()), ("days", snapshot.Days.Count));
 		}
 		catch (Exception ex)
@@ -498,6 +499,7 @@ public partial class App : Application
 			var today = DateOnly.FromDateTime(DateTime.Today);
 			var snapshot = await sync.FetchVolnoForMonthAsync(today);
 			await cache.PublishAsync(snapshot);
+			Workplace.OpicentrumVolnoBoardLocalCache.Save(snapshot);
 			AppLog.Event("opicentrum.volno-board.bg-publish", ("year", snapshot.Year), ("month", snapshot.Month), ("people", snapshot.People.Count));
 		}
 		catch (Exception ex)
