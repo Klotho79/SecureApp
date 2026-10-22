@@ -224,10 +224,17 @@ public sealed partial class DocumentViewerViewModel : ObservableObject, IQueryAt
     private async Task LoadVideoAsync(Document document)
     {
         var plaintext = await _crypto.DecryptAsync(document.EncryptedContent);
-        var path = Path.Combine(Microsoft.Maui.Storage.FileSystem.CacheDirectory, document.FileName);
+        var path = CachePathFor(document);
         await File.WriteAllBytesAsync(path, plaintext);
         VideoSource = MediaSource.FromFile(path);
         IsVideo = true;
+    }
+
+    /// <summary>Temp-file location for a decrypted copy. The file name can originate from another member's upload, so only its last segment is used — a name like "..\x" must never place the file outside the cache directory.</summary>
+    private static string CachePathFor(Document document)
+    {
+        var name = Path.GetFileName(document.FileName);
+        return Path.Combine(Microsoft.Maui.Storage.FileSystem.CacheDirectory, string.IsNullOrWhiteSpace(name) ? document.Id.ToString("N") : name);
     }
 
     /// <summary>DOCX/PPTX and anything else <see cref="DocumentType.Other"/> — decrypt to a temp file (same CacheDirectory pattern as <see cref="DownloadAsync"/>/<see cref="LoadVideoAsync"/>) and hand it to the OS to open in whatever app the device already has, rather than attempting an in-app preview.</summary>
@@ -241,7 +248,7 @@ public sealed partial class DocumentViewerViewModel : ObservableObject, IQueryAt
             var document = await _documentRepository.GetByIdAsync(_documentId) ?? throw new DocumentNotFoundException(_documentId);
             var plaintext = await _crypto.DecryptAsync(document.EncryptedContent);
 
-            var path = Path.Combine(Microsoft.Maui.Storage.FileSystem.CacheDirectory, document.FileName);
+            var path = CachePathFor(document);
             await File.WriteAllBytesAsync(path, plaintext);
 
             await Microsoft.Maui.ApplicationModel.Launcher.Default.OpenAsync(
@@ -274,7 +281,7 @@ public sealed partial class DocumentViewerViewModel : ObservableObject, IQueryAt
             var document = await _documentRepository.GetByIdAsync(_documentId) ?? throw new DocumentNotFoundException(_documentId);
             var plaintext = await _crypto.DecryptAsync(document.EncryptedContent);
 
-            var path = Path.Combine(Microsoft.Maui.Storage.FileSystem.CacheDirectory, document.FileName);
+            var path = CachePathFor(document);
             await File.WriteAllBytesAsync(path, plaintext);
 
             await Microsoft.Maui.ApplicationModel.DataTransfer.Share.Default.RequestAsync(
