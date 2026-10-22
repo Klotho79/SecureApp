@@ -20,7 +20,7 @@ public partial class ContactsPage : ContentPage
         _viewModel.LoadCommand.Execute(null);
     }
 
-    private async void OnRequestAddContact() => await Shell.Current.GoToAsync(nameof(AddContactPage));
+    private async void OnRequestAddContact() => await Infrastructure.ShellNavigation.GoToAsync(nameof(AddContactPage));
 
     // Desktop drag-and-drop reorder (2026-09-20, user's own ask) — MAUI's DragGestureRecognizer/
     // DropGestureRecognizer have no plain bindable-command shape for the drag payload itself, so this

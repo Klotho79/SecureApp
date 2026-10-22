@@ -17,5 +17,5 @@ public partial class CmsImageViewerPage : ContentPage, IQueryAttributable
             FullImage.Source = ImageSource.FromFile(Uri.UnescapeDataString(path));
     }
 
-    private async void OnCloseClicked(object? sender, EventArgs e) => await Shell.Current.GoToAsync("..");
+    private async void OnCloseClicked(object? sender, EventArgs e) => await Infrastructure.ShellNavigation.GoToAsync("..");
 }

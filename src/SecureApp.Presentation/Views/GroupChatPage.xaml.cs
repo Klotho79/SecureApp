@@ -21,7 +21,7 @@ public partial class GroupChatPage : ContentPage
         Content = new GroupChatThreadView(libraryService) { BindingContext = viewModel };
         // 2026-09-16 — see GroupChatViewModel.LeftGroup's own remarks: this page IS the pushed host,
         // so leaving really does mean popping the Shell stack.
-        _viewModel.LeftGroup += async () => await Shell.Current.GoToAsync("..");
+        _viewModel.LeftGroup += async () => await Infrastructure.ShellNavigation.GoToAsync("..");
     }
 
     protected override void OnAppearing()

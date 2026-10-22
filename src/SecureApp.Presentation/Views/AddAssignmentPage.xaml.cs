@@ -19,5 +19,5 @@ public partial class AddAssignmentPage : ContentPage
         _viewModel.LoadCommand.Execute(null);
     }
 
-    private async void OnSaved() => await Shell.Current.GoToAsync("..");
+    private async void OnSaved() => await Infrastructure.ShellNavigation.GoToAsync("..");
 }

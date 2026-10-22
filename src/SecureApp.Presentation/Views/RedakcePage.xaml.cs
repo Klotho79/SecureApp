@@ -19,5 +19,5 @@ public partial class RedakcePage : ContentPage
         _viewModel.LoadCommand.Execute(null);
     }
 
-    private async void OnRequestNavigate(string route) => await Shell.Current.GoToAsync(route);
+    private async void OnRequestNavigate(string route) => await Infrastructure.ShellNavigation.GoToAsync(route);
 }

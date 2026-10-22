@@ -26,8 +26,8 @@ public partial class WorkplacePage : ContentPage
         var route = assignmentId is { } id
             ? $"{nameof(AddAssignmentPage)}?date={dateText}&assignmentId={id}"
             : $"{nameof(AddAssignmentPage)}?date={dateText}";
-        await Shell.Current.GoToAsync(route);
+        await Infrastructure.ShellNavigation.GoToAsync(route);
     }
 
-    private async void OnRequestOpenRoomStatus() => await Shell.Current.GoToAsync(nameof(RoomStatusPage));
+    private async void OnRequestOpenRoomStatus() => await Infrastructure.ShellNavigation.GoToAsync(nameof(RoomStatusPage));
 }

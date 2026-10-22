@@ -13,5 +13,5 @@ public partial class AddContactPage : ContentPage
         _viewModel.Saved += OnSaved;
     }
 
-    private async void OnSaved() => await Shell.Current.GoToAsync("..");
+    private async void OnSaved() => await Infrastructure.ShellNavigation.GoToAsync("..");
 }

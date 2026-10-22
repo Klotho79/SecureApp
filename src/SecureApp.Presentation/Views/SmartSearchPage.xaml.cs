@@ -13,5 +13,5 @@ public partial class SmartSearchPage : ContentPage
         _viewModel.RequestNavigate += OnRequestNavigate;
     }
 
-    private async void OnRequestNavigate(string route) => await Shell.Current.GoToAsync(route);
+    private async void OnRequestNavigate(string route) => await Infrastructure.ShellNavigation.GoToAsync(route);
 }

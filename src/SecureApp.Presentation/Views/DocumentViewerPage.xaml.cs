@@ -79,7 +79,7 @@ public partial class DocumentViewerPage : ContentPage
 			{
 				_editItem = new ToolbarItem { Text = "📝 Upravit" };
 				_editItem.Clicked += async (_, _) =>
-					await Shell.Current.GoToAsync($"{nameof(CmsEditorPage)}?documentId={_viewModel.DocumentId}");
+					await Infrastructure.ShellNavigation.GoToAsync($"{nameof(CmsEditorPage)}?documentId={_viewModel.DocumentId}");
 			}
 			ToolbarItems.Remove(_editItem);
 			if (_viewModel.IsCms && desktop) ToolbarItems.Add(_editItem);
@@ -219,7 +219,7 @@ public partial class DocumentViewerPage : ContentPage
 
 	/// <summary>Full-screen pinch-zoom for a tapped CMS inline image (CMS_PLAN.md, phase 3).</summary>
 	private async void OnCmsImageTapped(object? sender, string path) =>
-		await Shell.Current.GoToAsync($"{nameof(CmsImageViewerPage)}?path={Uri.EscapeDataString(path)}");
+		await Infrastructure.ShellNavigation.GoToAsync($"{nameof(CmsImageViewerPage)}?path={Uri.EscapeDataString(path)}");
 
 	private async void OnAnnotationRequested(object? sender, SecureApp.Domain.ValueObjects.CmsAnchor anchor)
 	{

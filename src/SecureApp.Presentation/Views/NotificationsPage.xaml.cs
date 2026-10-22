@@ -21,31 +21,31 @@ public partial class NotificationsPage : ContentPage
     }
 
     private async void OnRequestOpenDetail(Guid notificationId)
-        => await Shell.Current.GoToAsync($"{nameof(NotificationDetailPage)}?notificationId={notificationId}");
+        => await Infrastructure.ShellNavigation.GoToAsync($"{nameof(NotificationDetailPage)}?notificationId={notificationId}");
 
     private async void OnSearchClicked(object? sender, EventArgs e)
-        => await Shell.Current.GoToAsync(nameof(SmartSearchPage));
+        => await Infrastructure.ShellNavigation.GoToAsync(nameof(SmartSearchPage));
 
     private async void OnSettingsClicked(object? sender, EventArgs e)
-        => await Shell.Current.GoToAsync("//SettingsTab");
+        => await Infrastructure.ShellNavigation.GoToAsync("//SettingsTab");
 
     private async void OnWorkplaceClicked(object? sender, EventArgs e)
-        => await Shell.Current.GoToAsync(nameof(WorkplacePage));
+        => await Infrastructure.ShellNavigation.GoToAsync(nameof(WorkplacePage));
 
     private async void OnAcuteStatesClicked(object? sender, EventArgs e)
-        => await Shell.Current.GoToAsync("//LibraryTab");
+        => await Infrastructure.ShellNavigation.GoToAsync("//LibraryTab");
 
     private async void OnContactsClicked(object? sender, EventArgs e)
-        => await Shell.Current.GoToAsync("//ContactsTab");
+        => await Infrastructure.ShellNavigation.GoToAsync("//ContactsTab");
 
     private async void OnRoomStatusClicked(object? sender, EventArgs e)
     {
         _viewModel.CloseRoomStatusPickerCommand.Execute(null);
-        await Shell.Current.GoToAsync(nameof(RoomStatusPage));
+        await Infrastructure.ShellNavigation.GoToAsync(nameof(RoomStatusPage));
     }
 
     private async void OnOpicentrumBoardClicked(object? sender, EventArgs e)
-        => await Shell.Current.GoToAsync(nameof(OpicentrumBoardPage));
+        => await Infrastructure.ShellNavigation.GoToAsync(nameof(OpicentrumBoardPage));
 
-    private async void OnRequestNavigate(string route) => await Shell.Current.GoToAsync(route);
+    private async void OnRequestNavigate(string route) => await Infrastructure.ShellNavigation.GoToAsync(route);
 }
