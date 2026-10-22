@@ -442,7 +442,7 @@ public sealed class HttpSharedLibraryService : ISharedLibraryService
 
     private Task AddDeviceAuthAsync(HttpRequestMessage request, CancellationToken ct) => RelayHttp.AddDeviceAuthAsync(request, _transportSettingsRepository, _vault, ct);
 
-            private static SharedLibraryFileSummary ToSummary(LibraryFileDto dto) =>
+    private static SharedLibraryFileSummary ToSummary(LibraryFileDto dto) =>
         new(dto.Id, dto.FolderPath, dto.FileName, dto.Tags, dto.SizeBytes, dto.UploadedByDeviceId.ToString(), dto.UploadedAtUtc);
 
     private sealed record LibraryFileDto(Guid Id, string FolderPath, string FileName, List<string> Tags, long SizeBytes, Guid UploadedByDeviceId, DateTimeOffset UploadedAtUtc);

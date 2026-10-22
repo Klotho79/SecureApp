@@ -12,9 +12,8 @@ namespace SecureApp.Presentation.Library;
 /// <inheritdoc cref="ILibraryReviewService"/>
 /// <remarks>
 /// Lives in Presentation alongside <see cref="HttpSharedLibraryService"/> for the same reason — needs
-/// <c>HttpClient</c> + relay endpoint/device-identity configuration. Device-auth header helper is
-/// duplicated rather than shared, following this codebase's established per-Http*Service convention
-/// (see <see cref="HttpSharedLibraryService"/>'s own <c>AddDeviceAuthAsync</c>).
+/// <c>HttpClient</c> + relay endpoint/device-identity configuration. Endpoint and device-auth plumbing
+/// is shared via <see cref="RelayHttp"/>.
 /// </remarks>
 public sealed class HttpLibraryReviewService : ILibraryReviewService
 {
@@ -148,15 +147,7 @@ public sealed class HttpLibraryReviewService : ILibraryReviewService
         dto.CreatedByDeviceId.ToString(), dto.SubmittedByDeviceId?.ToString(), dto.SubmittedAtUtc,
         dto.CreatedAtUtc, dto.UpdatedAtUtc);
 
-    private async Task<Uri> GetHttpEndpointAsync(CancellationToken ct)
-    {
-        var configuration = await _transportSettingsRepository.GetAsync(ct);
-        var wsEndpoint = configuration?.EndpointUri
-            ?? throw new InvalidOperationException("Zatím není nastavená adresa relay serveru — nastavte ji nejprve v Nastavení.");
-
-        var scheme = wsEndpoint.Scheme switch { "ws" => "http", "wss" => "https", _ => wsEndpoint.Scheme };
-        return new UriBuilder(wsEndpoint) { Scheme = scheme, Port = wsEndpoint.Port }.Uri;
-    }
+    private Task<Uri> GetHttpEndpointAsync(CancellationToken ct) => RelayHttp.GetHttpEndpointAsync(_transportSettingsRepository, ct);
 
     private Task AddDeviceAuthAsync(HttpRequestMessage request, CancellationToken ct) => RelayHttp.AddDeviceAuthAsync(request, _transportSettingsRepository, _vault, ct);
 

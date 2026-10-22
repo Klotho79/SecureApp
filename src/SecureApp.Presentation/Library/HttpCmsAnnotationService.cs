@@ -19,8 +19,8 @@ namespace SecureApp.Presentation.Library;
 public sealed class HttpCmsAnnotationService : ICmsAnnotationService
 {
     private const string SharedLibraryKeyVaultKey = "library:shared-key";
-    private const int NonceLength = 12;
-    private const int AuthTagLength = 16;
+    private const int NonceLength = SharedKeyWire.NonceLength;
+    private const int AuthTagLength = SharedKeyWire.AuthTagLength;
     private static readonly JsonSerializerOptions HttpJsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly ITransportSettingsRepository _transportSettingsRepository;
@@ -165,11 +165,7 @@ public sealed class HttpCmsAnnotationService : ICmsAnnotationService
     private async Task<string> EncryptAsync(string plaintext, byte[] key, CancellationToken ct)
     {
         var payload = await _crypto.EncryptWithKeyAsync(Encoding.UTF8.GetBytes(plaintext), Guid.NewGuid(), key, ct);
-        var wire = new byte[payload.Nonce.Length + payload.AuthTag.Length + payload.CipherText.Length];
-        payload.Nonce.CopyTo(wire, 0);
-        payload.AuthTag.CopyTo(wire, payload.Nonce.Length);
-        payload.CipherText.CopyTo(wire, payload.Nonce.Length + payload.AuthTag.Length);
-        return Convert.ToBase64String(wire);
+        return Convert.ToBase64String(SharedKeyWire.Combine(payload.Nonce, payload.AuthTag, payload.CipherText));
     }
 
     private async Task<Body?> TryDecryptAsync(string blob, byte[] key, CancellationToken ct)

@@ -9,7 +9,7 @@ using SecureApp.Presentation.Transport;
 namespace SecureApp.Presentation.Library;
 
 /// <inheritdoc cref="ICmsAssignmentService"/>
-/// <remarks>Device-auth plumbing duplicated per this codebase's Http*Service convention (see <see cref="HttpLibraryReviewService"/>).</remarks>
+/// <remarks>Endpoint and device-auth plumbing is shared via <see cref="RelayHttp"/>.</remarks>
 public sealed class HttpCmsAssignmentService : ICmsAssignmentService
 {
     private static readonly JsonSerializerOptions HttpJsonOptions = new(JsonSerializerDefaults.Web);

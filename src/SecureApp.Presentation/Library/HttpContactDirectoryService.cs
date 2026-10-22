@@ -12,9 +12,7 @@ namespace SecureApp.Presentation.Library;
 /// <remarks>
 /// Lives in Presentation (not Data), same reasoning as <see cref="HttpSharedLibraryService"/> —
 /// needs <c>HttpClient</c> + relay endpoint/device-identity configuration. The device-auth header
-/// helper and ws-&gt;http rewrite are duplicated from that class rather than shared — same
-/// "duplicated, stays independently readable" call this codebase already made for
-/// <c>ToHttpUri</c> across several transport classes.
+/// helper and ws-&gt;http rewrite are shared via <see cref="RelayHttp"/>.
 /// </remarks>
 public sealed class HttpContactDirectoryService : IContactDirectoryService
 {

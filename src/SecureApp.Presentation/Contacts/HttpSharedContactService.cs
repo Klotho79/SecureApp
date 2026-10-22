@@ -12,8 +12,7 @@ namespace SecureApp.Presentation.Contacts;
 /// <remarks>
 /// Lives in Presentation, same reasoning as every other Http*Service here — needs <c>HttpClient</c>
 /// + relay endpoint/device-identity configuration. Device-auth header helper and ws-&gt;http rewrite
-/// duplicated from <c>HttpLogbookCatalogSyncService</c> rather than shared, same established
-/// "duplicated, stays independently readable" call.
+/// are shared via <see cref="RelayHttp"/>.
 /// </remarks>
 public sealed class HttpSharedContactService : ISharedContactService
 {

@@ -122,8 +122,7 @@ public static class ActiveChatThread
                     if (_chatSessionId == chatSessionId) _peerKeyHex = peerKeyHex;
                 }
 
-                var peerSessionIds = (await sessions.GetAllAsync())
-                    .Where(s => Convert.ToHexStringLower(s.PeerIdentityPublicKey) == peerKeyHex)
+                var peerSessionIds = (await sessions.GetAllByPeerPublicKeyAsync(current.PeerIdentityPublicKey))
                     .Select(s => s.Id)
                     .ToList();
                 readIds = await notifications.MarkThreadReadAsync(peerSessionIds, null);

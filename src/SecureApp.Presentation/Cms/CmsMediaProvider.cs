@@ -47,7 +47,21 @@ public sealed class LibraryCmsMediaProvider : ICmsMediaProvider
 
         var (content, fileName) = await _library.DownloadDecryptedAsync(id, ct);
         var path = Path.Combine(_cacheDir, id.ToString("N") + Path.GetExtension(fileName));
-        await File.WriteAllBytesAsync(path, content, ct);
+
+        // Write to a temp name that the "<id>.*" lookup above can't match, then move into place: a crash
+        // or a concurrent fetch of the same file must never leave a half-written file that a later open
+        // would take for a finished cache entry.
+        var tempPath = Path.Combine(_cacheDir, "part-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            await File.WriteAllBytesAsync(tempPath, content, ct);
+            File.Move(tempPath, path, overwrite: true);
+        }
+        catch
+        {
+            try { File.Delete(tempPath); } catch { /* best-effort temp cleanup */ }
+            throw;
+        }
         return path;
     }
 }
