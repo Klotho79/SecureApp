@@ -50,9 +50,19 @@ public sealed partial class OpicentrumBoardViewModel : ObservableObject
     [RelayCommand]
     private void SelectSubTab(string index)
     {
-        if (int.TryParse(index, out var i))
-            BoardSubTab = i;
+        if (!int.TryParse(index, out var i)) return;
+        BoardSubTab = i;
+        if (i == 1 && !_volnoLoaded && !IsAccessDenied)
+        {
+            _volnoLoaded = true;
+            _ = LoadVolnoAsync();
+        }
     }
+
+    // Volno (58 people x ~30 days = ~1700 cells) is only built once its tab is first opened: building
+    // it on every page open froze the UI thread for seconds before the Pozice board could paint
+    // (ui_stall metric from the user's S23+, 2026-10-22).
+    private bool _volnoLoaded;
 
     [ObservableProperty]
     public partial bool IsAccessDenied { get; set; }
@@ -83,6 +93,11 @@ public sealed partial class OpicentrumBoardViewModel : ObservableObject
         IsAccessDenied = _rolePreviewService.Resolve(_currentUserService.Current.Role) is not (Role.Admin or Role.Modifier);
         if (IsAccessDenied) return;
 
-        await Task.WhenAll(LoadPositionsAsync(), LoadVolnoAsync());
+        await LoadPositionsAsync();
+        if (IsVolnoSubTab && !_volnoLoaded)
+        {
+            _volnoLoaded = true;
+            await LoadVolnoAsync();
+        }
     }
 }
