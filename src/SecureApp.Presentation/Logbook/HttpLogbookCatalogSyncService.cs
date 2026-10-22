@@ -12,9 +12,8 @@ namespace SecureApp.Presentation.Logbook;
 /// <inheritdoc cref="ILogbookCatalogSyncService"/>
 /// <remarks>
 /// Lives in Presentation, same reasoning as every other Http*Service here — needs <c>HttpClient</c>
-/// + relay endpoint/device-identity configuration. Device-auth header helper and ws-&gt;http rewrite
-/// duplicated from <c>HttpContactDirectoryService</c> rather than shared, same established
-/// "duplicated, stays independently readable" call.
+/// + relay endpoint/device-identity configuration. Endpoint lookup and device-auth headers come from
+/// <see cref="RelayHttp"/>, shared by every Http*Service here.
 /// </remarks>
 public sealed class HttpLogbookCatalogSyncService : ILogbookCatalogSyncService
 {

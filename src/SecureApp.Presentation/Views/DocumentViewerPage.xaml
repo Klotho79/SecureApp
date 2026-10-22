@@ -35,11 +35,10 @@
                  axes, AspectFit now scales the whole image down to fit — nothing cropped.
                  2026-09-30: pinch-to-zoom + one-finger pan while zoomed, replacing the earlier +/-
                  button attempt the user rejected ("plynule zvetsovani a posun... jak to byva
-                 roztazenim prstu") — see DocumentViewerPage.xaml.cs's own remarks for the gesture
-                 math (Microsoft's own documented pinch-then-pan pattern: PinchGestureRecognizer
-                 alone only zooms, so PanGestureRecognizer is layered on for continued one-finger
-                 panning after the pinch ends). Deliberately still not inside a ScrollView — same
-                 unbounded-height trap as before; the code-behind clamps TranslationX/Y itself so
+                 roztazenim prstu") — the gestures are attached in code-behind by
+                 Controls/PinchZoomController (pinch, then one-finger pan, double-tap to reset; see its
+                 remarks for the math). Deliberately still not inside a ScrollView — same
+                 unbounded-height trap as before; the controller clamps TranslationX/Y itself so
                  zoomed content can never pan past its own edges into empty space. -->
             <Image
                 x:Name="DocumentImage"
@@ -47,13 +46,7 @@
                 Aspect="AspectFit"
                 IsVisible="{Binding HasImage}"
                 HorizontalOptions="Fill"
-                VerticalOptions="Fill">
-                <Image.GestureRecognizers>
-                    <PinchGestureRecognizer PinchUpdated="OnPinchUpdated" />
-                    <PanGestureRecognizer PanUpdated="OnPanUpdated" />
-                    <TapGestureRecognizer NumberOfTapsRequired="2" Tapped="OnDoubleTapped" />
-                </Image.GestureRecognizers>
-            </Image>
+                VerticalOptions="Fill" />
 
             <!-- Video (2026-10-03) — local playback only, decrypted to a temp file first (see
                  DocumentViewerViewModel.LoadVideoAsync); nothing streams, nothing leaves the device. -->
