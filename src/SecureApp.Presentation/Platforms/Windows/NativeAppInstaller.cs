@@ -36,15 +36,17 @@ public sealed class NativeAppInstaller : INativeAppInstaller
         // Every path is already a resolved local path (TEMP/install dir), never user input — the
         // single quotes below are only to survive a space in the install dir (the default is
         // "C:\SecureApp", but relay/ops/new-pc-onboarding.ps1's own -InstallDir can be anything).
+        // A literal ' inside a single-quoted PowerShell string is written '' (e.g. C:\Users\O'Neil).
+        static string Quote(string path) => path.Replace("'", "''");
         var script = $$"""
             $ErrorActionPreference = 'SilentlyContinue'
             try { Wait-Process -Id {{pid}} -Timeout 30 } catch {}
             Start-Sleep -Milliseconds 500
-            Copy-Item -Path '{{stagingDir}}\*' -Destination '{{installDir}}' -Recurse -Force
-            Remove-Item -Path '{{stagingDir}}' -Recurse -Force
-            Remove-Item -Path '{{localFilePath}}' -Force
-            Start-Process -FilePath '{{exePath}}' -WorkingDirectory '{{installDir}}'
-            Remove-Item -Path '{{scriptPath}}' -Force
+            Copy-Item -Path '{{Quote(stagingDir)}}\*' -Destination '{{Quote(installDir)}}' -Recurse -Force
+            Remove-Item -Path '{{Quote(stagingDir)}}' -Recurse -Force
+            Remove-Item -Path '{{Quote(localFilePath)}}' -Force
+            Start-Process -FilePath '{{Quote(exePath)}}' -WorkingDirectory '{{Quote(installDir)}}'
+            Remove-Item -Path '{{Quote(scriptPath)}}' -Force
             """;
         // UTF-8 WITH BOM: Windows PowerShell 5.1 reads a BOM-less script as ANSI, which turned an install
         // dir like "K:\Meduňa\Appka" into mojibake so nothing was copied and the app never relaunched.

@@ -84,6 +84,15 @@ public sealed class UpdateDownloadService : Service
                 return;
             }
 
+            // A leftover .partial belongs to whichever version was being fetched when it broke off. If a
+            // newer build has been published since, resuming would splice the new APK's tail onto the old
+            // one's head (the installer then rejects it as invalid, every time) — so start over instead.
+            var partialMarker = partial + ".versioncode";
+            if (File.Exists(partial) && versionCode > 0 &&
+                !(File.Exists(partialMarker) && int.TryParse(File.ReadAllText(partialMarker).Trim(), out var partialVersionCode) && partialVersionCode == versionCode))
+                File.Delete(partial);
+            if (versionCode > 0) File.WriteAllText(partialMarker, versionCode.ToString());
+
             var have = File.Exists(partial) ? new FileInfo(partial).Length : 0;
 
             using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(20) };
