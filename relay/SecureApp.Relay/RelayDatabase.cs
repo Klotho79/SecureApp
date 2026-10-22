@@ -996,30 +996,30 @@ public sealed class RelayDatabase
             ("@id", Guid.NewGuid().ToString()), ("@recipient", recipientDeviceId.ToString()), ("@json", frameJson), ("@created", Format(DateTimeOffset.UtcNow)));
     }
 
-    /// <summary>Returns (and deletes) every queued frame for a device, oldest first — called once right after it authenticates.</summary>
-    public IReadOnlyList<string> DequeueOutbox(Guid recipientDeviceId)
+    /// <summary>
+    /// Every queued frame for a device, oldest first — called once right after it authenticates.
+    /// Does NOT delete: the caller removes each row with <see cref="DeleteOutboxFrame"/> only after
+    /// that frame was actually sent (2026-10-22 fix — it used to delete the whole batch up front, so a
+    /// connection dropping mid-flush permanently lost every frame not yet sent).
+    /// </summary>
+    public IReadOnlyList<(string Id, string FrameJson)> PeekOutbox(Guid recipientDeviceId)
     {
         using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id, frame_json FROM outbox WHERE recipient_device_id = @recipient ORDER BY created_at_utc";
+        command.Parameters.AddWithValue("@recipient", recipientDeviceId.ToString());
 
-        var frames = new List<string>();
-        using (var selectCommand = connection.CreateCommand())
-        {
-            selectCommand.CommandText = "SELECT id, frame_json FROM outbox WHERE recipient_device_id = @recipient ORDER BY created_at_utc";
-            selectCommand.Parameters.AddWithValue("@recipient", recipientDeviceId.ToString());
-
-            var ids = new List<string>();
-            using var reader = selectCommand.ExecuteReader();
-            while (reader.Read())
-            {
-                ids.Add((string)reader["id"]);
-                frames.Add((string)reader["frame_json"]);
-            }
-
-            foreach (var id in ids)
-                Execute(connection, "DELETE FROM outbox WHERE id = @id", ("@id", id));
-        }
-
+        var frames = new List<(string, string)>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            frames.Add(((string)reader["id"], (string)reader["frame_json"]));
         return frames;
+    }
+
+    public void DeleteOutboxFrame(string id)
+    {
+        using var connection = OpenConnection();
+        Execute(connection, "DELETE FROM outbox WHERE id = @id", ("@id", id));
     }
 
     public LibraryFileRecord InsertLibraryFileMetadata(string folderPath, string fileName, IReadOnlyList<string> tags, long sizeBytes, string contentHash, Guid uploadedByDeviceId, bool listed = true)

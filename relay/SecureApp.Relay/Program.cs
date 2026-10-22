@@ -74,11 +74,11 @@ app.MapGet("/download", () =>
 {
     var androidPath = Path.Combine(downloadsDir, "secureapp-android.apk");
     var androidAvailable = File.Exists(androidPath);
-    var androidSize = androidAvailable ? $"{new FileInfo(androidPath).Length / 1024.0 / 1024.0:F0} MB" : null;
+    var androidSize = androidAvailable ? FormatMegabytes(androidPath) : null;
 
     var windowsPath = Path.Combine(downloadsDir, "secureapp-windows-portable.zip");
     var windowsAvailable = File.Exists(windowsPath);
-    var windowsSize = windowsAvailable ? $"{new FileInfo(windowsPath).Length / 1024.0 / 1024.0:F0} MB" : null;
+    var windowsSize = windowsAvailable ? FormatMegabytes(windowsPath) : null;
 
     // New-PC onboarding (2026-10-07, user's own ask after fighting the WireGuard GUI's tunnel-name
     // validation on "PC v praci") — one .bat someone can download and double-click; it self-fetches
@@ -194,13 +194,11 @@ app.MapPost("/admin/upload/ops", async (HttpRequest request, string name) =>
     if (!IsAdminAuthorized(request, adminSecret))
         return Results.Unauthorized();
 
-    if (string.IsNullOrWhiteSpace(name) || name.Contains("..") || name.Contains('/') || name.Contains('\\')
-        || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+    if (!IsSafeFileName(name))
         return Results.BadRequest("Invalid 'name'.");
 
     var path = Path.Combine(downloadsDir, name);
-    await using (var stream = File.Create(path))
-        await request.Body.CopyToAsync(stream);
+    await WriteFileAtomicAsync(path, stream => request.Body.CopyToAsync(stream));
 
     return Results.Ok(new { uploaded = true, name, sizeBytes = new FileInfo(path).Length });
 });
@@ -213,20 +211,14 @@ app.MapPost("/admin/upload/ops", async (HttpRequest request, string name) =>
 // tens of MB, same reasoning as /download/android's own enableRangeProcessing.
 app.MapGet("/download/ops/{name}", (string name) =>
 {
-    if (string.IsNullOrWhiteSpace(name) || name.Contains("..") || name.Contains('/') || name.Contains('\\')
-        || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+    if (!IsSafeFileName(name))
         return Results.BadRequest("Invalid 'name'.");
 
     var path = Path.Combine(downloadsDir, name);
     if (!File.Exists(path))
         return Results.NotFound($"'{name}' zatím není nahráno.");
 
-    var contentType = Path.GetExtension(name).ToLowerInvariant() switch
-    {
-        ".exe" => "application/octet-stream",
-        ".zip" => "application/zip",
-        _ => "application/octet-stream"
-    };
+    var contentType = Path.GetExtension(name).Equals(".zip", StringComparison.OrdinalIgnoreCase) ? "application/zip" : "application/octet-stream";
     return Results.File(path, contentType, name, enableRangeProcessing: true);
 });
 
@@ -234,28 +226,14 @@ app.MapGet("/download/ops/{name}", (string name) =>
 // as /download itself (a device that's already this far along already has the app, but checking
 // "is there something newer" shouldn't need a device credential either — it's the same "anyone
 // already on the network" exposure /health and /download already accept).
-app.MapGet("/download/android/version", () =>
-{
-    var versionPath = Path.Combine(downloadsDir, "secureapp-android.version.json");
-    if (!File.Exists(versionPath))
-        return Results.NotFound();
-
-    return Results.Content(File.ReadAllText(versionPath), "application/json");
-});
+app.MapGet("/download/android/version", () => ServeJsonFile(Path.Combine(downloadsDir, "secureapp-android.version.json")));
 
 // Self-update, Windows side (2026-10-12, mirrors /download/android/version above) — the in-app
 // update check on a Windows device reads THIS, not the Android one; before this existed, UpdateService
 // always queried the Android manifest regardless of platform, so a Windows device compared its own
 // build number against the ANDROID release and, even when it detected a newer version, had no actual
 // installer to hand off to (see INativeAppInstaller's Windows implementation for that other half).
-app.MapGet("/download/windows/version", () =>
-{
-    var versionPath = Path.Combine(downloadsDir, "secureapp-windows.version.json");
-    if (!File.Exists(versionPath))
-        return Results.NotFound();
-
-    return Results.Content(File.ReadAllText(versionPath), "application/json");
-});
+app.MapGet("/download/windows/version", () => ServeJsonFile(Path.Combine(downloadsDir, "secureapp-windows.version.json")));
 
 // Delta updates (2026-10-14, user's own ask: avoid re-downloading the whole ~170MB portable build
 // for a small change). Path→sha256 for every file in the CURRENT secureapp-windows-portable.zip,
@@ -263,14 +241,7 @@ app.MapGet("/download/windows/version", () =>
 // until the first post-feature upload (e.g. right after this itself ships) — the client treats a
 // 404 here as "no delta support yet" and falls back to the unconditional full /download/windows,
 // so an older zip with no matching manifest is never a hard failure.
-app.MapGet("/download/windows/manifest", () =>
-{
-    var path = Path.Combine(downloadsDir, "secureapp-windows.manifest.json");
-    if (!File.Exists(path))
-        return Results.NotFound();
-
-    return Results.Content(File.ReadAllText(path), "application/json");
-});
+app.MapGet("/download/windows/manifest", () => ServeJsonFile(Path.Combine(downloadsDir, "secureapp-windows.manifest.json")));
 
 // Returns a small zip containing only the requested files, read directly out of the already-stored
 // full zip (ZipArchiveEntry.Open on a name match — never touches the filesystem with the client's
@@ -330,13 +301,8 @@ app.MapPost("/admin/upload/android", async (HttpRequest request) =>
     if (string.IsNullOrEmpty(versionName))
         versionName = versionCode.ToString();
 
-    var apkPath = Path.Combine(downloadsDir, "secureapp-android.apk");
-    await using (var stream = File.Create(apkPath))
-        await file.CopyToAsync(stream);
-
-    var versionPath = Path.Combine(downloadsDir, "secureapp-android.version.json");
-    var manifest = new UpdateManifest(versionCode, versionName, DateTimeOffset.UtcNow);
-    await File.WriteAllTextAsync(versionPath, System.Text.Json.JsonSerializer.Serialize(manifest));
+    await WriteFileAtomicAsync(Path.Combine(downloadsDir, "secureapp-android.apk"), stream => file.CopyToAsync(stream));
+    await WriteVersionManifestAsync(Path.Combine(downloadsDir, "secureapp-android.version.json"), versionCode, versionName);
 
     return Results.Ok(new { uploaded = true, sizeBytes = file.Length, versionCode, versionName });
 });
@@ -360,8 +326,7 @@ app.MapPost("/admin/upload/windows", async (HttpRequest request, int? versionCod
         return Results.Unauthorized();
 
     var zipPath = Path.Combine(downloadsDir, "secureapp-windows-portable.zip");
-    await using (var stream = File.Create(zipPath))
-        await request.Body.CopyToAsync(stream);
+    await WriteFileAtomicAsync(zipPath, stream => request.Body.CopyToAsync(stream));
 
     // Delta-update manifest (2026-10-14) — recomputed on every upload so /download/windows/manifest
     // and /download/windows/delta above always reflect exactly what's in THIS zip. Best-effort: a
@@ -387,11 +352,7 @@ app.MapPost("/admin/upload/windows", async (HttpRequest request, int? versionCod
     catch { /* see remarks above — delta support only, never blocks the upload */ }
 
     if (versionCode is { } code)
-    {
-        var versionPath = Path.Combine(downloadsDir, "secureapp-windows.version.json");
-        var manifest = new UpdateManifest(code, string.IsNullOrEmpty(versionName) ? code.ToString() : versionName, DateTimeOffset.UtcNow);
-        await File.WriteAllTextAsync(versionPath, System.Text.Json.JsonSerializer.Serialize(manifest));
-    }
+        await WriteVersionManifestAsync(Path.Combine(downloadsDir, "secureapp-windows.version.json"), code, string.IsNullOrEmpty(versionName) ? code.ToString() : versionName);
 
     return Results.Ok(new { uploaded = true, sizeBytes = new FileInfo(zipPath).Length, versionCode, versionName });
 });
@@ -712,7 +673,7 @@ app.MapGet("/library/files", (HttpRequest request, RelayDatabase db) =>
     return Results.Ok(results.Select(ToLibraryFileDto).ToList());
 });
 
-app.MapGet("/library/files/{id:guid}", async (Guid id, HttpRequest request, HttpResponse response, RelayDatabase db) =>
+app.MapGet("/library/files/{id:guid}", (Guid id, HttpRequest request, HttpResponse response, RelayDatabase db) =>
 {
     if (!TryGetDeviceAuth(request, db, out _))
         return Results.Unauthorized();
@@ -727,15 +688,14 @@ app.MapGet("/library/files/{id:guid}", async (Guid id, HttpRequest request, Http
     response.Headers["X-File-Name"] = Uri.EscapeDataString(record.FileName);
     response.Headers["X-Folder-Path"] = Uri.EscapeDataString(record.FolderPath);
 
-    var bytes = await File.ReadAllBytesAsync(path);
-    return Results.Bytes(bytes, "application/octet-stream");
+    // Streamed from disk, not ReadAllBytes: a large (up to 200 MB) library file no longer gets
+    // loaded whole into the Pi's memory for every download.
+    return Results.File(path, "application/octet-stream");
 });
 
 app.MapDelete("/library/files/{id:guid}", (Guid id, HttpRequest request, RelayDatabase db) =>
 {
-    var isAdmin = IsAdminAuthorized(request, adminSecret);
-    var isDeviceAuthed = TryGetDeviceAuth(request, db, out var callerDeviceId);
-    if (!isAdmin && !isDeviceAuthed)
+    if (!TryGetAdminOrDevice(request, adminSecret, db, out var callerDeviceId, out var isAdmin))
         return Results.Unauthorized();
 
     if (!db.TryDeleteLibraryFile(id, callerDeviceId, isAdmin))
@@ -753,9 +713,7 @@ app.MapDelete("/library/files/{id:guid}", (Guid id, HttpRequest request, RelayDa
 // the delete endpoint's cooperative-role trust.
 app.MapPost("/library/files/{id:guid}/publish", (Guid id, HttpRequest request, RelayDatabase db) =>
 {
-    var isAdmin = IsAdminAuthorized(request, adminSecret);
-    var isDeviceAuthed = TryGetDeviceAuth(request, db, out var callerDeviceId);
-    if (!isAdmin && !isDeviceAuthed)
+    if (!TryGetAdminOrDevice(request, adminSecret, db, out var callerDeviceId, out var isAdmin))
         return Results.Unauthorized();
 
     var folderPath = request.Query["folderPath"].ToString();
@@ -793,9 +751,7 @@ app.MapGet("/library/subcategories", (HttpRequest request, RelayDatabase db, str
 
 app.MapDelete("/library/subcategories/{id:guid}", (Guid id, HttpRequest request, RelayDatabase db) =>
 {
-    var isAdmin = IsAdminAuthorized(request, adminSecret);
-    var isDeviceAuthed = TryGetDeviceAuth(request, db, out var callerDeviceId);
-    if (!isAdmin && !isDeviceAuthed)
+    if (!TryGetAdminOrDevice(request, adminSecret, db, out var callerDeviceId, out var isAdmin))
         return Results.Unauthorized();
 
     return db.TryDeleteLibrarySubcategory(id, callerDeviceId, isAdmin) ? Results.NoContent() : Results.NotFound();
@@ -824,9 +780,7 @@ app.MapGet("/library/links", (HttpRequest request, RelayDatabase db, Guid subcat
 
 app.MapDelete("/library/links/{id:guid}", (Guid id, HttpRequest request, RelayDatabase db) =>
 {
-    var isAdmin = IsAdminAuthorized(request, adminSecret);
-    var isDeviceAuthed = TryGetDeviceAuth(request, db, out var callerDeviceId);
-    if (!isAdmin && !isDeviceAuthed)
+    if (!TryGetAdminOrDevice(request, adminSecret, db, out var callerDeviceId, out var isAdmin))
         return Results.Unauthorized();
 
     return db.TryDeleteLibraryLink(id, callerDeviceId, isAdmin) ? Results.NoContent() : Results.NotFound();
@@ -850,14 +804,11 @@ app.MapGet("/cms/members", (HttpRequest request, RelayDatabase db) =>
 {
     if (!TryGetDeviceAuth(request, db, out var deviceId))
         return Results.Unauthorized();
-    if (!CanAssignCmsEditors(db, deviceId))
+    if (!IsAdminOrModifier(db, deviceId))
         return Results.StatusCode(StatusCodes.Status403Forbidden);
 
     return Results.Ok(db.GetCmsAssignableMembers().Select(m => new CmsMemberDto(m.DeviceId, m.DisplayName, m.Email)).ToList());
 });
-
-static bool CanAssignCmsEditors(RelayDatabase db, Guid deviceId) =>
-    db.GetDevicePolicy(deviceId)?.Role is 0 or 1;
 
 CmsEditorGrantDto ToCmsGrantDto(CmsEditorGrantRecord g, RelayDatabase db) =>
     new(g.DocumentId, g.EditorDeviceId, db.GetDeviceDisplayName(g.EditorDeviceId), g.Title, g.FolderPath, g.GrantedBy, g.GrantedAtUtc, g.DocumentStatus);
@@ -866,7 +817,7 @@ app.MapPost("/cms/editors", (HttpRequest request, AssignCmsEditorRequest body, R
 {
     if (!TryGetDeviceAuth(request, db, out var deviceId))
         return Results.Unauthorized();
-    if (!CanAssignCmsEditors(db, deviceId))
+    if (!IsAdminOrModifier(db, deviceId))
         return Results.StatusCode(StatusCodes.Status403Forbidden);
     if (string.IsNullOrWhiteSpace(body.Title))
         return Results.BadRequest("Title is required.");
@@ -879,7 +830,7 @@ app.MapDelete("/cms/editors/{documentId:guid}/{editorDeviceId:guid}", (Guid docu
 {
     if (!TryGetDeviceAuth(request, db, out var deviceId))
         return Results.Unauthorized();
-    if (!CanAssignCmsEditors(db, deviceId))
+    if (!IsAdminOrModifier(db, deviceId))
         return Results.StatusCode(StatusCodes.Status403Forbidden);
 
     return db.RevokeCmsEditor(documentId, editorDeviceId) ? Results.NoContent() : Results.NotFound();
@@ -897,7 +848,7 @@ app.MapGet("/cms/editors", (HttpRequest request, RelayDatabase db) =>
 {
     if (!TryGetDeviceAuth(request, db, out var deviceId))
         return Results.Unauthorized();
-    if (!CanAssignCmsEditors(db, deviceId))
+    if (!IsAdminOrModifier(db, deviceId))
         return Results.StatusCode(StatusCodes.Status403Forbidden);
 
     return Results.Ok(db.GetActiveCmsGrants(null).Select(g => ToCmsGrantDto(g, db)).ToList());
@@ -917,7 +868,7 @@ app.MapGet("/cms/annotations/pending", (HttpRequest request, RelayDatabase db) =
 {
     if (!TryGetDeviceAuth(request, db, out var deviceId))
         return Results.Unauthorized();
-    if (!CanAssignCmsEditors(db, deviceId))
+    if (!IsAdminOrModifier(db, deviceId))
         return Results.StatusCode(StatusCodes.Status403Forbidden);
 
     return Results.Ok(db.GetPendingCmsAnnotations()
@@ -1213,8 +1164,7 @@ app.MapPost("/picc/status", (HttpRequest request, SetPiccStatusRequest body, Rel
     if (!TryGetDeviceAuth(request, db, out var deviceId))
         return Results.Unauthorized();
 
-    var policy = db.GetDevicePolicy(deviceId);
-    if (policy is not { } p || (!p.PiccTeam && p.Role != 0))
+    if (!IsPiccTeamOrAdmin(db, deviceId))
         return Results.StatusCode(StatusCodes.Status403Forbidden);
 
     db.SetPiccStatus(deviceId, body.ContentBlob);
@@ -1235,8 +1185,7 @@ app.MapPost("/picc/roster-pointer", (HttpRequest request, SetPiccRosterPointerRe
     if (!TryGetDeviceAuth(request, db, out var deviceId))
         return Results.Unauthorized();
 
-    var policy = db.GetDevicePolicy(deviceId);
-    if (policy is not { } p || (!p.PiccTeam && p.Role != 0))
+    if (!IsPiccTeamOrAdmin(db, deviceId))
         return Results.StatusCode(StatusCodes.Status403Forbidden);
 
     db.SetPiccRosterPointer(deviceId, body.LibraryFileId);
@@ -1248,8 +1197,7 @@ app.MapGet("/picc/roster-pointer", (HttpRequest request, RelayDatabase db) =>
     if (!TryGetDeviceAuth(request, db, out var deviceId))
         return Results.Unauthorized();
 
-    var policy = db.GetDevicePolicy(deviceId);
-    if (policy is not { } p || (!p.PiccTeam && p.Role != 0))
+    if (!IsPiccTeamOrAdmin(db, deviceId))
         return Results.StatusCode(StatusCodes.Status403Forbidden);
 
     var pointer = db.GetPiccRosterPointer();
@@ -1270,7 +1218,7 @@ void MapOpicentrumBoard(
         if (!TryGetDeviceAuth(request, db, out var deviceId))
             return Results.Unauthorized();
 
-        if (db.GetDevicePolicy(deviceId)?.Role is not (0 or 1)) // Admin or Modifier only
+        if (!IsAdminOrModifier(db, deviceId)) // Admin or Modifier only
             return Results.StatusCode(StatusCodes.Status403Forbidden);
 
         set(db, deviceId, body.ContentBlob);
@@ -1282,7 +1230,7 @@ void MapOpicentrumBoard(
         if (!TryGetDeviceAuth(request, db, out var deviceId))
             return Results.Unauthorized();
 
-        if (db.GetDevicePolicy(deviceId)?.Role is not (0 or 1))
+        if (!IsAdminOrModifier(db, deviceId))
             return Results.StatusCode(StatusCodes.Status403Forbidden);
 
         var status = get(db);
@@ -1301,8 +1249,7 @@ app.MapPost("/board", (HttpRequest request, CreateBoardPostRequest body, RelayDa
     if (!TryGetDeviceAuth(request, db, out var deviceId))
         return Results.Unauthorized();
 
-    var role = db.GetDevicePolicy(deviceId)?.Role;
-    if (role is not (0 or 1)) // Admin or Modifier only
+    if (!IsAdminOrModifier(db, deviceId)) // Admin or Modifier only
         return Results.StatusCode(StatusCodes.Status403Forbidden);
     if (string.IsNullOrWhiteSpace(body.ContentBlob))
         return Results.BadRequest("Empty post.");
@@ -1644,8 +1591,7 @@ app.MapPost("/room-status/options", (HttpRequest request, SetRoomStatusOptionsRe
     if (!TryGetDeviceAuth(request, db, out var deviceId))
         return Results.Unauthorized();
 
-    var role = db.GetDevicePolicy(deviceId)?.Role;
-    if (role is not (0 or 1)) // Admin or Modifier only — same gate as the notice board
+    if (!IsAdminOrModifier(db, deviceId)) // Admin or Modifier only — same gate as the notice board
         return Results.StatusCode(StatusCodes.Status403Forbidden);
 
     db.ReplaceRoomStatusOptions(body.Options.Where(o => !string.IsNullOrWhiteSpace(o)).Select(o => o.Trim()).ToList());
@@ -1667,8 +1613,7 @@ app.MapPost("/room-status/notes", (HttpRequest request, SetRoomStatusNoteOptions
     if (!TryGetDeviceAuth(request, db, out var deviceId))
         return Results.Unauthorized();
 
-    var role = db.GetDevicePolicy(deviceId)?.Role;
-    if (role is not (0 or 1)) // Admin or Modifier only — same gate as the notice board
+    if (!IsAdminOrModifier(db, deviceId)) // Admin or Modifier only — same gate as the notice board
         return Results.StatusCode(StatusCodes.Status403Forbidden);
 
     db.ReplaceRoomStatusNoteOptions(body.Options.Where(o => !string.IsNullOrWhiteSpace(o)).Select(o => o.Trim()).ToList());
@@ -1700,14 +1645,22 @@ app.Map("/ws", async (HttpContext context, RelayDatabase db, ConnectionRegistry 
     await RelayProtocol.SendFrameAsync(socket, new RelayFrame { Type = "authResult", Success = true }, ct);
     registry.Add(deviceId, socket);
 
+    async Task DeliverOrQueueAsync(Guid recipientId, RelayFrame deliverFrame)
+    {
+        var json = RelayProtocol.Serialize(deliverFrame);
+        if (!await registry.TrySendAsync(recipientId, json))
+            db.EnqueueOutbox(recipientId, json);
+    }
+
     try
     {
-        // Flush anything queued while this device was offline, oldest first.
-        foreach (var queuedFrameJson in db.DequeueOutbox(deviceId))
+        // Flush anything queued while this device was offline, oldest first. A frame leaves the
+        // outbox only once it was actually sent, so a drop mid-flush keeps the rest for next time.
+        foreach (var (frameId, queuedFrameJson) in db.PeekOutbox(deviceId))
         {
-            if (socket.State != WebSocketState.Open)
+            if (!await registry.TrySendAsync(deviceId, queuedFrameJson))
                 break;
-            await RelayProtocol.SendRawAsync(socket, queuedFrameJson, ct);
+            db.DeleteOutboxFrame(frameId);
         }
 
         while (socket.State == WebSocketState.Open)
@@ -1716,73 +1669,14 @@ app.Map("/ws", async (HttpContext context, RelayDatabase db, ConnectionRegistry 
             if (frame is null)
                 break;
 
+            // Live delivery when the recipient is connected, otherwise (or if the live send fails)
+            // the outbox — never dropped. No ACK protocol in this pass, see RelayFrame's remarks.
             if (frame is { Type: "send", RecipientDeviceId: { } recipientId, Envelope: not null })
-            {
-                var deliverFrame = new RelayFrame { Type = "deliver", SenderDeviceId = deviceId, Envelope = frame.Envelope };
-
-                if (registry.TryGet(recipientId, out var recipientSocket))
-                {
-                    // Best-effort live delivery: if the send itself fails (e.g. the recipient
-                    // dropped between TryGet and here), fall back to the outbox rather than
-                    // losing the message — no ACK protocol in this pass, see RelayFrame's remarks.
-                    try
-                    {
-                        await RelayProtocol.SendFrameAsync(recipientSocket, deliverFrame, ct);
-                    }
-                    catch (WebSocketException)
-                    {
-                        db.EnqueueOutbox(recipientId, RelayProtocol.Serialize(deliverFrame));
-                    }
-                }
-                else
-                {
-                    db.EnqueueOutbox(recipientId, RelayProtocol.Serialize(deliverFrame));
-                }
-            }
+                await DeliverOrQueueAsync(recipientId, new RelayFrame { Type = "deliver", SenderDeviceId = deviceId, Envelope = frame.Envelope });
             else if (frame is { Type: "pairing", RecipientDeviceId: { } pairingRecipientId, PairingInviteBlob: not null })
-            {
-                // Same live-or-outbox routing as a "send" frame above — deliberately duplicated
-                // rather than generalized, since the two carry different payload shapes (Envelope
-                // vs. an opaque pairing blob) and stay independently readable this way.
-                var pairingDeliverFrame = new RelayFrame { Type = "pairing-deliver", SenderDeviceId = deviceId, PairingInviteBlob = frame.PairingInviteBlob };
-
-                if (registry.TryGet(pairingRecipientId, out var pairingRecipientSocket))
-                {
-                    try
-                    {
-                        await RelayProtocol.SendFrameAsync(pairingRecipientSocket, pairingDeliverFrame, ct);
-                    }
-                    catch (WebSocketException)
-                    {
-                        db.EnqueueOutbox(pairingRecipientId, RelayProtocol.Serialize(pairingDeliverFrame));
-                    }
-                }
-                else
-                {
-                    db.EnqueueOutbox(pairingRecipientId, RelayProtocol.Serialize(pairingDeliverFrame));
-                }
-            }
+                await DeliverOrQueueAsync(pairingRecipientId, new RelayFrame { Type = "pairing-deliver", SenderDeviceId = deviceId, PairingInviteBlob = frame.PairingInviteBlob });
             else if (frame is { Type: "group-invite", RecipientDeviceId: { } groupInviteRecipientId, GroupInviteBlob: not null })
-            {
-                // Same live-or-outbox routing again — see the "pairing" branch above.
-                var groupInviteDeliverFrame = new RelayFrame { Type = "group-invite-deliver", SenderDeviceId = deviceId, GroupInviteBlob = frame.GroupInviteBlob };
-
-                if (registry.TryGet(groupInviteRecipientId, out var groupInviteRecipientSocket))
-                {
-                    try
-                    {
-                        await RelayProtocol.SendFrameAsync(groupInviteRecipientSocket, groupInviteDeliverFrame, ct);
-                    }
-                    catch (WebSocketException)
-                    {
-                        db.EnqueueOutbox(groupInviteRecipientId, RelayProtocol.Serialize(groupInviteDeliverFrame));
-                    }
-                }
-                else
-                {
-                    db.EnqueueOutbox(groupInviteRecipientId, RelayProtocol.Serialize(groupInviteDeliverFrame));
-                }
-            }
+                await DeliverOrQueueAsync(groupInviteRecipientId, new RelayFrame { Type = "group-invite-deliver", SenderDeviceId = deviceId, GroupInviteBlob = frame.GroupInviteBlob });
         }
     }
     finally
@@ -1808,6 +1702,47 @@ app.Map("/ws", async (HttpContext context, RelayDatabase db, ConnectionRegistry 
 });
 
 app.Run();
+
+/// <summary>A bare file name only — never a path, no traversal (shared by the ops-file upload/download routes).</summary>
+static bool IsSafeFileName(string? name) =>
+    !string.IsNullOrWhiteSpace(name) && !name.Contains("..") && !name.Contains('/') && !name.Contains('\\')
+    && name.IndexOfAny(Path.GetInvalidFileNameChars()) < 0;
+
+static string FormatMegabytes(string path) => $"{new FileInfo(path).Length / 1024.0 / 1024.0:F0} MB";
+
+static IResult ServeJsonFile(string path) =>
+    File.Exists(path) ? Results.Content(File.ReadAllText(path), "application/json") : Results.NotFound();
+
+static Task WriteVersionManifestAsync(string versionPath, int versionCode, string versionName) =>
+    File.WriteAllTextAsync(versionPath, System.Text.Json.JsonSerializer.Serialize(new UpdateManifest(versionCode, versionName, DateTimeOffset.UtcNow)));
+
+/// <summary>
+/// Writes to a temp file next to the target and renames it over the target when complete, so a
+/// device downloading (or the delta endpoint reading) at that very moment never sees a half-written
+/// APK/zip — a plain File.Create truncated the live file the instant an upload started.
+/// </summary>
+static async Task WriteFileAtomicAsync(string path, Func<Stream, Task> write)
+{
+    var tempPath = path + ".uploading";
+    await using (var stream = File.Create(tempPath))
+        await write(stream);
+    File.Move(tempPath, path, overwrite: true);
+}
+
+/// <summary>Admin or Modifier (device_policy role 0/1) — the gate for notice-board posts, the Opicentrum boards, room-status options and CMS editor assignment.</summary>
+static bool IsAdminOrModifier(RelayDatabase db, Guid deviceId) => db.GetDevicePolicy(deviceId)?.Role is 0 or 1;
+
+/// <summary>picc_team member or Admin — the gate for the PICC roster pointer and status writes.</summary>
+static bool IsPiccTeamOrAdmin(RelayDatabase db, Guid deviceId) =>
+    db.GetDevicePolicy(deviceId) is { } p && (p.PiccTeam || p.Role == 0);
+
+/// <summary>Caller is either the admin-secret holder or a device-authenticated member (for uploader-or-admin endpoints); <paramref name="callerDeviceId"/> is Guid.Empty when only the admin secret authenticated.</summary>
+static bool TryGetAdminOrDevice(HttpRequest request, string adminSecret, RelayDatabase db, out Guid callerDeviceId, out bool isAdmin)
+{
+    isAdmin = IsAdminAuthorized(request, adminSecret);
+    var isDevice = TryGetDeviceAuth(request, db, out callerDeviceId);
+    return isAdmin || isDevice;
+}
 
 /// <summary>Best-effort VersionName out of a platform's own version.json (never throws — a missing/corrupt manifest just falls back to the generic download filename, same tolerance as a missing file).</summary>
 static string? ReadVersionName(string versionPath)

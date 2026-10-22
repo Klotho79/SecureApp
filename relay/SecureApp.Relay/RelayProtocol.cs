@@ -57,9 +57,5 @@ public static class RelayProtocol
         return socket.SendAsync(json, WebSocketMessageType.Text, endOfMessage: true, ct);
     }
 
-    /// <summary>Sends an already-serialized frame (e.g. one pulled verbatim from the outbox) without re-encoding it.</summary>
-    public static Task SendRawAsync(WebSocket socket, string json, CancellationToken ct)
-        => socket.SendAsync(System.Text.Encoding.UTF8.GetBytes(json), WebSocketMessageType.Text, endOfMessage: true, ct);
-
     public static string Serialize(RelayFrame frame) => JsonSerializer.Serialize(frame, JsonOptions);
 }
