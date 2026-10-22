@@ -75,8 +75,7 @@ public static class AppLog
     public static double Time(string name, Action action, params (string Key, object? Value)[] tags)
     {
         var sw = Stopwatch.StartNew();
-        try { action(); }
-        finally { }
+        action();
         var ms = sw.Elapsed.TotalMilliseconds;
         Metric(name, ms, "ms", tags);
         return ms;

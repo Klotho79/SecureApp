@@ -35,8 +35,7 @@ public static class AppLogUploader
             var secret = await scope.ServiceProvider.GetRequiredService<ISecureVaultKeyStore>().RetrieveSecretAsync(RelayDeviceVaultKeys.DeviceSecret, ct);
             if (secret is null) return;
 
-            var scheme = wsEndpoint.Scheme switch { "ws" => "http", "wss" => "https", _ => wsEndpoint.Scheme };
-            var uri = new Uri(new UriBuilder(wsEndpoint) { Scheme = scheme, Port = wsEndpoint.Port }.Uri, "diagnostics/applog");
+            var uri = new Uri(RelayHttp.ToHttpUri(wsEndpoint), "diagnostics/applog");
 
             // AppVersion (2026-10-04, user's own ask: an error must be checkable against which app
             // version was actually running when it happened, not just "sometime before now" — so a

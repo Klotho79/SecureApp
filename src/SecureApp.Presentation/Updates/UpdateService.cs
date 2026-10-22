@@ -78,8 +78,14 @@ public sealed class UpdateService : IUpdateService
         using var response = await http.GetAsync($"download/{PlatformName}", HttpCompletionOption.ResponseHeadersRead, ct);
         response.EnsureSuccessStatusCode();
 
+        return await SaveToCacheAsync(response, LocalFileName, onProgress, ct);
+    }
+
+    /// <summary>Streams a response body into a file in the app's cache directory, reporting 0..1 progress when the length is known.</summary>
+    private static async Task<string> SaveToCacheAsync(HttpResponseMessage response, string fileName, IProgress<double>? onProgress, CancellationToken ct)
+    {
         var totalBytes = response.Content.Headers.ContentLength;
-        var destinationPath = Path.Combine(Microsoft.Maui.Storage.FileSystem.CacheDirectory, LocalFileName);
+        var destinationPath = Path.Combine(Microsoft.Maui.Storage.FileSystem.CacheDirectory, fileName);
 
         await using var source = await response.Content.ReadAsStreamAsync(ct);
         await using var destination = File.Create(destinationPath);
@@ -134,23 +140,7 @@ public sealed class UpdateService : IUpdateService
             if (!response.IsSuccessStatusCode)
                 return null;
 
-            var totalBytes = response.Content.Headers.ContentLength;
-            var destinationPath = Path.Combine(Microsoft.Maui.Storage.FileSystem.CacheDirectory, "secureapp-update-delta.zip");
-            await using var source = await response.Content.ReadAsStreamAsync(ct);
-            await using var destination = File.Create(destinationPath);
-
-            var buffer = new byte[81920];
-            long readSoFar = 0;
-            int bytesRead;
-            while ((bytesRead = await source.ReadAsync(buffer, ct)) > 0)
-            {
-                await destination.WriteAsync(buffer.AsMemory(0, bytesRead), ct);
-                readSoFar += bytesRead;
-                if (totalBytes is > 0)
-                    onProgress?.Report((double)readSoFar / totalBytes.Value);
-            }
-
-            return destinationPath;
+            return await SaveToCacheAsync(response, "secureapp-update-delta.zip", onProgress, ct);
         }
         catch
         {

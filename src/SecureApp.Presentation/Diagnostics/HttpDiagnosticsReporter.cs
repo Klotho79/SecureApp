@@ -13,8 +13,7 @@ namespace SecureApp.Presentation.Diagnostics;
 /// <remarks>
 /// Lives in Presentation (not Data), same reasoning as <see cref="Library.HttpContactDirectoryService"/>
 /// — needs <c>HttpClient</c> + relay endpoint/device-identity configuration. The device-auth header
-/// helper and ws-&gt;http rewrite are duplicated from that class rather than shared, same
-/// "duplicated, stays independently readable" call this codebase already made more than once.
+/// helper and ws-&gt;http rewrite are shared via <see cref="RelayHttp"/>.
 ///
 /// <see cref="ReportAsync"/> swallows every failure of its own (no relay configured yet, not
 /// connected, network error, anything) — it is called from catch blocks and a global

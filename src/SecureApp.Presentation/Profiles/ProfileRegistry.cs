@@ -102,6 +102,10 @@ public static class ProfileRegistry
     {
         Directory.CreateDirectory(ActiveProfile.BaseDirectory);
         var json = JsonSerializer.Serialize(profiles);
-        File.WriteAllText(RegistryPath, json);
+        // Temp file + move: a crash mid-write must not leave a truncated profiles.json, which LoadAll
+        // would read as "no profiles" — and the next Create would then crown a new "owner" profile.
+        var tempPath = RegistryPath + ".tmp";
+        File.WriteAllText(tempPath, json);
+        File.Move(tempPath, RegistryPath, overwrite: true);
     }
 }
