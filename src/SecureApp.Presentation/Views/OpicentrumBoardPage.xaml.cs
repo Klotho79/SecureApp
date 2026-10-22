@@ -10,6 +10,9 @@ public partial class OpicentrumBoardPage : ContentPage
     private readonly OpicentrumBoardViewModel _viewModel;
     private Stopwatch? _ttiStopwatch;
 
+    /// <summary>Set by <see cref="NotificationsPage.OnOpicentrumBoardClicked"/> right before navigating here, so TTI can cover the click itself, not just this page's own OnAppearing-onward work.</summary>
+    public static Stopwatch? ClickStopwatch;
+
     public OpicentrumBoardPage(OpicentrumBoardViewModel viewModel)
     {
         InitializeComponent();
@@ -20,12 +23,19 @@ public partial class OpicentrumBoardPage : ContentPage
     {
         base.OnAppearing();
         // TTI telemetry (2026-10-22, user's own ask: "proměř na S23+ proč trvá zobrazení rozpisu
-        // pracovišť") — same pattern as LibraryPage's own _ttiStopwatch. This measures the FULL
-        // wall-clock gap including native XAML measure/layout of the board, not just the C#-side
-        // work OpicentrumBoardViewModel.Positions.cs's own AppLog.Metric calls already time — if
-        // this number is much bigger than opicentrum.positions.load_total, the gap is the
-        // (non-virtualized, BindableLayout-based) board's own layout pass, not the data fetch.
-        _ttiStopwatch = Stopwatch.StartNew();
+        // pracovišť", then "změř od kliknutí na otevřít po zobrazení") — same pattern as
+        // LibraryPage's own _ttiStopwatch, but now chained onto ClickStopwatch (started at the
+        // button tap, before Shell.GoToAsync) when available, so TTI covers navigation + page/VM
+        // construction too, not just this OnAppearing-onward slice. Still the FULL wall-clock gap
+        // including native XAML measure/layout of the board — if tti is much bigger than
+        // opicentrum.positions.load_total, the gap is the (non-virtualized, BindableLayout-based)
+        // board's own layout pass, not the data fetch; if click_to_appearing itself is large, the
+        // gap is navigation/page construction, before any data loading even starts.
+        var clickSw = ClickStopwatch;
+        ClickStopwatch = null;
+        if (clickSw is not null)
+            AppLog.Metric("opicentrum.positions.click_to_appearing", clickSw.Elapsed.TotalMilliseconds);
+        _ttiStopwatch = clickSw ?? Stopwatch.StartNew();
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         _viewModel.LoadCommand.Execute(null);
     }

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using SecureApp.Presentation.ViewModels;
 
 namespace SecureApp.Presentation.Views;
@@ -45,7 +46,13 @@ public partial class NotificationsPage : ContentPage
     }
 
     private async void OnOpicentrumBoardClicked(object? sender, EventArgs e)
-        => await Shell.Current.GoToAsync(nameof(OpicentrumBoardPage));
+    {
+        // 2026-10-22 profiling (user's own ask: "změř od kliknutí na otevřít po zobrazení") —
+        // starts before Shell.GoToAsync so OpicentrumBoardPage's own TTI stopwatch can pick this
+        // up and cover navigation + page/VM construction too, not just its own OnAppearing-onward work.
+        OpicentrumBoardPage.ClickStopwatch = Stopwatch.StartNew();
+        await Shell.Current.GoToAsync(nameof(OpicentrumBoardPage));
+    }
 
     private async void OnRequestNavigate(string route) => await Shell.Current.GoToAsync(route);
 }
