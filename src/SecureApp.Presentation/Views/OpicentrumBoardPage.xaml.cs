@@ -50,8 +50,20 @@ public partial class OpicentrumBoardPage : ContentPage
     {
         if (e.PropertyName != nameof(OpicentrumBoardViewModel.IsPositionsLoading) || _viewModel.IsPositionsLoading || _ttiStopwatch is null) return;
 
-        AppLog.Metric("tti.opicentrum_board_page", _ttiStopwatch.Elapsed.TotalMilliseconds);
+        var sw = _ttiStopwatch;
+        AppLog.Metric("tti.opicentrum_board_page", sw.Elapsed.TotalMilliseconds);
         _ttiStopwatch = null; // only the first load counts as TTI
+
+        // 2026-10-22 (user's own ask: "najdi proč to tak trvá, jestli vykreslení nebo přímo dat") —
+        // the metric above stops the instant this PropertyChanged handler runs, which is BEFORE the
+        // native platform actually measures/arranges/paints the newly bound board: BindableLayout
+        // builds its child VisualElements synchronously here, but the real native layout+draw pass
+        // is scheduled on the platform's own next frame(s), not synchronous with this call — so it
+        // can under-count real "pixels on screen" time for a big (29 rows x 5 days, non-virtualized)
+        // board. Two chained MainThread hops land after at least one real frame has been processed,
+        // giving a second number to tell "rendering" apart from "data/apply" with.
+        MainThread.BeginInvokeOnMainThread(() => MainThread.BeginInvokeOnMainThread(() =>
+            AppLog.Metric("tti.opicentrum_board_page.post_layout", sw.Elapsed.TotalMilliseconds)));
     }
 
     /// <summary>

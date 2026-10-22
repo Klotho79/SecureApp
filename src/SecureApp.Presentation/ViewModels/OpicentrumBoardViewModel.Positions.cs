@@ -194,6 +194,7 @@ public sealed partial class OpicentrumBoardViewModel
             .ThenBy(n => n, StringComparer.Create(Czech, ignoreCase: true))
             .ToList();
 
+        var buildSw = Stopwatch.StartNew();
         var rows = allWorkplaceNames.Select(name =>
         {
             var workplaceId = _workplaceIdByName.GetValueOrDefault(name, -1);
@@ -205,8 +206,15 @@ public sealed partial class OpicentrumBoardViewModel
             }).ToList();
             return new OpicentrumRosterRowItem(workplaceId, name, cells);
         }).ToList();
+        AppLog.Metric("opicentrum.positions.apply.build", buildSw.Elapsed.TotalMilliseconds, "ms", ("rows", rows.Count));
 
+        // 2026-10-22 (user's own ask: "jestli vykreslení nebo přímo dat") — this assignment is where
+        // BindableLayout's own CollectionChanged handler synchronously builds every child
+        // VisualElement for the new ItemsSource, so timing it separately from the LINQ build above
+        // tells "plain C# data shaping" apart from "WPF-tree construction triggered by the binding".
+        var assignSw = Stopwatch.StartNew();
         PositionsRows = new ObservableCollection<OpicentrumRosterRowItem>(rows);
+        AppLog.Metric("opicentrum.positions.apply.assign", assignSw.Elapsed.TotalMilliseconds, "ms");
     }
 
     /// <summary>Every other workplace name on the board, for the page's code-behind to build its "move to…" action sheet from.</summary>
