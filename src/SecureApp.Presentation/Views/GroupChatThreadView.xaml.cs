@@ -83,70 +83,8 @@ public partial class GroupChatThreadView : ContentView
         });
     }
 
-    private async void OnAttachClicked(object? sender, EventArgs e)
-    {
-        var choice = await Shell.Current.DisplayActionSheetAsync("Přiložit soubor", "Zrušit", null, "Vybrat z knihovny", "Nahrát nový soubor");
-        if (choice is "Vybrat z knihovny")
-            await PickFromLibraryAsync();
-        else if (choice is "Nahrát nový soubor")
-            await UploadAndAttachAsync();
-    }
-
-    private async Task PickFromLibraryAsync()
-    {
-        IReadOnlyList<SharedLibraryFileSummary> results;
-        try
-        {
-            results = await _libraryService.SearchAsync();
-        }
-        catch (Exception ex)
-        {
-            await Shell.Current.DisplayAlertAsync("Nepodařilo se načíst knihovnu", ex.Message, "OK");
-            return;
-        }
-
-        if (results.Count == 0)
-        {
-            await Shell.Current.DisplayAlertAsync("Sdílená knihovna je prázdná", "Nejprve nahrajte soubor, nebo místo toho použijte \"Nahrát nový soubor\".", "OK");
-            return;
-        }
-
-        var labels = results.Select(r => string.IsNullOrWhiteSpace(r.FolderPath) ? r.FileName : $"{r.FolderPath}/{r.FileName}").ToArray();
-        var choice = await Shell.Current.DisplayActionSheetAsync("Vyberte soubor", "Zrušit", null, labels);
-        var index = Array.IndexOf(labels, choice);
-        if (index < 0) return;
-
-        var picked = results[index];
-        ViewModel?.SetPendingAttachment(picked.Id, picked.FileName);
-    }
-
-    private async Task UploadAndAttachAsync()
-    {
-        FileResult? picked;
-        try
-        {
-            picked = await FilePicker.PickAsync(new PickOptions { PickerTitle = "Vyberte soubor k přiložení" });
-        }
-        catch (Exception ex)
-        {
-            await Shell.Current.DisplayAlertAsync("Nepodařilo se otevřít výběr souborů", ex.Message, "OK");
-            return;
-        }
-
-        if (picked is null) return;
-
-        try
-        {
-            await using var stream = await picked.OpenReadAsync();
-            // listed: false (2026-09-14) — a chat attachment is private, not added to the community library browser.
-            var summary = await _libraryService.UploadAsync(string.Empty, picked.FileName, [], stream, listed: false);
-            ViewModel?.SetPendingAttachment(summary.Id, summary.FileName);
-        }
-        catch (Exception ex)
-        {
-            await Shell.Current.DisplayAlertAsync($"Nepodařilo se nahrát '{picked.FileName}'", ex.Message, "OK");
-        }
-    }
+    private async void OnAttachClicked(object? sender, EventArgs e) =>
+        await ChatAttachmentPicker.ChooseAndAttachAsync(_libraryService, (id, name) => ViewModel?.SetPendingAttachment(id, name));
 
     private async void OnLeaveGroupClicked(object? sender, EventArgs e) => await LeaveGroupAsync();
 

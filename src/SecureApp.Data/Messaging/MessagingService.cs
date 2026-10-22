@@ -13,6 +13,10 @@ namespace SecureApp.Data.Messaging;
 /// <inheritdoc cref="IMessagingService"/>
 public sealed class MessagingService : IMessagingService
 {
+    // Static: this service is Scoped, so a per-instance lock would not be shared between the app-wide
+    // receive handler and a chat page's handler (each resolves its own instance).
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, SemaphoreSlim> ReceiveLocks = new();
+
     private readonly ICryptoService _crypto;
     private readonly IRatchetService _ratchet;
     private readonly IChatSessionRepository _sessionRepository;
@@ -212,21 +216,37 @@ public sealed class MessagingService : IMessagingService
         // of forward secrecy. Recognized by its exact wire header — DhPublicKey + MessageNumber
         // together uniquely identify one message within one sending chain — so a genuine duplicate
         // just returns the already-stored row instead of re-attempting the ratchet.
-        var duplicate = await _messageRepository.FindInboundByHeaderAsync(envelope.SessionId, envelope.Header.DhPublicKey, envelope.Header.MessageNumber, ct);
-        if (duplicate is not null)
-            return duplicate;
+        // The duplicate check, the decrypt and the store are ONE critical section per session
+        // (2026-10-22): both the app-wide handler (App.OnEnvelopeReceived) and an open chat page's own
+        // handler subscribe to the same envelope event and call this concurrently. Checked outside a
+        // lock, both passed the duplicate test before either stored, and the loser's decrypt then
+        // failed (one-time ratchet key already spent) and triggered a pointless session auto-heal.
+        // Serialized, the loser simply finds the winner's stored row and returns it.
+        var receiveLock = ReceiveLocks.GetOrAdd(envelope.SessionId, _ => new SemaphoreSlim(1, 1));
+        await receiveLock.WaitAsync(ct);
+        Message message;
+        try
+        {
+            var duplicate = await _messageRepository.FindInboundByHeaderAsync(envelope.SessionId, envelope.Header.DhPublicKey, envelope.Header.MessageNumber, ct);
+            if (duplicate is not null)
+                return duplicate;
 
-        // Decrypting the wire envelope both verifies authenticity and advances the ratchet's
-        // receive chain — this must happen exactly once per message, which is also why the
-        // decrypted plaintext (not the wire ciphertext) is what gets re-encrypted for storage.
-        var plaintext = await _ratchet.RatchetDecryptAsync(envelope.SessionId, envelope.Header, envelope.Payload, ct);
+            // Decrypting the wire envelope both verifies authenticity and advances the ratchet's
+            // receive chain — this must happen exactly once per message, which is also why the
+            // decrypted plaintext (not the wire ciphertext) is what gets re-encrypted for storage.
+            var plaintext = await _ratchet.RatchetDecryptAsync(envelope.SessionId, envelope.Header, envelope.Payload, ct);
 
-        var storageKeyId = await GetOrCreateActiveMessageStorageKeyIdAsync(ct);
-        var storedPayload = await _crypto.EncryptAsync(plaintext, storageKeyId, ct);
+            var storageKeyId = await GetOrCreateActiveMessageStorageKeyIdAsync(ct);
+            var storedPayload = await _crypto.EncryptAsync(plaintext, storageKeyId, ct);
 
-        var message = new Message(envelope.SessionId, MessageDirection.Inbound, envelope.Header, storedPayload, envelope.AttachmentDocumentId, envelope.AttachmentLibraryFileId, envelope.AttachmentFileName, envelope.GroupChatId, envelope.GroupMessageId, envelope.IsSystemPayload, envelope.OriginMessageId, envelope.SenderRole);
-        message.MarkDelivered();
-        await _messageRepository.AddAsync(message, ct);
+            message = new Message(envelope.SessionId, MessageDirection.Inbound, envelope.Header, storedPayload, envelope.AttachmentDocumentId, envelope.AttachmentLibraryFileId, envelope.AttachmentFileName, envelope.GroupChatId, envelope.GroupMessageId, envelope.IsSystemPayload, envelope.OriginMessageId, envelope.SenderRole);
+            message.MarkDelivered();
+            await _messageRepository.AddAsync(message, ct);
+        }
+        finally
+        {
+            receiveLock.Release();
+        }
 
         session.NoteRatcheted();
         await _sessionRepository.UpdateAsync(session, ct);

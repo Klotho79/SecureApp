@@ -32,6 +32,23 @@ internal static class RelayHttp
         return ToHttpUri(wsEndpoint);
     }
 
+    /// <summary>Builds an authenticated request for <paramref name="path"/> relative to the relay's HTTP base — the "endpoint + device auth" pair every CMS-style service needs in one call.</summary>
+    public static async Task<HttpRequestMessage> CreateAuthorizedRequestAsync(HttpMethod method, string path, ITransportSettingsRepository transportSettingsRepository, ISecureVaultKeyStore vault, CancellationToken ct)
+    {
+        var endpoint = await GetHttpEndpointAsync(transportSettingsRepository, ct);
+        var request = new HttpRequestMessage(method, new Uri(endpoint, path));
+        try
+        {
+            await AddDeviceAuthAsync(request, transportSettingsRepository, vault, ct);
+        }
+        catch
+        {
+            request.Dispose();
+            throw;
+        }
+        return request;
+    }
+
     public static async Task AddDeviceAuthAsync(HttpRequestMessage request, ITransportSettingsRepository transportSettingsRepository, ISecureVaultKeyStore vault, CancellationToken ct)
     {
         var configuration = await transportSettingsRepository.GetAsync(ct);

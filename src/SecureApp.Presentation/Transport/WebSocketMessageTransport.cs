@@ -41,6 +41,11 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly HttpClient _httpClient = new();
 
+    // ClientWebSocket.SendAsync must not run concurrently on one socket — a delivery ack, a user
+    // message and a resend can all fire at once; without this the 2nd throws InvalidOperationException
+    // (and the message is lost).
+    private readonly SemaphoreSlim _sendLock = new(1, 1);
+
     private ClientWebSocket? _socket;
     private Task? _receiveLoopTask;
     private CancellationTokenSource? _receiveLoopCts;
@@ -213,9 +218,16 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
             throw new RelayUnauthorizedException();
         }
 
+        // Release whatever connection this one replaces (a dead socket the supervisor reconnected
+        // over used to just leak, along with its CancellationTokenSource).
+        var previousSocket = _socket;
+        var previousLoopCts = _receiveLoopCts;
         _socket = socket;
         _receiveLoopCts = new CancellationTokenSource();
         _receiveLoopTask = ReceiveLoopAsync(socket, _receiveLoopCts.Token);
+        previousLoopCts?.Cancel();
+        previousSocket?.Dispose();
+        previousLoopCts?.Dispose();
 
         // Persist whichever endpoint this connect actually used (the caller may have typed a
         // different address than what RegisterAsync originally saved) and make sure auto-connect
@@ -305,7 +317,7 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
         var recipientDeviceId = session.PeerRelayDeviceId
             ?? throw new InvalidOperationException($"Chat session '{envelope.SessionId}' has no linked relay device id.");
 
-        await SendFrameAsync(socket, new WireFrame { Type = "send", RecipientDeviceId = recipientDeviceId, Envelope = envelope }, ct);
+        await SendFrameLockedAsync(socket, new WireFrame { Type = "send", RecipientDeviceId = recipientDeviceId, Envelope = envelope }, ct);
     }
 
     public async Task SendPairingInviteAsync(Guid recipientRelayDeviceId, string inviteBlob, CancellationToken ct = default)
@@ -314,7 +326,7 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
         if (_socket is not { State: WebSocketState.Open } socket)
             throw new InvalidOperationException("Není připojeno k relay serveru.");
 
-        await SendFrameAsync(socket, new WireFrame { Type = "pairing", RecipientDeviceId = recipientRelayDeviceId, PairingInviteBlob = inviteBlob }, ct);
+        await SendFrameLockedAsync(socket, new WireFrame { Type = "pairing", RecipientDeviceId = recipientRelayDeviceId, PairingInviteBlob = inviteBlob }, ct);
     }
 
     public async Task SendGroupInviteAsync(Guid recipientRelayDeviceId, string groupInviteBlob, CancellationToken ct = default)
@@ -323,7 +335,7 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
         if (_socket is not { State: WebSocketState.Open } socket)
             throw new InvalidOperationException("Není připojeno k relay serveru.");
 
-        await SendFrameAsync(socket, new WireFrame { Type = "group-invite", RecipientDeviceId = recipientRelayDeviceId, GroupInviteBlob = groupInviteBlob }, ct);
+        await SendFrameLockedAsync(socket, new WireFrame { Type = "group-invite", RecipientDeviceId = recipientRelayDeviceId, GroupInviteBlob = groupInviteBlob }, ct);
     }
 
     private async Task ReceiveLoopAsync(ClientWebSocket socket, CancellationToken ct)
@@ -362,7 +374,10 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
         }
         finally
         {
-            RaiseConnectionState(TransportConnectionState.Disconnected);
+            // Only report a drop for the CURRENT connection — a loop that was replaced by a newer
+            // ConnectAsync must not flip the state back to Disconnected after the new one is live.
+            if (ReferenceEquals(_socket, socket))
+                RaiseConnectionState(TransportConnectionState.Disconnected);
         }
     }
 
@@ -481,6 +496,13 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
         {
             return null;
         }
+    }
+
+    private async Task SendFrameLockedAsync(ClientWebSocket socket, WireFrame frame, CancellationToken ct)
+    {
+        await _sendLock.WaitAsync(ct);
+        try { await SendFrameAsync(socket, frame, ct); }
+        finally { _sendLock.Release(); }
     }
 
     private static Task SendFrameAsync(ClientWebSocket socket, WireFrame frame, CancellationToken ct)

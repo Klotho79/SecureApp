@@ -14,6 +14,9 @@ public interface IMessageRepository
     Task<Message?> GetByIdAsync(Guid id, CancellationToken ct = default);
     Task<IReadOnlyList<Message>> GetBySessionAsync(Guid chatSessionId, DateTimeOffset? sinceUtc = null, CancellationToken ct = default);
 
+    /// <summary>Only the rows a 1:1 thread actually shows — no group fan-out legs, no system payloads — oldest first, filtered in SQL (2026-10-22). System payloads (delivery acks, key offers/requests) are stored as message rows too and pile up, typically outnumbering real messages, so loading and materializing them just to discard them in memory made opening a long chat needlessly slow.</summary>
+    Task<IReadOnlyList<Message>> GetVisibleBySessionAsync(Guid chatSessionId, CancellationToken ct = default);
+
     /// <summary>The already-stored INBOUND message with exactly this wire header (DhPublicKey + MessageNumber identify one message in one sending chain), or null — the idempotency check for a re-delivered envelope, done as one SQL lookup instead of loading every message of the session (2026-10-22).</summary>
     Task<Message?> FindInboundByHeaderAsync(Guid chatSessionId, byte[] dhPublicKey, int messageNumber, CancellationToken ct = default);
 

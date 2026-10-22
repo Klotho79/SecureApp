@@ -38,6 +38,15 @@ public sealed class MessageRepository : IMessageRepository
         return rows.Select(ToEntity).ToList();
     }
 
+    public async Task<IReadOnlyList<Message>> GetVisibleBySessionAsync(Guid chatSessionId, CancellationToken ct = default)
+    {
+        var connection = await _connectionFactory.GetConnectionAsync(ct);
+        var rows = await connection.QueryAsync<MessageRow>(
+            "SELECT * FROM messages WHERE chat_session_id = ? AND group_chat_id IS NULL AND is_system_payload = 0 ORDER BY created_at_utc",
+            chatSessionId.ToString());
+        return rows.Select(ToEntity).ToList();
+    }
+
     public async Task<Message?> FindInboundByHeaderAsync(Guid chatSessionId, byte[] dhPublicKey, int messageNumber, CancellationToken ct = default)
     {
         var connection = await _connectionFactory.GetConnectionAsync(ct);

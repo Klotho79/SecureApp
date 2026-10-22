@@ -78,24 +78,7 @@ public sealed class HttpCmsAssignmentService : ICmsAssignmentService
     private static CmsAssignment ToModel(GrantDto g) =>
         new(g.DocumentId, g.EditorDeviceId, g.EditorDisplayName, g.Title, g.FolderPath, g.GrantedAtUtc, g.DocumentStatus);
 
-    private async Task<HttpRequestMessage> CreateAsync(HttpMethod method, string path, CancellationToken ct)
-    {
-        var configuration = await _transportSettingsRepository.GetAsync(ct);
-        var wsEndpoint = configuration?.EndpointUri
-            ?? throw new InvalidOperationException("Zatím není nastavená adresa relay serveru — nastavte ji nejprve v Nastavení.");
-        var scheme = wsEndpoint.Scheme switch { "ws" => "http", "wss" => "https", _ => wsEndpoint.Scheme };
-        var endpoint = new UriBuilder(wsEndpoint) { Scheme = scheme, Port = wsEndpoint.Port }.Uri;
-
-        var deviceId = configuration.AssignedDeviceId
-            ?? throw new InvalidOperationException("Nejprve se zaregistrujte u relay serveru v Nastavení.");
-        var secretBytes = await _vault.RetrieveSecretAsync(RelayDeviceVaultKeys.DeviceSecret, ct)
-            ?? throw new InvalidOperationException("V úložišti chybí tajný klíč zařízení pro relay.");
-
-        var request = new HttpRequestMessage(method, new Uri(endpoint, path));
-        request.Headers.Add("X-Device-Id", deviceId.ToString());
-        request.Headers.Add("X-Device-Secret", Encoding.UTF8.GetString(secretBytes));
-        return request;
-    }
+    private Task<HttpRequestMessage> CreateAsync(HttpMethod method, string path, CancellationToken ct) => RelayHttp.CreateAuthorizedRequestAsync(method, path, _transportSettingsRepository, _vault, ct);
 
     private sealed record MemberDto(Guid DeviceId, string DisplayName, string? Email);
 

@@ -135,11 +135,7 @@ public sealed partial class ChatViewModel : ChatThreadViewModelBase<ChatMessageI
                 var session = await _sessionRepository.GetByIdAsync(_chatSessionId);
                 var role = _currentUserService.Current.Role;
 
-                var allRows = await _messageRepository.GetBySessionAsync(_chatSessionId);
-                var visible = allRows
-                    .Where(m => m.GroupChatId is null && !m.IsSystemPayload)
-                    .OrderBy(m => m.CreatedAtUtc)
-                    .ToList();
+                var visible = (await _messageRepository.GetVisibleBySessionAsync(_chatSessionId)).ToList();
 
                 var initialStart = Math.Max(0, visible.Count - InitialMessageCount);
                 var older = visible.Take(initialStart).ToList();
