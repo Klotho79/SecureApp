@@ -98,15 +98,19 @@ public sealed partial class NotificationsViewModel
                 .Where(a => a.WorkplaceName is { } name && RoomWorkplaceKeywords.IsQualifying(name))
                 .ToList();
 
-            var statusOptions = await _roomStatusService.GetStatusOptionsAsync();
+            // The two relay reads are independent — start the status list alongside the options
+            // (only when there is a sál to show it for) instead of paying two round trips in a row.
+            var statusOptionsTask = _roomStatusService.GetStatusOptionsAsync();
+            var statusesTask = myQualifyingAssignments.Count > 0 ? _roomStatusService.ListAsync() : null;
+            var statusOptions = await statusOptionsTask;
 
-            if (myQualifyingAssignments.Count == 0)
+            if (statusesTask is null)
             {
                 MyRoomStatusRows = [MyRoomStatusItem.CreateUnassigned(statusOptions)];
                 return;
             }
 
-            var statuses = await _roomStatusService.ListAsync();
+            var statuses = await statusesTask;
             var statusByWorkplace = statuses.ToDictionary(s => s.WorkplaceId);
             MyRoomStatusRows = new ObservableCollection<MyRoomStatusItem>(myQualifyingAssignments
                 .Select(a =>
@@ -134,8 +138,12 @@ public sealed partial class NotificationsViewModel
         // Defense in depth alongside the dialog's FlexLayout IsEnabled binding (see
         // MyRoomStatusItem.HasAssignment's own remarks) — the unassigned placeholder has nothing to save.
         if (room is null || !room.HasAssignment) return;
+        var previousStatus = room.CurrentStatus;
         room.MarkSelected(tile.Text);
-        await _roomStatusService.SetStatusAsync(tile.WorkplaceId, tile.WorkplaceName, tile.Text);
+        // SetStatusAsync reports failure as false — roll the optimistic badge back so the dashboard
+        // never shows a status that was not actually saved.
+        if (!await _roomStatusService.SetStatusAsync(tile.WorkplaceId, tile.WorkplaceName, tile.Text))
+            room.MarkSelected(previousStatus);
     }
 }
 
@@ -179,7 +187,7 @@ public sealed partial class MyRoomStatusItem : ObservableObject
         new(Guid.Empty, "Stav mého sálu", statusOptions, "Nezařazen na sále", null, null, hasAssignment: false);
 
     /// <summary>Called right after a tile is tapped, before the relay round-trip finishes — same optimistic-then-persist shape <see cref="NotificationsViewModel"/>'s other commands use.</summary>
-    public void MarkSelected(string status)
+    public void MarkSelected(string? status)
     {
         CurrentStatus = status;
         foreach (var option in Options) option.IsSelected = option.Text == status;

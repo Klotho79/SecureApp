@@ -81,8 +81,13 @@ public sealed partial class RedakceViewModel
             var names = LibrarySeedCategories.Concat(extraFolders).ToList();
 
             LibraryTopCategories = new ObservableCollection<string>(names);
+            // Assigning a first selection already triggers OnSelectedLibraryTopCategoryChanged →
+            // RefreshLibrarySubcategoriesAsync; only refresh explicitly when that handler won't fire,
+            // otherwise the first Redakce open fetched the sub-categories twice.
+            var hadSelection = SelectedLibraryTopCategory is not null;
             SelectedLibraryTopCategory ??= names.FirstOrDefault();
-            await RefreshLibrarySubcategoriesAsync();
+            if (hadSelection || SelectedLibraryTopCategory is null)
+                await RefreshLibrarySubcategoriesAsync();
         }
         catch (Exception ex)
         {

@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using SecureApp.Domain.Entities;
 using SecureApp.Domain.Enums;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
@@ -63,8 +64,14 @@ public sealed partial class RoomStatusViewModel : ObservableObject
         RoomStatusRows = [];
     }
 
+    /// <summary>Today's qualifying sály as last fetched from Opicentrum (or the local-rozpis fallback). Reused after saving a status so a save doesn't repeat the Opicentrum login + page scrape.</summary>
+    private IReadOnlyList<string>? _todaysWorkplaceNames;
+    private DateOnly _todaysWorkplaceNamesDate;
+
     [RelayCommand]
-    private async Task LoadAsync()
+    private Task LoadAsync() => LoadCoreAsync(refetchWorkplaceNames: true);
+
+    private async Task LoadCoreAsync(bool refetchWorkplaceNames)
     {
         IsLoading = true;
         try
@@ -92,25 +99,15 @@ public sealed partial class RoomStatusViewModel : ObservableObject
             var statusByWorkplace = statusesTask.Result.ToDictionary(s => s.WorkplaceId);
 
             IReadOnlyList<string> todaysWorkplaceNames;
-            try
+            if (!refetchWorkplaceNames && _todaysWorkplaceNames is { } cachedNames && _todaysWorkplaceNamesDate == today)
             {
-                // 2026-10-16, bugfix: FetchWorkplaceNamesForDateAsync returns EVERY pracoviste entry
-                // for the day (ambulances, ARIMs, everything), not just sály — the board must filter
-                // it the same way the fallback path below already does.
-                todaysWorkplaceNames = (await _opicentrumSyncService.FetchWorkplaceNamesForDateAsync(today))
-                    .Where(RoomWorkplaceKeywords.IsQualifying)
-                    .ToList();
+                todaysWorkplaceNames = cachedNames;
             }
-            catch
+            else
             {
-                // Opicentrum unreachable right now (seen live: "Software caused connection abort") —
-                // fall back to whatever this device's own already-synced local rozpis knows about
-                // its own qualifying room(s), rather than an empty board.
-                todaysWorkplaceNames = assignmentsTask.Result
-                    .Where(a => a.WorkplaceName is { } name && RoomWorkplaceKeywords.IsQualifying(name))
-                    .Select(a => a.WorkplaceName!)
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToList();
+                todaysWorkplaceNames = await FetchTodaysWorkplaceNamesAsync(today, assignmentsTask.Result);
+                _todaysWorkplaceNames = todaysWorkplaceNames;
+                _todaysWorkplaceNamesDate = today;
             }
 
             var rows = todaysWorkplaceNames
@@ -142,6 +139,30 @@ public sealed partial class RoomStatusViewModel : ObservableObject
         }
     }
 
+    private async Task<IReadOnlyList<string>> FetchTodaysWorkplaceNamesAsync(DateOnly today, IReadOnlyList<WorkAssignment> todaysAssignments)
+    {
+        try
+        {
+            // 2026-10-16, bugfix: FetchWorkplaceNamesForDateAsync returns EVERY pracoviste entry
+            // for the day (ambulances, ARIMs, everything), not just sály — the board must filter
+            // it the same way the fallback path below already does.
+            return (await _opicentrumSyncService.FetchWorkplaceNamesForDateAsync(today))
+                .Where(RoomWorkplaceKeywords.IsQualifying)
+                .ToList();
+        }
+        catch
+        {
+            // Opicentrum unreachable right now (seen live: "Software caused connection abort") —
+            // fall back to whatever this device's own already-synced local rozpis knows about
+            // its own qualifying room(s), rather than an empty board.
+            return todaysAssignments
+                .Where(a => a.WorkplaceName is { } name && RoomWorkplaceKeywords.IsQualifying(name))
+                .Select(a => a.WorkplaceName!)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+    }
+
     [RelayCommand]
     private async Task SetRoomStatusAsync(RoomStatusRowItem? row)
     {
@@ -154,7 +175,8 @@ public sealed partial class RoomStatusViewModel : ObservableObject
         var note = string.IsNullOrWhiteSpace(row.SelectedNote) ? null : row.SelectedNote;
         if (status is null && note is null) return;
         await _roomStatusService.SetStatusAsync(row.WorkplaceId, row.WorkplaceName, status, note);
-        await LoadAsync();
+        // The sály themselves haven't changed — skip the Opicentrum scrape, only re-read the statuses.
+        await LoadCoreAsync(refetchWorkplaceNames: false);
     }
 }
 

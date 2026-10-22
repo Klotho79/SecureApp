@@ -119,11 +119,16 @@ public sealed partial class LibrarySubcategoryDetailViewModel : ObservableObject
             var myDeviceId = (await _transportSettingsRepository.GetAsync())?.AssignedDeviceId;
             var folderPath = $"{_parentCategory}/{SubcategoryName}";
 
-            var files = await _libraryService.SearchAsync(folderPath: folderPath);
+            // Files and links are independent relay reads — start both so they overlap; files still
+            // render as soon as they arrive, even if the links call is the slower (or failing) one.
+            var filesTask = _libraryService.SearchAsync(folderPath: folderPath);
+            var linksTask = _libraryService.ListLinksAsync(_subcategoryId);
+
+            var files = await filesTask;
             Files = new ObservableCollection<LibraryFileItem>(files.Select(f => ToFileItem(f, myDeviceId, CanTranslateDocuments)));
             HasFiles = Files.Count > 0;
 
-            var links = await _libraryService.ListLinksAsync(_subcategoryId);
+            var links = await linksTask;
             Links = new ObservableCollection<SubcategoryLinkItem>(links.Select(l => ToLinkItem(l, myDeviceId)));
             HasLinks = Links.Count > 0;
         }
