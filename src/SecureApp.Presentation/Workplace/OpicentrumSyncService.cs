@@ -367,18 +367,47 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
     /// slots and the weekly workplace roster for each week of the month (catches anyone the leave grid
     /// might not list). Deduplicated by <see cref="OpicentrumParsing.NormalizeName"/>, first spelling wins.
     /// </summary>
-    public async Task<IReadOnlyList<string>> FetchStaffNamesAsync(DateOnly month, CancellationToken ct = default)
+    private const string NotConfiguredMessage = "Nejprve níže uložte přihlašovací údaje do Opicentra.";
+    private const string LoginFailedMessage = "Přihlášení do Opicentra se nezdařilo — zkontrolujte uživatelské jméno a heslo.";
+
+    /// <summary>
+    /// One logged-in Opicentrum session for the read-only fetches (2026-10-22 — this preamble was
+    /// copy-pasted into five methods): reads the stored credentials, opens a fresh cookie-bearing
+    /// client, takes the app-wide <see cref="LoginGate"/> (see its remarks — one login at a time),
+    /// logs in, runs <paramref name="work"/>, and releases the gate. Throws
+    /// <see cref="InvalidOperationException"/> if no credentials are stored or the login fails.
+    /// </summary>
+    private async Task<T> WithSessionAsync<T>(Func<HttpClient, Task<T>> work, CancellationToken ct)
     {
         var usernameBytes = await _vault.RetrieveSecretAsync(OpicentrumVaultKeys.Username, ct);
         var passwordBytes = await _vault.RetrieveSecretAsync(OpicentrumVaultKeys.Password, ct);
         if (usernameBytes is null || passwordBytes is null)
-            throw new InvalidOperationException("Nejprve níže uložte přihlašovací údaje do Opicentra.");
+            throw new InvalidOperationException(NotConfiguredMessage);
 
         var cookies = new CookieContainer();
         using var handler = new HttpClientHandler { CookieContainer = cookies, UseCookies = true };
         using var http = new HttpClient(handler) { BaseAddress = new Uri(BaseUrl) };
         http.DefaultRequestHeaders.UserAgent.ParseAdd(BrowserUserAgent);
 
+        await LoginGate.WaitAsync(ct);
+        try
+        {
+            if (await LoginAsync(http, Encoding.UTF8.GetString(usernameBytes), Encoding.UTF8.GetString(passwordBytes), ct) is null)
+                throw new InvalidOperationException(LoginFailedMessage);
+
+            return await work(http);
+        }
+        finally
+        {
+            LoginGate.Release();
+        }
+    }
+
+    private Task WithSessionAsync(Func<HttpClient, Task> work, CancellationToken ct) =>
+        WithSessionAsync<bool>(async http => { await work(http); return true; }, ct);
+
+    public async Task<IReadOnlyList<string>> FetchStaffNamesAsync(DateOnly month, CancellationToken ct = default)
+    {
         var monthStart = new DateOnly(month.Year, month.Month, 1);
         var monthEnd = monthStart.AddMonths(1).AddDays(-1);
         var names = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -389,12 +418,8 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
             names.TryAdd(OpicentrumParsing.NormalizeName(name), name);
         }
 
-        await LoginGate.WaitAsync(ct);
-        try
+        await WithSessionAsync(async http =>
         {
-            if (await LoginAsync(http, Encoding.UTF8.GetString(usernameBytes), Encoding.UTF8.GetString(passwordBytes), ct) is null)
-                throw new InvalidOperationException("Přihlášení do Opicentra se nezdařilo — zkontrolujte uživatelské jméno a heslo.");
-
             var leaveHtml = await http.GetStringAsync($"spravavolna.php?akce=ukazvolno&rok={month.Year}&mesic={month.Month}", ct);
             foreach (Match m in LeavePersonLinkRegex().Matches(leaveHtml))
                 Add(m.Groups["name"].Value);
@@ -424,11 +449,7 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
                 }
                 catch (HttpRequestException) { /* best-effort per week */ }
             }
-        }
-        finally
-        {
-            LoginGate.Release();
-        }
+        }, ct);
 
         return names.Values.OrderBy(n => n, StringComparer.Create(Czech, ignoreCase: true)).ToList();
     }
@@ -436,24 +457,10 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
     /// <inheritdoc cref="IOpicentrumSyncService.FetchWorkplaceNamesAsync"/>
     public async Task<IReadOnlyList<string>> FetchWorkplaceNamesAsync(DateOnly weekOf, CancellationToken ct = default)
     {
-        var usernameBytes = await _vault.RetrieveSecretAsync(OpicentrumVaultKeys.Username, ct);
-        var passwordBytes = await _vault.RetrieveSecretAsync(OpicentrumVaultKeys.Password, ct);
-        if (usernameBytes is null || passwordBytes is null)
-            throw new InvalidOperationException("Nejprve níže uložte přihlašovací údaje do Opicentra.");
-
-        var cookies = new CookieContainer();
-        using var handler = new HttpClientHandler { CookieContainer = cookies, UseCookies = true };
-        using var http = new HttpClient(handler) { BaseAddress = new Uri(BaseUrl) };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd(BrowserUserAgent);
-
         var names = new Dictionary<string, string>(StringComparer.Ordinal);
 
-        await LoginGate.WaitAsync(ct);
-        try
+        await WithSessionAsync(async http =>
         {
-            if (await LoginAsync(http, Encoding.UTF8.GetString(usernameBytes), Encoding.UTF8.GetString(passwordBytes), ct) is null)
-                throw new InvalidOperationException("Přihlášení do Opicentra se nezdařilo — zkontrolujte uživatelské jméno a heslo.");
-
             // Exactly one week (the one containing weekOf) — this is "a glance at the whole roster
             // right now", not a historical crawl like FetchStaffNamesAsync's month-wide sweep.
             foreach (var monday in DistinctMondaysInRange(weekOf, weekOf))
@@ -466,34 +473,15 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
                     names.TryAdd(name.ToUpperInvariant(), name);
                 }
             }
-        }
-        finally
-        {
-            LoginGate.Release();
-        }
+        }, ct);
 
         return names.Values.OrderBy(n => n, StringComparer.Create(Czech, ignoreCase: true)).ToList();
     }
 
     /// <inheritdoc cref="IOpicentrumSyncService.FetchWorkplaceNamesForDateAsync"/>
-    public async Task<IReadOnlyList<string>> FetchWorkplaceNamesForDateAsync(DateOnly date, CancellationToken ct = default)
-    {
-        var usernameBytes = await _vault.RetrieveSecretAsync(OpicentrumVaultKeys.Username, ct);
-        var passwordBytes = await _vault.RetrieveSecretAsync(OpicentrumVaultKeys.Password, ct);
-        if (usernameBytes is null || passwordBytes is null)
-            throw new InvalidOperationException("Nejprve níže uložte přihlašovací údaje do Opicentra.");
-
-        var cookies = new CookieContainer();
-        using var handler = new HttpClientHandler { CookieContainer = cookies, UseCookies = true };
-        using var http = new HttpClient(handler) { BaseAddress = new Uri(BaseUrl) };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd(BrowserUserAgent);
-
-        await LoginGate.WaitAsync(ct);
-        try
+    public Task<IReadOnlyList<string>> FetchWorkplaceNamesForDateAsync(DateOnly date, CancellationToken ct = default) =>
+        WithSessionAsync<IReadOnlyList<string>>(async http =>
         {
-            if (await LoginAsync(http, Encoding.UTF8.GetString(usernameBytes), Encoding.UTF8.GetString(passwordBytes), ct) is null)
-                throw new InvalidOperationException("Přihlášení do Opicentra se nezdařilo — zkontrolujte uživatelské jméno a heslo.");
-
             var monday = StartOfWeek(date);
             var html = await http.GetStringAsync($"pracoviste.php?akce=ukazpracoviste&datum={monday:yyyyMMdd}", ct);
             var names = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -504,32 +492,12 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
                 names.TryAdd(name.ToUpperInvariant(), name);
             }
             return names.Values.OrderBy(n => n, StringComparer.Create(Czech, ignoreCase: true)).ToList();
-        }
-        finally
-        {
-            LoginGate.Release();
-        }
-    }
+        }, ct);
 
     /// <inheritdoc cref="IOpicentrumSyncService.FetchFullRosterBoardAsync"/>
-    public async Task<OpicentrumRosterBoardSnapshot> FetchFullRosterBoardAsync(DateOnly weekOf, CancellationToken ct = default)
-    {
-        var usernameBytes = await _vault.RetrieveSecretAsync(OpicentrumVaultKeys.Username, ct);
-        var passwordBytes = await _vault.RetrieveSecretAsync(OpicentrumVaultKeys.Password, ct);
-        if (usernameBytes is null || passwordBytes is null)
-            throw new InvalidOperationException("Nejprve níže uložte přihlašovací údaje do Opicentra.");
-
-        var cookies = new CookieContainer();
-        using var handler = new HttpClientHandler { CookieContainer = cookies, UseCookies = true };
-        using var http = new HttpClient(handler) { BaseAddress = new Uri(BaseUrl) };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd(BrowserUserAgent);
-
-        await LoginGate.WaitAsync(ct);
-        try
+    public Task<OpicentrumRosterBoardSnapshot> FetchFullRosterBoardAsync(DateOnly weekOf, CancellationToken ct = default) =>
+        WithSessionAsync(async http =>
         {
-            if (await LoginAsync(http, Encoding.UTF8.GetString(usernameBytes), Encoding.UTF8.GetString(passwordBytes), ct) is null)
-                throw new InvalidOperationException("Přihlášení do Opicentra se nezdařilo — zkontrolujte uživatelské jméno a heslo.");
-
             var monday = StartOfWeek(weekOf);
             var html = await http.GetStringAsync($"pracoviste.php?akce=ukazpracoviste&datum={monday:yyyyMMdd}", ct);
             var entries = OpicentrumParsing.ParsePracovisteWeek(html);
@@ -558,12 +526,7 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
                 .ToList();
 
             return new OpicentrumRosterBoardSnapshot(monday, DateTimeOffset.UtcNow, days);
-        }
-        finally
-        {
-            LoginGate.Release();
-        }
-    }
+        }, ct);
 
     /// <inheritdoc cref="IOpicentrumSyncService.MoveRosterPersonAsync"/>
     public async Task<OpicentrumMoveResult> MoveRosterPersonAsync(DateOnly date, int personId, int sourceWorkplaceId, int targetWorkplaceId, bool keepSourceAssignment, CancellationToken ct = default)
@@ -616,40 +579,22 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
     }
 
     /// <inheritdoc cref="IOpicentrumSyncService.FetchVolnoForMonthAsync"/>
-    public async Task<OpicentrumVolnoSnapshot> FetchVolnoForMonthAsync(DateOnly month, CancellationToken ct = default)
-    {
-        var usernameBytes = await _vault.RetrieveSecretAsync(OpicentrumVaultKeys.Username, ct);
-        var passwordBytes = await _vault.RetrieveSecretAsync(OpicentrumVaultKeys.Password, ct);
-        if (usernameBytes is null || passwordBytes is null)
-            throw new InvalidOperationException("Nejprve níže uložte přihlašovací údaje do Opicentra.");
-
-        var cookies = new CookieContainer();
-        using var handler = new HttpClientHandler { CookieContainer = cookies, UseCookies = true };
-        using var http = new HttpClient(handler) { BaseAddress = new Uri(BaseUrl) };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd(BrowserUserAgent);
-
-        await LoginGate.WaitAsync(ct);
-        try
+    public Task<OpicentrumVolnoSnapshot> FetchVolnoForMonthAsync(DateOnly month, CancellationToken ct = default) =>
+        WithSessionAsync(async http =>
         {
-            if (await LoginAsync(http, Encoding.UTF8.GetString(usernameBytes), Encoding.UTF8.GetString(passwordBytes), ct) is null)
-                throw new InvalidOperationException("Přihlášení do Opicentra se nezdařilo — zkontrolujte uživatelské jméno a heslo.");
-
-            // One fetch of the whole monthly grid, then SpravavolnaRowRegex/SpravavolnaCellRegex run
-            // once per person found on it — the same regex SyncAsync already uses for just myId,
-            // generalized into a loop (2026-10-21) rather than filtered to one person. No extra HTTP
-            // calls per person.
+            // One fetch of the whole monthly grid, then ONE precompiled regex pass over every person's
+            // row (2026-10-22 — it used to build a fresh Regex per person, ~58 of them, each re-scanning
+            // the whole page). SpravavolnaCellRegex then splits each row's day cells, the same way
+            // SyncAsync does for just myId. No extra HTTP calls per person.
             var html = await http.GetStringAsync($"spravavolna.php?akce=ukazvolno&rok={month.Year}&mesic={month.Month}", ct);
             var daysInMonth = DateTime.DaysInMonth(month.Year, month.Month);
 
             var people = new List<OpicentrumVolnoPerson>();
-            foreach (Match personMatch in LeavePersonLinkRegex().Matches(html))
+            foreach (Match rowMatch in LeaveGridRowRegex().Matches(html))
             {
-                var personId = int.Parse(personMatch.Groups["osoba"].Value, CultureInfo.InvariantCulture);
-                var personName = WebUtility.HtmlDecode(personMatch.Groups["name"].Value).Trim();
+                var personId = int.Parse(rowMatch.Groups["osoba"].Value, CultureInfo.InvariantCulture);
+                var personName = WebUtility.HtmlDecode(rowMatch.Groups["name"].Value).Trim();
                 if (personName.Length == 0) continue;
-
-                var rowMatch = SpravavolnaRowRegex(personId).Match(html);
-                if (!rowMatch.Success) continue;
 
                 var entries = new List<OpicentrumVolnoEntry>();
                 var day = 1;
@@ -673,12 +618,7 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
             }
 
             return new OpicentrumVolnoSnapshot(month.Year, month.Month, DateTimeOffset.UtcNow, people);
-        }
-        finally
-        {
-            LoginGate.Release();
-        }
-    }
+        }, ct);
 
     private static string Truncate(string value, int maxLength) => value.Length <= maxLength ? value : value[..maxLength];
 
@@ -1080,5 +1020,9 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
     /// <summary>Same anchor <see cref="SpravavolnaRowRegex"/> keys off, but capturing the id and name of EVERY person on the monthly leave grid so an unknown name can be resolved to an id.</summary>
     [GeneratedRegex(@"idlekuprvolna=(?<osoba>\d+)"">(?<name>[^<]*)</a>")]
     private static partial Regex LeavePersonLinkRegex();
+
+    /// <summary>The whole leave-grid row for EVERY person in one pass: the person anchor (id + name) followed by that row's day cells up to its closing &lt;/tr&gt; — the same shape <see cref="SpravavolnaRowRegex"/> builds per id.</summary>
+    [GeneratedRegex(@"idlekuprvolna=(?<osoba>\d+)"">(?<name>[^<]*)</a>(?<cells>.*?)</tr>", RegexOptions.Singleline)]
+    private static partial Regex LeaveGridRowRegex();
 
 }
