@@ -208,15 +208,92 @@ public static class SessionRecoveryHelper
         var undelivered = rows.Where(m =>
             m.Direction == MessageDirection.Outbound &&
             !m.IsSystemPayload &&
-            m.Status is MessageStatus.Pending or MessageStatus.Sent or MessageStatus.Failed);
+            m.Status is MessageStatus.Pending or MessageStatus.Sent or MessageStatus.Failed).ToList();
 
-        foreach (var old in undelivered)
+        await ResendAsync(messagingService, messageRepository, messageTransport, sessionId, undelivered, ct);
+    }
+
+    /// <summary>
+    /// Background "send what is still stuck" sweep (2026-10-22, user: "apka musi vyresit sama"). A message
+    /// whose live send did not happen — relay not connected at that moment, or the send threw — stays
+    /// <see cref="MessageStatus.Pending"/> in storage, and until now NOTHING ever picked it up again except
+    /// the accept-a-fresh-invite path (a code comment even promised "the connection supervisor will
+    /// retry", which was never true): such a message showed 🕓 forever. Called by the supervisor on every
+    /// reconnect and stale sweep. Only touches Pending/Failed rows older than <paramref name="minAge"/>
+    /// (a message a chat page is sending right now must not be raced) in ACTIVE sessions — a session still
+    /// mid-handshake delivers its backlog through the accept path, and a closed one through its resync.
+    /// Messages already handed to the relay (Sent) are deliberately left alone: the relay holds them for
+    /// an offline recipient.
+    /// </summary>
+    public static async Task RetryUnsentOutboundAsync(
+        IMessagingService messagingService,
+        IMessageRepository messageRepository,
+        IChatSessionRepository sessionRepository,
+        IMessageTransport messageTransport,
+        TimeSpan minAge,
+        CancellationToken ct = default)
+    {
+        if (!messageTransport.IsConnected) return;
+
+        var unsent = await messageRepository.GetUnsentOutboundAsync(DateTimeOffset.UtcNow - minAge, ct);
+        if (unsent.Count == 0) return;
+
+        foreach (var bySession in unsent.GroupBy(m => m.ChatSessionId))
+        {
+            var session = await sessionRepository.GetByIdAsync(bySession.Key, ct);
+            if (session is null || session.State != ChatSessionState.Active) continue;
+
+            AppLog.Event("msg.retry-unsent", ("session", bySession.Key), ("count", bySession.Count()));
+            await ResendAsync(messagingService, messageRepository, messageTransport, bySession.Key, bySession.ToList(), ct);
+        }
+    }
+
+    /// <summary>One resend at a time process-wide: the accept path and the background sweep can both find the same stuck row, and each resend deletes the old row and mints a new one — two at once would send it twice.</summary>
+    private static readonly SemaphoreSlim _resendGate = new(1, 1);
+
+    private static async Task ResendAsync(
+        IMessagingService messagingService,
+        IMessageRepository messageRepository,
+        IMessageTransport messageTransport,
+        Guid sessionId,
+        IReadOnlyList<Message> candidates,
+        CancellationToken ct)
+    {
+        if (candidates.Count == 0) return;
+
+        await _resendGate.WaitAsync(ct);
+        try
+        {
+            await ResendLockedAsync(messagingService, messageRepository, messageTransport, sessionId, candidates, ct);
+        }
+        finally
+        {
+            _resendGate.Release();
+        }
+    }
+
+    private static async Task ResendLockedAsync(
+        IMessagingService messagingService,
+        IMessageRepository messageRepository,
+        IMessageTransport messageTransport,
+        Guid sessionId,
+        IReadOnlyList<Message> candidates,
+        CancellationToken ct)
+    {
+        foreach (var candidate in candidates)
         {
             try
             {
+                // Re-read under the gate: a concurrent resend may already have replaced or delivered it.
+                if (await messageRepository.GetByIdAsync(candidate.Id, ct) is not { } old
+                    || old.Status is not (MessageStatus.Pending or MessageStatus.Sent or MessageStatus.Failed))
+                    continue;
+
                 var plaintext = await messagingService.DecryptMessageAsync(old.Id, ct);
-                await messageRepository.DeleteAsync(old.Id, ct);
-                var (_, envelope) = await messagingService.SendMessageAsync(
+                // Mint the replacement FIRST and drop the stale row only once that worked (2026-10-22):
+                // the other way round, a failure while encrypting for the (possibly broken) session
+                // deleted the user's message for good.
+                var (fresh, envelope) = await messagingService.SendMessageAsync(
                     sessionId, plaintext,
                     attachmentDocumentId: old.AttachmentDocumentId,
                     attachmentLibraryFileId: old.AttachmentLibraryFileId,
@@ -224,16 +301,28 @@ public static class SessionRecoveryHelper
                     groupChatId: old.GroupChatId,
                     groupMessageId: old.GroupMessageId,
                     ct: ct);
+                await messageRepository.DeleteAsync(old.Id, ct);
+
                 if (messageTransport.IsConnected)
+                {
                     await messageTransport.SendEnvelopeAsync(envelope, ct);
-                AppLog.Event("session.resend", ("session", sessionId));
+                    // Without this the fresh row stayed Pending (🕓) forever although it HAD left the
+                    // device — and the unsent-sweep would then have sent it again and again.
+                    // Re-read first: the peer's ack can already have upgraded the row, and writing back
+                    // a stale in-memory "Sent" would downgrade it.
+                    if (await messageRepository.GetByIdAsync(fresh.Id, ct) is { Status: MessageStatus.Pending } current)
+                    {
+                        current.MarkSent();
+                        await messageRepository.UpdateAsync(current, ct);
+                    }
+                }
+                AppLog.Event("session.resend", ("session", sessionId), ("sent", messageTransport.IsConnected));
             }
             catch (Exception ex)
             {
-                // Best-effort — one message failing to resend must not block the rest, and the old row
-                // is already gone either way (either resent successfully, or lost the same way it would
-                // have been anyway; leaving a half-decrypted duplicate around would be worse).
-                AppLog.Error("SessionRecovery.Resend", "failed to resend an undelivered message after resync", ex);
+                // Best-effort — one message failing to resend must not block the rest. A row that
+                // could not be re-encrypted is still in place and is simply tried again next sweep.
+                AppLog.Error("SessionRecovery.Resend", "failed to resend an undelivered message", ex);
             }
         }
     }

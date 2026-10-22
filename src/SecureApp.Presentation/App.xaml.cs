@@ -776,7 +776,21 @@ public partial class App : Application
 				ReportFireAndForget(DiagnosticLogLevel.Warning, $"Pozadí: obnovení relace s {stale.PeerDisplayName} se nepodařilo, zkusí se znovu při dalším průchodu.", nameof(RunStaleSessionSweepAsync), ex);
 			}
 		}
+
+		// Messages that never left the device (relay was down when they were written, or the live send
+		// threw) used to sit at 🕓 forever — nothing retried them (2026-10-22, "apka musi vyresit sama").
+		try
+		{
+			await SessionRecoveryHelper.RetryUnsentOutboundAsync(messagingService, messageRepository, sessionRepository, transport, _unsentRetryMinAge);
+		}
+		catch (Exception ex)
+		{
+			ReportFireAndForget(DiagnosticLogLevel.Warning, "Pozadí: opakované odeslání neodeslaných zpráv se nepodařilo, zkusí se znovu při dalším průchodu.", nameof(RunStaleSessionSweepAsync), ex);
+		}
 	}
+
+	/// <summary>A message younger than this is probably being sent by an open chat page right now — the unsent-retry sweep leaves it alone.</summary>
+	private static readonly TimeSpan _unsentRetryMinAge = TimeSpan.FromSeconds(30);
 
 	/// <summary>
 	/// Structured chat-pairing health, emitted every stale-sweep tick (2026-10-04, user's own ask: "aby

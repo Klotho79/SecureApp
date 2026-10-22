@@ -26,6 +26,9 @@ public interface IMessageRepository
     /// <summary>The group counterpart of <see cref="GetVisibleBySessionAsync"/>: <see cref="GetByGroupAsync"/> minus system payloads (delete commands tagged with the group id), filtered in SQL so a group thread doesn't materialize rows it only discards (2026-10-22).</summary>
     Task<IReadOnlyList<Message>> GetVisibleByGroupAsync(Guid groupChatId, CancellationToken ct = default);
 
+    /// <summary>This device's own outbound, non-system messages that never reached the relay (<see cref="MessageStatus.Pending"/> or <see cref="MessageStatus.Failed"/>) and were created before <paramref name="createdBeforeUtc"/> — the work list of the background "send what is still stuck" sweep (2026-10-22). The age cut-off keeps it away from a message a chat page is sending right now.</summary>
+    Task<IReadOnlyList<Message>> GetUnsentOutboundAsync(DateTimeOffset createdBeforeUtc, CancellationToken ct = default);
+
     /// <summary>A cheap change-signature for a 1:1 session's visible messages (count + newest timestamp) — lets the UI keep a warm in-memory copy of a thread and only rebuild it when this actually changes, without reading/decrypting every row (2026-09-11).</summary>
     Task<string> GetSessionSignatureAsync(Guid chatSessionId, CancellationToken ct = default);
 

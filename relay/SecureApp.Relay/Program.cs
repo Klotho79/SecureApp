@@ -11,6 +11,9 @@ var builder = WebApplication.CreateBuilder(args);
 var adminSecret = builder.Configuration["SECUREAPP_RELAY_ADMIN_SECRET"]
     ?? throw new InvalidOperationException("SECUREAPP_RELAY_ADMIN_SECRET must be set (environment variable or configuration) — the relay refuses to start without it, rather than silently allow unauthenticated admin access.");
 
+// Gap between two queued frames when a reconnecting device's outbox is flushed — see the /ws handler.
+var outboxFlushPacing = TimeSpan.FromMilliseconds(75);
+
 // New-member WireGuard onboarding (2026-09-23, user's own ask: a brand-new member has no network
 // access at all yet, so SecureApp's own admin secret can gate the CALL to this endpoint, but the
 // actual wg-easy credential stays Pi-internal — never sent to/stored on any phone. Both optional:
@@ -1656,8 +1659,15 @@ app.Map("/ws", async (HttpContext context, RelayDatabase db, ConnectionRegistry 
     {
         // Flush anything queued while this device was offline, oldest first. A frame leaves the
         // outbox only once it was actually sent, so a drop mid-flush keeps the rest for next time.
+        // Paced (2026-10-22): a client older than 1.92 handles every incoming frame concurrently and has
+        // no per-session lock around the ratchet, so a burst of queued frames for one chat made it decrypt
+        // them in parallel, fail, and tear its session down ("auto-healing") — seen live as endless
+        // re-pairing after every reconnect. A short gap lets those clients finish one frame before the next.
+        var flushed = 0;
         foreach (var (frameId, queuedFrameJson) in db.PeekOutbox(deviceId))
         {
+            if (flushed++ > 0)
+                await Task.Delay(outboxFlushPacing);
             if (!await registry.TrySendAsync(deviceId, queuedFrameJson))
                 break;
             db.DeleteOutboxFrame(frameId);
