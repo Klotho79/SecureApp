@@ -213,10 +213,40 @@ public sealed partial class OpicentrumBoardViewModel
         // BindableLayout's own CollectionChanged handler synchronously builds every child
         // VisualElement for the new ItemsSource, so timing it separately from the LINQ build above
         // tells "plain C# data shaping" apart from "WPF-tree construction triggered by the binding".
+        // Incremental fill (2026-10-22): the native layout of all 29 rows at once froze the UI thread
+        // ~0.7 s on the S23+ (ui_stall metric). Show the first screenful immediately, append the rest
+        // in small batches so the first paint doesn't wait for the whole board.
         var assignSw = Stopwatch.StartNew();
-        PositionsRows = new ObservableCollection<OpicentrumRosterRowItem>(rows);
-        AppLog.Metric("opicentrum.positions.apply.assign", assignSw.Elapsed.TotalMilliseconds, "ms");
+        const int FirstBatch = 8, NextBatch = 7;
+        var version = ++_positionsFillVersion;
+        var collection = new ObservableCollection<OpicentrumRosterRowItem>(rows.Take(FirstBatch));
+        PositionsRows = collection;
+        AppLog.Metric("opicentrum.positions.apply.assign", assignSw.Elapsed.TotalMilliseconds, "ms", ("firstBatch", collection.Count));
+
+        if (rows.Count > FirstBatch)
+        {
+            var remaining = rows.Skip(FirstBatch).ToList();
+            _ = Task.Run(async () =>
+            {
+                for (var i = 0; i < remaining.Count; i += NextBatch)
+                {
+                    await Task.Delay(30);
+                    var batch = remaining.Skip(i).Take(NextBatch).ToList();
+                    var done = new TaskCompletionSource();
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        if (version == _positionsFillVersion)
+                            foreach (var r in batch) collection.Add(r);
+                        done.SetResult();
+                    });
+                    await done.Task;
+                    if (version != _positionsFillVersion) return;
+                }
+            });
+        }
     }
+
+    private int _positionsFillVersion;
 
     /// <summary>Every other workplace name on the board, for the page's code-behind to build its "move to…" action sheet from.</summary>
     public IReadOnlyList<string> GetTargetWorkplaceNames(int excludeWorkplaceId) =>
