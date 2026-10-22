@@ -66,12 +66,21 @@ public sealed partial class OpicentrumBoardViewModel
     /// background publish job — see <c>App.RunBackgroundOpicentrumRosterBoardPublishAsync</c>).
     /// Never scrapes opicentrum.cz itself; that only ever happens from <see cref="RefreshPositionsAsync"/>.
     ///
-    /// 2026-10-22 bugfix: the relay reconcile was unconditional on every open, and since the
+    /// 2026-10-22 bugfix #1: the relay reconcile was unconditional on every open, and since the
     /// background publish job ticks every ~15 min, the relay's copy was almost always "newer" by the
     /// time the page was reopened — so the (non-virtualized, BindableLayout-based) board ended up
     /// doing a SECOND full layout pass right after the first one, which is what actually made
     /// "zobrazení" feel even slower than before this round's fix, not the fetch itself. Skip the
     /// relay round trip entirely while the local cache is still fresh.
+    ///
+    /// 2026-10-22 bugfix #2, found via real on-device profiling (metrics.log from the user's own
+    /// S23+): when the cache WAS stale, the stale-reconcile's own <c>relay_fetch</c> round trip took
+    /// 5.2s on that device/network — and <see cref="IsPositionsLoading"/> stayed true for the whole
+    /// wait, so the busy indicator sat on top of the already-rendered board (bound to
+    /// <see cref="HasPositionsData"/>, not this flag) for 5+ seconds even though the data itself was
+    /// already on screen. Flip it false right after the local snapshot renders, not after the
+    /// reconcile — the reconcile keeps running, silently, exactly as "zobraz uložené A pak kontroluj
+    /// zda nejsou změny" asked for.
     /// </summary>
     private async Task LoadPositionsAsync()
     {
@@ -81,7 +90,7 @@ public sealed partial class OpicentrumBoardViewModel
         // this device's own uploaded metrics.log via GET /admin/applog/{deviceId}?kind=metrics,
         // instead of guessing. Remove once the real bottleneck is identified and fixed.
         var total = Stopwatch.StartNew();
-        IsPositionsLoading = true;
+        IsPositionsLoading = PositionsRows.Count == 0;
         PositionsErrorText = null;
         try
         {
@@ -95,6 +104,7 @@ public sealed partial class OpicentrumBoardViewModel
                 ApplyPositionsSnapshot(local);
                 AppLog.Metric("opicentrum.positions.apply", applySw.Elapsed.TotalMilliseconds, "ms",
                     ("source", "local"), ("rows", PositionsRows.Count), ("days", PositionsDayHeaders.Count));
+                IsPositionsLoading = false; // data is on screen now — the reconcile below must not re-block the UI
             }
 
             if (local is not null && DateTimeOffset.UtcNow - local.UpdatedAtUtc < TimeSpan.FromMinutes(5))

@@ -52,18 +52,23 @@ public sealed partial class OpicentrumBoardViewModel
 
     /// <summary>
     /// Local-first, same reasoning as <c>OpicentrumBoardViewModel.Positions.cs</c>'s
-    /// <c>LoadPositionsAsync</c> — including its 2026-10-22 fix skipping the relay reconcile (and the
-    /// full board re-render it causes) while the local cache is still fresh.
+    /// <c>LoadPositionsAsync</c> — including its 2026-10-22 fixes: skip the relay reconcile (and the
+    /// full board re-render it causes) while the local cache is still fresh, and don't let
+    /// <see cref="IsVolnoLoading"/> stay true for the reconcile's own round trip once local data is
+    /// already on screen (confirmed live on the user's S23+: that round trip alone took 5+ seconds).
     /// </summary>
     private async Task LoadVolnoAsync()
     {
-        IsVolnoLoading = true;
+        IsVolnoLoading = VolnoRows.Count == 0;
         VolnoErrorText = null;
         try
         {
             var local = OpicentrumVolnoBoardLocalCache.Load();
             if (local is not null)
+            {
                 ApplyVolnoSnapshot(local);
+                IsVolnoLoading = false;
+            }
 
             if (local is not null && DateTimeOffset.UtcNow - local.UpdatedAtUtc < TimeSpan.FromMinutes(10))
                 return;
