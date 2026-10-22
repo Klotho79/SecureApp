@@ -55,11 +55,15 @@
                  around" the user asked for; no CollectionView/Grid-ItemsSource (not supported for a
                  2D templated grid in MAUI), nested BindableLayout instead, same idiom this codebase
                  already uses everywhere else instead of CollectionView for templated lists. -->
-            <ScrollView Grid.Row="2" Orientation="Both" IsVisible="{Binding HasPositionsData}">
+            <ScrollView x:Name="PositionsScroll" Grid.Row="2" Orientation="Both" IsVisible="{Binding HasPositionsData}" Scrolled="OnPositionsScrolled">
                 <VerticalStackLayout Spacing="2">
-                    <!-- Header row: day labels, aligned with each row's own cell widths below. -->
-                    <HorizontalStackLayout Spacing="2">
-                        <BoxView WidthRequest="130" HeightRequest="1" Color="Transparent" />
+                    <!-- Header row: day labels, aligned with each row's own cell widths below. Sticky:
+                         code-behind translates the header by ScrollY and the workplace-name labels
+                         (and this corner) by ScrollX, so names stay visible while only the people scroll sideways. -->
+                    <HorizontalStackLayout x:Name="PositionsHeader" Spacing="2" ZIndex="2"
+                                           BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray950}}">
+                        <BoxView x:Name="PositionsCorner" WidthRequest="130" HeightRequest="1" ZIndex="3"
+                                 Color="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray950}}" />
                         <HorizontalStackLayout Spacing="2" BindableLayout.ItemsSource="{Binding PositionsDayHeaders}">
                             <BindableLayout.ItemTemplate>
                                 <DataTemplate x:DataType="x:String">
@@ -73,7 +77,9 @@
                         <BindableLayout.ItemTemplate>
                             <DataTemplate x:DataType="vm:OpicentrumRosterRowItem">
                                 <HorizontalStackLayout Spacing="2">
-                                    <Label Text="{Binding WorkplaceName}" WidthRequest="130" FontSize="10" FontAttributes="Bold" VerticalOptions="Center" LineBreakMode="TailTruncation" />
+                                    <Label Text="{Binding WorkplaceName}" WidthRequest="130" FontSize="10" FontAttributes="Bold" VerticalTextAlignment="Center" LineBreakMode="TailTruncation"
+                                           ZIndex="1" BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray950}}"
+                                           Loaded="OnPositionsNameLoaded" Unloaded="OnPositionsNameUnloaded" />
                                     <HorizontalStackLayout Spacing="2" BindableLayout.ItemsSource="{Binding Cells}">
                                         <BindableLayout.ItemTemplate>
                                             <DataTemplate x:DataType="vm:OpicentrumRosterCellItem">
@@ -118,10 +124,12 @@
             <Label Grid.Row="2" Text="Zatím žádná data — stiskněte Obnovit." FontSize="10" TextColor="Gray" HorizontalOptions="Center" VerticalOptions="Center" IsVisible="{Binding HasNoVolnoData}" />
 
             <!-- Read-only this round — see OpicentrumBoardViewModel.Volno.cs's own remarks. -->
-            <ScrollView Grid.Row="2" Orientation="Both" IsVisible="{Binding HasVolnoData}">
+            <ScrollView x:Name="VolnoScroll" Grid.Row="2" Orientation="Both" IsVisible="{Binding HasVolnoData}" Scrolled="OnVolnoScrolled">
                 <VerticalStackLayout Spacing="2">
-                    <HorizontalStackLayout Spacing="2">
-                        <BoxView WidthRequest="130" HeightRequest="1" Color="Transparent" />
+                    <HorizontalStackLayout x:Name="VolnoHeader" Spacing="2" ZIndex="2"
+                                           BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray950}}">
+                        <BoxView x:Name="VolnoCorner" WidthRequest="130" HeightRequest="1" ZIndex="3"
+                                 Color="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray950}}" />
                         <HorizontalStackLayout Spacing="2" BindableLayout.ItemsSource="{Binding VolnoDayHeaders}">
                             <BindableLayout.ItemTemplate>
                                 <DataTemplate x:DataType="x:String">
@@ -135,7 +143,9 @@
                         <BindableLayout.ItemTemplate>
                             <DataTemplate x:DataType="vm:OpicentrumVolnoRowItem">
                                 <HorizontalStackLayout Spacing="2">
-                                    <Label Text="{Binding PersonName}" WidthRequest="130" FontSize="10" LineBreakMode="TailTruncation" VerticalOptions="Center" />
+                                    <Label Text="{Binding PersonName}" WidthRequest="130" FontSize="10" LineBreakMode="TailTruncation" VerticalTextAlignment="Center"
+                                           ZIndex="1" BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray950}}"
+                                           Loaded="OnVolnoNameLoaded" Unloaded="OnVolnoNameUnloaded" />
                                     <HorizontalStackLayout Spacing="2" BindableLayout.ItemsSource="{Binding DayCodes}">
                                         <BindableLayout.ItemTemplate>
                                             <DataTemplate x:DataType="x:String">

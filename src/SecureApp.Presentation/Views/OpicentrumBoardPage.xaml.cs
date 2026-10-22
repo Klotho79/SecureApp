@@ -41,6 +41,45 @@ public partial class OpicentrumBoardPage : ContentPage
         _viewModel.LoadCommand.Execute(null);
     }
 
+    // Sticky name column + header (2026-10-22, user's ask): the board is ONE ScrollView(Both) so
+    // row heights stay naturally in sync with the names; on scroll the name labels are translated
+    // by ScrollX and the header by ScrollY, which keeps them pinned while the rest pans.
+    private sealed class StickyBoard
+    {
+        public readonly List<View> Names = [];
+        public double X;
+    }
+
+    private readonly StickyBoard _positionsSticky = new();
+    private readonly StickyBoard _volnoSticky = new();
+
+    private static void RegisterName(StickyBoard board, object? sender)
+    {
+        if (sender is not View v) return;
+        board.Names.Add(v);
+        v.TranslationX = board.X;
+    }
+
+    private static void UnregisterName(StickyBoard board, object? sender)
+    {
+        if (sender is View v) board.Names.Remove(v);
+    }
+
+    private static void ApplySticky(StickyBoard board, ScrolledEventArgs e, View header, View corner)
+    {
+        board.X = Math.Max(0, e.ScrollX);
+        foreach (var v in board.Names) v.TranslationX = board.X;
+        header.TranslationY = Math.Max(0, e.ScrollY);
+        corner.TranslationX = board.X;
+    }
+
+    private void OnPositionsNameLoaded(object? sender, EventArgs e) => RegisterName(_positionsSticky, sender);
+    private void OnPositionsNameUnloaded(object? sender, EventArgs e) => UnregisterName(_positionsSticky, sender);
+    private void OnPositionsScrolled(object? sender, ScrolledEventArgs e) => ApplySticky(_positionsSticky, e, PositionsHeader, PositionsCorner);
+    private void OnVolnoNameLoaded(object? sender, EventArgs e) => RegisterName(_volnoSticky, sender);
+    private void OnVolnoNameUnloaded(object? sender, EventArgs e) => UnregisterName(_volnoSticky, sender);
+    private void OnVolnoScrolled(object? sender, ScrolledEventArgs e) => ApplySticky(_volnoSticky, e, VolnoHeader, VolnoCorner);
+
     // Temporary profiling: a 50 ms UI-thread heartbeat for 10 s after open. A big gap between ticks
     // means the UI thread was frozen (nothing can paint), whatever the C# stopwatches say.
     private void StartUiStallMonitor()

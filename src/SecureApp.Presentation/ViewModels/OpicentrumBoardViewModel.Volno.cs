@@ -142,8 +142,37 @@ public sealed partial class OpicentrumBoardViewModel
             })
             .ToList();
 
-        VolnoRows = new ObservableCollection<OpicentrumVolnoRowItem>(rows);
+        // Incremental fill, same reason as ApplyPositionsSnapshot: ~58 x 30 cells laid out at once
+        // freeze the UI thread; first screenful now, the rest in small batches.
+        const int FirstBatch = 12, NextBatch = 12;
+        var version = ++_volnoFillVersion;
+        var collection = new ObservableCollection<OpicentrumVolnoRowItem>(rows.Take(FirstBatch));
+        VolnoRows = collection;
+
+        if (rows.Count > FirstBatch)
+        {
+            var remaining = rows.Skip(FirstBatch).ToList();
+            _ = Task.Run(async () =>
+            {
+                for (var i = 0; i < remaining.Count; i += NextBatch)
+                {
+                    await Task.Delay(30);
+                    var batch = remaining.Skip(i).Take(NextBatch).ToList();
+                    var done = new TaskCompletionSource();
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        if (version == _volnoFillVersion)
+                            foreach (var r in batch) collection.Add(r);
+                        done.SetResult();
+                    });
+                    await done.Task;
+                    if (version != _volnoFillVersion) return;
+                }
+            });
+        }
     }
+
+    private int _volnoFillVersion;
 }
 
 /// <summary>One person's row — <see cref="DayCodes"/> is in the same day order as <see cref="OpicentrumBoardViewModel.VolnoDayHeaders"/>, empty string for a day with nothing recorded.</summary>
