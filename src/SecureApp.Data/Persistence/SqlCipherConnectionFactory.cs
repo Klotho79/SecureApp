@@ -20,7 +20,7 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
 {
     private const string DatabaseKeyVaultName = "sqlcipher:database-key";
     private const int DatabaseKeySizeBytes = 32; // 256-bit, used as a raw SQLCipher key (not a passphrase put through PBKDF2)
-    private const int CurrentSchemaVersion = 17;
+    private const int CurrentSchemaVersion = 18;
 
     private readonly DataStorageOptions _options;
     private readonly ISecureVaultKeyStore _vault;
@@ -159,6 +159,9 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
 
         if (schemaVersion < 17)
             await ApplyV17SchemaAsync(connection);
+
+        if (schemaVersion < 18)
+            await ApplyV18SchemaAsync(connection);
 
         await connection.ExecuteAsync($"PRAGMA user_version = {CurrentSchemaVersion}");
     }
@@ -620,6 +623,18 @@ public sealed class SqlCipherConnectionFactory : ISecureDatabaseConnectionFactor
         await connection.ExecuteAsync("ALTER TABLE users ADD COLUMN last_name TEXT NULL");
         await connection.ExecuteAsync("ALTER TABLE users ADD COLUMN phone TEXT NULL");
         await connection.ExecuteAsync("ALTER TABLE users ADD COLUMN email TEXT NULL");
+    }
+
+    /// <summary>
+    /// Indexes for the cross-device correlation lookups (2026-10-22): every delivery receipt /
+    /// message-deletion sync runs "WHERE origin_message_id = ? OR group_message_id = ?", which had no
+    /// index and so scanned the whole messages table (ciphertext rows included) per receipt. SQLite
+    /// answers the OR with the two indexes below. Purely additive, IF NOT EXISTS.
+    /// </summary>
+    private static async Task ApplyV18SchemaAsync(SQLiteAsyncConnection connection)
+    {
+        await connection.ExecuteAsync("CREATE INDEX IF NOT EXISTS ix_messages_origin_message_id ON messages(origin_message_id)");
+        await connection.ExecuteAsync("CREATE INDEX IF NOT EXISTS ix_messages_group_message_id ON messages(group_message_id)");
     }
 
     /// <summary>

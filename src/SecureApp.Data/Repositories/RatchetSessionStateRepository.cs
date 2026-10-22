@@ -5,6 +5,8 @@ using SecureApp.Domain.Common;
 using SecureApp.Domain.Entities;
 using SecureApp.Domain.Interfaces.Repositories;
 
+using static SecureApp.Data.Persistence.SqlTime;
+
 namespace SecureApp.Data.Repositories;
 
 /// <inheritdoc cref="IRatchetSessionStateRepository"/>
@@ -78,6 +80,4 @@ public sealed class RatchetSessionStateRepository : IRatchetSessionStateReposito
         return entity;
     }
 
-    private static string Format(DateTimeOffset value) => value.ToString("O", CultureInfo.InvariantCulture);
-    private static DateTimeOffset Parse(string value) => DateTimeOffset.Parse(value, CultureInfo.InvariantCulture);
 }

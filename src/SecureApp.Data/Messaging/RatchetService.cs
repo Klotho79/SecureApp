@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using SecureApp.Domain.Entities;
 using SecureApp.Domain.Exceptions;
 using SecureApp.Domain.Interfaces.Repositories;
@@ -89,8 +90,27 @@ public sealed class RatchetService : IRatchetService
         await _vault.StoreSecretAsync(VaultKey(sessionId, "recv-chain-key"), recvChainKey, ct);
     }
 
+    // One lock per session (static: this service is registered Scoped, so an instance field would not
+    // be shared). Without it two concurrent sends in one chat (e.g. a system payload racing a user
+    // message) read the SAME chain key and message number, and the receiver then drops the second one
+    // as a "duplicate" header; two concurrent receives could likewise advance the chain twice.
+    private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> SessionLocks = new();
+
+    private static async Task<IDisposable> LockSessionAsync(Guid sessionId, CancellationToken ct)
+    {
+        var gate = SessionLocks.GetOrAdd(sessionId, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(ct);
+        return new Releaser(gate);
+    }
+
+    private sealed class Releaser(SemaphoreSlim gate) : IDisposable
+    {
+        public void Dispose() => gate.Release();
+    }
+
     public async Task<(RatchetMessageHeader Header, EncryptedPayload Payload)> RatchetEncryptAsync(Guid sessionId, ReadOnlyMemory<byte> plaintext, CancellationToken ct = default)
     {
+        using var _ = await LockSessionAsync(sessionId, ct);
         var state = await _stateRepository.GetBySessionIdAsync(sessionId, ct)
             ?? throw new RatchetStateException($"No ratchet state for session '{sessionId}' — complete the handshake first.");
         var sendChainKey = await _vault.RetrieveSecretAsync(VaultKey(sessionId, "send-chain-key"), ct)
@@ -115,6 +135,7 @@ public sealed class RatchetService : IRatchetService
         ArgumentNullException.ThrowIfNull(header);
         ArgumentNullException.ThrowIfNull(payload);
 
+        using var _ = await LockSessionAsync(sessionId, ct);
         var state = await _stateRepository.GetBySessionIdAsync(sessionId, ct)
             ?? throw new RatchetStateException($"No ratchet state for session '{sessionId}' — complete the handshake first.");
 

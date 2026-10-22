@@ -9,6 +9,8 @@ using SecureApp.Domain.Events;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.ValueObjects;
 
+using static SecureApp.Data.Persistence.SqlTime;
+
 namespace SecureApp.Data.Repositories;
 
 /// <inheritdoc cref="INotificationRepository"/>
@@ -191,8 +193,6 @@ public sealed class NotificationRepository : INotificationRepository
         return entity;
     }
 
-    private static string Format(DateTimeOffset value) => value.ToString("O", CultureInfo.InvariantCulture);
-    private static DateTimeOffset Parse(string value) => DateTimeOffset.Parse(value, CultureInfo.InvariantCulture);
 }
 
 /// <summary>Tiny fluent helper so <see cref="NotificationRepository.GetPagedAsync"/>'s conditional-clause building stays one line each instead of a separate <c>args.Add(...)</c> statement per branch.</summary>

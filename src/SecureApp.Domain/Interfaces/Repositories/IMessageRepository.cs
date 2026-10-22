@@ -14,6 +14,9 @@ public interface IMessageRepository
     Task<Message?> GetByIdAsync(Guid id, CancellationToken ct = default);
     Task<IReadOnlyList<Message>> GetBySessionAsync(Guid chatSessionId, DateTimeOffset? sinceUtc = null, CancellationToken ct = default);
 
+    /// <summary>The already-stored INBOUND message with exactly this wire header (DhPublicKey + MessageNumber identify one message in one sending chain), or null — the idempotency check for a re-delivered envelope, done as one SQL lookup instead of loading every message of the session (2026-10-22).</summary>
+    Task<Message?> FindInboundByHeaderAsync(Guid chatSessionId, byte[] dhPublicKey, int messageNumber, CancellationToken ct = default);
+
     /// <summary>Every message row tagged with this group (2026-09-07) — spans every member's own pairwise <c>ChatSession</c>, not just one, since a group message's fan-out legs each live under a different session id. The caller (a group's own thread view) is responsible for collapsing the sender's own N outbound copies of one logical message back down via <see cref="Message.GroupMessageId"/> — see <c>GroupChat</c>'s own remarks.</summary>
     Task<IReadOnlyList<Message>> GetByGroupAsync(Guid groupChatId, CancellationToken ct = default);
 

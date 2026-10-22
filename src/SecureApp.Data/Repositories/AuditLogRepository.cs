@@ -6,6 +6,8 @@ using SecureApp.Domain.Entities;
 using SecureApp.Domain.Enums;
 using SecureApp.Domain.Interfaces.Repositories;
 
+using static SecureApp.Data.Persistence.SqlTime;
+
 namespace SecureApp.Data.Repositories;
 
 /// <inheritdoc cref="IAuditLogRepository"/>
@@ -79,6 +81,4 @@ public sealed class AuditLogRepository : IAuditLogRepository
         return entity;
     }
 
-    private static string Format(DateTimeOffset value) => value.ToString("O", CultureInfo.InvariantCulture);
-    private static DateTimeOffset Parse(string value) => DateTimeOffset.Parse(value, CultureInfo.InvariantCulture);
 }

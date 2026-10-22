@@ -8,6 +8,8 @@ using SecureApp.Domain.Exceptions;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.ValueObjects;
 
+using static SecureApp.Data.Persistence.SqlTime;
+
 namespace SecureApp.Data.Repositories;
 
 /// <inheritdoc cref="IMessageRepository"/>
@@ -34,6 +36,15 @@ public sealed class MessageRepository : IMessageRepository
             ? await connection.QueryAsync<MessageRow>("SELECT * FROM messages WHERE chat_session_id = ? ORDER BY created_at_utc", chatSessionId.ToString())
             : await connection.QueryAsync<MessageRow>("SELECT * FROM messages WHERE chat_session_id = ? AND created_at_utc >= ? ORDER BY created_at_utc", chatSessionId.ToString(), Format(sinceUtc.Value));
         return rows.Select(ToEntity).ToList();
+    }
+
+    public async Task<Message?> FindInboundByHeaderAsync(Guid chatSessionId, byte[] dhPublicKey, int messageNumber, CancellationToken ct = default)
+    {
+        var connection = await _connectionFactory.GetConnectionAsync(ct);
+        var row = await connection.FindWithQueryAsync<MessageRow>(
+            "SELECT * FROM messages WHERE chat_session_id = ? AND direction = ? AND header_message_number = ? AND header_dh_public_key = ? LIMIT 1",
+            chatSessionId.ToString(), (int)MessageDirection.Inbound, messageNumber, dhPublicKey);
+        return row is null ? null : ToEntity(row);
     }
 
     public async Task<IReadOnlyList<Message>> GetByGroupAsync(Guid groupChatId, CancellationToken ct = default)
@@ -251,6 +262,4 @@ public sealed class MessageRepository : IMessageRepository
         return entity;
     }
 
-    private static string Format(DateTimeOffset value) => value.ToString("O", CultureInfo.InvariantCulture);
-    private static DateTimeOffset Parse(string value) => DateTimeOffset.Parse(value, CultureInfo.InvariantCulture);
 }

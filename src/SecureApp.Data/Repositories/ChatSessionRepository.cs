@@ -7,6 +7,8 @@ using SecureApp.Domain.Enums;
 using SecureApp.Domain.Exceptions;
 using SecureApp.Domain.Interfaces.Repositories;
 
+using static SecureApp.Data.Persistence.SqlTime;
+
 namespace SecureApp.Data.Repositories;
 
 /// <inheritdoc cref="IChatSessionRepository"/>
@@ -36,15 +38,19 @@ public sealed class ChatSessionRepository : IChatSessionRepository
     public async Task<ChatSession?> GetByPeerPublicKeyAsync(byte[] peerIdentityPublicKey, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(peerIdentityPublicKey);
-        var all = await GetAllAsync(ct);
-        return all.FirstOrDefault(s => s.State != ChatSessionState.Closed && s.PeerIdentityPublicKey.AsSpan().SequenceEqual(peerIdentityPublicKey));
+        var connection = await _connectionFactory.GetConnectionAsync(ct);
+        var row = await connection.FindWithQueryAsync<ChatSessionRow>(
+            "SELECT * FROM chat_sessions WHERE state <> ? AND peer_identity_public_key = ? LIMIT 1",
+            (int)ChatSessionState.Closed, peerIdentityPublicKey);
+        return row is null ? null : ToEntity(row);
     }
 
     public async Task<IReadOnlyList<ChatSession>> GetAllByPeerPublicKeyAsync(byte[] peerIdentityPublicKey, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(peerIdentityPublicKey);
-        var all = await GetAllAsync(ct);
-        return all.Where(s => s.PeerIdentityPublicKey.AsSpan().SequenceEqual(peerIdentityPublicKey)).ToList();
+        var connection = await _connectionFactory.GetConnectionAsync(ct);
+        var rows = await connection.QueryAsync<ChatSessionRow>("SELECT * FROM chat_sessions WHERE peer_identity_public_key = ?", peerIdentityPublicKey);
+        return rows.Select(ToEntity).ToList();
     }
 
     public async Task AddAsync(ChatSession chatSession, CancellationToken ct = default)
@@ -116,6 +122,4 @@ public sealed class ChatSessionRepository : IChatSessionRepository
         return entity;
     }
 
-    private static string Format(DateTimeOffset value) => value.ToString("O", CultureInfo.InvariantCulture);
-    private static DateTimeOffset Parse(string value) => DateTimeOffset.Parse(value, CultureInfo.InvariantCulture);
 }

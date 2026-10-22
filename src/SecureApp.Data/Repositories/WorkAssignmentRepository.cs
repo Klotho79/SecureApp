@@ -7,6 +7,8 @@ using SecureApp.Domain.Enums;
 using SecureApp.Domain.Events;
 using SecureApp.Domain.Interfaces.Repositories;
 
+using static SecureApp.Data.Persistence.SqlTime;
+
 namespace SecureApp.Data.Repositories;
 
 /// <inheritdoc cref="IWorkAssignmentRepository"/>
@@ -110,6 +112,4 @@ public sealed class WorkAssignmentRepository : IWorkAssignmentRepository
     private static string FormatDate(DateOnly value) => value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
     private static string? FormatTime(TimeOnly? value) => value?.ToString("HH:mm", CultureInfo.InvariantCulture);
     private static TimeOnly? ParseTime(string? value) => value is null ? null : TimeOnly.ParseExact(value, "HH:mm", CultureInfo.InvariantCulture);
-    private static string Format(DateTimeOffset value) => value.ToString("O", CultureInfo.InvariantCulture);
-    private static DateTimeOffset Parse(string value) => DateTimeOffset.Parse(value, CultureInfo.InvariantCulture);
 }

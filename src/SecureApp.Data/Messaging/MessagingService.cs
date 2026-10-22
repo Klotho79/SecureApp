@@ -1,3 +1,4 @@
+using SecureApp.Data.Cryptography;
 using SecureApp.Data.Persistence;
 using SecureApp.Domain.Common;
 using SecureApp.Domain.Entities;
@@ -151,28 +152,14 @@ public sealed class MessagingService : IMessagingService
         await _stateRepository.UpsertAsync(state, ct);
     }
 
-    /// <summary>
-    /// Reuses the vault's current active <see cref="KeyPurpose.ChatIdentity"/> key, minting one on
-    /// first use — unlike <see cref="GetOrCreateActiveMessageStorageKeyIdAsync"/>, this key is a
-    /// long-lived per-device identity, not per-purpose bulk-encryption key, but it's the same
-    /// "mint once, correlate metadata.Id to the vault KeyId" pattern either way.
-    /// </summary>
-    private async Task<Guid> GetOrCreateLocalIdentityKeyIdAsync(CancellationToken ct)
-    {
-        var activeMetadata = await _keyMetadataRepository.GetActiveKeyAsync(KeyPurpose.ChatIdentity, ct);
-        if (activeMetadata is not null)
-            return activeMetadata.Id;
+    /// <summary>The vault's current active <see cref="KeyPurpose.ChatIdentity"/> key — a long-lived per-device identity (unlike the bulk-encryption <see cref="KeyPurpose.MessageStorage"/> key), minted on first use.</summary>
+    private Task<Guid> GetOrCreateLocalIdentityKeyIdAsync(CancellationToken ct) => GetOrCreateActiveKeyIdAsync(KeyPurpose.ChatIdentity, ct);
 
-        var keyPair = await _crypto.GenerateEncryptionKeyPairAsync(ct);
+    /// <summary>Reuses the vault's current active <see cref="KeyPurpose.MessageStorage"/> key, minting one on first use — mirrors <c>DocumentImportService</c>'s identical pattern for <see cref="KeyPurpose.DocumentEncryption"/>.</summary>
+    private Task<Guid> GetOrCreateActiveMessageStorageKeyIdAsync(CancellationToken ct) => GetOrCreateActiveKeyIdAsync(KeyPurpose.MessageStorage, ct);
 
-        var metadata = new EncryptionKeyMetadata(keyPair.Algorithm, KeyPurpose.ChatIdentity);
-        EntityMaterializer.Set(metadata, nameof(Entity.Id), keyPair.KeyId);
-
-        await _keyMetadataRepository.AddAsync(metadata, ct);
-        await _auditLogger.LogAsync(AuditAction.EncryptionKeyGenerated, details: $"purpose={KeyPurpose.ChatIdentity}", ct: ct);
-
-        return metadata.Id;
-    }
+    private Task<Guid> GetOrCreateActiveKeyIdAsync(KeyPurpose purpose, CancellationToken ct) =>
+        ActiveKeyHelper.GetOrCreateAsync(_keyMetadataRepository, _crypto, _auditLogger, purpose, ct);
 
     public async Task<(Message Message, MessageEnvelope Envelope)> SendMessageAsync(Guid sessionId, ReadOnlyMemory<byte> plaintext, Guid? attachmentDocumentId = null, Guid? attachmentLibraryFileId = null, string? attachmentFileName = null, Guid? groupChatId = null, Guid? groupMessageId = null, bool isSystemPayload = false, CancellationToken ct = default)
     {
@@ -225,11 +212,7 @@ public sealed class MessagingService : IMessagingService
         // of forward secrecy. Recognized by its exact wire header — DhPublicKey + MessageNumber
         // together uniquely identify one message within one sending chain — so a genuine duplicate
         // just returns the already-stored row instead of re-attempting the ratchet.
-        var alreadyReceived = await _messageRepository.GetBySessionAsync(envelope.SessionId, ct: ct);
-        var duplicate = alreadyReceived.FirstOrDefault(m =>
-            m.Direction == MessageDirection.Inbound &&
-            m.Header.MessageNumber == envelope.Header.MessageNumber &&
-            m.Header.DhPublicKey.AsSpan().SequenceEqual(envelope.Header.DhPublicKey));
+        var duplicate = await _messageRepository.FindInboundByHeaderAsync(envelope.SessionId, envelope.Header.DhPublicKey, envelope.Header.MessageNumber, ct);
         if (duplicate is not null)
             return duplicate;
 
@@ -272,21 +255,4 @@ public sealed class MessagingService : IMessagingService
         await _auditLogger.LogAsync(AuditAction.ChatSessionClosed, details: $"sessionId={sessionId}", ct: ct);
     }
 
-    /// <summary>Reuses the vault's current active <see cref="KeyPurpose.MessageStorage"/> key, minting one on first use — mirrors <c>DocumentImportService</c>'s identical pattern for <see cref="KeyPurpose.DocumentEncryption"/>.</summary>
-    private async Task<Guid> GetOrCreateActiveMessageStorageKeyIdAsync(CancellationToken ct)
-    {
-        var activeMetadata = await _keyMetadataRepository.GetActiveKeyAsync(KeyPurpose.MessageStorage, ct);
-        if (activeMetadata is not null)
-            return activeMetadata.Id;
-
-        var keyPair = await _crypto.GenerateEncryptionKeyPairAsync(ct);
-
-        var metadata = new EncryptionKeyMetadata(keyPair.Algorithm, KeyPurpose.MessageStorage);
-        EntityMaterializer.Set(metadata, nameof(Entity.Id), keyPair.KeyId);
-
-        await _keyMetadataRepository.AddAsync(metadata, ct);
-        await _auditLogger.LogAsync(AuditAction.EncryptionKeyGenerated, details: $"purpose={KeyPurpose.MessageStorage}", ct: ct);
-
-        return metadata.Id;
-    }
 }

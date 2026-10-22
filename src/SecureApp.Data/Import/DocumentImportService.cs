@@ -1,5 +1,4 @@
-using SecureApp.Data.Persistence;
-using SecureApp.Domain.Common;
+using SecureApp.Data.Cryptography;
 using SecureApp.Domain.Entities;
 using SecureApp.Domain.Enums;
 using SecureApp.Domain.Interfaces.Repositories;
@@ -37,7 +36,7 @@ public sealed class DocumentImportService : IDocumentImportService
         var plaintext = buffer.ToArray();
 
         var contentHash = await _crypto.ComputeHashAsync(plaintext, ct: ct);
-        var encryptionKeyId = await GetOrCreateActiveEncryptionKeyIdAsync(ct);
+        var encryptionKeyId = await ActiveKeyHelper.GetOrCreateAsync(_keyMetadataRepository, _crypto, _auditLogger, KeyPurpose.DocumentEncryption, ct);
         var encryptedContent = await _crypto.EncryptAsync(plaintext, encryptionKeyId, ct);
 
         var document = new Document(
@@ -54,33 +53,6 @@ public sealed class DocumentImportService : IDocumentImportService
         await _auditLogger.LogAsync(AuditAction.DocumentImported, document.Id, fileName, ct);
 
         return document;
-    }
-
-    /// <summary>
-    /// Reuses the vault's current active <see cref="KeyPurpose.DocumentEncryption"/> key,
-    /// minting one on first use.
-    /// </summary>
-    private async Task<Guid> GetOrCreateActiveEncryptionKeyIdAsync(CancellationToken ct)
-    {
-        var activeMetadata = await _keyMetadataRepository.GetActiveKeyAsync(KeyPurpose.DocumentEncryption, ct);
-        if (activeMetadata is not null)
-            return activeMetadata.Id;
-
-        var keyPair = await _crypto.GenerateEncryptionKeyPairAsync(ct);
-
-        var metadata = new EncryptionKeyMetadata(keyPair.Algorithm, KeyPurpose.DocumentEncryption);
-        // EncryptionKeyMetadata.Id is normally an Entity-assigned Guid.NewGuid() with no
-        // relationship to any crypto key — its public ctor has no way to pin it to one. This
-        // is the one place that correlation can be established: force metadata.Id to equal
-        // the vault's KeyId (via the same reflection EntityMaterializer already uses for DB
-        // hydration) so a later GetActiveKeyAsync(...).Id can be handed straight to
-        // ICryptoService.EncryptAsync/DecryptAsync as a real, usable key id.
-        EntityMaterializer.Set(metadata, nameof(Entity.Id), keyPair.KeyId);
-
-        await _keyMetadataRepository.AddAsync(metadata, ct);
-        await _auditLogger.LogAsync(AuditAction.EncryptionKeyGenerated, details: $"purpose={KeyPurpose.DocumentEncryption}", ct: ct);
-
-        return metadata.Id;
     }
 
     private static DocumentType ClassifyByExtension(string fileName) => Path.GetExtension(fileName).ToLowerInvariant() switch

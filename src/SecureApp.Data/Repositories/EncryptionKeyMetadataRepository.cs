@@ -6,6 +6,8 @@ using SecureApp.Domain.Entities;
 using SecureApp.Domain.Enums;
 using SecureApp.Domain.Interfaces.Repositories;
 
+using static SecureApp.Data.Persistence.SqlTime;
+
 namespace SecureApp.Data.Repositories;
 
 /// <inheritdoc cref="IEncryptionKeyMetadataRepository"/>
@@ -86,8 +88,6 @@ public sealed class EncryptionKeyMetadataRepository : IEncryptionKeyMetadataRepo
         return entity;
     }
 
-    private static string Format(DateTimeOffset value) => value.ToString("O", CultureInfo.InvariantCulture);
     private static string? FormatNullable(DateTimeOffset? value) => value is null ? null : Format(value.Value);
-    private static DateTimeOffset Parse(string value) => DateTimeOffset.Parse(value, CultureInfo.InvariantCulture);
     private static DateTimeOffset? ParseNullable(string? value) => value is null ? null : Parse(value);
 }

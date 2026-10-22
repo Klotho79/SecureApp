@@ -119,23 +119,7 @@ public sealed class BouncyCastleCryptoService : ICryptoService
         var aesKey = await _vault.RetrieveSecretAsync(VaultKey(keyId, "aes-key"), ct)
             ?? throw new VaultLockedException();
 
-        var nonce = new byte[GcmNonceSizeBytes];
-        _random.NextBytes(nonce);
-
-        var cipher = new GcmBlockCipher(new AesEngine());
-        cipher.Init(true, new AeadParameters(new KeyParameter(aesKey), GcmMacSizeBits, nonce));
-
-        var plaintextBytes = plaintext.ToArray();
-        var buffer = new byte[cipher.GetOutputSize(plaintextBytes.Length)];
-        int len = cipher.ProcessBytes(plaintextBytes, 0, plaintextBytes.Length, buffer, 0);
-        len += cipher.DoFinal(buffer, len);
-
-        // GcmBlockCipher appends the auth tag to the end of the output; split it back out
-        // so it round-trips through EncryptedPayload's dedicated AuthTag field.
-        var cipherText = buffer[..(len - GcmMacSizeBytes)];
-        var authTag = buffer[(len - GcmMacSizeBytes)..len];
-
-        return new EncryptedPayload(keyId, EncryptionAlgorithm.HybridMlKem768Aes256Gcm, cipherText, nonce, authTag);
+        return AesGcmEncrypt(plaintext, aesKey, keyId, EncryptionAlgorithm.HybridMlKem768Aes256Gcm);
     }
 
     public async Task<byte[]> DecryptAsync(EncryptedPayload payload, CancellationToken ct = default)
@@ -143,26 +127,7 @@ public sealed class BouncyCastleCryptoService : ICryptoService
         var aesKey = await _vault.RetrieveSecretAsync(VaultKey(payload.KeyId, "aes-key"), ct)
             ?? throw new VaultLockedException();
 
-        var cipher = new GcmBlockCipher(new AesEngine());
-        cipher.Init(false, new AeadParameters(new KeyParameter(aesKey), GcmMacSizeBits, payload.Nonce));
-
-        var combined = new byte[payload.CipherText.Length + payload.AuthTag.Length];
-        payload.CipherText.CopyTo(combined, 0);
-        payload.AuthTag.CopyTo(combined, payload.CipherText.Length);
-
-        var buffer = new byte[cipher.GetOutputSize(combined.Length)];
-        int len = cipher.ProcessBytes(combined, 0, combined.Length, buffer, 0);
-        try
-        {
-            len += cipher.DoFinal(buffer, len);
-        }
-        catch (InvalidCipherTextException ex)
-        {
-            // Deliberately generic message — see the class-level warning on EncryptionOperationException.
-            throw new EncryptionOperationException("Decryption failed.", ex);
-        }
-
-        return len == buffer.Length ? buffer : buffer[..len];
+        return AesGcmDecrypt(payload, aesKey);
     }
 
     public async Task<byte[]> SignAsync(ReadOnlyMemory<byte> data, Guid signingKeyId, CancellationToken ct = default)
@@ -249,6 +214,12 @@ public sealed class BouncyCastleCryptoService : ICryptoService
     }
 
     public Task<EncryptedPayload> EncryptWithKeyAsync(ReadOnlyMemory<byte> plaintext, Guid correlationId, byte[] key, CancellationToken ct = default)
+        => Task.FromResult(AesGcmEncrypt(plaintext, key, correlationId, EncryptionAlgorithm.Aes256Gcm));
+
+    public Task<byte[]> DecryptWithKeyAsync(EncryptedPayload payload, byte[] key, CancellationToken ct = default)
+        => Task.FromResult(AesGcmDecrypt(payload, key));
+
+    private EncryptedPayload AesGcmEncrypt(ReadOnlyMemory<byte> plaintext, byte[] key, Guid keyId, EncryptionAlgorithm algorithm)
     {
         var nonce = new byte[GcmNonceSizeBytes];
         _random.NextBytes(nonce);
@@ -261,13 +232,15 @@ public sealed class BouncyCastleCryptoService : ICryptoService
         int len = cipher.ProcessBytes(plaintextBytes, 0, plaintextBytes.Length, buffer, 0);
         len += cipher.DoFinal(buffer, len);
 
+        // GcmBlockCipher appends the auth tag to the end of the output; split it back out
+        // so it round-trips through EncryptedPayload's dedicated AuthTag field.
         var cipherText = buffer[..(len - GcmMacSizeBytes)];
         var authTag = buffer[(len - GcmMacSizeBytes)..len];
 
-        return Task.FromResult(new EncryptedPayload(correlationId, EncryptionAlgorithm.Aes256Gcm, cipherText, nonce, authTag));
+        return new EncryptedPayload(keyId, algorithm, cipherText, nonce, authTag);
     }
 
-    public Task<byte[]> DecryptWithKeyAsync(EncryptedPayload payload, byte[] key, CancellationToken ct = default)
+    private static byte[] AesGcmDecrypt(EncryptedPayload payload, byte[] key)
     {
         var cipher = new GcmBlockCipher(new AesEngine());
         cipher.Init(false, new AeadParameters(new KeyParameter(key), GcmMacSizeBits, payload.Nonce));
@@ -288,7 +261,7 @@ public sealed class BouncyCastleCryptoService : ICryptoService
             throw new EncryptionOperationException("Decryption failed.", ex);
         }
 
-        return Task.FromResult(len == buffer.Length ? buffer : buffer[..len]);
+        return len == buffer.Length ? buffer : buffer[..len];
     }
 
     /// <summary>Namespaces a logical secret under a key pair's id so the flat <see cref="ISecureVaultKeyStore"/> string keyspace never collides.</summary>
