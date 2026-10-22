@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
@@ -5,6 +6,7 @@ using System.Text.Json;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Domain.ValueObjects;
+using SecureApp.Presentation.Infrastructure;
 using SecureApp.Presentation.Transport;
 
 namespace SecureApp.Presentation.Workplace;
@@ -32,15 +34,26 @@ public sealed class HttpOpicentrumRosterBoardService : IOpicentrumRosterBoardSer
 
     public async Task<OpicentrumRosterBoardSnapshot?> GetCachedAsync(CancellationToken ct = default)
     {
+        // Temporary profiling (2026-10-22): per-step timings of the 4-6 s relay_fetch seen on the S23+.
+        var sw = Stopwatch.StartNew();
         var endpoint = await GetHttpEndpointAsync(ct);
+        var tEndpoint = sw.Elapsed.TotalMilliseconds;
         using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(endpoint, "opicentrum-roster-board"));
         await AddDeviceAuthAsync(request, ct);
-        using var response = await _httpClient.SendAsync(request, ct);
+        var tAuth = sw.Elapsed.TotalMilliseconds;
+        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        var tHeaders = sw.Elapsed.TotalMilliseconds;
         if (response.StatusCode == HttpStatusCode.NotFound) return null;
         response.EnsureSuccessStatusCode();
 
         var dto = await response.Content.ReadFromJsonAsync<BoardBlobDto>(HttpJsonOptions, ct);
-        return dto is null ? null : JsonSerializer.Deserialize<OpicentrumRosterBoardSnapshot>(dto.ContentBlob, HttpJsonOptions);
+        var tBody = sw.Elapsed.TotalMilliseconds;
+        var result = dto is null ? null : JsonSerializer.Deserialize<OpicentrumRosterBoardSnapshot>(dto.ContentBlob, HttpJsonOptions);
+        AppLog.Metric("opicentrum.positions.relay_fetch.steps", sw.Elapsed.TotalMilliseconds, "ms",
+            ("endpoint", (int)tEndpoint), ("auth", (int)(tAuth - tEndpoint)), ("headers", (int)(tHeaders - tAuth)),
+            ("body", (int)(tBody - tHeaders)), ("deserialize", (int)(sw.Elapsed.TotalMilliseconds - tBody)),
+            ("blobChars", dto?.ContentBlob.Length ?? 0));
+        return result;
     }
 
     public async Task PublishAsync(OpicentrumRosterBoardSnapshot snapshot, CancellationToken ct = default)

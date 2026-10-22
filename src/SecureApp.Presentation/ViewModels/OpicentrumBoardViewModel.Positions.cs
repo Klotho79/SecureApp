@@ -114,7 +114,8 @@ public sealed partial class OpicentrumBoardViewModel
             }
 
             var relaySw = Stopwatch.StartNew();
-            var fromRelay = await _rosterBoardCacheService.GetCachedAsync();
+            // Task.Run: keep every synchronous slice of the fetch (vault, DB, JSON) off the UI thread.
+            var fromRelay = await Task.Run(() => _rosterBoardCacheService.GetCachedAsync());
             AppLog.Metric("opicentrum.positions.relay_fetch", relaySw.Elapsed.TotalMilliseconds, "ms", ("hit", fromRelay is not null));
 
             if (fromRelay is not null && (local is null || fromRelay.UpdatedAtUtc > local.UpdatedAtUtc))

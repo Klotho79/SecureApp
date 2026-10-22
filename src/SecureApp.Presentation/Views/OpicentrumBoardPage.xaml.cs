@@ -37,7 +37,34 @@ public partial class OpicentrumBoardPage : ContentPage
             AppLog.Metric("opicentrum.positions.click_to_appearing", clickSw.Elapsed.TotalMilliseconds);
         _ttiStopwatch = clickSw ?? Stopwatch.StartNew();
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+        StartUiStallMonitor();
         _viewModel.LoadCommand.Execute(null);
+    }
+
+    // Temporary profiling: a 50 ms UI-thread heartbeat for 10 s after open. A big gap between ticks
+    // means the UI thread was frozen (nothing can paint), whatever the C# stopwatches say.
+    private void StartUiStallMonitor()
+    {
+        var timer = Dispatcher.CreateTimer();
+        timer.Interval = TimeSpan.FromMilliseconds(50);
+        var sw = Stopwatch.StartNew();
+        var last = 0.0;
+        var maxGap = 0.0;
+        var stalls = 0;
+        timer.Tick += (_, _) =>
+        {
+            var now = sw.Elapsed.TotalMilliseconds;
+            var gap = now - last;
+            last = now;
+            if (gap > maxGap) maxGap = gap;
+            if (gap > 300) stalls++;
+            if (now >= 10_000)
+            {
+                timer.Stop();
+                AppLog.Metric("opicentrum.ui_stall", maxGap, "ms", ("stallsOver300ms", stalls));
+            }
+        };
+        timer.Start();
     }
 
     protected override void OnDisappearing()
