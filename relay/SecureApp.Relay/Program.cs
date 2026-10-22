@@ -1260,57 +1260,38 @@ app.MapGet("/picc/roster-pointer", (HttpRequest request, RelayDatabase db) =>
 // Admin/Modifier-gated: the user's own explicit scope decision for this board was "Admin + Modifier"
 // access, not open read. Same singleton-blob contract otherwise.
 
-app.MapPost("/opicentrum-roster-board", (HttpRequest request, SetOpicentrumRosterBoardRequest body, RelayDatabase db) =>
+void MapOpicentrumBoard(
+    string route,
+    Action<RelayDatabase, Guid, string> set,
+    Func<RelayDatabase, (string ContentBlob, DateTimeOffset UpdatedAtUtc)?> get)
 {
-    if (!TryGetDeviceAuth(request, db, out var deviceId))
-        return Results.Unauthorized();
+    app.MapPost(route, (HttpRequest request, SetOpicentrumBoardRequest body, RelayDatabase db) =>
+    {
+        if (!TryGetDeviceAuth(request, db, out var deviceId))
+            return Results.Unauthorized();
 
-    var role = db.GetDevicePolicy(deviceId)?.Role;
-    if (role is not (0 or 1)) // Admin or Modifier only
-        return Results.StatusCode(StatusCodes.Status403Forbidden);
+        if (db.GetDevicePolicy(deviceId)?.Role is not (0 or 1)) // Admin or Modifier only
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
 
-    db.SetOpicentrumRosterBoard(deviceId, body.ContentBlob);
-    return Results.NoContent();
-});
+        set(db, deviceId, body.ContentBlob);
+        return Results.NoContent();
+    });
 
-app.MapGet("/opicentrum-roster-board", (HttpRequest request, RelayDatabase db) =>
-{
-    if (!TryGetDeviceAuth(request, db, out var deviceId))
-        return Results.Unauthorized();
+    app.MapGet(route, (HttpRequest request, RelayDatabase db) =>
+    {
+        if (!TryGetDeviceAuth(request, db, out var deviceId))
+            return Results.Unauthorized();
 
-    var role = db.GetDevicePolicy(deviceId)?.Role;
-    if (role is not (0 or 1))
-        return Results.StatusCode(StatusCodes.Status403Forbidden);
+        if (db.GetDevicePolicy(deviceId)?.Role is not (0 or 1))
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
 
-    var status = db.GetOpicentrumRosterBoard();
-    return status is null ? Results.NotFound() : Results.Ok(new OpicentrumRosterBoardResponse(status.Value.ContentBlob, status.Value.UpdatedAtUtc));
-});
+        var status = get(db);
+        return status is null ? Results.NotFound() : Results.Ok(new OpicentrumBoardResponse(status.Value.ContentBlob, status.Value.UpdatedAtUtc));
+    });
+}
 
-app.MapPost("/opicentrum-volno-board", (HttpRequest request, SetOpicentrumVolnoBoardRequest body, RelayDatabase db) =>
-{
-    if (!TryGetDeviceAuth(request, db, out var deviceId))
-        return Results.Unauthorized();
-
-    var role = db.GetDevicePolicy(deviceId)?.Role;
-    if (role is not (0 or 1))
-        return Results.StatusCode(StatusCodes.Status403Forbidden);
-
-    db.SetOpicentrumVolnoBoard(deviceId, body.ContentBlob);
-    return Results.NoContent();
-});
-
-app.MapGet("/opicentrum-volno-board", (HttpRequest request, RelayDatabase db) =>
-{
-    if (!TryGetDeviceAuth(request, db, out var deviceId))
-        return Results.Unauthorized();
-
-    var role = db.GetDevicePolicy(deviceId)?.Role;
-    if (role is not (0 or 1))
-        return Results.StatusCode(StatusCodes.Status403Forbidden);
-
-    var status = db.GetOpicentrumVolnoBoard();
-    return status is null ? Results.NotFound() : Results.Ok(new OpicentrumVolnoBoardResponse(status.Value.ContentBlob, status.Value.UpdatedAtUtc));
-});
+MapOpicentrumBoard("/opicentrum-roster-board", (db, id, blob) => db.SetOpicentrumRosterBoard(id, blob), db => db.GetOpicentrumRosterBoard());
+MapOpicentrumBoard("/opicentrum-volno-board", (db, id, blob) => db.SetOpicentrumVolnoBoard(id, blob), db => db.GetOpicentrumVolnoBoard());
 
 // Notice board. Posting is gated on the caller's assigned role (Admin=0/Modifier=1) — reading is
 // open to any member. content_blob is opaque ciphertext (encrypted client-side with the shared

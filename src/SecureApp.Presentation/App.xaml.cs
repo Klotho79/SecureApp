@@ -436,77 +436,62 @@ public partial class App : Application
 		}
 	}
 
-	private const string LastBackgroundOpicentrumRosterBoardPreferenceKey = "opicentrum_roster_board_last_bg_attempt_utc";
-	private static readonly TimeSpan _opicentrumRosterBoardStaleAfter = TimeSpan.FromMinutes(15);
-
 	/// <summary>
-	/// Keeps the relay-cached Opicentrum roster board (2026-10-21) fresh WITHOUT every device
-	/// scraping opicentrum.cz itself — the user's own explicit efficiency ask ("nevytěžovat" the
-	/// external site). Checks the relay's own cached snapshot first; only actually logs in and
-	/// scrapes when that snapshot is missing or older than <see cref="_opicentrumRosterBoardStaleAfter"/>,
-	/// so on most ticks, most devices, this does nothing at all.
+	/// Keeps a relay-cached Opicentrum board (roster 2026-10-21, volno same day) fresh WITHOUT every
+	/// device scraping opicentrum.cz itself — the user's own explicit efficiency ask ("nevytěžovat"
+	/// the external site). Checks the relay's own cached snapshot first; only actually logs in and
+	/// scrapes when that snapshot is missing or older than <paramref name="staleAfter"/>, so on most
+	/// ticks, most devices, this does nothing at all. The per-device throttle on top keeps a device
+	/// that can't reach the relay (not configured yet) from retrying every ~10 s tick.
 	/// </summary>
-	private static async Task RunBackgroundOpicentrumRosterBoardPublishAsync(IServiceProvider services)
-	{
-		try
-		{
-			// A per-device throttle too, on top of the relay-freshness check below — so a device
-			// that can't reach the relay at all (not configured yet) doesn't retry every ~10s tick.
-			var prefs = Microsoft.Maui.Storage.Preferences.Default;
-			var lastTicks = prefs.Get(LastBackgroundOpicentrumRosterBoardPreferenceKey, 0L);
-			if (lastTicks > 0 && DateTimeOffset.UtcNow - new DateTimeOffset(lastTicks, TimeSpan.Zero) < TimeSpan.FromMinutes(5)) return;
-
-			var sync = services.GetService<IOpicentrumSyncService>();
-			var cache = services.GetService<IOpicentrumRosterBoardService>();
-			if (sync is null || cache is null || !await sync.HasCredentialsAsync()) return;
-			prefs.Set(LastBackgroundOpicentrumRosterBoardPreferenceKey, DateTimeOffset.UtcNow.UtcTicks);
-
-			var cached = await cache.GetCachedAsync();
-			if (cached is not null && DateTimeOffset.UtcNow - cached.UpdatedAtUtc < _opicentrumRosterBoardStaleAfter) return;
-
-			var today = DateOnly.FromDateTime(DateTime.Today);
-			var snapshot = await sync.FetchFullRosterBoardAsync(today);
-			await cache.PublishAsync(snapshot);
-			Workplace.OpicentrumRosterBoardLocalCache.Save(snapshot);
-			AppLog.Event("opicentrum.roster-board.bg-publish", ("weekOf", snapshot.WeekOf.ToString()), ("days", snapshot.Days.Count));
-		}
-		catch (Exception ex)
-		{
-			AppLog.Error(nameof(RunBackgroundOpicentrumRosterBoardPublishAsync), "background roster board publish failed", ex);
-		}
-	}
-
-	private const string LastBackgroundOpicentrumVolnoBoardPreferenceKey = "opicentrum_volno_board_last_bg_attempt_utc";
-	private static readonly TimeSpan _opicentrumVolnoBoardStaleAfter = TimeSpan.FromMinutes(30);
-
-	/// <summary>Same shape as <see cref="RunBackgroundOpicentrumRosterBoardPublishAsync"/>, for the volno (leave) board — a longer staleness window since leave changes less often than room assignments.</summary>
-	private static async Task RunBackgroundOpicentrumVolnoBoardPublishAsync(IServiceProvider services)
+	private static async Task RunBackgroundOpicentrumBoardPublishAsync<TCache, TSnapshot>(
+		IServiceProvider services, string name, string lastAttemptPreferenceKey, TimeSpan staleAfter,
+		Func<TCache, Task<TSnapshot?>> getCached, Func<TCache, TSnapshot, Task> publish,
+		Func<IOpicentrumSyncService, DateOnly, Task<TSnapshot>> fetch, Func<TSnapshot, DateTimeOffset> updatedAt,
+		Action<TSnapshot> saveLocal, Action<TSnapshot> logPublished)
+		where TCache : class where TSnapshot : class
 	{
 		try
 		{
 			var prefs = Microsoft.Maui.Storage.Preferences.Default;
-			var lastTicks = prefs.Get(LastBackgroundOpicentrumVolnoBoardPreferenceKey, 0L);
+			var lastTicks = prefs.Get(lastAttemptPreferenceKey, 0L);
 			if (lastTicks > 0 && DateTimeOffset.UtcNow - new DateTimeOffset(lastTicks, TimeSpan.Zero) < TimeSpan.FromMinutes(5)) return;
 
 			var sync = services.GetService<IOpicentrumSyncService>();
-			var cache = services.GetService<IOpicentrumVolnoBoardService>();
+			var cache = services.GetService<TCache>();
 			if (sync is null || cache is null || !await sync.HasCredentialsAsync()) return;
-			prefs.Set(LastBackgroundOpicentrumVolnoBoardPreferenceKey, DateTimeOffset.UtcNow.UtcTicks);
+			prefs.Set(lastAttemptPreferenceKey, DateTimeOffset.UtcNow.UtcTicks);
 
-			var cached = await cache.GetCachedAsync();
-			if (cached is not null && DateTimeOffset.UtcNow - cached.UpdatedAtUtc < _opicentrumVolnoBoardStaleAfter) return;
+			var cached = await getCached(cache);
+			if (cached is not null && DateTimeOffset.UtcNow - updatedAt(cached) < staleAfter) return;
 
-			var today = DateOnly.FromDateTime(DateTime.Today);
-			var snapshot = await sync.FetchVolnoForMonthAsync(today);
-			await cache.PublishAsync(snapshot);
-			Workplace.OpicentrumVolnoBoardLocalCache.Save(snapshot);
-			AppLog.Event("opicentrum.volno-board.bg-publish", ("year", snapshot.Year), ("month", snapshot.Month), ("people", snapshot.People.Count));
+			var snapshot = await fetch(sync, DateOnly.FromDateTime(DateTime.Today));
+			await publish(cache, snapshot);
+			saveLocal(snapshot);
+			logPublished(snapshot);
 		}
 		catch (Exception ex)
 		{
-			AppLog.Error(nameof(RunBackgroundOpicentrumVolnoBoardPublishAsync), "background volno board publish failed", ex);
+			AppLog.Error(nameof(RunBackgroundOpicentrumBoardPublishAsync), $"background {name} board publish failed", ex);
 		}
 	}
+
+	private static Task RunBackgroundOpicentrumRosterBoardPublishAsync(IServiceProvider services) =>
+		RunBackgroundOpicentrumBoardPublishAsync<IOpicentrumRosterBoardService, OpicentrumRosterBoardSnapshot>(
+			services, "roster", "opicentrum_roster_board_last_bg_attempt_utc", TimeSpan.FromMinutes(15),
+			c => c.GetCachedAsync(), (c, s) => c.PublishAsync(s),
+			(sync, today) => sync.FetchFullRosterBoardAsync(today), s => s.UpdatedAtUtc,
+			Workplace.OpicentrumRosterBoardLocalCache.Save,
+			s => AppLog.Event("opicentrum.roster-board.bg-publish", ("weekOf", s.WeekOf.ToString()), ("days", s.Days.Count)));
+
+	// Longer staleness window than the roster: leave changes less often than room assignments.
+	private static Task RunBackgroundOpicentrumVolnoBoardPublishAsync(IServiceProvider services) =>
+		RunBackgroundOpicentrumBoardPublishAsync<IOpicentrumVolnoBoardService, OpicentrumVolnoSnapshot>(
+			services, "volno", "opicentrum_volno_board_last_bg_attempt_utc", TimeSpan.FromMinutes(30),
+			c => c.GetCachedAsync(), (c, s) => c.PublishAsync(s),
+			(sync, today) => sync.FetchVolnoForMonthAsync(today), s => s.UpdatedAtUtc,
+			Workplace.OpicentrumVolnoBoardLocalCache.Save,
+			s => AppLog.Event("opicentrum.volno-board.bg-publish", ("year", s.Year), ("month", s.Month), ("people", s.People.Count)));
 
 	private const string LastBackgroundUpdateCheckPreferenceKey = "update_last_bg_check_utc";
 	private const string AutoHandledUpdateVersionPreferenceKey = "update_auto_handled_version_code";

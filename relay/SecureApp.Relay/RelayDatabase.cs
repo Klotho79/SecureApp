@@ -2267,46 +2267,31 @@ public sealed class RelayDatabase
 
     private const string OpicentrumBoardSingletonRowId = "current";
 
-    public void SetOpicentrumRosterBoard(Guid updatedByDeviceId, string contentBlob)
+    public void SetOpicentrumRosterBoard(Guid updatedByDeviceId, string contentBlob) => SetOpicentrumBoard("opicentrum_roster_board", updatedByDeviceId, contentBlob);
+
+    public (string ContentBlob, DateTimeOffset UpdatedAtUtc)? GetOpicentrumRosterBoard() => GetOpicentrumBoard("opicentrum_roster_board");
+
+    public void SetOpicentrumVolnoBoard(Guid updatedByDeviceId, string contentBlob) => SetOpicentrumBoard("opicentrum_volno_board", updatedByDeviceId, contentBlob);
+
+    public (string ContentBlob, DateTimeOffset UpdatedAtUtc)? GetOpicentrumVolnoBoard() => GetOpicentrumBoard("opicentrum_volno_board");
+
+    // table is always one of the two compile-time literals above, never caller input.
+    private void SetOpicentrumBoard(string table, Guid updatedByDeviceId, string contentBlob)
     {
         using var connection = OpenConnection();
         Execute(connection,
-            """
-            INSERT INTO opicentrum_roster_board (id, content_blob, updated_by_device, updated_at_utc) VALUES (@id, @blob, @by, @now)
+            $"""
+            INSERT INTO {table} (id, content_blob, updated_by_device, updated_at_utc) VALUES (@id, @blob, @by, @now)
             ON CONFLICT(id) DO UPDATE SET content_blob = @blob, updated_by_device = @by, updated_at_utc = @now
             """,
             ("@id", OpicentrumBoardSingletonRowId), ("@blob", contentBlob), ("@by", updatedByDeviceId.ToString()), ("@now", Format(DateTimeOffset.UtcNow)));
     }
 
-    public (string ContentBlob, DateTimeOffset UpdatedAtUtc)? GetOpicentrumRosterBoard()
+    private (string ContentBlob, DateTimeOffset UpdatedAtUtc)? GetOpicentrumBoard(string table)
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT content_blob, updated_at_utc FROM opicentrum_roster_board WHERE id = @id";
-        command.Parameters.AddWithValue("@id", OpicentrumBoardSingletonRowId);
-
-        using var reader = command.ExecuteReader();
-        if (!reader.Read())
-            return null;
-        return ((string)reader["content_blob"], DateTimeOffset.Parse((string)reader["updated_at_utc"]));
-    }
-
-    public void SetOpicentrumVolnoBoard(Guid updatedByDeviceId, string contentBlob)
-    {
-        using var connection = OpenConnection();
-        Execute(connection,
-            """
-            INSERT INTO opicentrum_volno_board (id, content_blob, updated_by_device, updated_at_utc) VALUES (@id, @blob, @by, @now)
-            ON CONFLICT(id) DO UPDATE SET content_blob = @blob, updated_by_device = @by, updated_at_utc = @now
-            """,
-            ("@id", OpicentrumBoardSingletonRowId), ("@blob", contentBlob), ("@by", updatedByDeviceId.ToString()), ("@now", Format(DateTimeOffset.UtcNow)));
-    }
-
-    public (string ContentBlob, DateTimeOffset UpdatedAtUtc)? GetOpicentrumVolnoBoard()
-    {
-        using var connection = OpenConnection();
-        using var command = connection.CreateCommand();
-        command.CommandText = "SELECT content_blob, updated_at_utc FROM opicentrum_volno_board WHERE id = @id";
+        command.CommandText = $"SELECT content_blob, updated_at_utc FROM {table} WHERE id = @id";
         command.Parameters.AddWithValue("@id", OpicentrumBoardSingletonRowId);
 
         using var reader = command.ExecuteReader();

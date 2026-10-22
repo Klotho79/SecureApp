@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SecureApp.Domain.ValueObjects;
+using SecureApp.Presentation.Infrastructure;
 using SecureApp.Presentation.Workplace;
 
 namespace SecureApp.Presentation.ViewModels;
@@ -118,6 +119,7 @@ public sealed partial class OpicentrumBoardViewModel
     {
         if (snapshot is null || snapshot.People.Count == 0)
         {
+            _volnoFillVersion++;
             HasVolnoData = false;
             VolnoDayHeaders = [];
             VolnoRows = [];
@@ -142,36 +144,12 @@ public sealed partial class OpicentrumBoardViewModel
             })
             .ToList();
 
-        // Incremental fill, same reason as ApplyPositionsSnapshot: ~58 x 30 cells laid out at once
-        // freeze the UI thread; first screenful now, the rest in small batches.
-        // First batch covers a full screen (~25 rows) so nothing visibly pops in; the rest is
-        // appended below the fold in small, spaced batches.
-        const int FirstBatch = 28, NextBatch = 10;
+        // Same incremental fill as ApplyPositionsSnapshot (empty board only). The first batch covers
+        // a full screen (~25 rows) so nothing visibly pops in; the rest lands below the fold.
         var version = ++_volnoFillVersion;
-        var collection = new ObservableCollection<OpicentrumVolnoRowItem>(rows.Take(FirstBatch));
-        VolnoRows = collection;
-
-        if (rows.Count > FirstBatch)
-        {
-            var remaining = rows.Skip(FirstBatch).ToList();
-            _ = Task.Run(async () =>
-            {
-                for (var i = 0; i < remaining.Count; i += NextBatch)
-                {
-                    await Task.Delay(120);
-                    var batch = remaining.Skip(i).Take(NextBatch).ToList();
-                    var done = new TaskCompletionSource();
-                    MainThread.BeginInvokeOnMainThread(() =>
-                    {
-                        if (version == _volnoFillVersion)
-                            foreach (var r in batch) collection.Add(r);
-                        done.SetResult();
-                    });
-                    await done.Task;
-                    if (version != _volnoFillVersion) return;
-                }
-            });
-        }
+        VolnoRows = VolnoRows.Count == 0
+            ? IncrementalFill.Start(rows, firstBatch: 28, nextBatch: 10, delayMs: 120, isCurrent: () => version == _volnoFillVersion)
+            : new ObservableCollection<OpicentrumVolnoRowItem>(rows);
     }
 
     private int _volnoFillVersion;

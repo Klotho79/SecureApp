@@ -169,6 +169,8 @@ public sealed partial class OpicentrumBoardViewModel
         _currentPositionsSnapshot = snapshot;
         if (snapshot is null || snapshot.Days.Count == 0)
         {
+            _positionsFillVersion++;
+            _positionsAllRows = [];
             HasPositionsData = false;
             PositionsDayHeaders = [];
             PositionsRows = [];
@@ -209,48 +211,26 @@ public sealed partial class OpicentrumBoardViewModel
         }).ToList();
         AppLog.Metric("opicentrum.positions.apply.build", buildSw.Elapsed.TotalMilliseconds, "ms", ("rows", rows.Count));
 
-        // 2026-10-22 (user's own ask: "jestli vykreslení nebo přímo dat") — this assignment is where
-        // BindableLayout's own CollectionChanged handler synchronously builds every child
-        // VisualElement for the new ItemsSource, so timing it separately from the LINQ build above
-        // tells "plain C# data shaping" apart from "WPF-tree construction triggered by the binding".
-        // Incremental fill (2026-10-22): the native layout of all 29 rows at once froze the UI thread
-        // ~0.7 s on the S23+ (ui_stall metric). Show the first screenful immediately, append the rest
-        // in small batches so the first paint doesn't wait for the whole board.
+        // The assignment is where BindableLayout synchronously builds every child view, and all 29
+        // rows at once froze the UI thread ~0.7 s on the S23+ (ui_stall metric, 2026-10-22). So an
+        // EMPTY board is filled incrementally (first screenful now, rest below the fold); a board
+        // already on screen is replaced in one go, otherwise it would shrink and re-grow and jump
+        // the scroll position.
         var assignSw = Stopwatch.StartNew();
-        const int FirstBatch = 8, NextBatch = 7;
+        _positionsAllRows = rows;
         var version = ++_positionsFillVersion;
-        var collection = new ObservableCollection<OpicentrumRosterRowItem>(rows.Take(FirstBatch));
-        PositionsRows = collection;
-        AppLog.Metric("opicentrum.positions.apply.assign", assignSw.Elapsed.TotalMilliseconds, "ms", ("firstBatch", collection.Count));
-
-        if (rows.Count > FirstBatch)
-        {
-            var remaining = rows.Skip(FirstBatch).ToList();
-            _ = Task.Run(async () =>
-            {
-                for (var i = 0; i < remaining.Count; i += NextBatch)
-                {
-                    await Task.Delay(30);
-                    var batch = remaining.Skip(i).Take(NextBatch).ToList();
-                    var done = new TaskCompletionSource();
-                    MainThread.BeginInvokeOnMainThread(() =>
-                    {
-                        if (version == _positionsFillVersion)
-                            foreach (var r in batch) collection.Add(r);
-                        done.SetResult();
-                    });
-                    await done.Task;
-                    if (version != _positionsFillVersion) return;
-                }
-            });
-        }
+        PositionsRows = PositionsRows.Count == 0
+            ? IncrementalFill.Start(rows, firstBatch: 8, nextBatch: 7, delayMs: 30, isCurrent: () => version == _positionsFillVersion)
+            : new ObservableCollection<OpicentrumRosterRowItem>(rows);
+        AppLog.Metric("opicentrum.positions.apply.assign", assignSw.Elapsed.TotalMilliseconds, "ms", ("shown", PositionsRows.Count));
     }
 
     private int _positionsFillVersion;
+    private IReadOnlyList<OpicentrumRosterRowItem> _positionsAllRows = [];
 
-    /// <summary>Every other workplace name on the board, for the page's code-behind to build its "move to…" action sheet from.</summary>
+    /// <summary>Every other workplace name on the board (including rows still being filled in), for the page's code-behind to build its "move to…" action sheet from.</summary>
     public IReadOnlyList<string> GetTargetWorkplaceNames(int excludeWorkplaceId) =>
-        PositionsRows.Where(r => r.WorkplaceId != excludeWorkplaceId && r.WorkplaceId >= 0).Select(r => r.WorkplaceName).ToList();
+        _positionsAllRows.Where(r => r.WorkplaceId != excludeWorkplaceId && r.WorkplaceId >= 0).Select(r => r.WorkplaceName).ToList();
 
     private int GetWorkplaceId(string name) => _workplaceIdByName.GetValueOrDefault(name, -1);
 
