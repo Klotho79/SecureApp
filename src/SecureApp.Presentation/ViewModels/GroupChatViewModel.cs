@@ -210,13 +210,12 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
                     return new GroupInitialLoad(group, localPublicKey, role, members, directoryNames, sessionNames, c.Older, c.Items, signature);
                 }
 
-                var rawMessages = await _messageRepository.GetByGroupAsync(_groupChatId);
+                var rawMessages = await _messageRepository.GetVisibleByGroupAsync(_groupChatId);
                 var tRawMsgs = r();
                 var seen = new HashSet<Guid>();
                 var logical = new List<Message>();
                 foreach (var m in rawMessages.OrderBy(x => x.CreatedAtUtc))
                 {
-                    if (m.IsSystemPayload) continue;
                     if (m.Direction == MessageDirection.Outbound && m.GroupMessageId is { } gid && !seen.Add(gid)) continue;
                     logical.Add(m);
                 }
@@ -426,16 +425,15 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
             s => s.Id,
             s => DirectoryNameResolver.Resolve(_directoryNames, s.PeerIdentityPublicKey, s.PeerDisplayName));
 
-        var rawMessages = await _messageRepository.GetByGroupAsync(_groupChatId);
+        // System payloads are already excluded in SQL (GetVisibleByGroupAsync).
+        var rawMessages = await _messageRepository.GetVisibleByGroupAsync(_groupChatId);
 
         // Collapse each logical message down to one row (a sender's own message fans out as one row
-        // per other member, all sharing GroupMessageId) and drop system payloads — all without
-        // decrypting anything yet.
+        // per other member, all sharing GroupMessageId) — all without decrypting anything yet.
         var seenOutboundGroupMessageIds = new HashSet<Guid>();
         var logical = new List<Message>();
         foreach (var message in rawMessages.OrderBy(m => m.CreatedAtUtc))
         {
-            if (message.IsSystemPayload) continue;
             if (message.Direction == MessageDirection.Outbound
                 && message.GroupMessageId is { } gid && !seenOutboundGroupMessageIds.Add(gid))
                 continue; // already have this logical message from an earlier fan-out leg
@@ -1167,6 +1165,9 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
         try
         {
             var message = await _messagingService.ReceiveMessageAsync(envelope);
+            // A re-delivered envelope makes ReceiveMessageAsync return the row it already stored (its
+            // idempotency guard) — that row may already be on screen, so never add a second bubble.
+            if (Messages.Any(m => m.Id == message.Id)) return;
             // Resolve the sender name from the preloaded map; if this is a brand-new session not yet
             // in it, fall back to a one-off lookup so a just-added member still shows a name.
             string senderName;

@@ -63,6 +63,13 @@ public sealed class MessageRepository : IMessageRepository
         return rows.Select(ToEntity).ToList();
     }
 
+    public async Task<IReadOnlyList<Message>> GetVisibleByGroupAsync(Guid groupChatId, CancellationToken ct = default)
+    {
+        var connection = await _connectionFactory.GetConnectionAsync(ct);
+        var rows = await connection.QueryAsync<MessageRow>("SELECT * FROM messages WHERE group_chat_id = ? AND is_system_payload = 0 ORDER BY created_at_utc", groupChatId.ToString());
+        return rows.Select(ToEntity).ToList();
+    }
+
     public async Task<string> GetSessionSignatureAsync(Guid chatSessionId, CancellationToken ct = default)
     {
         var connection = await _connectionFactory.GetConnectionAsync(ct);

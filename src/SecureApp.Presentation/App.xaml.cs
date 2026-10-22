@@ -1828,9 +1828,7 @@ public partial class App : Application
 		var sessions = scope.ServiceProvider.GetRequiredService<IChatSessionRepository>();
 		var original = await sessions.GetByIdAsync(chatSessionId);
 		if (original is null) return null;
-		var peerKeyHex = Convert.ToHexStringLower(original.PeerIdentityPublicKey);
-		chatSessionId = (await sessions.GetAllAsync())
-			.Where(s => Convert.ToHexStringLower(s.PeerIdentityPublicKey) == peerKeyHex)
+		chatSessionId = (await sessions.GetAllByPeerPublicKeyAsync(original.PeerIdentityPublicKey))
 			.OrderByDescending(s => s.State != ChatSessionState.Closed)
 			.ThenByDescending(s => s.LastRatchetedAtUtc ?? s.CreatedAtUtc)
 			.First().Id;

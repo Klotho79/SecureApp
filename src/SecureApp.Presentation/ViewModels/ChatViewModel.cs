@@ -491,6 +491,9 @@ public sealed partial class ChatViewModel : ChatThreadViewModelBase<ChatMessageI
         try
         {
             var message = await _messagingService.ReceiveMessageAsync(envelope);
+            // A re-delivered envelope makes ReceiveMessageAsync return the row it already stored (its
+            // idempotency guard) — that row may already be on screen, so never add a second bubble.
+            if (Messages.Any(m => m.Id == message.Id)) return;
             var text = await TryDecryptAsync(message);
             var canDelete = RoleAccessPolicy.CanDeleteMessage(_currentUserService.Current.Role, false, message.SenderRole);
             Messages.Add(new ChatMessageItem(message.Id, false, text, message.CreatedAtUtc, message.Status, message.AttachmentLibraryFileId, message.AttachmentFileName, canDelete, message.OriginMessageId));
