@@ -264,16 +264,18 @@ public sealed partial class LibraryViewModel : ObservableObject
             // network round trip to the relay, so the number is expected to run much higher — logged
             // for visibility/trending, not held to that local-query target.
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            var results = await _libraryService.SearchAsync(
-                string.IsNullOrWhiteSpace(SearchQuery) ? null : SearchQuery,
-                string.IsNullOrWhiteSpace(FolderFilter) ? null : FolderFilter);
+            var query = string.IsNullOrWhiteSpace(SearchQuery) ? null : SearchQuery;
+            var folder = string.IsNullOrWhiteSpace(FolderFilter) ? null : FolderFilter;
+            var results = await _libraryService.SearchAsync(query, folder);
             Infrastructure.AppLog.Metric("search_latency.library", sw.Elapsed.TotalMilliseconds, "ms", ("resultCount", results.Count));
 
             var myDeviceId = (await _transportSettingsRepository.GetAsync())?.AssignedDeviceId;
             Results = new ObservableCollection<LibraryFileItem>(results.Select(r => ToItem(r, myDeviceId, CanTranslateDocuments)));
             IsEmpty = Results.Count == 0;
 
-            await RefreshCategoriesAsync();
+            // With no query and no folder filter the search above already IS the unfiltered fetch the
+            // category row needs — reuse it instead of asking the relay for the same list twice.
+            await RefreshCategoriesAsync(query is null && folder is null ? results : null);
             await RefreshReviewWorkflowStateAsync();
         }
         catch (Exception ex)
@@ -343,9 +345,9 @@ public sealed partial class LibraryViewModel : ObservableObject
     /// chip row needs to keep showing every category that exists regardless of which one is
     /// currently selected, not just whichever one the active filter happens to match.
     /// </summary>
-    private async Task RefreshCategoriesAsync()
+    private async Task RefreshCategoriesAsync(IReadOnlyList<SharedLibraryFileSummary>? unfilteredFiles = null)
     {
-        var all = await _libraryService.SearchAsync();
+        var all = unfilteredFiles ?? await _libraryService.SearchAsync();
         // Only the segment before the first '/' — a sub-category file's FolderPath is
         // "{Top}/{Sub}" (2026-10-02), and without this split that whole two-segment string would
         // show up as its own ad-hoc top-level chip instead of folding into its real parent.

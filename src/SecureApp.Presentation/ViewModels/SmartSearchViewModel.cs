@@ -89,9 +89,14 @@ public sealed partial class SmartSearchViewModel : ObservableObject
 
     partial void OnSearchQueryChanged(string value) => _ = SearchAsync();
 
+    // Every keystroke starts a search and they overlap; a slow earlier one must not overwrite the
+    // results of the query typed after it, so a search that was superseded while awaiting just stops.
+    private int _searchVersion;
+
     [RelayCommand]
     private async Task SearchAsync()
     {
+        var version = ++_searchVersion;
         var query = SearchQuery?.Trim() ?? string.Empty;
         HasQuery = query.Length > 0;
         if (!HasQuery)
@@ -103,6 +108,7 @@ public sealed partial class SmartSearchViewModel : ObservableObject
             WorkplaceResults = [];
             RaiseHasResultsChanged();
             HasNoResults = false;
+            IsSearching = false; // an in-flight search for the previous text no longer owns the spinner
             return;
         }
 
@@ -110,18 +116,21 @@ public sealed partial class SmartSearchViewModel : ObservableObject
         try
         {
             var notifications = await _notificationRepository.GetPagedAsync(NotificationFilter.Default with { SearchText = query }, MaxResultsPerSection);
+            if (version != _searchVersion) return;
             NotificationResults = new ObservableCollection<SearchResultItem>(notifications.Select(n => new SearchResultItem(
                 n.Title, n.Body, $"NotificationDetailPage?notificationId={n.Id}", OpenCommand)));
 
             var sessions = await _chatSessionRepository.GetAllAsync();
-            ChatResults = new ObservableCollection<SearchResultItem>(sessions
+            if (version != _searchVersion) return;
+            ChatResults =new ObservableCollection<SearchResultItem>(sessions
                 .Where(s => s.PeerDisplayName.Contains(query, StringComparison.OrdinalIgnoreCase))
                 .DistinctBy(s => s.PeerIdentityPublicKey, ByteArrayEqualityComparer.Instance)
                 .Take(MaxResultsPerSection)
                 .Select(s => new SearchResultItem(s.PeerDisplayName, "1:1 chat", $"ChatPage?chatSessionId={s.Id}", OpenCommand)));
 
             var groups = await _groupChatRepository.GetAllAsync();
-            GroupResults = new ObservableCollection<SearchResultItem>(groups
+            if (version != _searchVersion) return;
+            GroupResults =new ObservableCollection<SearchResultItem>(groups
                 .Where(g => g.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
                 .Take(MaxResultsPerSection)
                 .Select(g => new SearchResultItem(g.Name, "Skupina", $"GroupChatPage?groupChatId={g.Id}", OpenCommand)));
@@ -143,7 +152,8 @@ public sealed partial class SmartSearchViewModel : ObservableObject
             var assignmentRangeStart = DateOnly.FromDateTime(DateTime.Today).AddDays(-60);
             var assignmentRangeEnd = DateOnly.FromDateTime(DateTime.Today).AddDays(180);
             var assignments = await _workAssignmentRepository.GetByDateRangeAsync(assignmentRangeStart, assignmentRangeEnd);
-            WorkplaceResults = new ObservableCollection<SearchResultItem>(assignments
+            if (version != _searchVersion) return;
+            WorkplaceResults =new ObservableCollection<SearchResultItem>(assignments
                 .Where(a =>
                     AssignmentTypeCatalog.Label(a.Type).Contains(query, StringComparison.OrdinalIgnoreCase) ||
                     (a.WorkplaceName?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
@@ -161,7 +171,8 @@ public sealed partial class SmartSearchViewModel : ObservableObject
         }
         finally
         {
-            IsSearching = false;
+            // A superseded search leaves the spinner to the newer one that is still running.
+            if (version == _searchVersion) IsSearching = false;
         }
     }
 

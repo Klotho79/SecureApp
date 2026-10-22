@@ -305,7 +305,9 @@ public sealed partial class ContactsViewModel : ObservableObject
             for (var i = 0; i < list.Count; i++)
             {
                 if (list[i].SortOrder == i) continue;
-                var updated = new SharedContact(list[i].Id, list[i].DisplayName, list[i].Phone, list[i].Note, i, list[i].CreatedAtUtc);
+                // Email must travel along: the relay's upsert overwrites every column, so leaving it out
+                // here used to blank the e-mail of every contact the reorder touched.
+                var updated = new SharedContact(list[i].Id, list[i].DisplayName, list[i].Phone, list[i].Note, i, list[i].CreatedAtUtc, list[i].Email);
                 await _sharedContactService.PublishAsync(updated);
             }
         }
@@ -321,7 +323,7 @@ public sealed partial class ContactsViewModel : ObservableObject
         if (!string.IsNullOrWhiteSpace(c.Phone)) subtitleParts.Add(PhoneNumberFormat.Describe(c.Phone));
         if (includeNoteInSubtitle && !string.IsNullOrWhiteSpace(c.Note)) subtitleParts.Add(c.Note);
         return new SharedContactItem(c.Id, c.DisplayName, c.Phone, c.Note, c.SortOrder, c.CreatedAtUtc, string.Join(" · ", subtitleParts), DeleteContactCommand,
-            PhoneNumberFormat.FirstDialable(c.Phone) is not null, CallCommand);
+            PhoneNumberFormat.FirstDialable(c.Phone) is not null, CallCommand, c.Email);
     }
 
     /// <summary>Opens the phone's dialer pre-filled with the first complete number in <paramref name="raw"/> — never places the call by itself.</summary>
@@ -412,7 +414,7 @@ public sealed partial class ContactSectionGroup : ObservableObject
 }
 
 /// <summary>One row in "Firemní kontakty" or "Soukromé kontakty ARIM" (2026-09-20) — no chat action anywhere (see class-level remarks on <see cref="ContactsViewModel"/>); <see cref="Subtitle"/> is pre-joined (extension · note) so the DataTemplate needs no visibility triggers per field, this codebase's established "no converters" convention.</summary>
-public sealed record SharedContactItem(Guid Id, string DisplayName, string? Phone, string? Note, int SortOrder, DateTimeOffset CreatedAtUtc, string Subtitle, ICommand DeleteCommand, bool CanCall, ICommand CallCommand);
+public sealed record SharedContactItem(Guid Id, string DisplayName, string? Phone, string? Note, int SortOrder, DateTimeOffset CreatedAtUtc, string Subtitle, ICommand DeleteCommand, bool CanCall, ICommand CallCommand, string? Email = null);
 
 /// <summary>
 /// One collapsible section of <see cref="SharedContactItem"/>s — "Soukromé kontakty ARIM" (2026-09-29),
