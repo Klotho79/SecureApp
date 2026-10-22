@@ -112,21 +112,7 @@ public sealed partial class ChatViewModel : ChatThreadViewModelBase<ChatMessageI
     /// <c>IsAutoConnectEnabled</c>, so a user who deliberately turned auto-connect off isn't
     /// overridden just because they opened a chat) rather than a new always-on behavior.
     /// </summary>
-    private async Task EnsureConnectedAsync()
-    {
-        if (_messageTransport.IsConnected) return;
-
-        try
-        {
-            var configuration = await _transportSettingsRepository.GetAsync();
-            if (configuration is { AssignedDeviceId: not null, IsAutoConnectEnabled: true, EndpointUri: { } endpoint })
-                await _messageTransport.ConnectAsync(endpoint);
-        }
-        catch
-        {
-            // Best-effort — SendAsync already tolerates staying Pending if this doesn't pan out.
-        }
-    }
+    private Task EnsureConnectedAsync() => Transport.RelayConnection.EnsureConnectedAsync(_messageTransport, _transportSettingsRepository);
 
     [RelayCommand]
     private async Task LoadAsync()

@@ -43,7 +43,7 @@ public sealed class HttpCommunityBoardService : ICommunityBoardService
 
         var key = await GetSharedKeyAsync(ct);
         var payload = await _crypto.EncryptWithKeyAsync(Encoding.UTF8.GetBytes(text), Guid.NewGuid(), key, ct);
-        var blob = Convert.ToBase64String(Combine(payload.Nonce, payload.AuthTag, payload.CipherText));
+        var blob = Convert.ToBase64String(SharedKeyWire.Combine(payload.Nonce, payload.AuthTag, payload.CipherText));
 
         var (baseUri, deviceId, secret) = await GetAuthAsync(ct);
         var uri = new Uri(baseUri, "board");
@@ -154,14 +154,5 @@ public sealed class HttpCommunityBoardService : ICommunityBoardService
         request.Headers.Add("X-Device-Secret", secret);
     }
 
-    private static byte[] Combine(byte[] nonce, byte[] authTag, byte[] cipherText)
-    {
-        var result = new byte[nonce.Length + authTag.Length + cipherText.Length];
-        Buffer.BlockCopy(nonce, 0, result, 0, nonce.Length);
-        Buffer.BlockCopy(authTag, 0, result, nonce.Length, authTag.Length);
-        Buffer.BlockCopy(cipherText, 0, result, nonce.Length + authTag.Length, cipherText.Length);
-        return result;
-    }
-
-    private sealed record BoardPostDto(Guid Id, Guid AuthorDeviceId, string AuthorDisplayName, string ContentBlob, DateTimeOffset CreatedAtUtc);
+        private sealed record BoardPostDto(Guid Id, Guid AuthorDeviceId, string AuthorDisplayName, string ContentBlob, DateTimeOffset CreatedAtUtc);
 }

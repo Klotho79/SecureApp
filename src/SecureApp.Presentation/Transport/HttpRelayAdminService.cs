@@ -33,17 +33,7 @@ public sealed class HttpRelayAdminService : IRelayAdminService
         _transportSettingsRepository = transportSettingsRepository ?? throw new ArgumentNullException(nameof(transportSettingsRepository));
     }
 
-    private async Task AddDeviceAuthAsync(HttpRequestMessage request, CancellationToken ct)
-    {
-        var configuration = await _transportSettingsRepository.GetAsync(ct);
-        var deviceId = configuration?.AssignedDeviceId
-            ?? throw new InvalidOperationException("Nejprve se zaregistrujte u relay serveru v Nastavení.");
-        var secretBytes = await _vault.RetrieveSecretAsync(RelayDeviceVaultKeys.DeviceSecret, ct)
-            ?? throw new InvalidOperationException("V úložišti chybí tajný klíč zařízení pro relay.");
-
-        request.Headers.Add("X-Device-Id", deviceId.ToString());
-        request.Headers.Add("X-Device-Secret", Encoding.UTF8.GetString(secretBytes));
-    }
+    private Task AddDeviceAuthAsync(HttpRequestMessage request, CancellationToken ct) => RelayHttp.AddDeviceAuthAsync(request, _transportSettingsRepository, _vault, ct);
 
     public async Task<(string InviteCode, DateTimeOffset ExpiresAtUtc)> CreateInviteAsync(Uri endpoint, string adminSecret, string? displayNameHint, int validForMinutes, CancellationToken ct = default)
     {
@@ -209,19 +199,7 @@ public sealed class HttpRelayAdminService : IRelayAdminService
 
     private sealed record ManagedDeviceSummary(Guid DeviceId, string DisplayName, int? Role, List<string>? HiddenTabs, DateTimeOffset? LastSeenUtc, bool DocumentReviewer = false, string? AppVersion = null, bool PiccTeam = false, bool HasSharedLibraryKey = false, Guid? ArimContactId = null, string? ArimContactName = null, string? ArimContactEmail = null);
 
-    // Mirrors WebSocketMessageTransport.ToHttpUri — the Settings UI stores/edits one ws:// address
-    // for both the WebSocket connection and every HTTP admin/device call, so this needs the same
-    // ws->http / wss->https rewrite.
-    private static Uri ToHttpUri(Uri wsEndpoint)
-    {
-        var scheme = wsEndpoint.Scheme switch
-        {
-            "ws" => "http",
-            "wss" => "https",
-            _ => wsEndpoint.Scheme
-        };
-        return new UriBuilder(wsEndpoint) { Scheme = scheme, Port = wsEndpoint.Port }.Uri;
-    }
+    private static Uri ToHttpUri(Uri wsEndpoint) => RelayHttp.ToHttpUri(wsEndpoint);
 
     public async Task<(string ConfigurationText, string? PickupCode)> CreateWireGuardClientAsync(Uri endpoint, string adminSecret, string memberName, SecureApp.Domain.Enums.Role? role = null, CancellationToken ct = default)
     {

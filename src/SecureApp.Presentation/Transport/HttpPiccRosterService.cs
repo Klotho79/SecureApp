@@ -73,7 +73,7 @@ public sealed class HttpPiccRosterService : IPiccRosterService
 
         // 1. The full file, unlisted — see this class's own remarks on why that's the real boundary.
         var payload = await _crypto.EncryptWithKeyAsync(plaintext, Guid.NewGuid(), key, ct);
-        var wireBytes = Combine(payload.Nonce, payload.AuthTag, payload.CipherText);
+        var wireBytes = SharedKeyWire.Combine(payload.Nonce, payload.AuthTag, payload.CipherText);
         var contentHash = Convert.ToHexStringLower(SHA256.HashData(wireBytes));
         var fileName = $"picc-roster-{DateTime.UtcNow:yyyyMMdd-HHmmss}.xlsx";
         var uploadUri = new Uri(baseUri,
@@ -165,7 +165,7 @@ public sealed class HttpPiccRosterService : IPiccRosterService
         fileResponse.EnsureSuccessStatusCode();
 
         var wireBytes = await fileResponse.Content.ReadAsByteArrayAsync(ct);
-        var (nonce, authTag, cipherText) = Split(wireBytes);
+        var (nonce, authTag, cipherText) = SharedKeyWire.Split(wireBytes, "Stažená data jsou příliš krátká, aby mohla obsahovat platný obsah.");
         var payload = new EncryptedPayload(pointer.LibraryFileId, EncryptionAlgorithm.Aes256Gcm, cipherText, nonce, authTag);
 
         byte[] plaintext;
@@ -186,7 +186,7 @@ public sealed class HttpPiccRosterService : IPiccRosterService
     {
         var innerJson = JsonSerializer.Serialize(new StatusPayload(doctorName, asOfDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)), HttpJsonOptions);
         var payload = await _crypto.EncryptWithKeyAsync(Encoding.UTF8.GetBytes(innerJson), Guid.NewGuid(), key, ct);
-        var blob = Convert.ToBase64String(Combine(payload.Nonce, payload.AuthTag, payload.CipherText));
+        var blob = Convert.ToBase64String(SharedKeyWire.Combine(payload.Nonce, payload.AuthTag, payload.CipherText));
 
         var uri = new Uri(baseUri, "picc/status");
         using var request = new HttpRequestMessage(HttpMethod.Post, uri)
@@ -203,7 +203,7 @@ public sealed class HttpPiccRosterService : IPiccRosterService
     private async Task<string> DecryptTextAsync(string blob, byte[] key, CancellationToken ct)
     {
         var wire = Convert.FromBase64String(blob);
-        var (nonce, authTag, cipherText) = Split(wire);
+        var (nonce, authTag, cipherText) = SharedKeyWire.Split(wire, "Stažená data jsou příliš krátká, aby mohla obsahovat platný obsah.");
         var payload = new EncryptedPayload(Guid.Empty, EncryptionAlgorithm.Aes256Gcm, cipherText, nonce, authTag);
         var plaintext = await _crypto.DecryptWithKeyAsync(payload, key, ct);
         return Encoding.UTF8.GetString(plaintext);
@@ -234,27 +234,7 @@ public sealed class HttpPiccRosterService : IPiccRosterService
         request.Headers.Add("X-Device-Secret", secret);
     }
 
-    private static byte[] Combine(byte[] nonce, byte[] authTag, byte[] cipherText)
-    {
-        var result = new byte[nonce.Length + authTag.Length + cipherText.Length];
-        Buffer.BlockCopy(nonce, 0, result, 0, nonce.Length);
-        Buffer.BlockCopy(authTag, 0, result, nonce.Length, authTag.Length);
-        Buffer.BlockCopy(cipherText, 0, result, nonce.Length + authTag.Length, cipherText.Length);
-        return result;
-    }
-
-    private static (byte[] Nonce, byte[] AuthTag, byte[] CipherText) Split(byte[] wireBytes)
-    {
-        if (wireBytes.Length < NonceLength + AuthTagLength)
-            throw new InvalidOperationException("Stažená data jsou příliš krátká, aby mohla obsahovat platný obsah.");
-
-        var nonce = wireBytes[..NonceLength];
-        var authTag = wireBytes[NonceLength..(NonceLength + AuthTagLength)];
-        var cipherText = wireBytes[(NonceLength + AuthTagLength)..];
-        return (nonce, authTag, cipherText);
-    }
-
-    private sealed record LibraryFileDto(Guid Id, string FolderPath, string FileName, List<string> Tags, long SizeBytes, Guid UploadedByDeviceId, DateTimeOffset UploadedAtUtc);
+            private sealed record LibraryFileDto(Guid Id, string FolderPath, string FileName, List<string> Tags, long SizeBytes, Guid UploadedByDeviceId, DateTimeOffset UploadedAtUtc);
     private sealed record PiccStatusDto(string ContentBlob, DateTimeOffset UpdatedAtUtc);
     private sealed record PiccRosterPointerDto(Guid LibraryFileId, DateTimeOffset UpdatedAtUtc);
     private sealed record StatusPayload(string? DoctorName, string? AsOfDate);

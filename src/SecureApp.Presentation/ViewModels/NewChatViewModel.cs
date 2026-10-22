@@ -150,20 +150,7 @@ public sealed partial class NewChatViewModel : ObservableObject
     partial void OnIsScanningInviteChanged(bool value) => ScanInviteButtonText = value ? "Zrušit skenování" : "Naskenovat QR";
 
     /// <summary>Best-effort reconnect before listing, same reasoning as <c>ChatViewModel.EnsureConnectedAsync</c> — a dropped connection shouldn't have to wait for this page's next open to notice.</summary>
-    private async Task EnsureConnectedAsync()
-    {
-        if (_messageTransport.IsConnected) return;
-        try
-        {
-            var configuration = await _transportSettingsRepository.GetAsync();
-            if (configuration is { AssignedDeviceId: not null, IsAutoConnectEnabled: true, EndpointUri: { } endpoint })
-                await _messageTransport.ConnectAsync(endpoint);
-        }
-        catch
-        {
-            // Best-effort — LoadMembersAsync below surfaces a quiet note if this didn't help.
-        }
-    }
+    private Task EnsureConnectedAsync() => Transport.RelayConnection.EnsureConnectedAsync(_messageTransport, _transportSettingsRepository);
 
     /// <summary>
     /// Fetches the relay's member directory — see the class-level remarks. A failure here (relay

@@ -1023,20 +1023,7 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
     }
 
     /// <summary>Best-effort reconnect before listing addable members, same reasoning as <c>ChatViewModel.EnsureConnectedAsync</c>.</summary>
-    private async Task EnsureConnectedAsync()
-    {
-        if (_messageTransport.IsConnected) return;
-        try
-        {
-            var configuration = await _transportSettingsRepository.GetAsync();
-            if (configuration is { AssignedDeviceId: not null, IsAutoConnectEnabled: true, EndpointUri: { } endpoint })
-                await _messageTransport.ConnectAsync(endpoint);
-        }
-        catch
-        {
-            // Best-effort — LoadAddableMembersAsync below surfaces whatever's still wrong.
-        }
-    }
+    private Task EnsureConnectedAsync() => Transport.RelayConnection.EnsureConnectedAsync(_messageTransport, _transportSettingsRepository);
 
     /// <summary>
     /// Unlike <c>NewChatViewModel.LoadMembersAsync</c>, there's no manual paste/QR fallback for

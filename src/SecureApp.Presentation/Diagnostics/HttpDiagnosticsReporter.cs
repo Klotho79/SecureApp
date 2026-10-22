@@ -76,32 +76,9 @@ public sealed class HttpDiagnosticsReporter : IDiagnosticsReporter
             d.Id, d.DeviceDisplayName, Enum.Parse<DiagnosticLogLevel>(d.Level), d.Message, d.Context, d.ExceptionDetails, d.CreatedAtUtc)).ToList();
     }
 
-    private async Task<Uri> GetHttpEndpointAsync(CancellationToken ct)
-    {
-        var configuration = await _transportSettingsRepository.GetAsync(ct);
-        var wsEndpoint = configuration?.EndpointUri
-            ?? throw new InvalidOperationException("Zatím není nastavená adresa relay serveru — nastavte ji nejprve v Nastavení.");
+    private Task<Uri> GetHttpEndpointAsync(CancellationToken ct) => RelayHttp.GetHttpEndpointAsync(_transportSettingsRepository, ct);
 
-        var scheme = wsEndpoint.Scheme switch
-        {
-            "ws" => "http",
-            "wss" => "https",
-            _ => wsEndpoint.Scheme
-        };
-        return new UriBuilder(wsEndpoint) { Scheme = scheme, Port = wsEndpoint.Port }.Uri;
-    }
-
-    private async Task AddDeviceAuthAsync(HttpRequestMessage request, CancellationToken ct)
-    {
-        var configuration = await _transportSettingsRepository.GetAsync(ct);
-        var deviceId = configuration?.AssignedDeviceId
-            ?? throw new InvalidOperationException("Nejprve se zaregistrujte u relay serveru v Nastavení.");
-        var secretBytes = await _vault.RetrieveSecretAsync(RelayDeviceVaultKeys.DeviceSecret, ct)
-            ?? throw new InvalidOperationException("V úložišti chybí tajný klíč zařízení pro relay.");
-
-        request.Headers.Add("X-Device-Id", deviceId.ToString());
-        request.Headers.Add("X-Device-Secret", Encoding.UTF8.GetString(secretBytes));
-    }
+    private Task AddDeviceAuthAsync(HttpRequestMessage request, CancellationToken ct) => RelayHttp.AddDeviceAuthAsync(request, _transportSettingsRepository, _vault, ct);
 
     private sealed record DiagnosticLogEntryDto(Guid Id, string DeviceDisplayName, string Level, string Message, string? Context, string? ExceptionDetails, DateTimeOffset CreatedAtUtc);
 }

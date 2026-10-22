@@ -384,14 +384,12 @@ public partial class App : Application
 					}
 				}
 
-				if (services is not null)
-				{
-					await RunBackgroundOpicentrumSyncAsync(services);
-					await RunBackgroundOpicentrumRosterBoardPublishAsync(services);
-					await RunBackgroundOpicentrumVolnoBoardPublishAsync(services);
-					await RunBackgroundUpdateCheckAsync(services);
-					await RunBackgroundCmsAnnotationCheckAsync(services);
-				}
+				// Detached from the supervisor tick (2026-10-22): an Opicentrum scrape (login + several
+				// pages, tens of seconds) used to run inline here, so a connection that dropped DURING it
+				// wasn't re-established until it finished. Single-flight — a slow run just means the next
+				// tick skips this block; each job still throttles itself via its own preference timestamp.
+				if (services is not null && Interlocked.CompareExchange(ref _backgroundJobsRunning, 1, 0) == 0)
+					_ = RunBackgroundJobsAsync(services);
 			}
 			catch
 			{
@@ -401,6 +399,28 @@ public partial class App : Application
 
 			try { await Task.Delay(_supervisorTickInterval); }
 			catch { return; }
+		}
+	}
+
+	private static int _backgroundJobsRunning;
+
+	private static async Task RunBackgroundJobsAsync(IServiceProvider services)
+	{
+		try
+		{
+			await RunBackgroundOpicentrumSyncAsync(services);
+			await RunBackgroundOpicentrumRosterBoardPublishAsync(services);
+			await RunBackgroundOpicentrumVolnoBoardPublishAsync(services);
+			await RunBackgroundUpdateCheckAsync(services);
+			await RunBackgroundCmsAnnotationCheckAsync(services);
+		}
+		catch
+		{
+			// Each job already logs its own failure; one bad run is simply retried on a later tick.
+		}
+		finally
+		{
+			Volatile.Write(ref _backgroundJobsRunning, 0);
 		}
 	}
 
@@ -804,22 +824,6 @@ public partial class App : Application
 	}
 
 	/// <summary>
-	/// Background identity-migration sweep (2026-09-19, the user's own hard standing requirement —
-	/// see <see cref="PeerIdentityReconciler"/>'s own remarks and the "secureapp-self-healing-requirement"
-	/// memory: nobody should ever have to notice or manually fix a broken chat/group member). Runs on
-	/// the SAME cadence as <see cref="RunStaleSessionSweepAsync"/> — every reconnect and every
-	/// <see cref="_staleSessionSweepInterval"/> — independent of which screen, if any, is open. For
-	/// every 1:1 peer and every group member this device knows about, checks the relay's own member
-	/// directory for a same-name-but-different-key match — the shape a peer's identity reset (vault
-	/// wipe, local DB reset) leaves behind — and silently re-pairs under the new key, carrying this
-	/// device's own still-pending outbound history onto the fresh session and resending it right away
-	/// (see <see cref="SessionRecoveryHelper.ResyncAsync"/>'s <c>migratingFromPublicKey</c> remarks).
-	///
-	/// Deliberately does NOT recover content already stuck in the RELAY's own outbox addressed to a
-	/// now-dead identity (an admin/ops concern, not a runtime one) — only this device's own locally-held
-	/// copy of what it tried to send.
-	/// </summary>
-	/// <summary>
 	/// Applies the admin-assigned policy this device just fetched from the relay (2026-09-24): its
 	/// role and which tabs it may not show. Runs on every reconnect/sweep so a change an admin makes
 	/// takes effect on the member's next connection with no action on their part. Best-effort — a
@@ -1099,6 +1103,22 @@ public partial class App : Application
 		}
 	}
 
+	/// <summary>
+	/// Background identity-migration sweep (2026-09-19, the user's own hard standing requirement —
+	/// see <see cref="PeerIdentityReconciler"/>'s own remarks and the "secureapp-self-healing-requirement"
+	/// memory: nobody should ever have to notice or manually fix a broken chat/group member). Runs on
+	/// the SAME cadence as <see cref="RunStaleSessionSweepAsync"/> — every reconnect and every
+	/// <see cref="_staleSessionSweepInterval"/> — independent of which screen, if any, is open. For
+	/// every 1:1 peer and every group member this device knows about, checks the relay's own member
+	/// directory for a same-name-but-different-key match — the shape a peer's identity reset (vault
+	/// wipe, local DB reset) leaves behind — and silently re-pairs under the new key, carrying this
+	/// device's own still-pending outbound history onto the fresh session and resending it right away
+	/// (see <see cref="SessionRecoveryHelper.ResyncAsync"/>'s <c>migratingFromPublicKey</c> remarks).
+	///
+	/// Deliberately does NOT recover content already stuck in the RELAY's own outbox addressed to a
+	/// now-dead identity (an admin/ops concern, not a runtime one) — only this device's own locally-held
+	/// copy of what it tried to send.
+	/// </summary>
 	private static async Task RunPeerIdentityReconciliationAsync(IServiceProvider services, IMessageTransport transport)
 	{
 		using var scope = services.CreateScope();

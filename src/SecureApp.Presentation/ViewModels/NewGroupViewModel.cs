@@ -100,20 +100,7 @@ public sealed partial class NewGroupViewModel : ObservableObject
     /// does, so this page shouldn't show an empty list just because the connection dropped since the
     /// app last background-reconnected.
     /// </summary>
-    private async Task EnsureConnectedAsync()
-    {
-        if (_messageTransport.IsConnected) return;
-        try
-        {
-            var configuration = await _transportSettingsRepository.GetAsync();
-            if (configuration is { AssignedDeviceId: not null, IsAutoConnectEnabled: true, EndpointUri: { } endpoint })
-                await _messageTransport.ConnectAsync(endpoint);
-        }
-        catch
-        {
-            // Best-effort — ListMembersAsync below will surface whatever's actually wrong.
-        }
-    }
+    private Task EnsureConnectedAsync() => Transport.RelayConnection.EnsureConnectedAsync(_messageTransport, _transportSettingsRepository);
 
     /// <summary>
     /// Was a silent best-effort catch until a real user complaint (2026-09-07): "nejde přidat

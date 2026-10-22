@@ -51,11 +51,7 @@ public sealed class HttpDevicePolicyService : IDevicePolicyService
         return new DevicePolicy(role, dto.HiddenTabs ?? [], dto.DocumentReviewer, dto.PiccTeam);
     }
 
-    private static Uri ToHttpUri(Uri wsEndpoint)
-    {
-        var scheme = wsEndpoint.Scheme switch { "ws" => "http", "wss" => "https", _ => wsEndpoint.Scheme };
-        return new UriBuilder(wsEndpoint) { Scheme = scheme, Port = wsEndpoint.Port }.Uri;
-    }
+    private static Uri ToHttpUri(Uri wsEndpoint) => RelayHttp.ToHttpUri(wsEndpoint);
 
     private sealed record PolicyDto(int? Role, List<string>? HiddenTabs, bool DocumentReviewer = false, bool PiccTeam = false);
 }

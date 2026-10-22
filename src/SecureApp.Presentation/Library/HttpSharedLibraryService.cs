@@ -27,8 +27,6 @@ namespace SecureApp.Presentation.Library;
 public sealed class HttpSharedLibraryService : ISharedLibraryService
 {
     private const string SharedLibraryKeyVaultKey = "library:shared-key";
-    private const int NonceLength = 12;
-    private const int AuthTagLength = 16;
 
     private static readonly JsonSerializerOptions HttpJsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -104,7 +102,7 @@ public sealed class HttpSharedLibraryService : ISharedLibraryService
 
         var key = await GetSharedKeyAsync(ct);
         var payload = await _crypto.EncryptWithKeyAsync(plaintext, Guid.NewGuid(), key, ct);
-        var wireBytes = Combine(payload.Nonce, payload.AuthTag, payload.CipherText);
+        var wireBytes = SharedKeyWire.Combine(payload.Nonce, payload.AuthTag, payload.CipherText);
         var contentHash = Convert.ToHexStringLower(SHA256.HashData(wireBytes));
 
         var endpoint = await GetHttpEndpointAsync(ct);
@@ -180,7 +178,7 @@ public sealed class HttpSharedLibraryService : ISharedLibraryService
             : $"{libraryFileId:N}.bin";
 
         var wireBytes = await response.Content.ReadAsByteArrayAsync(ct);
-        var (nonce, authTag, cipherText) = Split(wireBytes);
+        var (nonce, authTag, cipherText) = SharedKeyWire.Split(wireBytes, "Stažený soubor ze sdílené knihovny je příliš krátký, aby mohl obsahovat platná data.");
 
         var key = await GetSharedKeyAsync(ct);
         var payload = new EncryptedPayload(libraryFileId, EncryptionAlgorithm.Aes256Gcm, cipherText, nonce, authTag);
@@ -440,54 +438,11 @@ public sealed class HttpSharedLibraryService : ISharedLibraryService
         => await _vault.RetrieveSecretAsync(SharedLibraryKeyVaultKey, ct)
             ?? throw new InvalidOperationException("Zatím nemáte nastavený klíč sdílené knihovny — nejprve ho vygenerujte nebo importujte v Nastavení.");
 
-    private async Task<Uri> GetHttpEndpointAsync(CancellationToken ct)
-    {
-        var configuration = await _transportSettingsRepository.GetAsync(ct);
-        var wsEndpoint = configuration?.EndpointUri
-            ?? throw new InvalidOperationException("Zatím není nastavená adresa relay serveru — nastavte ji nejprve v Nastavení.");
+    private Task<Uri> GetHttpEndpointAsync(CancellationToken ct) => RelayHttp.GetHttpEndpointAsync(_transportSettingsRepository, ct);
 
-        var scheme = wsEndpoint.Scheme switch
-        {
-            "ws" => "http",
-            "wss" => "https",
-            _ => wsEndpoint.Scheme
-        };
-        return new UriBuilder(wsEndpoint) { Scheme = scheme, Port = wsEndpoint.Port }.Uri;
-    }
+    private Task AddDeviceAuthAsync(HttpRequestMessage request, CancellationToken ct) => RelayHttp.AddDeviceAuthAsync(request, _transportSettingsRepository, _vault, ct);
 
-    private async Task AddDeviceAuthAsync(HttpRequestMessage request, CancellationToken ct)
-    {
-        var configuration = await _transportSettingsRepository.GetAsync(ct);
-        var deviceId = configuration?.AssignedDeviceId
-            ?? throw new InvalidOperationException("Nejprve se zaregistrujte u relay serveru v Nastavení.");
-        var secretBytes = await _vault.RetrieveSecretAsync(RelayDeviceVaultKeys.DeviceSecret, ct)
-            ?? throw new InvalidOperationException("V úložišti chybí tajný klíč zařízení pro relay.");
-
-        request.Headers.Add("X-Device-Id", deviceId.ToString());
-        request.Headers.Add("X-Device-Secret", Encoding.UTF8.GetString(secretBytes));
-    }
-
-    private static byte[] Combine(byte[] nonce, byte[] authTag, byte[] cipherText)
-    {
-        var result = new byte[nonce.Length + authTag.Length + cipherText.Length];
-        Buffer.BlockCopy(nonce, 0, result, 0, nonce.Length);
-        Buffer.BlockCopy(authTag, 0, result, nonce.Length, authTag.Length);
-        Buffer.BlockCopy(cipherText, 0, result, nonce.Length + authTag.Length, cipherText.Length);
-        return result;
-    }
-
-    private static (byte[] Nonce, byte[] AuthTag, byte[] CipherText) Split(byte[] wireBytes)
-    {
-        if (wireBytes.Length < NonceLength + AuthTagLength)
-            throw new InvalidOperationException("Stažený soubor ze sdílené knihovny je příliš krátký, aby mohl obsahovat platná data.");
-
-        var nonce = wireBytes[..NonceLength];
-        var authTag = wireBytes[NonceLength..(NonceLength + AuthTagLength)];
-        var cipherText = wireBytes[(NonceLength + AuthTagLength)..];
-        return (nonce, authTag, cipherText);
-    }
-
-    private static SharedLibraryFileSummary ToSummary(LibraryFileDto dto) =>
+            private static SharedLibraryFileSummary ToSummary(LibraryFileDto dto) =>
         new(dto.Id, dto.FolderPath, dto.FileName, dto.Tags, dto.SizeBytes, dto.UploadedByDeviceId.ToString(), dto.UploadedAtUtc);
 
     private sealed record LibraryFileDto(Guid Id, string FolderPath, string FileName, List<string> Tags, long SizeBytes, Guid UploadedByDeviceId, DateTimeOffset UploadedAtUtc);

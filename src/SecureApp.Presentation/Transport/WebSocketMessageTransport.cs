@@ -489,16 +489,7 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
         return socket.SendAsync(json, WebSocketMessageType.Text, endOfMessage: true, ct);
     }
 
-    private static Uri ToHttpUri(Uri wsEndpoint)
-    {
-        var scheme = wsEndpoint.Scheme switch
-        {
-            "ws" => "http",
-            "wss" => "https",
-            _ => wsEndpoint.Scheme
-        };
-        return new UriBuilder(wsEndpoint) { Scheme = scheme, Port = wsEndpoint.Port }.Uri;
-    }
+    private static Uri ToHttpUri(Uri wsEndpoint) => RelayHttp.ToHttpUri(wsEndpoint);
 
     private void RaiseConnectionState(TransportConnectionState state) => ConnectionStateChanged?.Invoke(this, state);
 
