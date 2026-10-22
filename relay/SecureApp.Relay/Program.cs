@@ -1639,8 +1639,12 @@ app.MapPost("/room-status", (HttpRequest request, SetRoomStatusRequest body, Rel
 {
     if (!TryGetDeviceAuth(request, db, out var deviceId))
         return Results.Unauthorized();
-    if (string.IsNullOrWhiteSpace(body.WorkplaceName) || string.IsNullOrWhiteSpace(body.StatusText))
-        return Results.BadRequest("WorkplaceName and StatusText are required.");
+    if (string.IsNullOrWhiteSpace(body.WorkplaceName))
+        return Results.BadRequest("WorkplaceName is required.");
+    // 2026-10-22 bugfix: StatusText used to be mandatory on every save, which silently blocked
+    // saving JUST a note (e.g. a sál with no status chosen yet) — now either field alone is enough.
+    if (string.IsNullOrWhiteSpace(body.StatusText) && string.IsNullOrWhiteSpace(body.NoteText))
+        return Results.BadRequest("StatusText or NoteText is required.");
 
     db.UpsertRoomStatus(body.WorkplaceId, body.WorkplaceName, body.StatusText, body.NoteText, deviceId);
     return Results.Ok();

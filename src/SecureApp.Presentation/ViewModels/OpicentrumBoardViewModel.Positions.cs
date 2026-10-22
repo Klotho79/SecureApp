@@ -63,6 +63,13 @@ public sealed partial class OpicentrumBoardViewModel
     /// re-renders if the relay's copy is actually newer (another device's edit, or the periodic
     /// background publish job — see <c>App.RunBackgroundOpicentrumRosterBoardPublishAsync</c>).
     /// Never scrapes opicentrum.cz itself; that only ever happens from <see cref="RefreshPositionsAsync"/>.
+    ///
+    /// 2026-10-22 bugfix: the relay reconcile was unconditional on every open, and since the
+    /// background publish job ticks every ~15 min, the relay's copy was almost always "newer" by the
+    /// time the page was reopened — so the (non-virtualized, BindableLayout-based) board ended up
+    /// doing a SECOND full layout pass right after the first one, which is what actually made
+    /// "zobrazení" feel even slower than before this round's fix, not the fetch itself. Skip the
+    /// relay round trip entirely while the local cache is still fresh.
     /// </summary>
     private async Task LoadPositionsAsync()
     {
@@ -73,6 +80,9 @@ public sealed partial class OpicentrumBoardViewModel
             var local = OpicentrumRosterBoardLocalCache.Load();
             if (local is not null)
                 ApplyPositionsSnapshot(local);
+
+            if (local is not null && DateTimeOffset.UtcNow - local.UpdatedAtUtc < TimeSpan.FromMinutes(5))
+                return;
 
             var fromRelay = await _rosterBoardCacheService.GetCachedAsync();
             if (fromRelay is not null && (local is null || fromRelay.UpdatedAtUtc > local.UpdatedAtUtc))

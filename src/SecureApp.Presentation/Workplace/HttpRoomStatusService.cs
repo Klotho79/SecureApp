@@ -40,7 +40,7 @@ public sealed class HttpRoomStatusService : IRoomStatusService
         return dtos.Select(d => new RoomStatus(d.WorkplaceId, d.WorkplaceName, d.StatusText, d.UpdatedByDisplayName, d.UpdatedAtUtc, d.NoteText)).ToList();
     }
 
-    public async Task<bool> SetStatusAsync(Guid workplaceId, string workplaceName, string statusText, string? noteText = null, CancellationToken ct = default)
+    public async Task<bool> SetStatusAsync(Guid workplaceId, string workplaceName, string? statusText, string? noteText = null, CancellationToken ct = default)
     {
         try
         {

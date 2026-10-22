@@ -145,8 +145,15 @@ public sealed partial class RoomStatusViewModel : ObservableObject
     [RelayCommand]
     private async Task SetRoomStatusAsync(RoomStatusRowItem? row)
     {
-        if (row is null || string.IsNullOrWhiteSpace(row.SelectedStatus)) return;
-        await _roomStatusService.SetStatusAsync(row.WorkplaceId, row.WorkplaceName, row.SelectedStatus, row.SelectedNote);
+        if (row is null) return;
+        // 2026-10-22 bugfix: this used to require a status to be chosen, so saving JUST a note (no
+        // status picked yet, e.g. a sál nobody has touched before) silently did nothing — null here
+        // means "leave whatever's already stored untouched", not "clear it", same as SelectedNote
+        // already worked before this fix.
+        var status = string.IsNullOrWhiteSpace(row.SelectedStatus) ? null : row.SelectedStatus;
+        var note = string.IsNullOrWhiteSpace(row.SelectedNote) ? null : row.SelectedNote;
+        if (status is null && note is null) return;
+        await _roomStatusService.SetStatusAsync(row.WorkplaceId, row.WorkplaceName, status, note);
         await LoadAsync();
     }
 }

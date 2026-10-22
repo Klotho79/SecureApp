@@ -18,8 +18,13 @@ public interface IRoomStatusService
     /// <summary>Every sál that currently has a status set, newest-updated info included.</summary>
     Task<IReadOnlyList<RoomStatus>> ListAsync(CancellationToken ct = default);
 
-    /// <summary><paramref name="noteText"/> (2026-10-14) null leaves whatever note is already stored untouched — pass it only when the caller is actually changing the note, not on every status-only save.</summary>
-    Task<bool> SetStatusAsync(Guid workplaceId, string workplaceName, string statusText, string? noteText = null, CancellationToken ct = default);
+    /// <summary>
+    /// <paramref name="statusText"/> and <paramref name="noteText"/> (2026-10-14) are each independently
+    /// optional — null leaves whatever is already stored for that field untouched, so a caller only ever
+    /// has to pass the field it's actually changing. 2026-10-22 bugfix: <paramref name="statusText"/>
+    /// used to be mandatory, which silently blocked saving a note on a sál with no status chosen yet.
+    /// </summary>
+    Task<bool> SetStatusAsync(Guid workplaceId, string workplaceName, string? statusText, string? noteText = null, CancellationToken ct = default);
 
     /// <summary>The curated list of status values a picker may offer, in display order.</summary>
     Task<IReadOnlyList<string>> GetStatusOptionsAsync(CancellationToken ct = default);

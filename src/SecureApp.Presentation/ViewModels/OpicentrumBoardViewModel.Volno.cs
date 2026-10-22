@@ -50,7 +50,11 @@ public sealed partial class OpicentrumBoardViewModel
 
     partial void OnVolnoErrorTextChanged(string? value) => OnPropertyChanged(nameof(HasVolnoError));
 
-    /// <summary>Local-first, same reasoning as <c>OpicentrumBoardViewModel.Positions.cs</c>'s <c>LoadPositionsAsync</c>.</summary>
+    /// <summary>
+    /// Local-first, same reasoning as <c>OpicentrumBoardViewModel.Positions.cs</c>'s
+    /// <c>LoadPositionsAsync</c> — including its 2026-10-22 fix skipping the relay reconcile (and the
+    /// full board re-render it causes) while the local cache is still fresh.
+    /// </summary>
     private async Task LoadVolnoAsync()
     {
         IsVolnoLoading = true;
@@ -60,6 +64,9 @@ public sealed partial class OpicentrumBoardViewModel
             var local = OpicentrumVolnoBoardLocalCache.Load();
             if (local is not null)
                 ApplyVolnoSnapshot(local);
+
+            if (local is not null && DateTimeOffset.UtcNow - local.UpdatedAtUtc < TimeSpan.FromMinutes(10))
+                return;
 
             var fromRelay = await _volnoBoardCacheService.GetCachedAsync();
             if (fromRelay is not null && (local is null || fromRelay.UpdatedAtUtc > local.UpdatedAtUtc))

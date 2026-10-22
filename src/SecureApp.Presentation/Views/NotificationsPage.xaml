@@ -43,7 +43,10 @@
                  are intentionally untouched, per the user's own ask. -->
             <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanSeeRoomStatus}">
                 <VerticalStackLayout Spacing="14">
-                    <Label Text="🏥 Stav mého sálu" Style="{StaticResource SectionHeader}" Margin="0" />
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Grid.Column="0" Text="🏥 Stav mého sálu" Style="{StaticResource SectionHeader}" Margin="0" VerticalOptions="Center" />
+                        <Button Grid.Column="1" Text="Vše ›" Style="{StaticResource SecondaryButton}" FontSize="10" Padding="12,0" MinimumHeightRequest="32" MinimumWidthRequest="0" Clicked="OnRoomStatusClicked" />
+                    </Grid>
 
                     <VerticalStackLayout Spacing="10" BindableLayout.ItemsSource="{Binding MyRoomStatusRows}">
                         <BindableLayout.ItemTemplate>
@@ -52,8 +55,12 @@
                                      tile-grid picker as a page-level overlay dialog (see the Grid at the
                                      end of this page), so this card stays small on the dashboard.
                                      When HasAssignment is false (no qualifying sál today), the name is
-                                     hidden and only the "Nezařazen na sále" badge shows. -->
-                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                     hidden and only the "Nezařazen na sále" badge shows.
+                                     BackgroundColor="Transparent" (2026-10-22 bugfix) — without an
+                                     explicit background a Grid's own GestureRecognizers only fire where
+                                     an opaque child actually covers the hit point, so only the status
+                                     badge itself (not the row's empty space) was reacting to taps. -->
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" BackgroundColor="Transparent">
                                     <Grid.GestureRecognizers>
                                         <TapGestureRecognizer
                                             Command="{Binding Source={RelativeSource AncestorType={x:Type vm:NotificationsViewModel}}, Path=ToggleRoomStatusPickerCommand}"

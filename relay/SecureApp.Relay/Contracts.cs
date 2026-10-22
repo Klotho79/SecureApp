@@ -128,7 +128,7 @@ public sealed record SharedContactRenameRow(Guid Id, string DisplayName);
 public sealed record WorkplaceDto(Guid Id, string Name, string? Description, DateTimeOffset CreatedAtUtc);
 
 /// <summary>Live sál status (2026-10-13) — see RelayDatabase's room_status table. NoteText (2026-10-14) is an optional admin/modifier-curated note (e.g. "sál pokračuje do služby") layered onto the status itself — null leaves whatever note is already stored untouched, so a caller that only changes the status doesn't have to resend it.</summary>
-public sealed record SetRoomStatusRequest(Guid WorkplaceId, string WorkplaceName, string StatusText, string? NoteText = null);
+public sealed record SetRoomStatusRequest(Guid WorkplaceId, string WorkplaceName, string? StatusText, string? NoteText = null);
 
 public sealed record RoomStatusDto(Guid WorkplaceId, string WorkplaceName, string StatusText, string UpdatedByDisplayName, DateTimeOffset UpdatedAtUtc, string NoteText);
 

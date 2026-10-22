@@ -2699,17 +2699,24 @@ public sealed class RelayDatabase
         Execute(connection, "DELETE FROM workplaces WHERE id = @id", ("@id", id.ToString()));
     }
 
-    /// <summary><paramref name="noteText"/> null leaves whatever note is already stored untouched (a caller that only changes the status doesn't have to resend it); a brand-new row with no note given yet starts at "".</summary>
-    public void UpsertRoomStatus(Guid workplaceId, string workplaceName, string statusText, string? noteText, Guid updatedByDeviceId)
+    /// <summary>
+    /// Either <paramref name="statusText"/> or <paramref name="noteText"/> null leaves whatever is
+    /// already stored for that field untouched (a caller that only changes one of the two doesn't
+    /// have to resend the other) — a brand-new row with either omitted starts at "". 2026-10-22
+    /// bugfix: <paramref name="statusText"/> used to be required non-null, which meant a note could
+    /// never be saved on its own (no status chosen yet) — now symmetric with <paramref name="noteText"/>.
+    /// </summary>
+    public void UpsertRoomStatus(Guid workplaceId, string workplaceName, string? statusText, string? noteText, Guid updatedByDeviceId)
     {
         using var connection = OpenConnection();
         Execute(connection,
             """
             INSERT INTO room_status (workplace_id, workplace_name, status_text, note_text, updated_by_device_id, updated_at_utc)
-            VALUES (@id, @name, @status, COALESCE(@note, ''), @by, @now)
-            ON CONFLICT(workplace_id) DO UPDATE SET workplace_name = @name, status_text = @status, note_text = COALESCE(@note, note_text), updated_by_device_id = @by, updated_at_utc = @now
+            VALUES (@id, @name, COALESCE(@status, ''), COALESCE(@note, ''), @by, @now)
+            ON CONFLICT(workplace_id) DO UPDATE SET workplace_name = @name, status_text = COALESCE(@status, status_text), note_text = COALESCE(@note, note_text), updated_by_device_id = @by, updated_at_utc = @now
             """,
-            ("@id", workplaceId.ToString()), ("@name", workplaceName), ("@status", statusText),
+            ("@id", workplaceId.ToString()), ("@name", workplaceName),
+            ("@status", (object?)statusText ?? DBNull.Value),
             ("@note", (object?)noteText ?? DBNull.Value),
             ("@by", updatedByDeviceId.ToString()), ("@now", Format(DateTimeOffset.UtcNow)));
     }
