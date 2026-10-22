@@ -135,7 +135,7 @@ public sealed partial class OpicentrumBoardViewModel
         VolnoDayHeaders = new ObservableCollection<string>(days.Select(d => d.ToString("d.", Czech)));
 
         var rows = snapshot.People
-            .OrderBy(p => p.PersonName, StringComparer.Create(Czech, ignoreCase: true))
+            .OrderBy(p => OpicentrumParsing.SurnameSortKey(p.PersonName), StringComparer.Create(Czech, ignoreCase: true))
             .Select(p =>
             {
                 var entryByDate = p.Entries.ToDictionary(e => e.Date);

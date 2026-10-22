@@ -117,7 +117,7 @@ public sealed partial class NotificationsViewModel
                 {
                     var id = RoomWorkplaceKeywords.DeterministicId(a.WorkplaceName!);
                     statusByWorkplace.TryGetValue(id, out var status);
-                    return new MyRoomStatusItem(id, a.WorkplaceName!, statusOptions, status?.StatusText, status?.UpdatedByDisplayName, status?.UpdatedAtUtc);
+                    return new MyRoomStatusItem(id, a.WorkplaceName!, statusOptions, status?.StatusText, status?.UpdatedByDisplayName, status?.UpdatedAtUtc, status?.NoteText);
                 }));
         }
         catch
@@ -156,6 +156,10 @@ public sealed partial class MyRoomStatusItem : ObservableObject
     public ObservableCollection<RoomStatusOptionTile> Options { get; }
     public string? UpdatedInfoText { get; }
 
+    /// <summary>2026-10-22 ("na tlacitko stav meho salu dostat i tu poznamku kterou zadavaji modifier nebo admin") — the curated note from the full board, shown under the row and in the picker dialog.</summary>
+    public string? NoteText { get; }
+    public bool HasNote => !string.IsNullOrWhiteSpace(NoteText);
+
     [ObservableProperty]
     public partial string? CurrentStatus { get; set; }
 
@@ -168,8 +172,9 @@ public sealed partial class MyRoomStatusItem : ObservableObject
         OnPropertyChanged(nameof(HasCurrentStatus));
     }
 
-    public MyRoomStatusItem(Guid workplaceId, string workplaceName, IReadOnlyList<string> statusOptions, string? currentStatus, string? updatedByDisplayName, DateTimeOffset? updatedAtUtc, bool hasAssignment = true)
+    public MyRoomStatusItem(Guid workplaceId, string workplaceName, IReadOnlyList<string> statusOptions, string? currentStatus, string? updatedByDisplayName, DateTimeOffset? updatedAtUtc, string? noteText = null, bool hasAssignment = true)
     {
+        NoteText = noteText;
         WorkplaceId = workplaceId;
         WorkplaceName = workplaceName;
         HasAssignment = hasAssignment;

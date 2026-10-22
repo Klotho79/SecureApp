@@ -24,10 +24,46 @@
                                     <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource SuccessSoft}, Dark={StaticResource SuccessSoftDark}}" />
                                 </DataTrigger>
                             </Border.Triggers>
-                            <VerticalStackLayout Spacing="4">
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <Label Grid.Column="0" Text="{Binding WorkplaceName}" FontSize="11" FontAttributes="Bold" />
-                                    <Label Grid.Column="1" Text="moje" FontSize="9" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding IsMine}" VerticalOptions="Center" />
+                            <VerticalStackLayout Spacing="6">
+                                <!-- Same shape as a Rozpis card (2026-10-22, user's own ask): sál name with its
+                                     note underneath on the left, who is in the sál and the status beside it
+                                     on the right. Shown to EVERYONE and reflects only what is saved (the
+                                     pickers below are edit-gated). -->
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                                    <VerticalStackLayout Grid.Column="0" Spacing="1">
+                                        <HorizontalStackLayout Spacing="6">
+                                            <Label Text="{Binding WorkplaceName}" FontSize="11" FontAttributes="Bold" />
+                                            <Label Text="moje" FontSize="9" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding IsMine}" VerticalOptions="Center" />
+                                        </HorizontalStackLayout>
+                                        <Label Text="{Binding SavedNote}" FontSize="9.5" LineBreakMode="WordWrap" IsVisible="{Binding HasSavedNote}"
+                                               TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
+                                    </VerticalStackLayout>
+
+                                    <VerticalStackLayout Grid.Column="1" Spacing="4" HorizontalOptions="End">
+                                        <Label Text="{Binding PeopleText}" FontSize="9.5" HorizontalTextAlignment="End" IsVisible="{Binding HasPeople}"
+                                               TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
+                                        <Border Padding="10,4" StrokeThickness="0" StrokeShape="RoundRectangle 999" HorizontalOptions="End"
+                                                BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}"
+                                                IsVisible="{Binding HasSavedStatus}">
+                                            <Label Text="{Binding SavedStatus}" FontSize="10" FontAttributes="Bold"
+                                                   TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
+                                            <Border.Triggers>
+                                                <DataTrigger TargetType="Border" Binding="{Binding SavedCategory}" Value="Success">
+                                                    <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource SuccessSoft}, Dark={StaticResource SuccessSoftDark}}" />
+                                                </DataTrigger>
+                                                <DataTrigger TargetType="Border" Binding="{Binding SavedCategory}" Value="Info">
+                                                    <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource InfoSoft}, Dark={StaticResource InfoSoftDark}}" />
+                                                </DataTrigger>
+                                                <DataTrigger TargetType="Border" Binding="{Binding SavedCategory}" Value="Warn">
+                                                    <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource WarnSoft}, Dark={StaticResource WarnSoftDark}}" />
+                                                </DataTrigger>
+                                                <DataTrigger TargetType="Border" Binding="{Binding SavedCategory}" Value="Danger">
+                                                    <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource DangerSoft}, Dark={StaticResource DangerSoftDark}}" />
+                                                </DataTrigger>
+                                            </Border.Triggers>
+                                        </Border>
+                                        <Label Text="— bez stavu —" FontSize="9.5" TextColor="Gray" HorizontalOptions="End" IsVisible="{Binding HasNoSavedStatus}" />
+                                    </VerticalStackLayout>
                                 </Grid>
 
                                 <!-- Editable (own sál, or Admin/Modifier on any sál): Status + Poznámka pickers + Uložit. -->
@@ -38,21 +74,6 @@
                                             CommandParameter="{Binding .}" />
                                 </Grid>
                                 <Picker Title="Poznámka (volitelné)" ItemsSource="{Binding NoteOptions}" SelectedItem="{Binding SelectedNote}" FontSize="10.5" IsVisible="{Binding CanEdit}" />
-
-                                <!-- Read-only (any other sál, plain Viewer). -->
-                                <Label Text="{Binding SelectedStatus}" FontSize="10.5" IsVisible="{Binding IsReadOnly}" />
-                                <Label Text="— stav zatím nenastaven —" FontSize="9.5" TextColor="Gray" IsVisible="{Binding IsReadOnly}">
-                                    <Label.Triggers>
-                                        <DataTrigger TargetType="Label" Binding="{Binding HasStatus}" Value="True">
-                                            <Setter Property="IsVisible" Value="False" />
-                                        </DataTrigger>
-                                    </Label.Triggers>
-                                </Label>
-
-                                <!-- Poznámka display (2026-10-14) — visible to EVERYONE regardless of CanEdit, per the
-                                     user's own ask: the full board shows every sál's status AND its note. Only the
-                                     pickers above are edit-gated; this plain label just reflects whatever's stored. -->
-                                <Label Text="{Binding SelectedNote, StringFormat='📝 {0}'}" FontSize="9.5" FontAttributes="Italic" IsVisible="{Binding HasNote}" />
 
                                 <Label Text="{Binding UpdatedInfoText}" FontSize="8.5" TextColor="Gray" IsVisible="{Binding HasStatus}" />
                             </VerticalStackLayout>

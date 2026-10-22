@@ -187,14 +187,28 @@ public sealed partial class OpicentrumBoardViewModel
             foreach (var wp in day.Workplaces)
                 _workplaceIdByName.TryAdd(wp.WorkplaceName, wp.WorkplaceId);
 
-        // Every distinct workplace across the whole week, "Nezařazen" pinned last — a workplace
-        // missing on one particular day just gets an empty cell for that day, not a dropped row.
-        var allWorkplaceNames = snapshot.Days
-            .SelectMany(d => d.Workplaces)
-            .Select(w => w.WorkplaceName)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+        // Every distinct workplace across the whole week in Opicentrum's own order, "Nezařazen"
+        // pinned last — a workplace missing on one particular day just gets an empty cell for that
+        // day, not a dropped row. Each day lists its workplaces in page order (a subsequence of the
+        // page's row order), so a name first seen on a later day is slotted in right after the one
+        // that precedes it on that day. OrderBy is stable, so the pin keeps the rest in that order.
+        var orderedNames = new List<string>();
+        foreach (var day in snapshot.Days)
+        {
+            var previous = -1;
+            foreach (var wp in day.Workplaces)
+            {
+                var index = orderedNames.FindIndex(n => string.Equals(n, wp.WorkplaceName, StringComparison.OrdinalIgnoreCase));
+                if (index < 0)
+                {
+                    index = previous + 1;
+                    orderedNames.Insert(index, wp.WorkplaceName);
+                }
+                previous = index;
+            }
+        }
+        var allWorkplaceNames = orderedNames
             .OrderBy(n => string.Equals(n, "Nezařazen", StringComparison.OrdinalIgnoreCase) ? 1 : 0)
-            .ThenBy(n => n, StringComparer.Create(Czech, ignoreCase: true))
             .ToList();
 
         var buildSw = Stopwatch.StartNew();

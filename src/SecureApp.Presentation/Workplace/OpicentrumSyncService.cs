@@ -515,13 +515,14 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
                 .OrderBy(g => g.Key)
                 .Select(dayGroup => new OpicentrumRosterDay(
                     dayGroup.Key,
+                    // GroupBy keeps first-appearance order, and the entries come out row by row, so
+                    // the workplaces stay in the order Opicentrum itself lists them (2026-10-22).
                     dayGroup
                         .GroupBy(e => e.WorkplaceName, StringComparer.OrdinalIgnoreCase)
                         .Select(wpGroup => new OpicentrumRosterWorkplace(
                             idByName.GetValueOrDefault(wpGroup.Key, -1),
                             wpGroup.Key,
                             wpGroup.Select(e => new OpicentrumRosterPerson(e.PersonId ?? -1, e.PersonName)).ToList()))
-                        .OrderBy(w => w.WorkplaceName, StringComparer.Create(Czech, ignoreCase: true))
                         .ToList()))
                 .ToList();
 

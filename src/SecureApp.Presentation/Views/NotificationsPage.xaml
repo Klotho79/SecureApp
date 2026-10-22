@@ -60,7 +60,7 @@
                                      explicit background a Grid's own GestureRecognizers only fire where
                                      an opaque child actually covers the hit point, so only the status
                                      badge itself (not the row's empty space) was reacting to taps. -->
-                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" BackgroundColor="Transparent">
+                                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="4" BackgroundColor="Transparent">
                                     <Grid.GestureRecognizers>
                                         <TapGestureRecognizer
                                             Command="{Binding Source={RelativeSource AncestorType={x:Type vm:NotificationsViewModel}}, Path=ToggleRoomStatusPickerCommand}"
@@ -93,6 +93,11 @@
                                             </DataTrigger>
                                         </Border.Triggers>
                                     </Border>
+
+                                    <!-- Curated note from the full board (set by Modifier/Admin). -->
+                                    <Label Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding NoteText}" FontSize="11" LineBreakMode="WordWrap"
+                                           TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}"
+                                           IsVisible="{Binding HasNote}" />
                                 </Grid>
                             </DataTemplate>
                         </BindableLayout.ItemTemplate>
@@ -271,6 +276,10 @@
                         </DataTrigger>
                     </Border.Triggers>
                 </Border>
+
+                <Label Text="{Binding ActiveRoomStatusPicker.NoteText}" FontSize="11.5" LineBreakMode="WordWrap"
+                       TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}"
+                       IsVisible="{Binding ActiveRoomStatusPicker.HasNote}" />
 
                 <!-- Status grid — one tile per curated option, tap = saved immediately. The selected
                      tile stays highlighted (DisplayCategory is Neutral unless IsSelected).

@@ -5,6 +5,7 @@ using SecureApp.Domain.Entities;
 using SecureApp.Domain.Enums;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
+using SecureApp.Domain.ValueObjects;
 using SecureApp.Presentation.Infrastructure;
 using SecureApp.Presentation.Workplace;
 
@@ -64,9 +65,11 @@ public sealed partial class RoomStatusViewModel : ObservableObject
         RoomStatusRows = [];
     }
 
-    /// <summary>Today's qualifying sály as last fetched from Opicentrum (or the local-rozpis fallback). Reused after saving a status so a save doesn't repeat the Opicentrum login + page scrape.</summary>
-    private IReadOnlyList<string>? _todaysWorkplaceNames;
-    private DateOnly _todaysWorkplaceNamesDate;
+    /// <summary>Today's qualifying sály (with who is in each) as last fetched from Opicentrum (or the local fallback). Reused after saving a status so a save doesn't repeat the Opicentrum login + page scrape.</summary>
+    private IReadOnlyList<TodaysRoom>? _todaysRooms;
+    private DateOnly _todaysRoomsDate;
+
+    private sealed record TodaysRoom(string Name, IReadOnlyList<string> People);
 
     [RelayCommand]
     private Task LoadAsync() => LoadCoreAsync(refetchWorkplaceNames: true);
@@ -98,30 +101,30 @@ public sealed partial class RoomStatusViewModel : ObservableObject
                 .ToHashSet();
             var statusByWorkplace = statusesTask.Result.ToDictionary(s => s.WorkplaceId);
 
-            IReadOnlyList<string> todaysWorkplaceNames;
-            if (!refetchWorkplaceNames && _todaysWorkplaceNames is { } cachedNames && _todaysWorkplaceNamesDate == today)
+            IReadOnlyList<TodaysRoom> todaysRooms;
+            if (!refetchWorkplaceNames && _todaysRooms is { } cachedRooms && _todaysRoomsDate == today)
             {
-                todaysWorkplaceNames = cachedNames;
+                todaysRooms = cachedRooms;
             }
             else
             {
-                todaysWorkplaceNames = await FetchTodaysWorkplaceNamesAsync(today, assignmentsTask.Result);
-                _todaysWorkplaceNames = todaysWorkplaceNames;
-                _todaysWorkplaceNamesDate = today;
+                todaysRooms = await FetchTodaysRoomsAsync(today, assignmentsTask.Result);
+                _todaysRooms = todaysRooms;
+                _todaysRoomsDate = today;
             }
 
-            var rows = todaysWorkplaceNames
-                .Select(name =>
+            // Own sály first, the rest in the order Opicentrum lists them (OrderByDescending is stable).
+            var rows = todaysRooms
+                .Select(room =>
                 {
-                    var id = RoomWorkplaceKeywords.DeterministicId(name);
+                    var id = RoomWorkplaceKeywords.DeterministicId(room.Name);
                     var isMine = myWorkplaceIds.Contains(id);
                     statusByWorkplace.TryGetValue(id, out var status);
                     return new RoomStatusRowItem(
-                        id, name, isMine, isMine || canEditAnyRoom, statusOptions, noteOptions,
-                        status?.StatusText, status?.NoteText, status?.UpdatedByDisplayName, status?.UpdatedAtUtc);
+                        id, room.Name, isMine, isMine || canEditAnyRoom, statusOptions, noteOptions,
+                        status?.StatusText, status?.NoteText, status?.UpdatedByDisplayName, status?.UpdatedAtUtc, room.People);
                 })
                 .OrderByDescending(r => r.IsMine)
-                .ThenBy(r => r.WorkplaceName, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
             RoomStatusRows = new ObservableCollection<RoomStatusRowItem>(rows);
@@ -139,29 +142,40 @@ public sealed partial class RoomStatusViewModel : ObservableObject
         }
     }
 
-    private async Task<IReadOnlyList<string>> FetchTodaysWorkplaceNamesAsync(DateOnly today, IReadOnlyList<WorkAssignment> todaysAssignments)
+    private async Task<IReadOnlyList<TodaysRoom>> FetchTodaysRoomsAsync(DateOnly today, IReadOnlyList<WorkAssignment> todaysAssignments)
     {
         try
         {
-            // 2026-10-16, bugfix: FetchWorkplaceNamesForDateAsync returns EVERY pracoviste entry
-            // for the day (ambulances, ARIMs, everything), not just sály — the board must filter
-            // it the same way the fallback path below already does.
-            return (await _opicentrumSyncService.FetchWorkplaceNamesForDateAsync(today))
-                .Where(RoomWorkplaceKeywords.IsQualifying)
-                .ToList();
+            // 2026-10-22: the live pracoviste.php scrape now also tells WHO is in each sál (2026-10-22,
+            // "vedle kdo je na sale"), in Opicentrum's own row order. It is the same single page fetch
+            // FetchWorkplaceNamesForDateAsync did. 2026-10-16, bugfix kept: the page lists EVERY
+            // workplace (ambulances, ARIMs, everything), not just sály — filter it.
+            var board = await _opicentrumSyncService.FetchFullRosterBoardAsync(today);
+            return TodaysRoomsFrom(board, today);
         }
         catch
         {
             // Opicentrum unreachable right now (seen live: "Software caused connection abort") —
-            // fall back to whatever this device's own already-synced local rozpis knows about
-            // its own qualifying room(s), rather than an empty board.
+            // fall back to the last roster board this device saved, and failing that to whatever
+            // its own already-synced local rozpis knows about its own qualifying room(s), rather
+            // than an empty board.
+            if (OpicentrumRosterBoardLocalCache.Load() is { } cached && TodaysRoomsFrom(cached, today) is { Count: > 0 } fromCache)
+                return fromCache;
+
             return todaysAssignments
                 .Where(a => a.WorkplaceName is { } name && RoomWorkplaceKeywords.IsQualifying(name))
                 .Select(a => a.WorkplaceName!)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(name => new TodaysRoom(name, []))
                 .ToList();
         }
     }
+
+    private static List<TodaysRoom> TodaysRoomsFrom(OpicentrumRosterBoardSnapshot board, DateOnly today) =>
+        (board.Days.FirstOrDefault(d => d.Date == today)?.Workplaces ?? [])
+            .Where(w => RoomWorkplaceKeywords.IsQualifying(w.WorkplaceName))
+            .Select(w => new TodaysRoom(w.WorkplaceName, w.People.Select(p => p.PersonName).Distinct(StringComparer.OrdinalIgnoreCase).ToList()))
+            .ToList();
 
     [RelayCommand]
     private async Task SetRoomStatusAsync(RoomStatusRowItem? row)
@@ -198,6 +212,22 @@ public sealed partial class RoomStatusRowItem : ObservableObject
 
     public string? UpdatedInfoText { get; }
 
+    /// <summary>
+    /// What is actually saved (2026-10-22, card layout like Rozpis): the header shows these, not
+    /// <see cref="SelectedStatus"/>/<see cref="SelectedNote"/>, which follow the editing pickers
+    /// before anything is saved.
+    /// </summary>
+    public string? SavedStatus { get; }
+    public string? SavedNote { get; }
+    public RoomStatusCategory SavedCategory => string.IsNullOrWhiteSpace(SavedStatus) ? RoomStatusCategory.Neutral : RoomStatusPalette.CategoryFor(SavedStatus);
+    public bool HasSavedStatus => !string.IsNullOrWhiteSpace(SavedStatus);
+    public bool HasNoSavedStatus => !HasSavedStatus;
+    public bool HasSavedNote => !string.IsNullOrWhiteSpace(SavedNote);
+
+    /// <summary>Who is in this sál today, one name per line (Opicentrum order).</summary>
+    public string PeopleText { get; }
+    public bool HasPeople => PeopleText.Length > 0;
+
     [ObservableProperty]
     public partial string? SelectedStatus { get; set; }
 
@@ -210,8 +240,12 @@ public sealed partial class RoomStatusRowItem : ObservableObject
     public RoomStatusRowItem(
         Guid workplaceId, string workplaceName, bool isMine, bool canEdit,
         IReadOnlyList<string> statusOptions, IReadOnlyList<string> noteOptions,
-        string? currentStatus, string? currentNote, string? updatedByDisplayName, DateTimeOffset? updatedAtUtc)
+        string? currentStatus, string? currentNote, string? updatedByDisplayName, DateTimeOffset? updatedAtUtc,
+        IReadOnlyList<string> people)
     {
+        SavedStatus = currentStatus;
+        SavedNote = currentNote;
+        PeopleText = string.Join('\n', people);
         WorkplaceId = workplaceId;
         WorkplaceName = workplaceName;
         IsMine = isMine;

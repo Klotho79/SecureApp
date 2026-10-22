@@ -125,6 +125,21 @@ internal static partial class OpicentrumParsing
             && leftParts.OrderBy(p => p, StringComparer.Ordinal).SequenceEqual(rightParts.OrderBy(p => p, StringComparer.Ordinal));
     }
 
+    /// <summary>
+    /// Sort key that puts a "Jméno Příjmení" name under its surname (2026-10-22, "Volno": "serad lidi
+    /// podle prijmeni, to je to druhe jmeno"): academic titles and any word ending in a dot ("Doc.",
+    /// "Ph.D.") are dropped, the last remaining word is the surname, the rest follows as a tie-break.
+    /// A name that is nothing but titles falls back to itself.
+    /// </summary>
+    public static string SurnameSortKey(string personName)
+    {
+        var words = AcademicTitleRegex().Replace(personName, " ")
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => !w.EndsWith('.'))
+            .ToArray();
+        return words.Length == 0 ? personName.Trim() : words[^1] + " " + string.Join(' ', words[..^1]);
+    }
+
     /// <summary>Lowercases, drops academic titles, strips diacritics, and collapses every run of any Unicode whitespace (incl. the U+00A0 a decoded <c>&amp;nbsp;</c> leaves behind) to one plain space.</summary>
     public static string NormalizeName(string value)
     {
