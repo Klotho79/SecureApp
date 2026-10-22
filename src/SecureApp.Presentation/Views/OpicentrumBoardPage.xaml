@@ -149,10 +149,9 @@
                                     <HorizontalStackLayout Spacing="2" BindableLayout.ItemsSource="{Binding DayCodes}">
                                         <BindableLayout.ItemTemplate>
                                             <DataTemplate x:DataType="x:String">
-                                                <Border BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}"
-                                                        StrokeShape="RoundRectangle 4" Stroke="Transparent" WidthRequest="30" HeightRequest="24" Padding="0">
-                                                    <Label Text="{Binding .}" FontSize="8" HorizontalTextAlignment="Center" VerticalTextAlignment="Center" />
-                                                </Border>
+                                                <Label Text="{Binding .}" FontSize="8" WidthRequest="30" HeightRequest="24"
+                                                       HorizontalTextAlignment="Center" VerticalTextAlignment="Center"
+                                                       BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}" />
                                             </DataTemplate>
                                         </BindableLayout.ItemTemplate>
                                     </HorizontalStackLayout>

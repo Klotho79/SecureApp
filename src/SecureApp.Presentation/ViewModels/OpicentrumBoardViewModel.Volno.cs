@@ -144,7 +144,9 @@ public sealed partial class OpicentrumBoardViewModel
 
         // Incremental fill, same reason as ApplyPositionsSnapshot: ~58 x 30 cells laid out at once
         // freeze the UI thread; first screenful now, the rest in small batches.
-        const int FirstBatch = 12, NextBatch = 12;
+        // First batch covers a full screen (~25 rows) so nothing visibly pops in; the rest is
+        // appended below the fold in small, spaced batches.
+        const int FirstBatch = 28, NextBatch = 10;
         var version = ++_volnoFillVersion;
         var collection = new ObservableCollection<OpicentrumVolnoRowItem>(rows.Take(FirstBatch));
         VolnoRows = collection;
@@ -156,7 +158,7 @@ public sealed partial class OpicentrumBoardViewModel
             {
                 for (var i = 0; i < remaining.Count; i += NextBatch)
                 {
-                    await Task.Delay(30);
+                    await Task.Delay(120);
                     var batch = remaining.Skip(i).Take(NextBatch).ToList();
                     var done = new TaskCompletionSource();
                     MainThread.BeginInvokeOnMainThread(() =>
