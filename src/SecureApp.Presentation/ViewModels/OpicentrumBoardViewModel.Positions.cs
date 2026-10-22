@@ -1,10 +1,12 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SecureApp.Domain.Enums;
 using SecureApp.Domain.Policies;
 using SecureApp.Domain.ValueObjects;
+using SecureApp.Presentation.Infrastructure;
 using SecureApp.Presentation.Workplace;
 
 namespace SecureApp.Presentation.ViewModels;
@@ -73,23 +75,47 @@ public sealed partial class OpicentrumBoardViewModel
     /// </summary>
     private async Task LoadPositionsAsync()
     {
+        // 2026-10-22, temporary profiling (user's own ask: "proměř na S23+ proč trvá zobrazení
+        // rozpisu pracovišť") — every step timed and tagged with AppLog.Metric so the actual
+        // breakdown (cache deserialize vs. row-building vs. relay round trip) can be read back from
+        // this device's own uploaded metrics.log via GET /admin/applog/{deviceId}?kind=metrics,
+        // instead of guessing. Remove once the real bottleneck is identified and fixed.
+        var total = Stopwatch.StartNew();
         IsPositionsLoading = true;
         PositionsErrorText = null;
         try
         {
+            var loadSw = Stopwatch.StartNew();
             var local = OpicentrumRosterBoardLocalCache.Load();
+            AppLog.Metric("opicentrum.positions.cache_load", loadSw.Elapsed.TotalMilliseconds, "ms", ("hit", local is not null));
+
             if (local is not null)
+            {
+                var applySw = Stopwatch.StartNew();
                 ApplyPositionsSnapshot(local);
+                AppLog.Metric("opicentrum.positions.apply", applySw.Elapsed.TotalMilliseconds, "ms",
+                    ("source", "local"), ("rows", PositionsRows.Count), ("days", PositionsDayHeaders.Count));
+            }
 
             if (local is not null && DateTimeOffset.UtcNow - local.UpdatedAtUtc < TimeSpan.FromMinutes(5))
+            {
+                AppLog.Metric("opicentrum.positions.load_total", total.Elapsed.TotalMilliseconds, "ms", ("path", "local_only"));
                 return;
+            }
 
+            var relaySw = Stopwatch.StartNew();
             var fromRelay = await _rosterBoardCacheService.GetCachedAsync();
+            AppLog.Metric("opicentrum.positions.relay_fetch", relaySw.Elapsed.TotalMilliseconds, "ms", ("hit", fromRelay is not null));
+
             if (fromRelay is not null && (local is null || fromRelay.UpdatedAtUtc > local.UpdatedAtUtc))
             {
+                var applySw = Stopwatch.StartNew();
                 ApplyPositionsSnapshot(fromRelay);
+                AppLog.Metric("opicentrum.positions.apply", applySw.Elapsed.TotalMilliseconds, "ms",
+                    ("source", "relay"), ("rows", PositionsRows.Count), ("days", PositionsDayHeaders.Count));
                 OpicentrumRosterBoardLocalCache.Save(fromRelay);
             }
+            AppLog.Metric("opicentrum.positions.load_total", total.Elapsed.TotalMilliseconds, "ms", ("path", "reconciled"));
         }
         catch (Exception ex)
         {

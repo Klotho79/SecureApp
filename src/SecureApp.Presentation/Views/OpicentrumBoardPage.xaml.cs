@@ -1,3 +1,6 @@
+using System.ComponentModel;
+using System.Diagnostics;
+using SecureApp.Presentation.Infrastructure;
 using SecureApp.Presentation.ViewModels;
 
 namespace SecureApp.Presentation.Views;
@@ -5,6 +8,7 @@ namespace SecureApp.Presentation.Views;
 public partial class OpicentrumBoardPage : ContentPage
 {
     private readonly OpicentrumBoardViewModel _viewModel;
+    private Stopwatch? _ttiStopwatch;
 
     public OpicentrumBoardPage(OpicentrumBoardViewModel viewModel)
     {
@@ -15,7 +19,29 @@ public partial class OpicentrumBoardPage : ContentPage
     protected override void OnAppearing()
     {
         base.OnAppearing();
+        // TTI telemetry (2026-10-22, user's own ask: "proměř na S23+ proč trvá zobrazení rozpisu
+        // pracovišť") — same pattern as LibraryPage's own _ttiStopwatch. This measures the FULL
+        // wall-clock gap including native XAML measure/layout of the board, not just the C#-side
+        // work OpicentrumBoardViewModel.Positions.cs's own AppLog.Metric calls already time — if
+        // this number is much bigger than opicentrum.positions.load_total, the gap is the
+        // (non-virtualized, BindableLayout-based) board's own layout pass, not the data fetch.
+        _ttiStopwatch = Stopwatch.StartNew();
+        _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         _viewModel.LoadCommand.Execute(null);
+    }
+
+    protected override void OnDisappearing()
+    {
+        base.OnDisappearing();
+        _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(OpicentrumBoardViewModel.IsPositionsLoading) || _viewModel.IsPositionsLoading || _ttiStopwatch is null) return;
+
+        AppLog.Metric("tti.opicentrum_board_page", _ttiStopwatch.Elapsed.TotalMilliseconds);
+        _ttiStopwatch = null; // only the first load counts as TTI
     }
 
     /// <summary>
