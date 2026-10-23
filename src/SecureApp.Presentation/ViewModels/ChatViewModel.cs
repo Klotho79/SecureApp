@@ -342,8 +342,17 @@ public sealed partial class ChatViewModel : ChatThreadViewModelBase<ChatMessageI
                 try
                 {
                     await _messageTransport.SendEnvelopeAsync(envelope);
-                    message.MarkSent();
-                    await _messageRepository.UpdateAsync(message);
+                    // Re-read first: the peer's ack can arrive within milliseconds, before this line, and
+                    // writing back the stale in-memory Pending->Sent would downgrade a row already Delivered.
+                    if (await _messageRepository.GetByIdAsync(message.Id) is { } current)
+                    {
+                        if (current.Status == MessageStatus.Pending)
+                        {
+                            current.MarkSent();
+                            await _messageRepository.UpdateAsync(current);
+                        }
+                        message = current;
+                    }
                     ReplaceItem(message.Id, item => item with { Status = message.Status });
                     // 2.5 (2026-09-14): send outcome logging. "sent" = reached the relay — NOT yet
                     // confirmed delivered to the peer (delivery-ack is slice B). Correlation id ties

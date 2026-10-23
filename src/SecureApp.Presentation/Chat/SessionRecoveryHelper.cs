@@ -292,21 +292,11 @@ public static class SessionRecoveryHelper
         var now = DateTimeOffset.UtcNow;
         var unsent = (await messageRepository.GetUnsentOutboundAsync(now - minAge, ct)).ToList();
 
-        // 2026-10-23: also the messages that DID reach the relay but never got their ✓✓. The relay
-        // deletes a frame as soon as it is written to the recipient's socket, so one the recipient then
-        // dropped (no session yet, a decrypt failure, the app killed mid-processing) exists nowhere
-        // else; "the relay holds it for an offline recipient" only covers a recipient that has not
-        // connected yet. Resent with the SAME origin id, so a recipient that did get the first copy
-        // recognises the repeat. At most a few tries per message, spaced out, so a peer that is simply
-        // offline for days does not collect a pile of copies.
-        foreach (var sent in await messageRepository.GetSentUnacknowledgedAsync(now - SentRetryMaxAge, now - SentRetryFirstAfter, ct))
-        {
-            var key = sent.OriginMessageId ?? sent.Id;
-            if (_sentRetries.TryGetValue(key, out var previous)
-                && (previous.Attempts >= SentRetryMaxAttempts || now - previous.LastAtUtc < SentRetryFirstAfter * Math.Pow(3, previous.Attempts - 1)))
-                continue;
-            unsent.Add(sent);
-        }
+        // 2026-10-23 (1.96): Sent-without-ack messages are NOT resent here. 1.95 did, and it produced
+        // duplicates: the ✓✓ ack does not reliably come back (peer's log: ack sent, sender never marks it
+        // delivered), so a message the peer had long since received was resent every ~10 min, and a peer
+        // on a pre-1.95 build (no origin-id de-duplication) showed every copy as a new bubble. Resending
+        // only after a fresh session is accepted (ResendUndeliveredAsync) stays.
         if (unsent.Count == 0) return;
 
         foreach (var bySession in unsent.GroupBy(m => m.ChatSessionId))
@@ -318,11 +308,6 @@ public static class SessionRecoveryHelper
             await ResendAsync(messagingService, messageRepository, messageTransport, bySession.Key, bySession.ToList(), ct);
         }
     }
-
-    private static readonly TimeSpan SentRetryFirstAfter = TimeSpan.FromMinutes(10);
-    private static readonly TimeSpan SentRetryMaxAge = TimeSpan.FromDays(3);
-    private const int SentRetryMaxAttempts = 3;
-    private static readonly ConcurrentDictionary<Guid, (int Attempts, DateTimeOffset LastAtUtc)> _sentRetries = new();
 
     /// <summary>One resend at a time process-wide: the accept path and the background sweep can both find the same stuck row, and each resend deletes the old row and mints a new one — two at once would send it twice.</summary>
     private static readonly SemaphoreSlim _resendGate = new(1, 1);
@@ -379,14 +364,6 @@ public static class SessionRecoveryHelper
                     originMessageId: old.OriginMessageId, // same logical message — the recipient dedupes on this
                     ct: ct);
                 await messageRepository.DeleteAsync(old.Id, ct);
-
-                if (old.Status == MessageStatus.Sent)
-                {
-                    // Keyed by the fresh row's origin id (an old row without one got a new id above), so
-                    // the count follows the logical message through every copy.
-                    _sentRetries.TryGetValue(old.OriginMessageId ?? old.Id, out var previousRetry);
-                    _sentRetries[fresh.OriginMessageId ?? fresh.Id] = (previousRetry.Attempts + 1, DateTimeOffset.UtcNow);
-                }
 
                 if (messageTransport.IsConnected)
                 {

@@ -88,15 +88,6 @@ public sealed class MessageRepository : IMessageRepository
         return rows.Select(ToEntity).ToList();
     }
 
-    public async Task<IReadOnlyList<Message>> GetSentUnacknowledgedAsync(DateTimeOffset createdAfterUtc, DateTimeOffset createdBeforeUtc, CancellationToken ct = default)
-    {
-        var connection = await _connectionFactory.GetConnectionAsync(ct);
-        var rows = await connection.QueryAsync<MessageRow>(
-            "SELECT * FROM messages WHERE direction = ? AND is_system_payload = 0 AND status = ? AND created_at_utc > ? AND created_at_utc < ? ORDER BY created_at_utc",
-            (int)MessageDirection.Outbound, (int)MessageStatus.Sent, Format(createdAfterUtc), Format(createdBeforeUtc));
-        return rows.Select(ToEntity).ToList();
-    }
-
     public async Task<string> GetSessionSignatureAsync(Guid chatSessionId, CancellationToken ct = default)
     {
         var connection = await _connectionFactory.GetConnectionAsync(ct);
