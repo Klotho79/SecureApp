@@ -135,11 +135,11 @@ public sealed partial class WorkplaceViewModel : ObservableObject
             {
                 await RenderWeekLocalAsync();
                 await RenderMonthLocalAsync();
-            });
+            }, throttle: true);
         }
         else
         {
-            _ = SyncInBackgroundAsync(weekRange.Start, weekRange.End, RenderWeekLocalAsync);
+            _ = SyncInBackgroundAsync(weekRange.Start, weekRange.End, RenderWeekLocalAsync, throttle: true);
         }
     }
 
@@ -314,12 +314,46 @@ public sealed partial class WorkplaceViewModel : ObservableObject
     /// remarks). <paramref name="onSynced"/> re-renders from the local repository afterwards so newly
     /// written assignments actually show up without the user having to manually refresh.
     /// </summary>
-    private async Task SyncInBackgroundAsync(DateOnly rangeStart, DateOnly rangeEnd, Func<Task> onSynced)
+    private async Task SyncInBackgroundAsync(DateOnly rangeStart, DateOnly rangeEnd, Func<Task> onSynced, bool throttle = false)
     {
-        try { SyncStatusText = DescribeSyncResult(await _opicentrumSyncService.SyncAsync(rangeStart, rangeEnd)); }
-        catch (Exception ex) { SyncStatusText = $"Synchronizace s Opicentrem selhala: {ex.Message}"; }
-        await onSynced();
+        // 2026-10-23 (user: "zrychlit otevirani rozpisu"): every sync is a full Opicentrum login plus
+        // several page fetches, and OnAppearing ran one on EVERY open, including each return from the
+        // day editor. A range synced successfully a moment ago is not synced again on a plain re-open
+        // (week/month paging and the explicit view switches still sync — they pass throttle: false).
+        if (throttle && DateTimeOffset.UtcNow - _lastOkSyncUtc < SyncThrottle && rangeStart >= _lastOkRangeStart && rangeEnd <= _lastOkRangeEnd)
+        {
+            SyncStatusText ??= _lastStatusText; // a fresh page instance still shows when it was last synced
+            return;
+        }
+
+        OpicentrumSyncResult result;
+        try { result = await _opicentrumSyncService.SyncAsync(rangeStart, rangeEnd); }
+        catch (Exception ex)
+        {
+            SyncStatusText = $"Synchronizace s Opicentrem selhala: {ex.Message}";
+            return; // nothing was written — the local render already on screen is current
+        }
+
+        SyncStatusText = DescribeSyncResult(result);
+        if (result.Success && !ReferenceEquals(result, OpicentrumSyncResult.NotConfigured))
+        {
+            _lastStatusText = SyncStatusText;
+            _lastOkSyncUtc = DateTimeOffset.UtcNow;
+            _lastOkRangeStart = rangeStart;
+            _lastOkRangeEnd = rangeEnd;
+        }
+
+        // The sync only ever creates/updates rows (never deletes), so a 0/0 result left the local data
+        // exactly as it was rendered — skip the second full rebuild of the week/month lists.
+        if (result.CreatedCount > 0 || result.UpdatedCount > 0)
+            await onSynced();
     }
+
+    private static readonly TimeSpan SyncThrottle = TimeSpan.FromMinutes(2);
+    private static string? _lastStatusText;
+    private static DateTimeOffset _lastOkSyncUtc;
+    private static DateOnly _lastOkRangeStart = DateOnly.MaxValue;
+    private static DateOnly _lastOkRangeEnd = DateOnly.MinValue;
 
     private MonthDayCell ToMonthCell(DateOnly date, WorkAssignment? assignment)
     {

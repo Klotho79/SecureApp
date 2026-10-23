@@ -130,9 +130,11 @@ public sealed partial class RoomStatusViewModel : ObservableObject
             RoomStatusRows = new ObservableCollection<RoomStatusRowItem>(rows);
             HasNoRoomStatus = RoomStatusRows.Count == 0;
         }
-        catch
+        catch (Exception ex)
         {
             // Best-effort board — a relay hiccup here shouldn't leave the page stuck loading.
+            // Logged (2026-10-23): an empty board with no trace is undiagnosable.
+            AppLog.Error(nameof(RoomStatusViewModel), "loading the room board failed", ex);
             RoomStatusRows = [];
             HasNoRoomStatus = true;
         }
@@ -151,24 +153,27 @@ public sealed partial class RoomStatusViewModel : ObservableObject
             // FetchWorkplaceNamesForDateAsync did. 2026-10-16, bugfix kept: the page lists EVERY
             // workplace (ambulances, ARIMs, everything), not just sály — filter it.
             var board = await _opicentrumSyncService.FetchFullRosterBoardAsync(today);
-            return TodaysRoomsFrom(board, today);
+            if (TodaysRoomsFrom(board, today) is { Count: > 0 } live)
+                return live;
         }
         catch
         {
-            // Opicentrum unreachable right now (seen live: "Software caused connection abort") —
-            // fall back to the last roster board this device saved, and failing that to whatever
-            // its own already-synced local rozpis knows about its own qualifying room(s), rather
-            // than an empty board.
-            if (OpicentrumRosterBoardLocalCache.Load() is { } cached && TodaysRoomsFrom(cached, today) is { Count: > 0 } fromCache)
-                return fromCache;
-
-            return todaysAssignments
-                .Where(a => a.WorkplaceName is { } name && RoomWorkplaceKeywords.IsQualifying(name))
-                .Select(a => a.WorkplaceName!)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Select(name => new TodaysRoom(name, []))
-                .ToList();
+            // Opicentrum unreachable right now (seen live: "Software caused connection abort").
         }
+
+        // 2026-10-23: an EMPTY live result (page without today's column yet, a parse that found no
+        // sály) used to be returned as-is and the whole board vanished. Same fallbacks as for a failed
+        // fetch: the last roster board this device saved, and failing that whatever its own
+        // already-synced local rozpis knows about its own qualifying room(s), rather than an empty board.
+        if (OpicentrumRosterBoardLocalCache.Load() is { } cached && TodaysRoomsFrom(cached, today) is { Count: > 0 } fromCache)
+            return fromCache;
+
+        return todaysAssignments
+            .Where(a => a.WorkplaceName is { } name && RoomWorkplaceKeywords.IsQualifying(name))
+            .Select(a => a.WorkplaceName!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(name => new TodaysRoom(name, []))
+            .ToList();
     }
 
     private static List<TodaysRoom> TodaysRoomsFrom(OpicentrumRosterBoardSnapshot board, DateOnly today) =>
