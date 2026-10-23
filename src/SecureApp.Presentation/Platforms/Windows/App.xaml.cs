@@ -17,6 +17,16 @@ public partial class App : MauiWinUIApplication
 	public App()
 	{
 		this.InitializeComponent();
+
+		// 2026-10-23: a WinUI/XAML exception on the UI thread (layout, binding, a page opening) never
+		// reaches AppDomain.UnhandledException before the process is torn down, so the PC build
+		// crashed with no trace in any log ("Rozpis spadl", nothing reported). Log it here, and keep
+		// the app alive: a failed page is better than losing the whole session.
+		this.UnhandledException += (_, e) =>
+		{
+			SecureApp.Presentation.Infrastructure.AppLog.Critical("WinUI.UnhandledException", "Výjimka v uživatelském rozhraní (Windows).", e.Exception);
+			e.Handled = true;
+		};
 	}
 
 	protected override MauiApp CreateMauiApp() => MauiProgram.CreateMauiApp();

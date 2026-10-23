@@ -9,6 +9,7 @@ using SecureApp.Domain.Enums;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Domain.ValueObjects;
+using SecureApp.Presentation.Infrastructure;
 using SecureApp.Presentation.Workplace;
 
 namespace SecureApp.Presentation.ViewModels;
@@ -114,10 +115,20 @@ public sealed partial class WorkplaceViewModel : ObservableObject
     [RelayCommand]
     private async Task LoadAsync()
     {
-        LegendItems = new ObservableCollection<AssignmentLegendItem>(BuildLegendItems());
-        await RenderWeekLocalAsync();
-        if (IsMonthView)
-            await RenderMonthLocalAsync();
+        // 2026-10-23: an exception escaping a RelayCommand's Execute is rethrown on the UI thread and
+        // takes the whole app down (the PC build "spadl pri otevreni rozpisu", no trace in any log). The
+        // local render is best-effort: log it and carry on (the sync below still runs).
+        try
+        {
+            LegendItems = new ObservableCollection<AssignmentLegendItem>(BuildLegendItems());
+            await RenderWeekLocalAsync();
+            if (IsMonthView)
+                await RenderMonthLocalAsync();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error(nameof(WorkplaceViewModel), "rendering the rozpis failed", ex);
+        }
 
         // One sync call covering the union of both ranges, not two independent concurrent ones — two
         // near-simultaneous logins to the same Opicentrum account collide server-side (confirmed
