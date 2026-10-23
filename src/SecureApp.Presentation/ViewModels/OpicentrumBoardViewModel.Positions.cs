@@ -120,10 +120,23 @@ public sealed partial class OpicentrumBoardViewModel
 
             if (fromRelay is not null && (local is null || fromRelay.UpdatedAtUtc > local.UpdatedAtUtc))
             {
-                var applySw = Stopwatch.StartNew();
-                ApplyPositionsSnapshot(fromRelay);
-                AppLog.Metric("opicentrum.positions.apply", applySw.Elapsed.TotalMilliseconds, "ms",
-                    ("source", "relay"), ("rows", PositionsRows.Count), ("days", PositionsDayHeaders.Count));
+                if (local is not null && SameContent(local, fromRelay))
+                {
+                    // 2026-10-23: the relay's copy is "newer" almost every time only because the periodic
+                    // background publish re-stamps it — the roster itself is unchanged. Rebuilding all rows
+                    // for that froze the UI 0.15–0.8 s (apply.assign source=relay in the device metrics),
+                    // right after the board had finished appearing. Just move the timestamp.
+                    _currentPositionsSnapshot = fromRelay;
+                    PositionsLastUpdatedText = FormatRelativeTime(fromRelay.UpdatedAtUtc);
+                    AppLog.Event("opicentrum.positions.apply-skipped", ("reason", "same-content"));
+                }
+                else
+                {
+                    var applySw = Stopwatch.StartNew();
+                    ApplyPositionsSnapshot(fromRelay);
+                    AppLog.Metric("opicentrum.positions.apply", applySw.Elapsed.TotalMilliseconds, "ms",
+                        ("source", "relay"), ("rows", PositionsRows.Count), ("days", PositionsDayHeaders.Count));
+                }
                 OpicentrumRosterBoardLocalCache.Save(fromRelay);
             }
             AppLog.Metric("opicentrum.positions.load_total", total.Elapsed.TotalMilliseconds, "ms", ("path", "reconciled"));
@@ -237,6 +250,27 @@ public sealed partial class OpicentrumBoardViewModel
             ? IncrementalFill.Start(rows, firstBatch: 8, nextBatch: 7, delayMs: 30, isCurrent: () => version == _positionsFillVersion)
             : new ObservableCollection<OpicentrumRosterRowItem>(rows);
         AppLog.Metric("opicentrum.positions.apply.assign", assignSw.Elapsed.TotalMilliseconds, "ms", ("shown", PositionsRows.Count));
+    }
+
+    /// <summary>True when two snapshots show exactly the same board (same days, workplaces and people in the same order) — everything except <see cref="OpicentrumRosterBoardSnapshot.UpdatedAtUtc"/>.</summary>
+    private static bool SameContent(OpicentrumRosterBoardSnapshot a, OpicentrumRosterBoardSnapshot b)
+    {
+        if (a.WeekOf != b.WeekOf || a.Days.Count != b.Days.Count) return false;
+        for (var d = 0; d < a.Days.Count; d++)
+        {
+            var da = a.Days[d];
+            var db = b.Days[d];
+            if (da.Date != db.Date || da.Workplaces.Count != db.Workplaces.Count) return false;
+            for (var w = 0; w < da.Workplaces.Count; w++)
+            {
+                var wa = da.Workplaces[w];
+                var wb = db.Workplaces[w];
+                if (wa.WorkplaceId != wb.WorkplaceId || wa.WorkplaceName != wb.WorkplaceName || wa.People.Count != wb.People.Count) return false;
+                for (var p = 0; p < wa.People.Count; p++)
+                    if (wa.People[p] != wb.People[p]) return false; // record equality: id + name
+            }
+        }
+        return true;
     }
 
     private int _positionsFillVersion;
