@@ -20,6 +20,9 @@ public interface IMessageRepository
     /// <summary>The already-stored INBOUND message with exactly this wire header (DhPublicKey + MessageNumber identify one message in one sending chain), or null — the idempotency check for a re-delivered envelope, done as one SQL lookup instead of loading every message of the session (2026-10-22).</summary>
     Task<Message?> FindInboundByHeaderAsync(Guid chatSessionId, byte[] dhPublicKey, int messageNumber, CancellationToken ct = default);
 
+    /// <summary>The already-stored INBOUND message carrying this cross-device <see cref="Message.OriginMessageId"/>, in ANY session, or null (2026-10-23). A resend re-encrypts the same logical message under a new ratchet message, so the wire header differs and <see cref="FindInboundByHeaderAsync"/> cannot recognise it — this does, so a message whose first copy arrived but whose delivery ack got lost is not shown twice.</summary>
+    Task<Message?> FindInboundByOriginAsync(Guid originMessageId, CancellationToken ct = default);
+
     /// <summary>Every message row tagged with this group (2026-09-07) — spans every member's own pairwise <c>ChatSession</c>, not just one, since a group message's fan-out legs each live under a different session id. The caller (a group's own thread view) is responsible for collapsing the sender's own N outbound copies of one logical message back down via <see cref="Message.GroupMessageId"/> — see <c>GroupChat</c>'s own remarks.</summary>
     Task<IReadOnlyList<Message>> GetByGroupAsync(Guid groupChatId, CancellationToken ct = default);
 
@@ -28,6 +31,9 @@ public interface IMessageRepository
 
     /// <summary>This device's own outbound, non-system messages that never reached the relay (<see cref="MessageStatus.Pending"/> or <see cref="MessageStatus.Failed"/>) and were created before <paramref name="createdBeforeUtc"/> — the work list of the background "send what is still stuck" sweep (2026-10-22). The age cut-off keeps it away from a message a chat page is sending right now.</summary>
     Task<IReadOnlyList<Message>> GetUnsentOutboundAsync(DateTimeOffset createdBeforeUtc, CancellationToken ct = default);
+
+    /// <summary>This device's own outbound, non-system messages that reached the relay (<see cref="MessageStatus.Sent"/>) but were never acknowledged by the recipient's app (no ✓✓), created in the given window (2026-10-23). The relay deletes a frame the moment it is written to the recipient's socket, so a frame the recipient then dropped is gone for good — only the sender can still send it again.</summary>
+    Task<IReadOnlyList<Message>> GetSentUnacknowledgedAsync(DateTimeOffset createdAfterUtc, DateTimeOffset createdBeforeUtc, CancellationToken ct = default);
 
     /// <summary>A cheap change-signature for a 1:1 session's visible messages (count + newest timestamp) — lets the UI keep a warm in-memory copy of a thread and only rebuild it when this actually changes, without reading/decrypting every row (2026-09-11).</summary>
     Task<string> GetSessionSignatureAsync(Guid chatSessionId, CancellationToken ct = default);

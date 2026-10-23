@@ -378,9 +378,14 @@ public sealed partial class ChatViewModel : ChatThreadViewModelBase<ChatMessageI
         if (session.PeerRelayDeviceId is not { } relayDeviceId)
             throw new InvalidOperationException($"S {session.PeerDisplayName} chybí propojení na relay zařízení — obnovit spojení nelze.");
 
-        await SessionRecoveryHelper.ResyncAsync(
-            _messagingService, _messageTransport, _transportSettingsRepository, _currentUserService, _messageRepository, _sessionRepository,
-            session.PeerDisplayName, session.PeerIdentityPublicKey, relayDeviceId);
+        // A live session may already exist (the peer's invite was accepted while this page was open and
+        // replaced the one this page still points at) — then there is nothing to resync, just use it.
+        // Otherwise resync, ignoring the background cooldown: this is the user's own message and it
+        // must not be refused because some earlier trigger ran a few minutes ago (2026-10-23).
+        if (await _sessionRepository.GetByPeerPublicKeyAsync(session.PeerIdentityPublicKey) is null)
+            await SessionRecoveryHelper.ResyncAsync(
+                _messagingService, _messageTransport, _transportSettingsRepository, _currentUserService, _messageRepository, _sessionRepository,
+                session.PeerDisplayName, session.PeerIdentityPublicKey, relayDeviceId, ignoreCooldown: true);
 
         var newSession = await _sessionRepository.GetByPeerPublicKeyAsync(session.PeerIdentityPublicKey)
             ?? throw new InvalidOperationException("Obnovení spojení se nezdařilo.");
@@ -466,7 +471,7 @@ public sealed partial class ChatViewModel : ChatThreadViewModelBase<ChatMessageI
     /// </summary>
     internal async Task HandleEnvelopeReceivedAsync(MessageEnvelope envelope)
     {
-        if (envelope.SessionId != _chatSessionId) return;
+        if (envelope.SessionId != _chatSessionId && !await TryAdoptReplacementSessionAsync(envelope.SessionId)) return;
 
         // Group chats (2026-09-07) fan out over this SAME pairwise session — see GroupChat's own
         // remarks on the crypto design — so a group envelope also matches the check above and would
@@ -503,6 +508,35 @@ public sealed partial class ChatViewModel : ChatThreadViewModelBase<ChatMessageI
         catch (Exception ex)
         {
             await TryAutoHealAsync(ex);
+        }
+    }
+
+    /// <summary>
+    /// 2026-10-23: an envelope for ANOTHER session of the SAME peer means the one this open page points
+    /// at was replaced (the peer's fresh invite was accepted, or a resync ran, while the page was open)
+    /// — incoming envelopes are always correlated to the newest live session. Until now the page ignored
+    /// them, so a message that had in fact arrived (the app-wide handler stored it) stayed invisible
+    /// until the chat was reopened. Repoints this page at the new session so the message shows at once
+    /// and the next send goes out on it.
+    /// </summary>
+    private async Task<bool> TryAdoptReplacementSessionAsync(Guid envelopeSessionId)
+    {
+        try
+        {
+            var current = await _sessionRepository.GetByIdAsync(_chatSessionId);
+            var incoming = await _sessionRepository.GetByIdAsync(envelopeSessionId);
+            if (current is null || incoming is null || incoming.State == ChatSessionState.Closed
+                || !incoming.PeerIdentityPublicKey.AsSpan().SequenceEqual(current.PeerIdentityPublicKey))
+                return false;
+
+            _chatSessionId = envelopeSessionId;
+            Notifications.ActiveChatThread.EnterDirect(_chatSessionId);
+            AppLog.Event("chat.session-adopted", ("peer", incoming.PeerDisplayName));
+            return true;
+        }
+        catch
+        {
+            return false;
         }
     }
 

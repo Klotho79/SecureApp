@@ -11,6 +11,7 @@ using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Domain.ValueObjects;
 using SecureApp.Presentation.Chat;
+using SecureApp.Presentation.Infrastructure;
 
 namespace SecureApp.Presentation.Transport;
 
@@ -54,6 +55,7 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
 
     public event EventHandler<MessageEnvelope>? EnvelopeReceived;
     public event EventHandler<string>? PairingInviteReceived;
+    public Func<string, Task>? PairingInviteProcessor { get; set; }
     public event EventHandler<string>? GroupInviteReceived;
     public event EventHandler<TransportConnectionState>? ConnectionStateChanged;
 
@@ -356,7 +358,20 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
                 }
                 else if (frame is { Type: "pairing-deliver", PairingInviteBlob: { } inviteBlob })
                 {
-                    PairingInviteReceived?.Invoke(this, inviteBlob);
+                    if (PairingInviteProcessor is { } processInvite)
+                    {
+                        // Finish accepting before the next frame is read — see the property's remarks.
+                        // Bounded so a stuck handler can never freeze the whole receive loop.
+                        try { await processInvite(inviteBlob).WaitAsync(TimeSpan.FromSeconds(60), ct); }
+                        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+                        {
+                            AppLog.Error("WebSocketTransport", "processing a pairing invite failed or timed out", ex);
+                        }
+                    }
+                    else
+                    {
+                        PairingInviteReceived?.Invoke(this, inviteBlob);
+                    }
                 }
                 else if (frame is { Type: "group-invite-deliver", GroupInviteBlob: { } groupInviteBlob })
                 {

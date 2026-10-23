@@ -997,6 +997,51 @@ public sealed class RelayDatabase
     }
 
     /// <summary>
+    /// A new pairing invite replaces the ones the same sender already has queued for the same recipient
+    /// (2026-10-23). Each invite closes whatever session the previous one created, so only the newest is
+    /// ever useful — but a recipient that was offline collected one per hourly resync (11 seen live) and
+    /// on reconnect accepted all of them, ending on a session that no longer matched the sender's newest.
+    /// Only the invites queued AFTER the sender's last queued message are dropped: an invite followed by
+    /// messages encrypted for the session it creates must stay, or those messages could never decrypt.
+    /// </summary>
+    public void SupersedeQueuedPairingFrames(Guid recipientDeviceId, Guid senderDeviceId)
+    {
+        using var connection = OpenConnection();
+        Execute(connection,
+            """
+            DELETE FROM outbox
+            WHERE recipient_device_id = @recipient
+              AND json_extract(frame_json, '$.Type') = 'pairing-deliver'
+              AND json_extract(frame_json, '$.SenderDeviceId') = @sender
+              AND created_at_utc > COALESCE(
+                    (SELECT MAX(created_at_utc) FROM outbox
+                     WHERE recipient_device_id = @recipient
+                       AND json_extract(frame_json, '$.Type') = 'deliver'
+                       AND json_extract(frame_json, '$.SenderDeviceId') = @sender), '')
+            """,
+            ("@recipient", recipientDeviceId.ToString()), ("@sender", senderDeviceId.ToString()));
+    }
+
+    /// <summary>Whether this device id is registered. A frame for an id that is not (a reinstalled/deregistered device whose old id a peer still has on file) can never be delivered, so queueing it only collects garbage.</summary>
+    public bool DeviceExists(Guid deviceId)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT 1 FROM devices WHERE id = @id";
+        command.Parameters.AddWithValue("@id", deviceId.ToString());
+        return command.ExecuteScalar() is not null;
+    }
+
+    /// <summary>Removes queued frames whose recipient is no longer registered (see <see cref="DeviceExists"/>). Returns how many.</summary>
+    public int PruneOutboxForUnknownDevices()
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM outbox WHERE recipient_device_id NOT IN (SELECT id FROM devices)";
+        return command.ExecuteNonQuery();
+    }
+
+    /// <summary>
     /// Every queued frame for a device, oldest first — called once right after it authenticates.
     /// Does NOT delete: the caller removes each row with <see cref="DeleteOutboxFrame"/> only after
     /// that frame was actually sent (2026-10-22 fix — it used to delete the whole batch up front, so a

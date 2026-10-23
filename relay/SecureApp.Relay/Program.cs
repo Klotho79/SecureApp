@@ -62,6 +62,8 @@ builder.Services.AddHostedService(sp => new WireGuardOnboardingSweepService(sp.G
 var app = builder.Build();
 
 app.Services.GetRequiredService<RelayDatabase>().Initialize();
+// Frames queued for devices that no longer exist (2026-10-23): ~90 had collected since September.
+app.Logger.LogInformation("Pruned {Count} outbox frames for unknown devices", app.Services.GetRequiredService<RelayDatabase>().PruneOutboxForUnknownDevices());
 app.UseWebSockets();
 
 app.MapGet("/health", () => Results.Ok());
@@ -1651,8 +1653,19 @@ app.Map("/ws", async (HttpContext context, RelayDatabase db, ConnectionRegistry 
     async Task DeliverOrQueueAsync(Guid recipientId, RelayFrame deliverFrame)
     {
         var json = RelayProtocol.Serialize(deliverFrame);
-        if (!await registry.TrySendAsync(recipientId, json))
-            db.EnqueueOutbox(recipientId, json);
+        if (await registry.TrySendAsync(recipientId, json))
+            return;
+
+        // Not connected (or the live send failed) → the outbox, unless the recipient does not exist at
+        // all: such a frame can never be delivered and would only pile up (2026-10-23).
+        if (!db.DeviceExists(recipientId))
+            return;
+
+        // A newer invite makes the sender's still-queued older ones for this recipient obsolete.
+        if (deliverFrame.Type == "pairing-deliver" && deliverFrame.SenderDeviceId is { } inviteSender)
+            db.SupersedeQueuedPairingFrames(recipientId, inviteSender);
+
+        db.EnqueueOutbox(recipientId, json);
     }
 
     try

@@ -120,7 +120,10 @@ public partial class App : Application
 		var transport = IPlatformApplication.Current?.Services.GetService<IMessageTransport>();
 		if (transport is not null)
 		{
-			transport.PairingInviteReceived += OnPairingInviteReceived;
+			// Awaited by the receive loop (2026-10-23), not a fire-and-forget event: the messages
+			// queued right behind an invite must find the session it creates — see
+			// IMessageTransport.PairingInviteProcessor's remarks.
+			transport.PairingInviteProcessor = OnPairingInviteReceived;
 			transport.GroupInviteReceived += OnGroupInviteReceived;
 
 			// 2026-09-09: a real, previously-flagged-but-deferred gap the user hit live — a
@@ -730,6 +733,11 @@ public partial class App : Application
 			// Best-effort — retried next sweep, ~3 min.
 		}
 
+		// Invites a resync could not hand to the relay (it was down at that moment) go out now — before
+		// anything below, so they reach the peer ahead of any message retried in this same sweep.
+		try { await SessionRecoveryHelper.FlushPendingInvitesAsync(transport, sessionRepository); }
+		catch { /* retried next sweep */ }
+
 		IReadOnlyList<ChatSession> sessions;
 		try { sessions = await sessionRepository.GetAllAsync(); }
 		catch { return; }
@@ -1277,7 +1285,7 @@ public partial class App : Application
 				{
 					var ackTransport = scope.ServiceProvider.GetRequiredService<IMessageTransport>();
 					var ackPayload = DeliveryAckSync.BuildAck(incomingCorr);
-					var (_, ackEnvelope) = await messagingService.SendMessageAsync(message.ChatSessionId, ackPayload, isSystemPayload: true);
+					var (_, ackEnvelope) = await messagingService.SendMessageAsync(envelope.SessionId, ackPayload, isSystemPayload: true); // envelope.SessionId: a repeat of an already-stored message resolves to a row of an older, closed session
 					if (ackTransport.IsConnected) await ackTransport.SendEnvelopeAsync(ackEnvelope);
 					AppLog.Event("msg.ack-sent", ("corr", incomingCorr));
 				}
@@ -1415,7 +1423,7 @@ public partial class App : Application
 		}
 	}
 
-	private static async void OnPairingInviteReceived(object? sender, string inviteBlob)
+	private static async Task OnPairingInviteReceived(string inviteBlob)
 	{
 		var services = IPlatformApplication.Current?.Services;
 		if (services is null) return;
@@ -1456,6 +1464,18 @@ public partial class App : Application
 			// ChatListViewModel.DeleteSessionAsync) — it only ever did LOCAL declutter housekeeping
 			// elsewhere (group-member filtering); it just no longer blocks 1:1 re-pairing here.
 			RemovedPeersStore.Remove(invite.InitiatorPublicKey);
+
+				// Both sides resynced at the same moment (2026-10-23): each side's accepted session is then
+				// built from the OTHER's handshake, so the two never match and every message fails to
+				// decrypt until the cooldown allows another round — which can collide again. The same
+				// deterministic tie-break the group mesh uses decides: the side that would initiate keeps
+				// its own fresh session and ignores this invite; the other side accepts the winner's.
+				if (SessionRecoveryHelper.ResyncedWithin(invite.InitiatorPublicKey, TimeSpan.FromSeconds(60))
+					&& ShouldInitiateTo(await messagingService.GetLocalIdentityPublicKeyAsync(), invite.InitiatorPublicKey))
+				{
+					AppLog.Event("pairing.glare-ignored", ("peer", invite.InitiatorDisplayName));
+					return;
+				}
 
 			var existingSession = await messagingService.FindExistingSessionAsync(invite.InitiatorPublicKey);
 			byte[]? historySourceKey = null;

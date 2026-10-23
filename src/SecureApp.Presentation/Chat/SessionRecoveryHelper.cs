@@ -81,6 +81,13 @@ public static class SessionRecoveryHelper
     /// and arrive at a peer with no session to decrypt it against yet.
     /// </param>
     /// <param name="sessionRepository">Optional, paired with <paramref name="messageRepository"/> — see above.</param>
+    /// <param name="ignoreCooldown">
+    /// 2026-10-23 — for a user's own send that finds the session closed and no live one to use: the
+    /// cooldown exists to stop BACKGROUND triggers tearing down a session that was just created, but a
+    /// user's message must never be refused because one of those ran a few minutes ago (it used to fail
+    /// with "Obnovení spojení se nezdařilo"). Only called when there is no non-closed session at all, so
+    /// there is nothing fresh to tear down.
+    /// </param>
     /// <param name="migratingFromPublicKey">
     /// Identity-migration case (2026-09-19, see <see cref="PeerIdentityReconciler"/>) — when a peer
     /// re-registered under a brand new <paramref name="peerPublicKey"/> entirely, their OLD sessions'
@@ -100,12 +107,13 @@ public static class SessionRecoveryHelper
         byte[] peerPublicKey,
         Guid peerRelayDeviceId,
         byte[]? migratingFromPublicKey = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool ignoreCooldown = false)
     {
         var peerKeyHex = Convert.ToHexStringLower(peerPublicKey);
         var now = DateTimeOffset.UtcNow;
         var lastAttempt = _lastResyncAttemptUtc.GetOrAdd(peerKeyHex, DateTimeOffset.MinValue);
-        if (now - lastAttempt < _cooldown)
+        if (!ignoreCooldown && now - lastAttempt < _cooldown)
         {
             AppLog.Event("session.resync.skip", ("peer", peerDisplayName), ("reason", "cooldown"));
             return; // Another trigger already resynced this same peer moments ago — let it settle.
@@ -142,20 +150,66 @@ public static class SessionRecoveryHelper
                 await ResendUndeliveredAsync(messagingService, messageRepository, messageTransport, newSession.Id, ct);
         }
 
+        // Remembered BEFORE the send attempt (2026-10-23): the new session counts as Active from the
+        // start, so if the invite does not get out (relay down, or the send throws) nothing else would
+        // ever tell the peer — FlushPendingInvitesAsync re-sends it from the supervisor once connected.
+        var inviteBlob = ContactCardCodec.Encode(invite);
+        PendingInviteStore.Set(peerPublicKey, newSession.Id, peerRelayDeviceId, inviteBlob);
+
         if (messageTransport.IsConnected)
         {
-            await messageTransport.SendPairingInviteAsync(peerRelayDeviceId, ContactCardCodec.Encode(invite), ct);
-            AppLog.Event("session.resync.invite-sent", ("peer", peerDisplayName), ("peerDevice", peerRelayDeviceId));
+            try
+            {
+                await messageTransport.SendPairingInviteAsync(peerRelayDeviceId, inviteBlob, ct);
+                PendingInviteStore.Remove(peerPublicKey);
+                AppLog.Event("session.resync.invite-sent", ("peer", peerDisplayName), ("peerDevice", peerRelayDeviceId));
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                AppLog.Error("SessionRecovery.Resync", $"sending the invite to {peerDisplayName} failed; kept for retry", ex);
+            }
         }
         else
         {
             AppLog.Event("session.resync.invite-queued", ("peer", peerDisplayName), ("reason", "relay-not-connected"));
         }
-        // Not connected right now: the session stays PendingHandshake locally, same "no error
-        // surfaced" policy this app already uses elsewhere. It isn't retried automatically the
-        // instant the relay reconnects — App.AutoConnectRelayAsync's periodic health check (below)
-        // is what eventually picks this back up.
     }
+
+    /// <summary>
+    /// Sends the invites <see cref="ResyncAsync"/> could not hand to the relay (see
+    /// <see cref="PendingInviteStore"/>). Called by the supervisor on every reconnect and sweep. An entry
+    /// whose session has meanwhile been closed or replaced (the peer's own invite was accepted, or a
+    /// newer resync ran) is dropped instead — it would only create a second, conflicting session.
+    /// </summary>
+    public static async Task FlushPendingInvitesAsync(IMessageTransport messageTransport, IChatSessionRepository sessionRepository, CancellationToken ct = default)
+    {
+        if (!messageTransport.IsConnected) return;
+
+        foreach (var (peerKeyHex, entry) in PendingInviteStore.All())
+        {
+            var session = await sessionRepository.GetByIdAsync(entry.SessionId, ct);
+            if (session is null || session.State == ChatSessionState.Closed)
+            {
+                PendingInviteStore.RemoveByHex(peerKeyHex);
+                continue;
+            }
+
+            try
+            {
+                await messageTransport.SendPairingInviteAsync(entry.RelayDeviceId, entry.Blob, ct);
+                PendingInviteStore.RemoveByHex(peerKeyHex);
+                AppLog.Event("session.invite-flushed", ("peer", session.PeerDisplayName), ("peerDevice", entry.RelayDeviceId));
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                AppLog.Error("SessionRecovery.Flush", $"re-sending the invite to {session.PeerDisplayName} failed; will retry", ex);
+            }
+        }
+    }
+
+    /// <summary>True if this device started a resync with the peer within <paramref name="window"/> — lets the invite handler recognise "both sides resynced at once" (see <c>App.OnPairingInviteReceived</c>).</summary>
+    public static bool ResyncedWithin(byte[] peerPublicKey, TimeSpan window) =>
+        _lastResyncAttemptUtc.TryGetValue(Convert.ToHexStringLower(peerPublicKey), out var at) && DateTimeOffset.UtcNow - at < window;
 
     /// <summary>
     /// Re-parents EVERY prior session's message history for this peer onto the fresh session
@@ -235,7 +289,24 @@ public static class SessionRecoveryHelper
     {
         if (!messageTransport.IsConnected) return;
 
-        var unsent = await messageRepository.GetUnsentOutboundAsync(DateTimeOffset.UtcNow - minAge, ct);
+        var now = DateTimeOffset.UtcNow;
+        var unsent = (await messageRepository.GetUnsentOutboundAsync(now - minAge, ct)).ToList();
+
+        // 2026-10-23: also the messages that DID reach the relay but never got their ✓✓. The relay
+        // deletes a frame as soon as it is written to the recipient's socket, so one the recipient then
+        // dropped (no session yet, a decrypt failure, the app killed mid-processing) exists nowhere
+        // else; "the relay holds it for an offline recipient" only covers a recipient that has not
+        // connected yet. Resent with the SAME origin id, so a recipient that did get the first copy
+        // recognises the repeat. At most a few tries per message, spaced out, so a peer that is simply
+        // offline for days does not collect a pile of copies.
+        foreach (var sent in await messageRepository.GetSentUnacknowledgedAsync(now - SentRetryMaxAge, now - SentRetryFirstAfter, ct))
+        {
+            var key = sent.OriginMessageId ?? sent.Id;
+            if (_sentRetries.TryGetValue(key, out var previous)
+                && (previous.Attempts >= SentRetryMaxAttempts || now - previous.LastAtUtc < SentRetryFirstAfter * Math.Pow(3, previous.Attempts - 1)))
+                continue;
+            unsent.Add(sent);
+        }
         if (unsent.Count == 0) return;
 
         foreach (var bySession in unsent.GroupBy(m => m.ChatSessionId))
@@ -247,6 +318,11 @@ public static class SessionRecoveryHelper
             await ResendAsync(messagingService, messageRepository, messageTransport, bySession.Key, bySession.ToList(), ct);
         }
     }
+
+    private static readonly TimeSpan SentRetryFirstAfter = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan SentRetryMaxAge = TimeSpan.FromDays(3);
+    private const int SentRetryMaxAttempts = 3;
+    private static readonly ConcurrentDictionary<Guid, (int Attempts, DateTimeOffset LastAtUtc)> _sentRetries = new();
 
     /// <summary>One resend at a time process-wide: the accept path and the background sweep can both find the same stuck row, and each resend deletes the old row and mints a new one — two at once would send it twice.</summary>
     private static readonly SemaphoreSlim _resendGate = new(1, 1);
@@ -300,8 +376,17 @@ public static class SessionRecoveryHelper
                     attachmentFileName: old.AttachmentFileName,
                     groupChatId: old.GroupChatId,
                     groupMessageId: old.GroupMessageId,
+                    originMessageId: old.OriginMessageId, // same logical message — the recipient dedupes on this
                     ct: ct);
                 await messageRepository.DeleteAsync(old.Id, ct);
+
+                if (old.Status == MessageStatus.Sent)
+                {
+                    // Keyed by the fresh row's origin id (an old row without one got a new id above), so
+                    // the count follows the logical message through every copy.
+                    _sentRetries.TryGetValue(old.OriginMessageId ?? old.Id, out var previousRetry);
+                    _sentRetries[fresh.OriginMessageId ?? fresh.Id] = (previousRetry.Attempts + 1, DateTimeOffset.UtcNow);
+                }
 
                 if (messageTransport.IsConnected)
                 {

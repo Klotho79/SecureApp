@@ -165,7 +165,7 @@ public sealed class MessagingService : IMessagingService
     private Task<Guid> GetOrCreateActiveKeyIdAsync(KeyPurpose purpose, CancellationToken ct) =>
         ActiveKeyHelper.GetOrCreateAsync(_keyMetadataRepository, _crypto, _auditLogger, purpose, ct);
 
-    public async Task<(Message Message, MessageEnvelope Envelope)> SendMessageAsync(Guid sessionId, ReadOnlyMemory<byte> plaintext, Guid? attachmentDocumentId = null, Guid? attachmentLibraryFileId = null, string? attachmentFileName = null, Guid? groupChatId = null, Guid? groupMessageId = null, bool isSystemPayload = false, CancellationToken ct = default)
+    public async Task<(Message Message, MessageEnvelope Envelope)> SendMessageAsync(Guid sessionId, ReadOnlyMemory<byte> plaintext, Guid? attachmentDocumentId = null, Guid? attachmentLibraryFileId = null, string? attachmentFileName = null, Guid? groupChatId = null, Guid? groupMessageId = null, bool isSystemPayload = false, Guid? originMessageId = null, CancellationToken ct = default)
     {
         var session = await _sessionRepository.GetByIdAsync(sessionId, ct) ?? throw new ChatSessionNotFoundException(sessionId);
         if (session.State == ChatSessionState.Closed)
@@ -179,7 +179,7 @@ public sealed class MessagingService : IMessagingService
         // 2026-09-11: mint a cross-device correlation id for this logical message and stamp the
         // sender's current role, both carried on the wire so the recipient's copy shares them — see
         // Message.OriginMessageId/SenderRole's own remarks. Both feed message deletion + its RBAC.
-        var originMessageId = Guid.NewGuid();
+        originMessageId ??= Guid.NewGuid();
         var senderRole = _currentUser.Current.Role;
 
         var envelope = new MessageEnvelope(sessionId, _currentUser.Current.Id, header, wirePayload, attachmentDocumentId, attachmentLibraryFileId, attachmentFileName, groupChatId, groupMessageId, isSystemPayload, originMessageId, senderRole);
@@ -230,6 +230,13 @@ public sealed class MessagingService : IMessagingService
             var duplicate = await _messageRepository.FindInboundByHeaderAsync(envelope.SessionId, envelope.Header.DhPublicKey, envelope.Header.MessageNumber, ct);
             if (duplicate is not null)
                 return duplicate;
+
+            // 2026-10-23: a RESENT message (the sender never saw our delivery ack) arrives as a brand new
+            // ratchet message, so the header check above cannot see it is a repeat — its stable origin id
+            // can. Nothing to decrypt or store; the caller still acks it so the sender stops resending.
+            if (!envelope.IsSystemPayload && envelope.OriginMessageId is { } origin
+                && await _messageRepository.FindInboundByOriginAsync(origin, ct) is { } sameMessage)
+                return sameMessage;
 
             // Decrypting the wire envelope both verifies authenticity and advances the ratchet's
             // receive chain — this must happen exactly once per message, which is also why the

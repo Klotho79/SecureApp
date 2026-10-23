@@ -56,6 +56,15 @@ public sealed class MessageRepository : IMessageRepository
         return row is null ? null : ToEntity(row);
     }
 
+    public async Task<Message?> FindInboundByOriginAsync(Guid originMessageId, CancellationToken ct = default)
+    {
+        var connection = await _connectionFactory.GetConnectionAsync(ct);
+        var row = await connection.FindWithQueryAsync<MessageRow>(
+            "SELECT * FROM messages WHERE origin_message_id = ? AND direction = ? LIMIT 1",
+            originMessageId.ToString(), (int)MessageDirection.Inbound);
+        return row is null ? null : ToEntity(row);
+    }
+
     public async Task<IReadOnlyList<Message>> GetByGroupAsync(Guid groupChatId, CancellationToken ct = default)
     {
         var connection = await _connectionFactory.GetConnectionAsync(ct);
@@ -76,6 +85,15 @@ public sealed class MessageRepository : IMessageRepository
         var rows = await connection.QueryAsync<MessageRow>(
             "SELECT * FROM messages WHERE direction = ? AND is_system_payload = 0 AND status IN (?, ?) AND created_at_utc < ? ORDER BY created_at_utc",
             (int)MessageDirection.Outbound, (int)MessageStatus.Pending, (int)MessageStatus.Failed, Format(createdBeforeUtc));
+        return rows.Select(ToEntity).ToList();
+    }
+
+    public async Task<IReadOnlyList<Message>> GetSentUnacknowledgedAsync(DateTimeOffset createdAfterUtc, DateTimeOffset createdBeforeUtc, CancellationToken ct = default)
+    {
+        var connection = await _connectionFactory.GetConnectionAsync(ct);
+        var rows = await connection.QueryAsync<MessageRow>(
+            "SELECT * FROM messages WHERE direction = ? AND is_system_payload = 0 AND status = ? AND created_at_utc > ? AND created_at_utc < ? ORDER BY created_at_utc",
+            (int)MessageDirection.Outbound, (int)MessageStatus.Sent, Format(createdAfterUtc), Format(createdBeforeUtc));
         return rows.Select(ToEntity).ToList();
     }
 

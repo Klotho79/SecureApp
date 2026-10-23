@@ -96,6 +96,16 @@ public interface IMessageTransport
     /// <summary>Raised when a pairing invite arrives via <see cref="SendPairingInviteAsync"/> from the other side — the raw blob, ready for <c>ContactCardCodec.Decode&lt;ChatInviteBlob&gt;</c> exactly like a manually pasted/scanned one.</summary>
     event EventHandler<string>? PairingInviteReceived;
 
+    /// <summary>
+    /// Awaitable alternative to <see cref="PairingInviteReceived"/> (2026-10-23). When set, the receive
+    /// loop awaits it and reads the NEXT frame only afterwards. The relay delivers a pairing invite and
+    /// the messages queued behind it back to back; with a fire-and-forget event the loop raced ahead and
+    /// looked up the session for those messages while the invite was still being accepted — no session
+    /// yet, so they were dropped and only a later resend could bring them back. Awaited, the session
+    /// exists by the time the first message after the invite is correlated.
+    /// </summary>
+    Func<string, Task>? PairingInviteProcessor { get; set; }
+
     /// <summary>Raised when a group-invite snapshot arrives via <see cref="SendGroupInviteAsync"/> — the raw blob, ready for <c>ContactCardCodec.Decode&lt;GroupInviteBlob&gt;</c>.</summary>
     event EventHandler<string>? GroupInviteReceived;
 
