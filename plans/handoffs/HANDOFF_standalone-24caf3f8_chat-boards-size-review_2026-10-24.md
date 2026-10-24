@@ -44,7 +44,7 @@ SecureApp is a closed hospital-team app: .NET MAUI (Android + Windows) with E2EE
 ## Where We Are
 
 **Repository and live state**
-- Branch `main`, HEAD `c672352` ("Review pass: smaller APK, fewer relay requests, transport robustness"), 1 commit ahead of `pi/main` and `github/main` (both `d0638ff` = Release 2.02/105). Working tree clean. csproj `ApplicationDisplayVersion` 2.02, `ApplicationVersion` 105.
+- Branch `main`; the last CODE commit is `c672352` ("Review pass: smaller APK, fewer relay requests, transport robustness"), 1 code commit ahead of `pi/main` and `github/main` (both `d0638ff` = Release 2.02/105). Two docs-only `session:` commits (this handoff) sit on top of it since the session was closed. Working tree clean. csproj `ApplicationDisplayVersion` 2.02, `ApplicationVersion` 105.
 - Live (uploaded, verified via `/download/{android,windows}/version`): 1.92 (95) … 2.02 (105); 2.02 uploaded 2026-10-24 ~10:11 UTC. Relay code was redeployed for 1.92, 1.93, 1.95 and 2.00 (last: 07:58 local 10-24); `c672352` does not touch the relay.
 - Devices (last log lines 10-24 ~12:40): S23+ (Vilém) 2.01 (104), auto-updating to 2.02; S25 (Petr "Faltus") 2.01; PC v práci 1.99 (log until 07:27); S9+ 1.69 (72) — never updates, its log holds only connect errors; home PC DESKTOP-F8AS2U6 not checked.
 - Builds at HEAD: Android and Windows Release 0 errors, relay untouched. Tests: none exist (`tests/` is empty); verification = builds + device logs.
@@ -694,7 +694,7 @@ Format of the pulled files: see `r1-s23-metrics.json` / `r1-s23-errors.json` in 
 ```bash
 # git.exe is NOT on PATH:
 #   C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer\Git\cmd\git.exe
-git status -s ; git log --oneline -6          # expect clean tree, HEAD = c672352 (local) above d0638ff (pi/github)
+git status -s ; git log --oneline -6          # expect a clean tree: two docs-only 'session:' commits on top of c672352 (local), above d0638ff (= pi/main, github/main)
 git diff --stat d0638ff HEAD -- src relay     # the unreleased review pass: 25 files, +430/-492
 
 # Memory index (HARD RULES) and parent handoffs
@@ -724,5 +724,5 @@ dotnet build src\SecureApp.Presentation\SecureApp.Presentation.csproj -f net10.0
 **Closed at:** 2026-10-24 13:54 (local, UTC+2)
 **Commit:** `8d051ff` (`session: chat-boards-size-review [standalone-24caf3f8]` — adds this file; local only, not pushed)
 **Session status:** Handed off to next session
-**Repo at close:** branch `main`, HEAD `8d051ff` (this handoff) on top of `c672352` (review pass, never run on a device) on top of `d0638ff` (Release 2.02 / build 105). `pi/main` and `github/main` are still at `d0638ff`. Nothing was pushed, deployed or released after 2.02.
+**Repo at close:** branch `main` = two docs-only `session:` commits (`8d051ff` adds this file, the next one adds this note) on top of `c672352` (review pass, never run on a device) on top of `d0638ff` (Release 2.02 / build 105). `pi/main` and `github/main` are still at `d0638ff`. Nothing was pushed, deployed or released after 2.02.
 **Last user message:** "Ano" — sent after my message that held TWO questions (release `c672352` as 0.1.0 / build 106? and close this session?). It was taken as the answer to the LAST one (close the session). No release was made and no authorisation to release or push was assumed — ask the release question again before doing anything outward-facing.
