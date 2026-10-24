@@ -71,10 +71,12 @@ public sealed partial class OpicentrumBoardViewModel
                 IsVolnoLoading = false;
             }
 
-            if (local is not null && DateTimeOffset.UtcNow - local.UpdatedAtUtc < TimeSpan.FromMinutes(10))
+            if (local is not null && (DateTimeOffset.UtcNow - local.UpdatedAtUtc < TimeSpan.FromMinutes(10) || OpicentrumBoardSync.IsCurrent(OpicentrumBoardSync.Volno)))
                 return;
 
+            var epoch = OpicentrumBoardSync.CurrentEpoch;
             var fromRelay = await _volnoBoardCacheService.GetCachedAsync();
+            if (fromRelay is not null) OpicentrumBoardSync.MarkVerified(OpicentrumBoardSync.Volno, epoch);
             if (fromRelay is not null && (local is null || fromRelay.UpdatedAtUtc > local.UpdatedAtUtc))
             {
                 ApplyVolnoSnapshot(fromRelay);
@@ -90,6 +92,13 @@ public sealed partial class OpicentrumBoardViewModel
         {
             IsVolnoLoading = false;
         }
+    }
+
+    /// <summary>Called on the UI thread by the page when the relay pushed a newer volno snapshot (already saved locally). Not built until the Volno tab was first opened — it loads from the local cache then.</summary>
+    public void ApplyPushedVolno(OpicentrumVolnoSnapshot pushed)
+    {
+        if (IsAccessDenied || !_volnoLoaded) return;
+        ApplyVolnoSnapshot(pushed);
     }
 
     [RelayCommand]
@@ -119,7 +128,6 @@ public sealed partial class OpicentrumBoardViewModel
     {
         if (snapshot is null || snapshot.People.Count == 0)
         {
-            _volnoFillVersion++;
             HasVolnoData = false;
             VolnoDayHeaders = [];
             VolnoRows = [];
@@ -127,6 +135,7 @@ public sealed partial class OpicentrumBoardViewModel
             return;
         }
 
+        var applySw = System.Diagnostics.Stopwatch.StartNew();
         HasVolnoData = true;
         VolnoLastUpdatedText = FormatRelativeTime(snapshot.UpdatedAtUtc);
 
@@ -144,15 +153,11 @@ public sealed partial class OpicentrumBoardViewModel
             })
             .ToList();
 
-        // Same incremental fill as ApplyPositionsSnapshot (empty board only). The first batch covers
-        // a full screen (~25 rows) so nothing visibly pops in; the rest lands below the fold.
-        var version = ++_volnoFillVersion;
-        VolnoRows = VolnoRows.Count == 0
-            ? IncrementalFill.Start(rows, firstBatch: 28, nextBatch: 10, delayMs: 120, isCurrent: () => version == _volnoFillVersion)
-            : new ObservableCollection<OpicentrumVolnoRowItem>(rows);
+        // All rows at once (2026-10-24): the board is drawn on a canvas now (VolnoBoardView), so there is no
+        // per-row view creation left to spread over time — the old incremental fill only existed for that.
+        VolnoRows = new ObservableCollection<OpicentrumVolnoRowItem>(rows);
+        AppLog.Metric("opicentrum.volno.apply", applySw.Elapsed.TotalMilliseconds, "ms", ("rows", rows.Count), ("days", days.Count));
     }
-
-    private int _volnoFillVersion;
 }
 
 /// <summary>One person's row — <see cref="DayCodes"/> is in the same day order as <see cref="OpicentrumBoardViewModel.VolnoDayHeaders"/>, empty string for a day with nothing recorded.</summary>

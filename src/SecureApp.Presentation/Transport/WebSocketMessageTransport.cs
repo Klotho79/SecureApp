@@ -57,6 +57,7 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
     public event EventHandler<string>? PairingInviteReceived;
     public Func<string, Task>? PairingInviteProcessor { get; set; }
     public event EventHandler<string>? GroupInviteReceived;
+    public event EventHandler<string>? BoardChanged;
     public event EventHandler<TransportConnectionState>? ConnectionStateChanged;
 
     public WebSocketMessageTransport(ISecureVaultKeyStore vault, IServiceScopeFactory scopeFactory)
@@ -376,6 +377,10 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
                 else if (frame is { Type: "group-invite-deliver", GroupInviteBlob: { } groupInviteBlob })
                 {
                     GroupInviteReceived?.Invoke(this, groupInviteBlob);
+                }
+                else if (frame is { Type: "board-changed", Board: { } board })
+                {
+                    BoardChanged?.Invoke(this, board);
                 }
             }
         }

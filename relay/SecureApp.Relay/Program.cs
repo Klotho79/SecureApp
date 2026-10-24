@@ -1215,10 +1215,11 @@ app.MapGet("/picc/roster-pointer", (HttpRequest request, RelayDatabase db) =>
 
 void MapOpicentrumBoard(
     string route,
+    string board,
     Action<RelayDatabase, Guid, string> set,
     Func<RelayDatabase, (string ContentBlob, DateTimeOffset UpdatedAtUtc)?> get)
 {
-    app.MapPost(route, (HttpRequest request, SetOpicentrumBoardRequest body, RelayDatabase db) =>
+    app.MapPost(route, (HttpRequest request, SetOpicentrumBoardRequest body, RelayDatabase db, ConnectionRegistry registry) =>
     {
         if (!TryGetDeviceAuth(request, db, out var deviceId))
             return Results.Unauthorized();
@@ -1227,6 +1228,17 @@ void MapOpicentrumBoard(
             return Results.StatusCode(StatusCodes.Status403Forbidden);
 
         set(db, deviceId, body.ContentBlob);
+
+        // 2026-10-24: tell every other connected Admin/Modifier device the snapshot changed, so their
+        // local copy is refreshed in the background and opening the board never waits on a round trip.
+        // Fire-and-forget: a failed/missed notification only means that device re-fetches on its next open.
+        var frameJson = RelayProtocol.Serialize(new RelayFrame { Type = "board-changed", Board = board });
+        _ = Task.Run(async () =>
+        {
+            foreach (var id in registry.ConnectedDeviceIds())
+                if (id != deviceId && IsAdminOrModifier(db, id))
+                    await registry.TrySendAsync(id, frameJson);
+        });
         return Results.NoContent();
     });
 
@@ -1243,8 +1255,8 @@ void MapOpicentrumBoard(
     });
 }
 
-MapOpicentrumBoard("/opicentrum-roster-board", (db, id, blob) => db.SetOpicentrumRosterBoard(id, blob), db => db.GetOpicentrumRosterBoard());
-MapOpicentrumBoard("/opicentrum-volno-board", (db, id, blob) => db.SetOpicentrumVolnoBoard(id, blob), db => db.GetOpicentrumVolnoBoard());
+MapOpicentrumBoard("/opicentrum-roster-board", "roster", (db, id, blob) => db.SetOpicentrumRosterBoard(id, blob), db => db.GetOpicentrumRosterBoard());
+MapOpicentrumBoard("/opicentrum-volno-board", "volno", (db, id, blob) => db.SetOpicentrumVolnoBoard(id, blob), db => db.GetOpicentrumVolnoBoard());
 
 // Notice board. Posting is gated on the caller's assigned role (Admin=0/Modifier=1) — reading is
 // open to any member. content_blob is opaque ciphertext (encrypted client-side with the shared

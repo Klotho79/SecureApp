@@ -107,16 +107,20 @@ public sealed partial class OpicentrumBoardViewModel
                 IsPositionsLoading = false; // data is on screen now — the reconcile below must not re-block the UI
             }
 
-            if (local is not null && DateTimeOffset.UtcNow - local.UpdatedAtUtc < TimeSpan.FromMinutes(5))
+            // 2026-10-24: also skip while the local copy is confirmed current — the relay pushes every
+            // change (see OpicentrumBoardSync), so there is nothing to ask it.
+            if (local is not null && (DateTimeOffset.UtcNow - local.UpdatedAtUtc < TimeSpan.FromMinutes(5) || OpicentrumBoardSync.IsCurrent(OpicentrumBoardSync.Roster)))
             {
                 AppLog.Metric("opicentrum.positions.load_total", total.Elapsed.TotalMilliseconds, "ms", ("path", "local_only"));
                 return;
             }
 
             var relaySw = Stopwatch.StartNew();
+            var epoch = OpicentrumBoardSync.CurrentEpoch;
             // Task.Run: keep every synchronous slice of the fetch (vault, DB, JSON) off the UI thread.
             var fromRelay = await Task.Run(() => _rosterBoardCacheService.GetCachedAsync());
             AppLog.Metric("opicentrum.positions.relay_fetch", relaySw.Elapsed.TotalMilliseconds, "ms", ("hit", fromRelay is not null));
+            if (fromRelay is not null) OpicentrumBoardSync.MarkVerified(OpicentrumBoardSync.Roster, epoch);
 
             if (fromRelay is not null && (local is null || fromRelay.UpdatedAtUtc > local.UpdatedAtUtc))
             {
@@ -151,6 +155,19 @@ public sealed partial class OpicentrumBoardViewModel
         {
             IsPositionsLoading = false;
         }
+    }
+
+    /// <summary>Called on the UI thread by the page when the relay pushed a newer roster (already saved to the local cache): redraw only if something actually changed.</summary>
+    public void ApplyPushedPositions(OpicentrumRosterBoardSnapshot pushed)
+    {
+        if (IsAccessDenied) return;
+        if (_currentPositionsSnapshot is { } current && SameContent(current, pushed))
+        {
+            _currentPositionsSnapshot = pushed;
+            PositionsLastUpdatedText = FormatRelativeTime(pushed.UpdatedAtUtc);
+            return;
+        }
+        ApplyPositionsSnapshot(pushed);
     }
 
     /// <summary>The one user action that triggers a live Opicentrum scrape — see OpicentrumBoardViewModel's own remarks.</summary>

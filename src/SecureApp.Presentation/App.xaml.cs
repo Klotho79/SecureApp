@@ -126,6 +126,13 @@ public partial class App : Application
 			transport.PairingInviteProcessor = OnPairingInviteReceived;
 			transport.GroupInviteReceived += OnGroupInviteReceived;
 
+			// 2026-10-24: the relay pushes "board-changed" when another device replaces the shared Opicentrum
+			// roster/volno snapshot — refresh the local copy in the background so opening the board never
+			// waits on the relay. The connection state is tracked because a drop may have cost a push.
+			transport.BoardChanged += (_, board) => Workplace.OpicentrumBoardSync.OnBoardChanged(board);
+			transport.ConnectionStateChanged += (_, state) => Workplace.OpicentrumBoardSync.OnConnectionStateChanged(state);
+			Workplace.OpicentrumBoardSync.OnConnectionStateChanged(transport.IsConnected ? TransportConnectionState.Connected : TransportConnectionState.Disconnected);
+
 			// 2026-09-09: a real, previously-flagged-but-deferred gap the user hit live — a
 			// ChatViewModel/GroupChatViewModel's own EnvelopeReceived subscription only exists
 			// while ITS specific page happens to be open, so an envelope arriving (live, or

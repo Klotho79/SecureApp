@@ -25,6 +25,8 @@ public sealed class ConnectionRegistry
 
     public void Add(Guid deviceId, WebSocket socket) => _connections[deviceId] = new Connection(socket, new SemaphoreSlim(1, 1));
 
+    public Guid[] ConnectedDeviceIds() => _connections.Keys.ToArray();
+
     public void Remove(Guid deviceId, WebSocket socket)
     {
         if (_connections.TryGetValue(deviceId, out var connection) && ReferenceEquals(connection.Socket, socket))

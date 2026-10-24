@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -118,6 +119,7 @@ public sealed partial class WorkplaceViewModel : ObservableObject
         // 2026-10-23: an exception escaping a RelayCommand's Execute is rethrown on the UI thread and
         // takes the whole app down (the PC build "spadl pri otevreni rozpisu", no trace in any log). The
         // local render is best-effort: log it and carry on (the sync below still runs).
+        var renderSw = Stopwatch.StartNew();
         try
         {
             LegendItems = new ObservableCollection<AssignmentLegendItem>(BuildLegendItems());
@@ -129,6 +131,7 @@ public sealed partial class WorkplaceViewModel : ObservableObject
         {
             AppLog.Error(nameof(WorkplaceViewModel), "rendering the rozpis failed", ex);
         }
+        AppLog.Metric("workplace.render_local", renderSw.Elapsed.TotalMilliseconds, "ms", ("month", IsMonthView));
 
         // One sync call covering the union of both ranges, not two independent concurrent ones — two
         // near-simultaneous logins to the same Opicentrum account collide server-side (confirmed
@@ -146,12 +149,23 @@ public sealed partial class WorkplaceViewModel : ObservableObject
             {
                 await RenderWeekLocalAsync();
                 await RenderMonthLocalAsync();
-            }, throttle: true);
+            });
         }
         else
         {
-            _ = SyncInBackgroundAsync(weekRange.Start, weekRange.End, RenderWeekLocalAsync, throttle: true);
+            _ = SyncInBackgroundAsync(weekRange.Start, weekRange.End, RenderWeekLocalAsync);
         }
+    }
+
+    /// <summary>Header "⟳" button: syncs the visible range with Opicentrum right now, ignoring how fresh the local data already is.</summary>
+    [RelayCommand]
+    private async Task RefreshAsync()
+    {
+        var (start, end) = IsMonthView ? CurrentMonthSyncRange() : CurrentWeekSyncRange();
+        Func<Task> rerender = IsMonthView
+            ? async () => { await RenderWeekLocalAsync(); await RenderMonthLocalAsync(); }
+            : RenderWeekLocalAsync;
+        await SyncInBackgroundAsync(start, end, rerender, force: true);
     }
 
     [RelayCommand]
@@ -325,46 +339,58 @@ public sealed partial class WorkplaceViewModel : ObservableObject
     /// remarks). <paramref name="onSynced"/> re-renders from the local repository afterwards so newly
     /// written assignments actually show up without the user having to manually refresh.
     /// </summary>
-    private async Task SyncInBackgroundAsync(DateOnly rangeStart, DateOnly rangeEnd, Func<Task> onSynced, bool throttle = false)
+    private async Task SyncInBackgroundAsync(DateOnly rangeStart, DateOnly rangeEnd, Func<Task> onSynced, bool force = false)
     {
-        // 2026-10-23 (user: "zrychlit otevirani rozpisu"): every sync is a full Opicentrum login plus
-        // several page fetches, and OnAppearing ran one on EVERY open, including each return from the
-        // day editor. A range synced successfully a moment ago is not synced again on a plain re-open
-        // (week/month paging and the explicit view switches still sync — they pass throttle: false).
-        if (throttle && DateTimeOffset.UtcNow - _lastOkSyncUtc < SyncThrottle && rangeStart >= _lastOkRangeStart && rangeEnd <= _lastOkRangeEnd)
+        // 2026-10-24 (user: "rozpis se otevira strasne dlouho"): every sync is a full Opicentrum login plus
+        // several page fetches, and it ran on nearly every open, paging step and view switch — while the
+        // background job (App.RunBackgroundOpicentrumSyncAsync, every ~10 min) keeps the same local data
+        // fresh anyway. OpicentrumSyncState is the shared "last successful sync + its range", so a range
+        // that is already fresh is simply not synced again; the header "⟳" button passes force: true.
+        if (!force && OpicentrumSyncState.IsFresh(rangeStart, rangeEnd, SyncFreshness))
         {
-            SyncStatusText ??= _lastStatusText; // a fresh page instance still shows when it was last synced
+            SyncStatusText ??= OpicentrumSyncState.DescribeLastOk(); // a fresh page instance still shows when it was last synced
+            AppLog.Event("workplace.sync-skipped", ("reason", "fresh"));
             return;
         }
 
-        OpicentrumSyncResult result;
-        try { result = await _opicentrumSyncService.SyncAsync(rangeStart, rangeEnd); }
-        catch (Exception ex)
+        // One sync at a time per app: a second open/page tap while one runs would only queue behind the
+        // login gate and repeat the same work.
+        if (Interlocked.CompareExchange(ref _syncRunning, 1, 0) != 0) return;
+        try
         {
-            SyncStatusText = $"Synchronizace s Opicentrem selhala: {ex.Message}";
-            return; // nothing was written — the local render already on screen is current
-        }
+            if (force) SyncStatusText = "Synchronizuji…";
 
-        SyncStatusText = DescribeSyncResult(result);
-        if (result.Success && !ReferenceEquals(result, OpicentrumSyncResult.NotConfigured))
+            // Task.Run: the sync is login + ~8 page fetches + regex parsing of large HTML pages, and every
+            // continuation of an awaited call started on the UI thread resumes ON the UI thread — which is
+            // what froze the page right after it opened. Only the UI updates below come back to it.
+            var sw = Stopwatch.StartNew();
+            OpicentrumSyncResult result;
+            try { result = await Task.Run(() => _opicentrumSyncService.SyncAsync(rangeStart, rangeEnd)); }
+            catch (Exception ex)
+            {
+                SyncStatusText = $"Synchronizace s Opicentrem selhala: {ex.Message}";
+                return; // nothing was written — the local render already on screen is current
+            }
+            AppLog.Metric("workplace.sync", sw.Elapsed.TotalMilliseconds, "ms", ("ok", result.Success), ("created", result.CreatedCount), ("updated", result.UpdatedCount), ("forced", force));
+
+            SyncStatusText = DescribeSyncResult(result);
+
+            // The sync only ever creates/updates rows (never deletes), so a 0/0 result left the local data
+            // exactly as it was rendered — skip the second full rebuild of the week/month lists.
+            if (result.CreatedCount > 0 || result.UpdatedCount > 0)
+            {
+                try { await onSynced(); }
+                catch (Exception ex) { AppLog.Error(nameof(WorkplaceViewModel), "re-rendering the rozpis after a sync failed", ex); }
+            }
+        }
+        finally
         {
-            _lastStatusText = SyncStatusText;
-            _lastOkSyncUtc = DateTimeOffset.UtcNow;
-            _lastOkRangeStart = rangeStart;
-            _lastOkRangeEnd = rangeEnd;
+            Volatile.Write(ref _syncRunning, 0);
         }
-
-        // The sync only ever creates/updates rows (never deletes), so a 0/0 result left the local data
-        // exactly as it was rendered — skip the second full rebuild of the week/month lists.
-        if (result.CreatedCount > 0 || result.UpdatedCount > 0)
-            await onSynced();
     }
 
-    private static readonly TimeSpan SyncThrottle = TimeSpan.FromMinutes(2);
-    private static string? _lastStatusText;
-    private static DateTimeOffset _lastOkSyncUtc;
-    private static DateOnly _lastOkRangeStart = DateOnly.MaxValue;
-    private static DateOnly _lastOkRangeEnd = DateOnly.MinValue;
+    private static readonly TimeSpan SyncFreshness = TimeSpan.FromMinutes(10);
+    private static int _syncRunning;
 
     private MonthDayCell ToMonthCell(DateOnly date, WorkAssignment? assignment)
     {

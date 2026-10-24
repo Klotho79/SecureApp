@@ -161,10 +161,27 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
         // actually broke): every step below updates `stage`, so a failure anywhere names WHICH step
         // it was in, not just a bare exception message.
         var stage = "přihlášení";
+
+        // 2026-10-24: per-stage timing, logged once in the finally below (metric "opicentrum.sync"), so the
+        // slow part of a sync can be read from a device's own uploaded metrics instead of guessed.
+        var total = System.Diagnostics.Stopwatch.StartNew();
+        var stageSw = System.Diagnostics.Stopwatch.StartNew();
+        var timings = new StringBuilder();
+        void StageDone(string name)
+        {
+            timings.Append(timings.Length > 0 ? "," : "").Append(name).Append('=').Append((int)stageSw.ElapsedMilliseconds);
+            stageSw.Restart();
+        }
+
+        var gateSw = System.Diagnostics.Stopwatch.StartNew();
         await LoginGate.WaitAsync(ct);
+        var gateWaitMs = (int)gateSw.ElapsedMilliseconds;
+        stageSw.Restart();
+        var ok = false;
         try
         {
             var myName = await LoginAsync(http, username, password, ct);
+            StageDone("login");
             if (myName is null)
             {
                 const string error = "Přihlášení do Opicentra se nezdařilo — zkontrolujte uživatelské jméno a heslo v Nastavení.";
@@ -182,6 +199,7 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
             stage = "zjištění ID osoby";
             var myId = await ResolvePersonIdAsync(http, rangeStart, myName, ct)
                        ?? await ResolvePersonIdFromLeavePageAsync(http, rangeStart, myName, ct);
+            StageDone("id");
 
             // date -> resolved (Type, WorkplaceName, OnCallWorkplaceName) — merge order matches the
             // class-level precedence. OnCallWorkplaceName is an overlay, not a fourth precedence tier —
@@ -201,8 +219,10 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
 
             stage = "stažení pracovišť (pracoviste.php)";
             await MergePracovisteAsync(http, rangeStart, rangeEnd, myName, myId, resolved, extraWorkplaces, shifted, ct);
+            StageDone("pracoviste");
             stage = "stažení služeb (sluzby7.php)";
             await MergeSluzbyAsync(http, rangeStart, rangeEnd, myName, resolved, onDuty, ct);
+            StageDone("sluzby");
             try
             {
                 // Posunutá služba listed after the regular duty slots.
@@ -219,6 +239,7 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
             {
                 stage = "stažení volna (spravavolna.php)";
                 await MergeSpravavolnaAsync(http, rangeStart, rangeEnd, id, resolved, ct);
+                StageDone("volno");
             }
 
             if (myId is null && resolved.Count == 0)
@@ -235,7 +256,10 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
 
             stage = "zápis do místní databáze";
             var result = await WriteBackAsync(resolved, extraWorkplaces, ct);
+            StageDone("writeback");
             _hasNotifiedSyncFailure = false; // a successful sync ends the current failure streak
+            ok = true;
+            OpicentrumSyncState.RecordOk(rangeStart, rangeEnd);
             return result;
         }
         catch (Exception ex)
@@ -248,6 +272,8 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
         finally
         {
             LoginGate.Release();
+            Infrastructure.AppLog.Metric("opicentrum.sync", total.Elapsed.TotalMilliseconds, "ms",
+                ("ok", ok), ("gateWaitMs", gateWaitMs), ("steps", timings.ToString()));
         }
     }
 

@@ -109,5 +109,8 @@ public interface IMessageTransport
     /// <summary>Raised when a group-invite snapshot arrives via <see cref="SendGroupInviteAsync"/> — the raw blob, ready for <c>ContactCardCodec.Decode&lt;GroupInviteBlob&gt;</c>.</summary>
     event EventHandler<string>? GroupInviteReceived;
 
+    /// <summary>Raised when the relay reports that a shared Opicentrum board snapshot ("roster" or "volno") was replaced by another device (2026-10-24) — the name only; the subscriber re-fetches the snapshot itself.</summary>
+    event EventHandler<string>? BoardChanged;
+
     event EventHandler<TransportConnectionState>? ConnectionStateChanged;
 }

@@ -56,7 +56,7 @@
                  new toggle control. ℹ legend toggle (2026-09-21, "k tomu bude třeba legenda...
                  sbalitelná/rozklikávací") shares this row rather than taking its own — collapsed by
                  default so it doesn't compete for space with the more-used Týden/Měsíc toggle. -->
-            <Grid ColumnDefinitions="*,Auto">
+            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
                 <HorizontalStackLayout Grid.Column="0" Spacing="8">
                     <Border Style="{StaticResource Chip}" Margin="0">
                         <Border.GestureRecognizers>
@@ -93,7 +93,10 @@
                         </Label>
                     </Border>
                 </HorizontalStackLayout>
-                <Button Grid.Column="1" Text="ℹ" Style="{StaticResource SecondaryButton}" WidthRequest="40" Padding="0" Command="{Binding ToggleLegendCommand}" />
+                <!-- 2026-10-24: the page no longer syncs with Opicentrum on every open (the background job keeps
+                     the data fresh); this forces a sync of the visible range right now. -->
+                <Button Grid.Column="1" Text="⟳" Style="{StaticResource SecondaryButton}" WidthRequest="40" Padding="0" Command="{Binding RefreshCommand}" />
+                <Button Grid.Column="2" Text="ℹ" Style="{StaticResource SecondaryButton}" WidthRequest="40" Padding="0" Command="{Binding ToggleLegendCommand}" />
             </Grid>
 
             <Border Style="{StaticResource CardBorder}" IsVisible="{Binding IsLegendExpanded}">

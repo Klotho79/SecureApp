@@ -37,4 +37,7 @@ internal sealed class WireFrame
 
     /// <summary>On a "group-invite"/"group-invite-deliver" frame (2026-09-07) — a client-encoded GroupInviteBlob (<c>SecureApp.Presentation.Chat.GroupInviteBlob</c>), opaque to the relay same as <see cref="PairingInviteBlob"/>.</summary>
     public string? GroupInviteBlob { get; init; }
+
+    /// <summary>On a "board-changed" frame (relay to client) — "roster" or "volno", see <c>SecureApp.Relay.RelayFrame.Board</c>.</summary>
+    public string? Board { get; init; }
 }

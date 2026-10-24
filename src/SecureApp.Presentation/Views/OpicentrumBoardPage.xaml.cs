@@ -1,7 +1,9 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using SecureApp.Domain.ValueObjects;
 using SecureApp.Presentation.Infrastructure;
 using SecureApp.Presentation.ViewModels;
+using SecureApp.Presentation.Workplace;
 
 namespace SecureApp.Presentation.Views;
 
@@ -23,8 +25,15 @@ public partial class OpicentrumBoardPage : ContentPage
         // appearing to the first "Pozice" load finishing, readable via /admin/applog/{deviceId}.
         _ttiStopwatch = Stopwatch.StartNew();
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+        // Relay pushes (2026-10-24): redraw from the freshly stored snapshot while this page is open.
+        OpicentrumBoardSync.RosterPushed += OnRosterPushed;
+        OpicentrumBoardSync.VolnoPushed += OnVolnoPushed;
         _viewModel.LoadCommand.Execute(null);
     }
+
+    private void OnRosterPushed(OpicentrumRosterBoardSnapshot snapshot) => MainThread.BeginInvokeOnMainThread(() => _viewModel.ApplyPushedPositions(snapshot));
+
+    private void OnVolnoPushed(OpicentrumVolnoSnapshot snapshot) => MainThread.BeginInvokeOnMainThread(() => _viewModel.ApplyPushedVolno(snapshot));
 
     // Sticky name column + header (2026-10-22, user's ask): the board is ONE ScrollView(Both) so
     // row heights stay naturally in sync with the names; on scroll the name labels are translated
@@ -36,7 +45,6 @@ public partial class OpicentrumBoardPage : ContentPage
     }
 
     private readonly StickyBoard _positionsSticky = new();
-    private readonly StickyBoard _volnoSticky = new();
 
     private static void RegisterName(StickyBoard board, object? sender)
     {
@@ -61,14 +69,21 @@ public partial class OpicentrumBoardPage : ContentPage
     private void OnPositionsNameLoaded(object? sender, EventArgs e) => RegisterName(_positionsSticky, sender);
     private void OnPositionsNameUnloaded(object? sender, EventArgs e) => UnregisterName(_positionsSticky, sender);
     private void OnPositionsScrolled(object? sender, ScrolledEventArgs e) => ApplySticky(_positionsSticky, e, PositionsHeader, PositionsCorner);
-    private void OnVolnoNameLoaded(object? sender, EventArgs e) => RegisterName(_volnoSticky, sender);
-    private void OnVolnoNameUnloaded(object? sender, EventArgs e) => UnregisterName(_volnoSticky, sender);
-    private void OnVolnoScrolled(object? sender, ScrolledEventArgs e) => ApplySticky(_volnoSticky, e, VolnoHeader, VolnoCorner);
+
+    // Volno is drawn on canvases (VolnoBoardView): the body scrolls natively, so the pinned name column and
+    // day header are simply the overlay layers moved against the scroll offset.
+    private void OnVolnoScrolled(object? sender, ScrolledEventArgs e)
+    {
+        VolnoNames.TranslationY = -e.ScrollY;
+        VolnoHeader.TranslationX = -e.ScrollX;
+    }
 
     protected override void OnDisappearing()
     {
         base.OnDisappearing();
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        OpicentrumBoardSync.RosterPushed -= OnRosterPushed;
+        OpicentrumBoardSync.VolnoPushed -= OnVolnoPushed;
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)

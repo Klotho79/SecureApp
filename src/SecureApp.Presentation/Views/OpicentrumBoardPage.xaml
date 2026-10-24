@@ -124,43 +124,21 @@
             <Label Grid.Row="2" Text="Zatím žádná data — stiskněte Obnovit." FontSize="10" TextColor="Gray" HorizontalOptions="Center" VerticalOptions="Center" IsVisible="{Binding HasNoVolnoData}" />
 
             <!-- Read-only this round — see OpicentrumBoardViewModel.Volno.cs's own remarks. -->
-            <ScrollView x:Name="VolnoScroll" Grid.Row="2" Orientation="Both" IsVisible="{Binding HasVolnoData}" Scrolled="OnVolnoScrolled">
-                <VerticalStackLayout Spacing="2">
-                    <HorizontalStackLayout x:Name="VolnoHeader" Spacing="2" ZIndex="2"
-                                           BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray950}}">
-                        <BoxView x:Name="VolnoCorner" WidthRequest="130" HeightRequest="1" ZIndex="3"
-                                 Color="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray950}}" />
-                        <HorizontalStackLayout Spacing="2" BindableLayout.ItemsSource="{Binding VolnoDayHeaders}">
-                            <BindableLayout.ItemTemplate>
-                                <DataTemplate x:DataType="x:String">
-                                    <Label Text="{Binding .}" WidthRequest="30" FontSize="9" FontAttributes="Bold" HorizontalTextAlignment="Center" />
-                                </DataTemplate>
-                            </BindableLayout.ItemTemplate>
-                        </HorizontalStackLayout>
-                    </HorizontalStackLayout>
-
-                    <VerticalStackLayout Spacing="2" BindableLayout.ItemsSource="{Binding VolnoRows}">
-                        <BindableLayout.ItemTemplate>
-                            <DataTemplate x:DataType="vm:OpicentrumVolnoRowItem">
-                                <HorizontalStackLayout Spacing="2">
-                                    <Label Text="{Binding PersonName}" WidthRequest="130" FontSize="10" LineBreakMode="TailTruncation" VerticalTextAlignment="Center"
-                                           ZIndex="1" BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray950}}"
-                                           Loaded="OnVolnoNameLoaded" Unloaded="OnVolnoNameUnloaded" />
-                                    <HorizontalStackLayout Spacing="2" BindableLayout.ItemsSource="{Binding DayCodes}">
-                                        <BindableLayout.ItemTemplate>
-                                            <DataTemplate x:DataType="x:String">
-                                                <Label Text="{Binding .}" FontSize="8" WidthRequest="30" HeightRequest="24"
-                                                       HorizontalTextAlignment="Center" VerticalTextAlignment="Center"
-                                                       BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}" />
-                                            </DataTemplate>
-                                        </BindableLayout.ItemTemplate>
-                                    </HorizontalStackLayout>
-                                </HorizontalStackLayout>
-                            </DataTemplate>
-                        </BindableLayout.ItemTemplate>
-                    </VerticalStackLayout>
-                </VerticalStackLayout>
-            </ScrollView>
+            <!-- 2026-10-24: drawn on canvases (VolnoBoardView) instead of ~1 740 Labels. The body scrolls
+                 natively inside the ScrollView; the names/header overlays are translated by OnVolnoScrolled
+                 so they stay pinned, and the corner hides whatever scrolls under both. -->
+            <Grid x:Name="VolnoBoard" Grid.Row="2" IsClippedToBounds="True" IsVisible="{Binding HasVolnoData}">
+                <ScrollView x:Name="VolnoScroll" Orientation="Both" Scrolled="OnVolnoScrolled">
+                    <controls:VolnoBoardView Layer="Body" Rows="{Binding VolnoRows}" DayHeaders="{Binding VolnoDayHeaders}"
+                                             HorizontalOptions="Start" VerticalOptions="Start" />
+                </ScrollView>
+                <controls:VolnoBoardView x:Name="VolnoNames" Layer="Names" Rows="{Binding VolnoRows}" DayHeaders="{Binding VolnoDayHeaders}"
+                                         HorizontalOptions="Start" VerticalOptions="Start" InputTransparent="True" />
+                <controls:VolnoBoardView x:Name="VolnoHeader" Layer="Header" Rows="{Binding VolnoRows}" DayHeaders="{Binding VolnoDayHeaders}"
+                                         HorizontalOptions="Start" VerticalOptions="Start" InputTransparent="True" />
+                <BoxView x:Name="VolnoCorner" WidthRequest="132" HeightRequest="22" HorizontalOptions="Start" VerticalOptions="Start" InputTransparent="True"
+                         Color="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray950}}" />
+            </Grid>
         </Grid>
 
     </Grid>

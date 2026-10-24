@@ -39,4 +39,7 @@ public sealed class RelayFrame
 
     /// <summary>On a "group-invite"/"group-invite-deliver" frame (2026-09-07) — a client-encoded GroupInviteBlob, opaque to the relay same as <see cref="PairingInviteBlob"/>. A separate field/frame type rather than reusing PairingInviteBlob, since the two carry different payload shapes and this codebase's own established call is to keep such things independently readable rather than generalized.</summary>
     public string? GroupInviteBlob { get; init; }
+
+    /// <summary>On a "board-changed" frame (2026-10-24, relay to client only) — which Opicentrum board snapshot was just replaced ("roster" or "volno"). No payload: the client re-fetches the blob over HTTP, so a lost frame costs nothing but a stale cache until the next reconnect.</summary>
+    public string? Board { get; init; }
 }
