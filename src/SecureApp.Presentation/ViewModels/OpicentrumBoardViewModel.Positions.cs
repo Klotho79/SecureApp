@@ -199,7 +199,6 @@ public sealed partial class OpicentrumBoardViewModel
         _currentPositionsSnapshot = snapshot;
         if (snapshot is null || snapshot.Days.Count == 0)
         {
-            _positionsFillVersion++;
             _positionsAllRows = [];
             HasPositionsData = false;
             PositionsDayHeaders = [];
@@ -255,17 +254,12 @@ public sealed partial class OpicentrumBoardViewModel
         }).ToList();
         AppLog.Metric("opicentrum.positions.apply.build", buildSw.Elapsed.TotalMilliseconds, "ms", ("rows", rows.Count));
 
-        // The assignment is where BindableLayout synchronously builds every child view, and all 29
-        // rows at once froze the UI thread ~0.7 s on the S23+ (ui_stall metric, 2026-10-22). So an
-        // EMPTY board is filled incrementally (first screenful now, rest below the fold); a board
-        // already on screen is replaced in one go, otherwise it would shrink and re-grow and jump
-        // the scroll position.
+        // All rows at once (2026-10-24): the board is drawn on a canvas now (PositionsBoardView), so there is no
+        // per-row view creation left to spread over time — the old incremental fill existed only for that
+        // (all 29 rows of BindableLayout views at once froze the UI thread ~0.7 s on the S23+).
         var assignSw = Stopwatch.StartNew();
         _positionsAllRows = rows;
-        var version = ++_positionsFillVersion;
-        PositionsRows = PositionsRows.Count == 0
-            ? IncrementalFill.Start(rows, firstBatch: 8, nextBatch: 7, delayMs: 30, isCurrent: () => version == _positionsFillVersion)
-            : new ObservableCollection<OpicentrumRosterRowItem>(rows);
+        PositionsRows = new ObservableCollection<OpicentrumRosterRowItem>(rows);
         AppLog.Metric("opicentrum.positions.apply.assign", assignSw.Elapsed.TotalMilliseconds, "ms", ("shown", PositionsRows.Count));
     }
 
@@ -290,7 +284,6 @@ public sealed partial class OpicentrumBoardViewModel
         return true;
     }
 
-    private int _positionsFillVersion;
     private IReadOnlyList<OpicentrumRosterRowItem> _positionsAllRows = [];
 
     /// <summary>Every other workplace name on the board (including rows still being filled in), for the page's code-behind to build its "move to…" action sheet from.</summary>

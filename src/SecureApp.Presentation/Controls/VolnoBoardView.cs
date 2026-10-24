@@ -117,8 +117,7 @@ public sealed class VolnoBoardView : GraphicsView
 
     private void OnThemeChanged(object? sender, AppThemeChangedEventArgs e) => Invalidate();
 
-    private static Color Resource(string key, Color fallback) =>
-        Application.Current?.Resources.TryGetValue(key, out var value) == true && value is Color color ? color : fallback;
+    private static Color Resource(string key, Color fallback) => BoardCanvas.Resource(key, fallback);
 
     private sealed class BoardDrawable(VolnoBoardView owner) : IDrawable
     {
@@ -201,14 +200,7 @@ public sealed class VolnoBoardView : GraphicsView
         }
 
         /// <summary>Single line that fits the name column, cut with an ellipsis like the label's TailTruncation.</summary>
-        private static string Fit(ICanvas canvas, string name)
-        {
-            const float maxWidth = NameWidth - 4;
-            if (canvas.GetStringSize(name, Font.Default, 10).Width <= maxWidth) return name;
-            var length = name.Length;
-            while (length > 1 && canvas.GetStringSize(name[..length] + "…", Font.Default, 10).Width > maxWidth)
-                length--;
-            return name[..length] + "…";
-        }
+        private static string Fit(ICanvas canvas, string name) =>
+            BoardCanvas.Fit(name, NameWidth - 4, s => canvas.GetStringSize(s, Font.Default, 10).Width);
     }
 }

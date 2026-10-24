@@ -52,61 +52,22 @@
             <Label Grid.Row="2" Text="Zatím žádná data — stiskněte Obnovit." FontSize="10" TextColor="Gray" HorizontalOptions="Center" VerticalOptions="Center" IsVisible="{Binding HasNoPositionsData}" />
 
             <!-- Pannable board — ScrollView(Both) gives the "window bigger than the display, can pan
-                 around" the user asked for; no CollectionView/Grid-ItemsSource (not supported for a
-                 2D templated grid in MAUI), nested BindableLayout instead, same idiom this codebase
-                 already uses everywhere else instead of CollectionView for templated lists. -->
-            <ScrollView x:Name="PositionsScroll" Grid.Row="2" Orientation="Both" IsVisible="{Binding HasPositionsData}" Scrolled="OnPositionsScrolled">
-                <VerticalStackLayout Spacing="2">
-                    <!-- Header row: day labels, aligned with each row's own cell widths below. Sticky:
-                         code-behind translates the header by ScrollY and the workplace-name labels
-                         (and this corner) by ScrollX, so names stay visible while only the people scroll sideways. -->
-                    <HorizontalStackLayout x:Name="PositionsHeader" Spacing="2" ZIndex="2"
-                                           BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray950}}">
-                        <BoxView x:Name="PositionsCorner" WidthRequest="130" HeightRequest="1" ZIndex="3"
-                                 Color="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray950}}" />
-                        <HorizontalStackLayout Spacing="2" BindableLayout.ItemsSource="{Binding PositionsDayHeaders}">
-                            <BindableLayout.ItemTemplate>
-                                <DataTemplate x:DataType="x:String">
-                                    <Label Text="{Binding .}" WidthRequest="140" FontSize="10" FontAttributes="Bold" HorizontalTextAlignment="Center" />
-                                </DataTemplate>
-                            </BindableLayout.ItemTemplate>
-                        </HorizontalStackLayout>
-                    </HorizontalStackLayout>
-
-                    <VerticalStackLayout Spacing="2" BindableLayout.ItemsSource="{Binding PositionsRows}">
-                        <BindableLayout.ItemTemplate>
-                            <DataTemplate x:DataType="vm:OpicentrumRosterRowItem">
-                                <HorizontalStackLayout Spacing="2">
-                                    <Label Text="{Binding WorkplaceName}" WidthRequest="130" FontSize="10" FontAttributes="Bold" VerticalTextAlignment="Center" LineBreakMode="TailTruncation"
-                                           ZIndex="1" BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray950}}"
-                                           Loaded="OnPositionsNameLoaded" Unloaded="OnPositionsNameUnloaded" />
-                                    <HorizontalStackLayout Spacing="2" BindableLayout.ItemsSource="{Binding Cells}">
-                                        <BindableLayout.ItemTemplate>
-                                            <DataTemplate x:DataType="vm:OpicentrumRosterCellItem">
-                                                <Border Style="{StaticResource CardBorder}" WidthRequest="140" Margin="0" Padding="4">
-                                                    <FlexLayout Wrap="Wrap" BindableLayout.ItemsSource="{Binding People}">
-                                                        <BindableLayout.ItemTemplate>
-                                                            <DataTemplate x:DataType="vm:OpicentrumRosterPersonChip">
-                                                                <Border BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}"
-                                                                        StrokeShape="RoundRectangle 6" Stroke="Transparent" Padding="5,3" Margin="0,0,3,3">
-                                                                    <Border.GestureRecognizers>
-                                                                        <TapGestureRecognizer Tapped="OnPersonChipTapped" />
-                                                                    </Border.GestureRecognizers>
-                                                                    <Label Text="{Binding PersonName}" FontSize="9" LineBreakMode="TailTruncation" MaxLines="1" />
-                                                                </Border>
-                                                            </DataTemplate>
-                                                        </BindableLayout.ItemTemplate>
-                                                    </FlexLayout>
-                                                </Border>
-                                            </DataTemplate>
-                                        </BindableLayout.ItemTemplate>
-                                    </HorizontalStackLayout>
-                                </HorizontalStackLayout>
-                            </DataTemplate>
-                        </BindableLayout.ItemTemplate>
-                    </VerticalStackLayout>
-                </VerticalStackLayout>
-            </ScrollView>
+                 around" the user asked for. 2026-10-24: drawn on canvases (PositionsBoardView) instead of
+                 ~1 300 nested views (opening the page from Nástěnka took ~1 s). The body scrolls natively
+                 and takes the chip taps; the names/header overlays are translated by OnPositionsScrolled so
+                 they stay pinned, and the corner hides whatever scrolls under both. -->
+            <Grid x:Name="PositionsBoard" Grid.Row="2" IsClippedToBounds="True" IsVisible="{Binding HasPositionsData}">
+                <ScrollView x:Name="PositionsScroll" Orientation="Both" Scrolled="OnPositionsScrolled">
+                    <controls:PositionsBoardView Layer="Body" Rows="{Binding PositionsRows}" DayHeaders="{Binding PositionsDayHeaders}"
+                                                 HorizontalOptions="Start" VerticalOptions="Start" ChipTapped="OnPersonChipTapped" Drawn="OnPositionsDrawn" />
+                </ScrollView>
+                <controls:PositionsBoardView x:Name="PositionsNames" Layer="Names" Rows="{Binding PositionsRows}" DayHeaders="{Binding PositionsDayHeaders}"
+                                             HorizontalOptions="Start" VerticalOptions="Start" InputTransparent="True" />
+                <controls:PositionsBoardView x:Name="PositionsHeader" Layer="Header" Rows="{Binding PositionsRows}" DayHeaders="{Binding PositionsDayHeaders}"
+                                             HorizontalOptions="Start" VerticalOptions="Start" InputTransparent="True" />
+                <BoxView x:Name="PositionsCorner" WidthRequest="132" HeightRequest="22" HorizontalOptions="Start" VerticalOptions="Start" InputTransparent="True"
+                         Color="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray950}}" />
+            </Grid>
         </Grid>
 
         <!-- ============================ VOLNO ============================ -->

@@ -11,6 +11,7 @@ public partial class OpicentrumBoardPage : ContentPage
 {
     private readonly OpicentrumBoardViewModel _viewModel;
     private Stopwatch? _ttiStopwatch;
+    private Stopwatch? _drawStopwatch;
 
     public OpicentrumBoardPage(OpicentrumBoardViewModel viewModel)
     {
@@ -24,6 +25,7 @@ public partial class OpicentrumBoardPage : ContentPage
         // TTI telemetry, same pattern as LibraryPage's own _ttiStopwatch: wall-clock from the page
         // appearing to the first "Pozice" load finishing, readable via /admin/applog/{deviceId}.
         _ttiStopwatch = Stopwatch.StartNew();
+        _drawStopwatch = _ttiStopwatch;
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         // Relay pushes (2026-10-24): redraw from the freshly stored snapshot while this page is open.
         OpicentrumBoardSync.RosterPushed += OnRosterPushed;
@@ -35,43 +37,24 @@ public partial class OpicentrumBoardPage : ContentPage
 
     private void OnVolnoPushed(OpicentrumVolnoSnapshot snapshot) => MainThread.BeginInvokeOnMainThread(() => _viewModel.ApplyPushedVolno(snapshot));
 
-    // Sticky name column + header (2026-10-22, user's ask): the board is ONE ScrollView(Both) so
-    // row heights stay naturally in sync with the names; on scroll the name labels are translated
-    // by ScrollX and the header by ScrollY, which keeps them pinned while the rest pans.
-    private sealed class StickyBoard
+    // Sticky name column + header (2026-10-22, user's ask). Both boards are drawn on canvases (PositionsBoardView,
+    // VolnoBoardView): the body scrolls natively inside the ScrollView, so the pinned name column and day header
+    // are simply the overlay layers moved against the scroll offset.
+    // Real time to pixels (OnAppearing to the board's first canvas draw) — "tti.opicentrum_board_page" above only
+    // marks the data hand-over, which is why it read ~90 ms while the page felt like ~1 s.
+    private void OnPositionsDrawn(object? sender, EventArgs e)
     {
-        public readonly List<View> Names = [];
-        public double X;
+        if (_drawStopwatch is not { } sw) return;
+        _drawStopwatch = null;
+        AppLog.Metric("tti.opicentrum_board_page.first_draw", sw.Elapsed.TotalMilliseconds);
     }
 
-    private readonly StickyBoard _positionsSticky = new();
-
-    private static void RegisterName(StickyBoard board, object? sender)
+    private void OnPositionsScrolled(object? sender, ScrolledEventArgs e)
     {
-        if (sender is not View v) return;
-        board.Names.Add(v);
-        v.TranslationX = board.X;
+        PositionsNames.TranslationY = -e.ScrollY;
+        PositionsHeader.TranslationX = -e.ScrollX;
     }
 
-    private static void UnregisterName(StickyBoard board, object? sender)
-    {
-        if (sender is View v) board.Names.Remove(v);
-    }
-
-    private static void ApplySticky(StickyBoard board, ScrolledEventArgs e, View header, View corner)
-    {
-        board.X = Math.Max(0, e.ScrollX);
-        foreach (var v in board.Names) v.TranslationX = board.X;
-        header.TranslationY = Math.Max(0, e.ScrollY);
-        corner.TranslationX = board.X;
-    }
-
-    private void OnPositionsNameLoaded(object? sender, EventArgs e) => RegisterName(_positionsSticky, sender);
-    private void OnPositionsNameUnloaded(object? sender, EventArgs e) => UnregisterName(_positionsSticky, sender);
-    private void OnPositionsScrolled(object? sender, ScrolledEventArgs e) => ApplySticky(_positionsSticky, e, PositionsHeader, PositionsCorner);
-
-    // Volno is drawn on canvases (VolnoBoardView): the body scrolls natively, so the pinned name column and
-    // day header are simply the overlay layers moved against the scroll offset.
     private void OnVolnoScrolled(object? sender, ScrolledEventArgs e)
     {
         VolnoNames.TranslationY = -e.ScrollY;
@@ -101,11 +84,8 @@ public partial class OpicentrumBoardPage : ContentPage
     /// (<c>keepSourceAssignment</c>), second picks the target workplace — both map directly onto
     /// <see cref="OpicentrumBoardViewModel.MovePersonAsync"/>'s own parameters.
     /// </summary>
-    private async void OnPersonChipTapped(object? sender, TappedEventArgs e)
+    private async void OnPersonChipTapped(object? sender, OpicentrumRosterPersonChip chip)
     {
-        if (sender is not BindableObject element || element.BindingContext is not OpicentrumRosterPersonChip chip)
-            return;
-
         var mode = await DisplayActionSheet(chip.PersonName, "Zrušit", null, "Přesunout", "Přiřadit i na další pracoviště");
         if (mode is null or "Zrušit") return;
         var keepSourceAssignment = mode == "Přiřadit i na další pracoviště";
