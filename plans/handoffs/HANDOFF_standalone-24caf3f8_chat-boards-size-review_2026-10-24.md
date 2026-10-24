@@ -719,3 +719,10 @@ dotnet build src\SecureApp.Presentation\SecureApp.Presentation.csproj -f net10.0
 # Ask: "Mám c672352 vydat jako 0.1.0 (build 106) pro Android a Windows, relay beze změny?"  Do NOT push/deploy/release without the explicit OK.
 # On yes: follow Where We're Going #1 (NEW APK path!), then read the device logs listed in #2.
 ```
+
+## Session Closed
+**Closed at:** 2026-10-24 13:54 (local, UTC+2)
+**Commit:** `8d051ff` (`session: chat-boards-size-review [standalone-24caf3f8]` — adds this file; local only, not pushed)
+**Session status:** Handed off to next session
+**Repo at close:** branch `main`, HEAD `8d051ff` (this handoff) on top of `c672352` (review pass, never run on a device) on top of `d0638ff` (Release 2.02 / build 105). `pi/main` and `github/main` are still at `d0638ff`. Nothing was pushed, deployed or released after 2.02.
+**Last user message:** "Ano" — sent after my message that held TWO questions (release `c672352` as 0.1.0 / build 106? and close this session?). It was taken as the answer to the LAST one (close the session). No release was made and no authorisation to release or push was assumed — ask the release question again before doing anything outward-facing.
