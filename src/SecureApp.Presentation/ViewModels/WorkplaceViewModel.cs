@@ -27,11 +27,6 @@ namespace SecureApp.Presentation.ViewModels;
 public sealed partial class WorkplaceViewModel : ObservableObject
 {
     private static readonly string[] CzechDayAbbreviations = ["Po", "Út", "St", "Čt", "Pá", "So", "Ne"];
-    private static readonly string[] CzechMonthGenitive =
-    [
-        "ledna", "února", "března", "dubna", "května", "června",
-        "července", "srpna", "září", "října", "listopadu", "prosince"
-    ];
     private static readonly string[] CzechMonthNominative =
     [
         "Leden", "Únor", "Březen", "Duben", "Květen", "Červen",
@@ -98,8 +93,8 @@ public sealed partial class WorkplaceViewModel : ObservableObject
         MonthLabel = string.Empty;
         MonthDays = [];
         LegendItems = new ObservableCollection<AssignmentLegendItem>(BuildLegendItems());
-        _weekStart = StartOfWeek(DateOnly.FromDateTime(DateTime.Today));
         var today = DateOnly.FromDateTime(DateTime.Today);
+        _weekStart = WeekMath.DefaultViewWeek(today); // from Saturday on: next week
         _monthAnchor = new DateOnly(today.Year, today.Month, 1);
     }
 
@@ -263,7 +258,7 @@ public sealed partial class WorkplaceViewModel : ObservableObject
     /// <summary>Always a full 6-row (42-cell) grid starting on the Monday on/before the 1st — see <see cref="RenderMonthLocalAsync"/>'s own remarks for why.</summary>
     private (DateOnly Start, DateOnly End) CurrentMonthSyncRange()
     {
-        var gridStart = StartOfWeek(_monthAnchor);
+        var gridStart = WeekMath.StartOfWeek(_monthAnchor);
         return (gridStart, gridStart.AddDays(41));
     }
 
@@ -292,7 +287,7 @@ public sealed partial class WorkplaceViewModel : ObservableObject
                     var date = _weekStart.AddDays(offset);
                     return ToItem(date, byDate.GetValueOrDefault(date) ?? [], AssignmentColorCatalog.NoAssignmentSurfaceColor);
                 }));
-            WeekLabel = FormatWeekLabel(_weekStart, _weekStart.AddDays(6));
+            WeekLabel = WeekMath.FormatWeekLabel(_weekStart, _weekStart.AddDays(6));
         }
         finally
         {
@@ -508,18 +503,6 @@ public sealed partial class WorkplaceViewModel : ObservableObject
             : $"Synchronizováno v {now} — nové: {result.CreatedCount}, aktualizované: {result.UpdatedCount}.";
     }
 
-    private static DateOnly StartOfWeek(DateOnly date)
-    {
-        var diff = ((int)date.DayOfWeek == 0 ? 6 : (int)date.DayOfWeek - 1);
-        return date.AddDays(-diff);
-    }
-
-    private static string FormatWeekLabel(DateOnly start, DateOnly end)
-    {
-        if (start.Month == end.Month)
-            return $"{start.Day}.–{end.Day}. {CzechMonthGenitive[end.Month - 1]} {end.Year}";
-        return $"{start.Day}. {CzechMonthGenitive[start.Month - 1]} – {end.Day}. {CzechMonthGenitive[end.Month - 1]} {end.Year}";
-    }
 }
 
 /// <summary>

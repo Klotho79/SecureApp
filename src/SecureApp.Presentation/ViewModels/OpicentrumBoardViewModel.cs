@@ -84,6 +84,7 @@ public sealed partial class OpicentrumBoardViewModel : ObservableObject
         _volnoBoardCacheService = volnoBoardCacheService ?? throw new ArgumentNullException(nameof(volnoBoardCacheService));
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         _rolePreviewService = rolePreviewService ?? throw new ArgumentNullException(nameof(rolePreviewService));
+        UpdatePositionsWeekLabel();
     }
 
     [RelayCommand]

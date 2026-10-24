@@ -32,15 +32,50 @@ public sealed partial class OpicentrumBoardViewModel
     /// <summary>Converter-free inverse of <see cref="IsPositionsRefreshing"/>, for the "Obnovit" button's IsEnabled.</summary>
     public bool CanRefreshPositions => !IsPositionsRefreshing;
 
-    partial void OnIsPositionsRefreshingChanged(bool value) => OnPropertyChanged(nameof(CanRefreshPositions));
+    partial void OnIsPositionsRefreshingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanRefreshPositions));
+        OnPropertyChanged(nameof(ShowNoPositionsData));
+    }
+
+    partial void OnIsPositionsLoadingChanged(bool value) => OnPropertyChanged(nameof(ShowNoPositionsData));
 
     [ObservableProperty]
     public partial bool HasPositionsData { get; set; }
 
-    /// <summary>Converter-free inverse of <see cref="HasPositionsData"/>.</summary>
-    public bool HasNoPositionsData => !HasPositionsData;
+    /// <summary>The "no data" hint — only once nothing is being loaded either (paging to a week this device has nothing for would otherwise flash it).</summary>
+    public bool ShowNoPositionsData => !HasPositionsData && !IsPositionsLoading && !IsPositionsRefreshing;
 
-    partial void OnHasPositionsDataChanged(bool value) => OnPropertyChanged(nameof(HasNoPositionsData));
+    partial void OnHasPositionsDataChanged(bool value) => OnPropertyChanged(nameof(ShowNoPositionsData));
+
+    // The week shown (a Monday). The relay keeps ONE shared roster snapshot — the week the board opens on
+    // (WeekMath.DefaultViewWeek: from Saturday the next one); any other week the user pages to is kept on
+    // this device only (OpicentrumRosterBoardLocalCache) and scraped from Opicentrum on demand.
+    private DateOnly _positionsWeek = WeekMath.DefaultViewWeek(DateOnly.FromDateTime(DateTime.Today));
+    private int _positionsLoadVersion;
+    private int _positionsFetches;
+
+    /// <summary>The week's date range with its position relative to today ("příští týden"), shown between the ‹ › buttons.</summary>
+    [ObservableProperty]
+    public partial string PositionsWeekLabel { get; set; } = string.Empty;
+
+    private static bool IsDefaultWeek(DateOnly week) => week == WeekMath.DefaultViewWeek(DateOnly.FromDateTime(DateTime.Today));
+
+    private void UpdatePositionsWeekLabel() =>
+        PositionsWeekLabel = WeekMath.DescribeWeek(_positionsWeek, DateOnly.FromDateTime(DateTime.Today));
+
+    [RelayCommand]
+    private Task PreviousPositionsWeekAsync() => ShowPositionsWeekAsync(_positionsWeek.AddDays(-7));
+
+    [RelayCommand]
+    private Task NextPositionsWeekAsync() => ShowPositionsWeekAsync(_positionsWeek.AddDays(7));
+
+    private Task ShowPositionsWeekAsync(DateOnly week)
+    {
+        _positionsWeek = week;
+        UpdatePositionsWeekLabel();
+        return LoadPositionsAsync();
+    }
 
     [ObservableProperty]
     public partial string? PositionsLastUpdatedText { get; set; }
@@ -81,6 +116,11 @@ public sealed partial class OpicentrumBoardViewModel
     /// already on screen. Flip it false right after the local snapshot renders, not after the
     /// reconcile — the reconcile keeps running, silently, exactly as "zobraz uložené A pak kontroluj
     /// zda nejsou změny" asked for.
+    ///
+    /// 2026-10-24: the board pages between weeks, so this loads <see cref="_positionsWeek"/>. The default
+    /// week reconciles with the relay's shared snapshot exactly as before (and scrapes only when neither
+    /// this device nor the relay has it); any other week lives on this device only — see
+    /// <see cref="_positionsWeek"/>. A load superseded by a newer one (another ‹ ›) drops out at its next await.
     /// </summary>
     private async Task LoadPositionsAsync()
     {
@@ -90,12 +130,15 @@ public sealed partial class OpicentrumBoardViewModel
         // this device's own uploaded metrics.log via GET /admin/applog/{deviceId}?kind=metrics,
         // instead of guessing. Remove once the real bottleneck is identified and fixed.
         var total = Stopwatch.StartNew();
+        var version = ++_positionsLoadVersion;
+        var week = _positionsWeek;
+        UpdatePositionsWeekLabel();
         IsPositionsLoading = PositionsRows.Count == 0;
         PositionsErrorText = null;
         try
         {
             var loadSw = Stopwatch.StartNew();
-            var local = OpicentrumRosterBoardLocalCache.Load();
+            var local = OpicentrumRosterBoardLocalCache.Load(week);
             AppLog.Metric("opicentrum.positions.cache_load", loadSw.Elapsed.TotalMilliseconds, "ms", ("hit", local is not null));
 
             if (local is not null)
@@ -105,6 +148,20 @@ public sealed partial class OpicentrumBoardViewModel
                 AppLog.Metric("opicentrum.positions.apply", applySw.Elapsed.TotalMilliseconds, "ms",
                     ("source", "local"), ("rows", PositionsRows.Count), ("days", PositionsDayHeaders.Count));
                 IsPositionsLoading = false; // data is on screen now — the reconcile below must not re-block the UI
+            }
+            else if (_currentPositionsSnapshot is not null)
+            {
+                ApplyPositionsSnapshot(null); // paged to a week this device has nothing for: the previous week's board must not stay under the new label
+                IsPositionsLoading = true;
+            }
+
+            if (!IsDefaultWeek(week))
+            {
+                // An upcoming week can still change, a past one cannot — so only the former is re-scraped, and only once its copy is old.
+                var refreshDue = local is null || (week >= WeekMath.StartOfWeek(DateOnly.FromDateTime(DateTime.Today)) && DateTimeOffset.UtcNow - local.UpdatedAtUtc > OtherWeekRefreshAfter);
+                if (refreshDue) await ScrapePositionsWeekAsync(week);
+                AppLog.Metric("opicentrum.positions.load_total", total.Elapsed.TotalMilliseconds, "ms", ("path", refreshDue ? "other_week_scraped" : "other_week_local"));
+                return;
             }
 
             // 2026-10-24: also skip while the local copy is confirmed current — the relay pushes every
@@ -119,8 +176,18 @@ public sealed partial class OpicentrumBoardViewModel
             var epoch = OpicentrumBoardSync.CurrentEpoch;
             // Task.Run: keep every synchronous slice of the fetch (vault, DB, JSON) off the UI thread.
             var fromRelay = await Task.Run(() => _rosterBoardCacheService.GetCachedAsync());
+            if (version != _positionsLoadVersion) return;
             AppLog.Metric("opicentrum.positions.relay_fetch", relaySw.Elapsed.TotalMilliseconds, "ms", ("hit", fromRelay is not null));
+            // The relay's single snapshot may still be the previous week's (the morning the default week flips, before any device refreshed it).
+            if (fromRelay is not null && fromRelay.WeekOf != week) fromRelay = null;
             if (fromRelay is not null) OpicentrumBoardSync.MarkVerified(OpicentrumBoardSync.Roster, epoch);
+
+            if (fromRelay is null && local is null)
+            {
+                await ScrapePositionsWeekAsync(week); // nobody has this week yet — fetch and share it
+                AppLog.Metric("opicentrum.positions.load_total", total.Elapsed.TotalMilliseconds, "ms", ("path", "scraped"));
+                return;
+            }
 
             if (fromRelay is not null && (local is null || fromRelay.UpdatedAtUtc > local.UpdatedAtUtc))
             {
@@ -148,19 +215,50 @@ public sealed partial class OpicentrumBoardViewModel
         catch (Exception ex)
         {
             // A relay hiccup here isn't worth surfacing if the local cache already rendered something.
-            if (_currentPositionsSnapshot is null)
-                PositionsErrorText = $"Načtení z cache se nezdařilo: {ex.Message}";
+            AppLog.Error(nameof(OpicentrumBoardViewModel), $"loading the roster board for {week:yyyy-MM-dd} failed", ex);
+            if (version == _positionsLoadVersion && _currentPositionsSnapshot is null)
+                PositionsErrorText = $"Načtení se nezdařilo: {ex.Message}";
         }
         finally
         {
-            IsPositionsLoading = false;
+            if (version == _positionsLoadVersion) IsPositionsLoading = false; // a superseded load leaves the flag to the newer one
         }
     }
 
-    /// <summary>Called on the UI thread by the page when the relay pushed a newer roster (already saved to the local cache): redraw only if something actually changed.</summary>
+    private static readonly TimeSpan OtherWeekRefreshAfter = TimeSpan.FromMinutes(30);
+
+    /// <summary>
+    /// Fetches <paramref name="week"/> live from Opicentrum, keeps it locally and shows it if the board is still
+    /// on that week; the default week is then also published for the other devices (best-effort — the fetch itself
+    /// already succeeded, so a relay hiccup must not turn it into an error).
+    /// </summary>
+    private async Task ScrapePositionsWeekAsync(DateOnly week)
+    {
+        _positionsFetches++;
+        IsPositionsRefreshing = true;
+        try
+        {
+            // Task.Run: the fetch is a login, a page and regex parsing — all its continuations would otherwise run on the UI thread.
+            var snapshot = await Task.Run(() => _opicentrumSyncService.FetchFullRosterBoardAsync(week));
+            OpicentrumRosterBoardLocalCache.Save(snapshot);
+            if (week == _positionsWeek) ApplyPositionsSnapshot(snapshot);
+
+            if (IsDefaultWeek(week))
+            {
+                try { await _rosterBoardCacheService.PublishAsync(snapshot); }
+                catch (Exception ex) { AppLog.Error(nameof(OpicentrumBoardViewModel), "publishing the roster board to the relay failed", ex); }
+            }
+        }
+        finally
+        {
+            if (--_positionsFetches == 0) IsPositionsRefreshing = false;
+        }
+    }
+
+    /// <summary>Called on the UI thread by the page when the relay pushed a newer roster (already saved to the local cache): redraw only if it is the week on screen and something actually changed.</summary>
     public void ApplyPushedPositions(OpicentrumRosterBoardSnapshot pushed)
     {
-        if (IsAccessDenied) return;
+        if (IsAccessDenied || pushed.WeekOf != _positionsWeek) return;
         if (_currentPositionsSnapshot is { } current && SameContent(current, pushed))
         {
             _currentPositionsSnapshot = pushed;
@@ -174,23 +272,14 @@ public sealed partial class OpicentrumBoardViewModel
     [RelayCommand]
     private async Task RefreshPositionsAsync()
     {
-        IsPositionsRefreshing = true;
         PositionsErrorText = null;
         try
         {
-            var today = DateOnly.FromDateTime(DateTime.Today);
-            var snapshot = await _opicentrumSyncService.FetchFullRosterBoardAsync(today);
-            await _rosterBoardCacheService.PublishAsync(snapshot);
-            OpicentrumRosterBoardLocalCache.Save(snapshot);
-            ApplyPositionsSnapshot(snapshot);
+            await ScrapePositionsWeekAsync(_positionsWeek);
         }
         catch (Exception ex)
         {
             PositionsErrorText = $"Obnovení se nezdařilo: {ex.Message}";
-        }
-        finally
-        {
-            IsPositionsRefreshing = false;
         }
     }
 
@@ -326,13 +415,18 @@ public sealed partial class OpicentrumBoardViewModel
         // just to refresh the UI after a write whose own success is already known, was the real
         // reason the board felt "neuveritelne pomale". The actual write to opicentrum.cz above is
         // still live and unavoidable; everything after it is now local-only.
-        if (_currentPositionsSnapshot is { } current)
+        // (the user may have paged to another week while the write ran — then this snapshot isn't the chip's week)
+        if (_currentPositionsSnapshot is { } current && current.WeekOf == WeekMath.StartOfWeek(chip.Date))
         {
             var patched = PatchMove(current, chip, targetId, targetWorkplaceName, keepSourceAssignment);
             ApplyPositionsSnapshot(patched);
             OpicentrumRosterBoardLocalCache.Save(patched);
-            try { await _rosterBoardCacheService.PublishAsync(patched); }
-            catch { /* best-effort — the real write already succeeded; other devices catch up via the background job */ }
+            // The relay keeps one snapshot (the default week) — another week's edit stays on this device.
+            if (IsDefaultWeek(patched.WeekOf))
+            {
+                try { await _rosterBoardCacheService.PublishAsync(patched); }
+                catch { /* best-effort — the real write already succeeded; other devices catch up via the background job */ }
+            }
         }
         return true;
     }

@@ -528,6 +528,11 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
             var html = await http.GetStringAsync($"pracoviste.php?akce=ukazpracoviste&datum={monday:yyyyMMdd}", ct);
             var entries = OpicentrumParsing.ParsePracovisteWeek(html);
 
+            // The board pages between weeks (2026-10-24): should the site answer a week it has no roster for with
+            // some other week's page, show nothing rather than that week's days under this week's label.
+            var sunday = monday.AddDays(6);
+            if (!entries.Any(e => e.Date >= monday && e.Date <= sunday)) entries = [];
+
             // WorkplaceId is only present on editor-rights accounts (same caveat as PersonId — see
             // OpicentrumParsing's remarks); -1 ("unknown") lets a name that never carried one still
             // render on the board, just without a working move target for it.

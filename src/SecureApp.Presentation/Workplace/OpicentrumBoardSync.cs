@@ -66,13 +66,16 @@ public static class OpicentrumBoardSync
                 {
                     var fromRelay = await roster.GetCachedAsync();
                     if (fromRelay is null) return;
-                    var local = OpicentrumRosterBoardLocalCache.Load();
+                    var local = OpicentrumRosterBoardLocalCache.Load(fromRelay.WeekOf);
                     if (local is null || fromRelay.UpdatedAtUtc > local.UpdatedAtUtc)
                     {
                         OpicentrumRosterBoardLocalCache.Save(fromRelay);
                         RosterPushed?.Invoke(fromRelay);
                     }
-                    MarkVerified(Roster, epoch);
+                    // The relay keeps ONE roster snapshot (the week the board opens on); the local copy of that week
+                    // is only confirmed current when the snapshot really is for it.
+                    if (fromRelay.WeekOf == WeekMath.DefaultViewWeek(DateOnly.FromDateTime(DateTime.Today)))
+                        MarkVerified(Roster, epoch);
                 }
                 else if (board == Volno && services.GetService<IOpicentrumVolnoBoardService>() is { } volno)
                 {

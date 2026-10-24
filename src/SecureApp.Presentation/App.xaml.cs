@@ -510,7 +510,10 @@ public partial class App : Application
 		RunBackgroundOpicentrumBoardPublishAsync<IOpicentrumRosterBoardService, OpicentrumRosterBoardSnapshot>(
 			services, "roster", "opicentrum_roster_board_last_bg_attempt_utc", TimeSpan.FromMinutes(15),
 			c => c.GetCachedAsync(), (c, s) => c.PublishAsync(s),
-			(sync, today) => sync.FetchFullRosterBoardAsync(today), s => s.UpdatedAtUtc,
+			// The relay's one roster snapshot is the week the board opens on (from Saturday the next one, 2026-10-24):
+			// the previous week's counts as stale at once, so the flip happens on the first tick after midnight.
+			(sync, today) => sync.FetchFullRosterBoardAsync(Workplace.WeekMath.DefaultViewWeek(today)),
+			s => s.WeekOf == Workplace.WeekMath.DefaultViewWeek(DateOnly.FromDateTime(DateTime.Today)) ? s.UpdatedAtUtc : DateTimeOffset.MinValue,
 			Workplace.OpicentrumRosterBoardLocalCache.Save,
 			s => AppLog.Event("opicentrum.roster-board.bg-publish", ("weekOf", s.WeekOf.ToString()), ("days", s.Days.Count)));
 

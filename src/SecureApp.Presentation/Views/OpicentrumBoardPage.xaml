@@ -38,25 +38,35 @@
         </VerticalStackLayout>
 
         <!-- ============================ POZICE ============================ -->
-        <Grid Grid.Row="1" RowDefinitions="Auto,Auto,*" RowSpacing="6" IsVisible="{Binding IsPositionsSubTab}">
-            <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto">
+        <Grid Grid.Row="1" RowDefinitions="Auto,Auto,Auto,*" RowSpacing="6" IsVisible="{Binding IsPositionsSubTab}">
+            <!-- 2026-10-24 (user: "v sobotu uz chtel videt rozpis na dalsi tyden... a moznost mezi tydny listovat"):
+                 the board opens on the current week, from Saturday on on the next one, and pages with ‹ ›. -->
+            <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto">
+                <Button Grid.Column="0" Text="‹" Style="{StaticResource SecondaryButton}" WidthRequest="44" Padding="0" MinimumHeightRequest="30"
+                        Command="{Binding PreviousPositionsWeekCommand}" />
+                <Label Grid.Column="1" Text="{Binding PositionsWeekLabel}" FontAttributes="Bold" FontSize="11" HorizontalOptions="Center" VerticalOptions="Center" />
+                <Button Grid.Column="2" Text="›" Style="{StaticResource SecondaryButton}" WidthRequest="44" Padding="0" MinimumHeightRequest="30"
+                        Command="{Binding NextPositionsWeekCommand}" />
+            </Grid>
+
+            <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto">
                 <Label Grid.Column="0" Text="{Binding PositionsLastUpdatedText, StringFormat='Aktualizováno: {0}'}" FontSize="9" TextColor="Gray" VerticalOptions="Center" />
                 <controls:DelayedActivityIndicator Grid.Column="1" IsBusy="{Binding IsPositionsRefreshing}" />
                 <Button Grid.Column="2" Text="Obnovit" Style="{StaticResource SecondaryButton}" FontSize="10" Padding="10,4" MinimumHeightRequest="30"
                         Command="{Binding RefreshPositionsCommand}" IsEnabled="{Binding CanRefreshPositions}" />
             </Grid>
 
-            <Label Grid.Row="1" Text="{Binding PositionsErrorText}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" IsVisible="{Binding HasPositionsError}" LineBreakMode="WordWrap" />
+            <Label Grid.Row="2" Text="{Binding PositionsErrorText}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" IsVisible="{Binding HasPositionsError}" LineBreakMode="WordWrap" />
 
-            <controls:DelayedActivityIndicator Grid.Row="2" IsBusy="{Binding IsPositionsLoading}" HorizontalOptions="Center" VerticalOptions="Center" />
-            <Label Grid.Row="2" Text="Zatím žádná data — stiskněte Obnovit." FontSize="10" TextColor="Gray" HorizontalOptions="Center" VerticalOptions="Center" IsVisible="{Binding HasNoPositionsData}" />
+            <controls:DelayedActivityIndicator Grid.Row="3" IsBusy="{Binding IsPositionsLoading}" HorizontalOptions="Center" VerticalOptions="Center" />
+            <Label Grid.Row="3" Text="Pro tento týden zatím nejsou data — stiskněte Obnovit." FontSize="10" TextColor="Gray" HorizontalOptions="Center" VerticalOptions="Center" IsVisible="{Binding ShowNoPositionsData}" />
 
             <!-- Pannable board — ScrollView(Both) gives the "window bigger than the display, can pan
                  around" the user asked for. 2026-10-24: drawn on canvases (PositionsBoardView) instead of
                  ~1 300 nested views (opening the page from Nástěnka took ~1 s). The body scrolls natively
                  and takes the chip taps; the names/header overlays are translated by OnPositionsScrolled so
                  they stay pinned, and the corner hides whatever scrolls under both. -->
-            <Grid x:Name="PositionsBoard" Grid.Row="2" IsClippedToBounds="True" IsVisible="{Binding HasPositionsData}">
+            <Grid x:Name="PositionsBoard" Grid.Row="3" IsClippedToBounds="True" IsVisible="{Binding HasPositionsData}">
                 <ScrollView x:Name="PositionsScroll" Orientation="Both" Scrolled="OnPositionsScrolled">
                     <controls:PositionsBoardView Layer="Body" Rows="{Binding PositionsRows}" DayHeaders="{Binding PositionsDayHeaders}"
                                                  HorizontalOptions="Start" VerticalOptions="Start" ChipTapped="OnPersonChipTapped" Drawn="OnPositionsDrawn" />

@@ -165,7 +165,7 @@ public sealed partial class RoomStatusViewModel : ObservableObject
         // sály) used to be returned as-is and the whole board vanished. Same fallbacks as for a failed
         // fetch: the last roster board this device saved, and failing that whatever its own
         // already-synced local rozpis knows about its own qualifying room(s), rather than an empty board.
-        if (OpicentrumRosterBoardLocalCache.Load() is { } cached && TodaysRoomsFrom(cached, today) is { Count: > 0 } fromCache)
+        if (OpicentrumRosterBoardLocalCache.Load(WeekMath.StartOfWeek(today)) is { } cached && TodaysRoomsFrom(cached, today) is { Count: > 0 } fromCache)
             return fromCache;
 
         return todaysAssignments
