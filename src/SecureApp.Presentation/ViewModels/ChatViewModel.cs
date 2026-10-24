@@ -646,7 +646,7 @@ public sealed partial class ChatViewModel : ChatThreadViewModelBase<ChatMessageI
             return;
         }
 
-        var confirmed = await Shell.Current.DisplayAlert("Smazat zprávu", "Opravdu smazat tuto zprávu? Smaže se u všech účastníků.", "Smazat", "Zrušit");
+        var confirmed = await Shell.Current.DisplayAlertAsync("Smazat zprávu", "Opravdu smazat tuto zprávu? Smaže se u všech účastníků.", "Smazat", "Zrušit");
         if (!confirmed) return;
 
         try

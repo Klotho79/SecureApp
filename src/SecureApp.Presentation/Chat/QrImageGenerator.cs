@@ -10,20 +10,17 @@ namespace SecureApp.Presentation.Chat;
 /// bypassing <c>ZXing.Net.Maui.Controls.BarcodeGeneratorView</c> entirely. Real, confirmed bug
 /// found live (2026-09-05): that control renders nothing at all on Windows (no exception, no log,
 /// just a blank space) while the exact same value renders correctly on Android — a platform gap in
-/// the library's Windows handler, not anything wrong with the encoded data (verified separately
-/// with a real ZXing.Net encode→decode round trip before this was written, see QrBlobCodec's own
-/// remarks). This sidesteps that gap on every platform, reusing the same "PNG bytes -> Image via
-/// ImageSource.FromStream" pattern <c>DocumentRenderingService</c>/<c>DocumentViewerViewModel</c>
-/// already use, rather than depending on a platform-specific view handler at all.
+/// the library's Windows handler, not anything wrong with the encoded data. This sidesteps that gap on
+/// every platform, reusing the same "PNG bytes -> Image via ImageSource.FromStream" pattern
+/// <c>DocumentRenderingService</c>/<c>DocumentViewerViewModel</c> already use, rather than depending on
+/// a platform-specific view handler at all.
 /// </summary>
 public static class QrImageGenerator
 {
     /// <summary>
-    /// <paramref name="errorCorrection"/> defaults to L (the lowest level) because the invite
-    /// blob's payload (it carries a full handshake ciphertext) sits right at a QR code's absolute
-    /// maximum capacity — see QrBlobCodec's own remarks for the exact numbers — so there is no
-    /// spare capacity to raise it there. The smaller contact-card payload has comfortable headroom
-    /// and should pass Q explicitly for better resilience to camera blur/partial occlusion.
+    /// <paramref name="errorCorrection"/> defaults to L (the lowest level) — the lowest error correction
+    /// leaves the most capacity for the payload (the WireGuard config is a few hundred characters); pass Q
+    /// explicitly for a short value that should survive camera blur/partial occlusion better.
     /// </summary>
     public static byte[] GeneratePng(string value, int sizePx = 700, ZXing.QrCode.Internal.ErrorCorrectionLevel? errorCorrection = null)
     {

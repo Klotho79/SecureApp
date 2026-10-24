@@ -9,6 +9,9 @@ namespace SecureApp.Presentation.Transport;
 /// </summary>
 internal sealed class WireFrame
 {
+    /// <summary>Stand-in for a frame that arrived but could not be parsed (malformed JSON, empty message) — the receive loop skips it and keeps reading, instead of mistaking it for "connection closed" and going deaf on a socket that is still open.</summary>
+    public static readonly WireFrame Unreadable = new() { Type = "unreadable" };
+
     public required string Type { get; init; }
     public Guid? DeviceId { get; init; }
     public string? Secret { get; init; }

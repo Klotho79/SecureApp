@@ -6,21 +6,19 @@ using SecureApp.Domain.Entities;
 using SecureApp.Domain.Enums;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
-using SecureApp.Domain.ValueObjects;
 using SecureApp.Presentation.Chat;
 
 namespace SecureApp.Presentation.ViewModels;
 
 /// <summary>
-/// Pairs a new chat session. Primary flow (2026-09-06): pick someone from the relay's member
-/// directory (<see cref="Members"/>) and tap once — <see cref="CreateSessionWithPeerAsync"/> does
-/// the rest, same as it always has. Manual contact-card paste/QR stays as a fallback for a peer not
-/// yet in the directory (see <see cref="IContactDirectoryService"/>'s own remarks for why this
-/// doesn't replace that path, just makes it unnecessary for the common case) — the user separately
-/// pastes back an "invite" blob to accept one when the automatic delivery below couldn't reach
-/// them. No MAUI dependency in this partial (only Domain/Data interfaces + <see cref="ContactCardCodec"/>)
-/// — the Clipboard/Shell-navigation commands that need MAUI live in <c>NewChatViewModel.Actions.cs</c>,
-/// same split rationale as <see cref="DocumentBrowserViewModel"/>.
+/// Pairs a new chat session. The one path (2026-09-16, user's ask "1:1 by mel byt jako skupinovy"): pick
+/// someone from the relay's member directory (<see cref="Members"/>) and tap once —
+/// <see cref="CreateSessionWithPeerAsync"/> does the rest, and the peer's app completes the pairing on its
+/// own (<c>App.OnPairingInviteReceived</c>). The manual contact-card / invite paste and QR-scan fallback was
+/// removed from the UI that day and its dead view-model half was deleted on 2026-10-24. No MAUI dependency
+/// in this partial (only Domain/Data interfaces + <see cref="ContactCardCodec"/>) — the Shell-navigation
+/// command that needs MAUI lives in <c>NewChatViewModel.Actions.cs</c>, same split rationale as
+/// <see cref="DocumentBrowserViewModel"/>.
 /// </summary>
 public sealed partial class NewChatViewModel : ObservableObject
 {
@@ -43,25 +41,7 @@ public sealed partial class NewChatViewModel : ObservableObject
     public partial bool HasNoMembers { get; set; }
 
     [ObservableProperty]
-    public partial string PeerContactCardText { get; set; }
-
-    [ObservableProperty]
-    public partial string? GeneratedInviteText { get; set; }
-
-    [ObservableProperty]
-    public partial bool HasGeneratedInvite { get; set; }
-
-    [ObservableProperty]
-    public partial string InviteBlobText { get; set; }
-
-    [ObservableProperty]
     public partial ChatSession? CreatedSession { get; set; }
-
-    [ObservableProperty]
-    public partial ChatSession? AcceptedSession { get; set; }
-
-    [ObservableProperty]
-    public partial bool HasAcceptedSession { get; set; }
 
     [ObservableProperty]
     public partial string? StatusErrorMessage { get; set; }
@@ -72,37 +52,14 @@ public sealed partial class NewChatViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsBusy { get; set; }
 
-    // --- QR pairing (2026-09-05) — an alternative to copy/paste for the same two blobs above,
-    // nothing protocol-related changes: a successful scan just fills the same Text property a
-    // manual paste would have. ---
-
-    [ObservableProperty]
-    public partial bool IsScanningPeerCard { get; set; }
-
-    [ObservableProperty]
-    public partial bool IsScanningInvite { get; set; }
-
-    [ObservableProperty]
-    public partial bool IsShowingInviteQr { get; set; }
-
-    /// <summary>The same invite, packed via QrBlobCodec for the "Show QR" flow — see that class's own remarks for why the invite (it carries a full handshake ciphertext) needs this rather than GeneratedInviteText's copy/paste format.</summary>
-    [ObservableProperty]
-    public partial string? GeneratedInviteQrValue { get; set; }
-
-    [ObservableProperty]
-    public partial string ScanPeerCardButtonText { get; set; }
-
-    [ObservableProperty]
-    public partial string ScanInviteButtonText { get; set; }
-
-    /// <summary>Neutral (not error) status — used for "you're already paired with this contact" rather than a genuine failure. See CreateSessionAsync/AcceptInviteAsync's own remarks.</summary>
+    /// <summary>Neutral (not error) status — used for "you're already paired with this contact" rather than a genuine failure.</summary>
     [ObservableProperty]
     public partial string? StatusInfoMessage { get; set; }
 
     [ObservableProperty]
     public partial bool HasStatusInfo { get; set; }
 
-    /// <summary>Drives "Open Chat"'s visibility independent of whether an invite was actually generated — set when re-pairing with an already-known peer just opens the existing session instead (see CreateSessionAsync's own remarks).</summary>
+    /// <summary>Drives "Open Chat"'s visibility independent of whether an invite was actually generated — set when re-pairing with an already-known peer just opens the existing session instead (see CreateSessionWithPeerAsync's own remarks).</summary>
     [ObservableProperty]
     public partial bool HasCreatedSession { get; set; }
 
@@ -125,10 +82,6 @@ public sealed partial class NewChatViewModel : ObservableObject
 
         Members = [];
         HasNoMembers = true;
-        PeerContactCardText = string.Empty;
-        InviteBlobText = string.Empty;
-        ScanPeerCardButtonText = "Naskenovat QR";
-        ScanInviteButtonText = "Naskenovat QR";
     }
 
     partial void OnStatusErrorMessageChanged(string? value)
@@ -139,27 +92,17 @@ public sealed partial class NewChatViewModel : ObservableObject
 
     partial void OnStatusInfoMessageChanged(string? value) => HasStatusInfo = !string.IsNullOrEmpty(value);
 
-    partial void OnGeneratedInviteTextChanged(string? value) => HasGeneratedInvite = !string.IsNullOrEmpty(value);
-
     partial void OnCreatedSessionChanged(ChatSession? value) => HasCreatedSession = value is not null;
-
-    partial void OnAcceptedSessionChanged(ChatSession? value) => HasAcceptedSession = value is not null;
-
-    partial void OnIsScanningPeerCardChanged(bool value) => ScanPeerCardButtonText = value ? "Zrušit skenování" : "Naskenovat QR";
-
-    partial void OnIsScanningInviteChanged(bool value) => ScanInviteButtonText = value ? "Zrušit skenování" : "Naskenovat QR";
 
     /// <summary>Best-effort reconnect before listing, same reasoning as <c>ChatViewModel.EnsureConnectedAsync</c> — a dropped connection shouldn't have to wait for this page's next open to notice.</summary>
     private Task EnsureConnectedAsync() => Transport.RelayConnection.EnsureConnectedAsync(_messageTransport, _transportSettingsRepository);
 
     /// <summary>
     /// Fetches the relay's member directory — see the class-level remarks. A failure here (relay
-    /// unreachable, not yet connected) leaves the list empty, same as before — the manual paste/QR
-    /// fallback below is always available regardless, which is why this stays a quiet
-    /// <see cref="StatusInfoMessage"/> rather than a red <see cref="StatusErrorMessage"/> — but it's
-    /// no longer silent (2026-09-07, a real complaint elsewhere in this app about an unexplained
-    /// empty list applies here too): an empty directory list now says why, instead of just looking
-    /// like nothing happened.
+    /// unreachable, not yet connected) leaves the list empty; it stays a quiet
+    /// <see cref="StatusInfoMessage"/> rather than a red <see cref="StatusErrorMessage"/> but is not silent
+    /// (2026-09-07, a real complaint elsewhere in this app about an unexplained empty list applies here
+    /// too): an empty directory list says why, instead of just looking like nothing happened.
     /// </summary>
     [RelayCommand]
     private async Task LoadMembersAsync()
@@ -177,7 +120,7 @@ public sealed partial class NewChatViewModel : ObservableObject
         catch (Exception ex)
         {
             HasNoMembers = Members.Count == 0;
-            StatusInfoMessage = $"Seznam členů komunity se teď nepodařilo načíst ({ex.Message}) — můžete pozvat ručně přes kartu/pozvánku níže.";
+            StatusInfoMessage = $"Seznam členů komunity se teď nepodařilo načíst ({ex.Message}) — zkuste to za chvíli znovu.";
         }
         finally
         {
@@ -185,7 +128,7 @@ public sealed partial class NewChatViewModel : ObservableObject
         }
     }
 
-    /// <summary>One-tap path (2026-09-06): builds the same <see cref="ContactCardBlob"/> a manually pasted card would have carried, directly from a directory entry — no decode step needed since there's no encoded text to decode.</summary>
+    /// <summary>One-tap path (2026-09-06): builds the same <see cref="ContactCardBlob"/> a pasted card would have carried, directly from a directory entry.</summary>
     [RelayCommand]
     private Task StartChatWithMemberAsync(DirectoryMemberItem? member)
     {
@@ -197,38 +140,18 @@ public sealed partial class NewChatViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Checks IMessagingService.FindExistingSessionAsync before minting a fresh session — a real
-    /// gap the user caught live (2026-09-05): pasting/scanning the same peer's contact card twice
-    /// used to silently create a second, indistinguishable session every time, since
-    /// CreateSessionAsync itself always mints unconditionally (kept that way — see its own remarks
-    /// and IMessagingService.FindExistingSessionAsync's). Already-paired just opens the existing
-    /// chat instead of repeating a handshake that would go nowhere anyway (the peer's UI has no
-    /// reason to re-accept an invite from someone it already has an active ratchet with).
+    /// Checks IMessagingService.FindExistingSessionAsync before minting a fresh session — a real gap the
+    /// user caught live (2026-09-05): starting a chat with the same peer twice used to silently create a
+    /// second, indistinguishable session every time, since CreateSessionAsync itself always mints
+    /// unconditionally (kept that way — see its own remarks and IMessagingService.FindExistingSessionAsync's).
+    /// Already-paired just opens the existing chat instead of repeating a handshake that would go nowhere
+    /// anyway (the peer's UI has no reason to re-accept an invite from someone it already has an active
+    /// ratchet with).
     /// </summary>
-    [RelayCommand]
-    private async Task CreateSessionAsync()
-    {
-        ContactCardBlob peerCard;
-        try
-        {
-            peerCard = ContactCardCodec.Decode<ContactCardBlob>(PeerContactCardText);
-        }
-        catch (Exception)
-        {
-            StatusErrorMessage = "To nevypadá jako platná kontaktní karta — zkontrolujte, že jste zkopírovali celý blok.";
-            return;
-        }
-
-        await CreateSessionWithPeerAsync(peerCard);
-    }
-
-    /// <summary>Shared by both the directory one-tap path (<see cref="StartChatWithMemberAsync"/>) and the manual-paste path (<see cref="CreateSessionAsync"/>) — everything past "we now have a peer's contact card, however we got it" is identical.</summary>
     private async Task CreateSessionWithPeerAsync(ContactCardBlob peerCard)
     {
         StatusErrorMessage = null;
         StatusInfoMessage = null;
-        GeneratedInviteText = null;
-        GeneratedInviteQrValue = null;
         CreatedSession = null;
 
         IsBusy = true;
@@ -258,54 +181,45 @@ public sealed partial class NewChatViewModel : ObservableObject
             var (session, handshakeCipherText) = await _messagingService.CreateSessionAsync(peerCard.DisplayName, peerCard.PublicKey, peerCard.RelayDeviceId);
 
             var invite = new ChatInviteBlob(ownCard.DisplayName, ownCard.PublicKey, ownCard.RelayDeviceId, handshakeCipherText);
-            GeneratedInviteText = ContactCardCodec.Encode(invite);
-            GeneratedInviteQrValue = QrBlobCodec.EncodeInvite(invite);
+            var inviteBlob = ContactCardCodec.Encode(invite);
             CreatedSession = session;
 
             // 2026-09-06 pairing simplification (user's own request: "co nejméně zatěžující pro
-            // uživatele" — as little burden on the user as possible): if the peer's device happens
-            // to be online right now, this delivers the invite over the relay directly instead of
-            // making the user do a second manual QR/copy-paste round trip — App.xaml.cs's
-            // OnPairingInviteReceived completes pairing on their end automatically, with zero
-            // action needed there either.
-            var deliveredAutomatically = false;
-            try
+            // uživatele" — as little burden on the user as possible): the invite goes over the relay
+            // directly — App.xaml.cs's OnPairingInviteReceived completes pairing on their end
+            // automatically, with zero action needed there either.
+            var delivered = false;
+            if (_messageTransport.IsConnected)
             {
-                if (_messageTransport.IsConnected)
+                try
                 {
-                    await _messageTransport.SendPairingInviteAsync(peerCard.RelayDeviceId, GeneratedInviteText);
-                    deliveredAutomatically = true;
+                    await _messageTransport.SendPairingInviteAsync(peerCard.RelayDeviceId, inviteBlob);
+                    delivered = true;
+                }
+                catch
+                {
+                    // Falls through to the retry below — never surfaced as an error, same "never let
+                    // live-send failure block the user" policy ChatViewModel.SendAsync already
+                    // established for ordinary messages.
                 }
             }
-            catch
-            {
-                // Falls through to the manual QR/Copy UI below — never surfaced as an error, same
-                // "never let live-send failure block the user" policy ChatViewModel.SendAsync
-                // already established for ordinary messages.
-            }
 
-            // Best-effort shared-library-key offer (2026-09-10) — see SharedLibraryKeySync's own
-            // remarks. Fired unconditionally, not just on the deliveredAutomatically branch: even a
-            // manually QR/copy-paste-completed pairing (the peer runs AcceptInviteAsync, which
-            // offers the key back from ITS side too) ends up with the key eventually either way.
+            // 2026-10-24: there is no QR/copy UI to hand a not-sent invite to any more, so a send that did
+            // not happen (relay down, or the send threw) used to leave this device with a pending session
+            // and a peer that never heard of it until the one-hour pending-handshake sweep. The supervisor
+            // re-sends whatever is stored here the moment the relay is connected (~seconds).
+            if (!delivered)
+                PendingInviteStore.Set(peerCard.PublicKey, session.Id, peerCard.RelayDeviceId, inviteBlob);
+
+            // Best-effort shared-library-key offer (2026-09-10) — see SharedLibraryKeySync's own remarks.
             _ = SharedLibraryKeySync.OfferKeyAsync(_sharedLibraryService, _messagingService, _messageTransport, session.Id, _diagnosticsReporter);
 
-            if (deliveredAutomatically)
-            {
-                // Confirmed sent over an actually-open connection — trust it and jump straight in,
-                // same reasoning as the already-paired branch above. If it turns out the peer
-                // couldn't complete their end for some reason, the chat is still reachable from the
-                // list afterwards and a fresh invite can be generated then.
-                StatusInfoMessage = $"Odesláno automaticky — spárování s {peerCard.DisplayName} by mělo proběhnout za chvíli.";
-                await OpenCreatedChatCommand.ExecuteAsync(null);
-            }
-            else
-            {
-                // Genuinely need the human to share this — peer's offline or unreachable right now,
-                // so keep them on this screen with the QR/text visible instead of navigating away
-                // from the one thing they still need to act on.
-                StatusInfoMessage = null;
-            }
+            // Jump straight in either way — if the peer could not complete their end yet, the chat is
+            // reachable from the list and the pairing finishes by itself once the invite gets through.
+            StatusInfoMessage = delivered
+                ? $"Odesláno automaticky — spárování s {peerCard.DisplayName} by mělo proběhnout za chvíli."
+                : $"Spárování s {peerCard.DisplayName} se dokončí automaticky, jakmile bude relay dostupný.";
+            await OpenCreatedChatCommand.ExecuteAsync(null);
         }
         catch (Exception ex)
         {
@@ -317,106 +231,7 @@ public sealed partial class NewChatViewModel : ObservableObject
         }
     }
 
-    /// <summary>Same already-paired check as CreateSessionAsync — see its own remarks.</summary>
-    [RelayCommand]
-    private async Task AcceptInviteAsync()
-    {
-        StatusErrorMessage = null;
-        StatusInfoMessage = null;
-        AcceptedSession = null;
-
-        ChatInviteBlob invite;
-        try
-        {
-            invite = ContactCardCodec.Decode<ChatInviteBlob>(InviteBlobText);
-        }
-        catch (Exception)
-        {
-            StatusErrorMessage = "To nevypadá jako platná pozvánka — zkontrolujte, že jste zkopírovali celý blok.";
-            return;
-        }
-
-        IsBusy = true;
-        try
-        {
-            // Manually accepting an invite is explicit consent — clear any earlier user-removal (2.2).
-            RemovedPeersStore.Remove(invite.InitiatorPublicKey);
-
-            var existing = await _messagingService.FindExistingSessionAsync(invite.InitiatorPublicKey);
-            if (existing is not null)
-            {
-                AcceptedSession = existing;
-            }
-            else
-            {
-                AcceptedSession = await _messagingService.AcceptSessionAsync(
-                    invite.InitiatorDisplayName, invite.InitiatorPublicKey, invite.InitiatorRelayDeviceId, invite.HandshakeCipherText);
-            }
-
-            // Best-effort shared-library-key offer (2026-09-10) — see SharedLibraryKeySync's own
-            // remarks; same call as CreateSessionWithPeerAsync's own, from the responder's side.
-            _ = SharedLibraryKeySync.OfferKeyAsync(_sharedLibraryService, _messagingService, _messageTransport, AcceptedSession.Id, _diagnosticsReporter);
-
-            // Nothing further to show either way — jump straight in, same reasoning as
-            // CreateSessionAsync's own already-paired branch (2026-09-06).
-            await OpenAcceptedChatCommand.ExecuteAsync(null);
-        }
-        catch (Exception ex)
-        {
-            StatusErrorMessage = $"Nepodařilo se přijmout pozvánku: {ex.Message}";
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-
-    [RelayCommand]
-    private void ToggleScanPeerCard() => IsScanningPeerCard = !IsScanningPeerCard;
-
-    [RelayCommand]
-    private void ToggleScanInvite() => IsScanningInvite = !IsScanningInvite;
-
-    [RelayCommand]
-    private void ToggleShowInviteQr() => IsShowingInviteQr = !IsShowingInviteQr;
-
-    /// <summary>
-    /// Called from NewChatPage's code-behind when the peer-card scanner (CameraBarcodeReaderView)
-    /// detects a QR code. The scanned value is QrBlobCodec's compact format (see its own remarks),
-    /// not ContactCardCodec's copy/paste format — decoded then immediately re-encoded through
-    /// ContactCardCodec so CreateSessionCommand's existing paste-handling logic never needs to
-    /// know a QR was involved at all.
-    /// </summary>
-    public void OnPeerCardScanned(string qrValue)
-    {
-        IsScanningPeerCard = false;
-        try
-        {
-            var card = QrBlobCodec.DecodeContactCard(qrValue);
-            PeerContactCardText = ContactCardCodec.Encode(card);
-        }
-        catch (Exception)
-        {
-            StatusErrorMessage = "Tento QR kód nevypadá jako platná kontaktní karta.";
-        }
-    }
-
-    /// <summary>Called from NewChatPage's code-behind when the invite scanner detects a QR code — see OnPeerCardScanned's remarks, same decode-then-re-encode reasoning.</summary>
-    public void OnInviteScanned(string qrValue)
-    {
-        IsScanningInvite = false;
-        try
-        {
-            var invite = QrBlobCodec.DecodeInvite(qrValue);
-            InviteBlobText = ContactCardCodec.Encode(invite);
-        }
-        catch (Exception)
-        {
-            StatusErrorMessage = "Tento QR kód nevypadá jako platná pozvánka.";
-        }
-    }
-
-    /// <summary>Public (not private) so a console test can build a card the same way the "Start a new chat" flow does, without going through Clipboard.</summary>
+    /// <summary>Builds this device's own contact card (name, identity public key, relay device id) for the invite.</summary>
     internal async Task<ContactCardBlob> BuildOwnContactCardAsync()
     {
         var configuration = await _transportSettingsRepository.GetAsync();

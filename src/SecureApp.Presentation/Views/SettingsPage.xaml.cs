@@ -12,7 +12,9 @@ public partial class SettingsPage : ContentPage
         BindingContext = _viewModel = viewModel;
     }
 
+#if ANDROID
     private bool _systemTabPrewarmed;
+#endif
 
     protected override void OnAppearing()
     {

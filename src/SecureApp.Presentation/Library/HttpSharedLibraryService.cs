@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
@@ -321,6 +322,18 @@ public sealed class HttpSharedLibraryService : ISharedLibraryService
 
     private const string WrapKeyInfo = "library-key-wrap-v1";
 
+    /// <summary>
+    /// A member's escrowed copy only has to be published again when the key or that member's identity
+    /// changed — every call mints fresh ML-KEM ciphertexts, so re-publishing the same inputs every ~3-minute
+    /// sweep just churned the relay's table (2026-10-24: ~8 400 POSTs a day, each an ML-KEM encapsulation on
+    /// the phone and a database write on the Pi). Published successfully = remembered here for
+    /// <see cref="WrappedKeyRefreshAfter"/>, as a safety net in case the relay lost the rows; a new member, a
+    /// rotated identity key, a new shared key, or a failed POST all publish at the next sweep.
+    /// </summary>
+    private static readonly TimeSpan WrappedKeyRefreshAfter = TimeSpan.FromHours(24);
+
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _wrappedKeyPublishedAtUtc = new();
+
     public async Task PublishWrappedKeyForMembersAsync(CancellationToken ct = default)
     {
         var keyBytes = await _vault.RetrieveSecretAsync(SharedLibraryKeyVaultKey, ct);
@@ -333,10 +346,18 @@ public sealed class HttpSharedLibraryService : ISharedLibraryService
         if (members.Count == 0)
             return;
 
+        // Identifies "this key wrapped for this member's current identity key" without keeping the key around.
+        var keyFingerprint = Convert.ToHexString(SHA256.HashData(keyBytes), 0, 6);
+        var now = DateTimeOffset.UtcNow;
+        var due = members.Where(m =>
+            !_wrappedKeyPublishedAtUtc.TryGetValue(WrappedKeyId(keyFingerprint, m), out var at) || now - at >= WrappedKeyRefreshAfter).ToList();
+        if (due.Count == 0)
+            return;
+
         var endpoint = await GetHttpEndpointAsync(ct);
         var uri = new Uri(endpoint, "library/wrapped-keys");
 
-        foreach (var member in members)
+        foreach (var member in due)
         {
             try
             {
@@ -352,13 +373,19 @@ public sealed class HttpSharedLibraryService : ISharedLibraryService
                 await AddDeviceAuthAsync(request, ct);
                 using var response = await _httpClient.SendAsync(request, ct);
                 response.EnsureSuccessStatusCode();
+
+                _wrappedKeyPublishedAtUtc[WrappedKeyId(keyFingerprint, member)] = now;
             }
             catch
             {
-                // Best-effort per member — one failure must never stop wrapping for the rest.
+                // Best-effort per member — one failure must never stop wrapping for the rest (and, not being
+                // remembered above, it is simply tried again at the next sweep).
             }
         }
     }
+
+    private static string WrappedKeyId(string keyFingerprint, DirectoryMember member) =>
+        $"{keyFingerprint}:{member.RelayDeviceId:N}:{Convert.ToHexString(SHA256.HashData(member.PublicKey), 0, 6)}";
 
     public async Task<bool> TryImportWrappedKeyAsync(CancellationToken ct = default)
     {

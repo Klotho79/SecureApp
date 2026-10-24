@@ -46,6 +46,11 @@
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">15.0</SupportedOSPlatformVersion>
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">21.0</SupportedOSPlatformVersion>
 
+		<!-- 2026-10-24: ship the arm64 build only. Without a RuntimeIdentifier a Release publish packs BOTH
+		     arm64-v8a and x86_64 (the APK was 74 MB, the x86_64 half ~30 MB of it) — x86_64 only runs on an
+		     emulator/Chromebook, and every real device of this app (S23+, S25, S9+) is arm64. -->
+		<RuntimeIdentifier Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">android-arm64</RuntimeIdentifier>
+
 		<!-- 2026-09-16, real live bug: opening the on-screen keyboard in a chat's compose box pushed
 		     the whole page up and out of reach on a real Android 16 device (S23+). Root cause: the
 		     .NET Android workload resolves net10.0-android's targetSdkVersion to 36, and Android
@@ -102,8 +107,7 @@
 
 		<!-- Images -->
 		<MauiImage Include="Resources\Images\*" />
-		<MauiImage Update="Resources\Images\dotnet_bot.png" Resize="True" BaseSize="300,185" />
-		
+
 		<!-- Custom Fonts -->
 		<MauiFont Include="Resources\Fonts\*" />
 
@@ -126,9 +130,12 @@
 		     Pure managed OOXML/XML, MIT-licensed, no native dependency — unlike PdfPig/QuestPDF above
 		     this works on every platform (Android included), no Windows-only Condition needed. -->
 		<PackageReference Include="DocumentFormat.OpenXml" Version="3.0.2" />
+		<!-- DocumentFormat.OpenXml 3.0.2 pulls in System.IO.Packaging 8.0.0, which has two known high-severity
+		     advisories (GHSA-f32c-w444-8ppv, GHSA-qj66-m88j-hmgj; build warning NU1903). A direct reference to a patched
+		     version wins over the transitive one (2026-10-24). -->
+		<PackageReference Include="System.IO.Packaging" Version="10.0.13" />
 		<PackageReference Include="CommunityToolkit.Maui.MediaElement" Version="8.0.0" />
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
-		<PackageReference Include="HarfBuzzSharp" Version="14.2.1.2" />
 		<PackageReference Include="PDFtoImage" Version="5.4.0" />
 		<!-- Admin-only local-AI PDF translation (2026-10-05): PdfPig reads the real text layer out of
 		     an existing (born-digital) PDF, pure extraction, not OCR, MIT-licensed. QuestPDF authors
@@ -155,8 +162,10 @@
 		<PackageReference Include="Microsoft.Maui.Controls" Version="10.0.30" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
 		<PackageReference Include="SkiaSharp.Views.Maui.Controls" Version="4.151.1" />
+		<!-- QR codes are only GENERATED (QrImageGenerator: ZXing.Net core + the SkiaSharp binding). The camera scanner
+		     (ZXing.Net.Maui.Controls, which dragged in the whole AndroidX Camera stack) went unused when the manual
+		     pairing UI was dropped on 2026-09-16 and is removed (2026-10-24). -->
 		<PackageReference Include="ZXing.Net.Bindings.SkiaSharp" Version="0.16.24" />
-		<PackageReference Include="ZXing.Net.Maui.Controls" Version="0.10.4" />
 	</ItemGroup>
 
 	<ItemGroup>

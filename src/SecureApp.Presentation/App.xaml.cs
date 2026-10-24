@@ -232,7 +232,13 @@ public partial class App : Application
 		{
 			var factory = IPlatformApplication.Current?.Services.GetService<ISecureDatabaseConnectionFactory>();
 			if (factory is not null)
+			{
+				// Measured (2026-10-24) so the cost of the first open (vault key, SQLCipher key setup, migration
+				// check) shows up in the metrics instead of being guessed at.
+				var sw = System.Diagnostics.Stopwatch.StartNew();
 				await factory.EnsureInitializedAsync();
+				AppLog.Metric("db.open", sw.Elapsed.TotalMilliseconds);
+			}
 		}
 		catch
 		{
@@ -366,15 +372,20 @@ public partial class App : Application
 
 					if (wasConnected && DateTimeOffset.UtcNow - lastForcedReconnect >= _forcedReconnectInterval)
 					{
-						try { await transport.DisconnectAsync(); }
-						catch { /* best-effort — TryConnectAsync below still runs regardless */ }
-						wasConnected = false;
-						lastForcedReconnect = DateTimeOffset.UtcNow;
+						// Make-before-break (2026-10-24): the old connection used to be torn down first, and the relay
+						// still addressed it for the ~0.3 s until the new one authenticated — a frame handed to it in
+						// that gap was gone for good (the relay does not queue a frame it "delivered" live). Now the new
+						// socket connects and authenticates while the old one keeps serving, and ConnectAsync swaps them.
+						// Only a successful swap restarts the timer; a failed one is retried on the next tick.
+						if (await TryConnectAsync(services, transport))
+							lastForcedReconnect = DateTimeOffset.UtcNow;
+					}
+					else if (!wasConnected)
+					{
+						await TryConnectAsync(services, transport);
 					}
 
-					if (!wasConnected)
-						await TryConnectAsync(services, transport);
-
+					// A periodic swap above is not a reconnect after an outage — only a real one triggers the extra sweep.
 					var justReconnected = !wasConnected && transport.IsConnected;
 					var sweepDue = DateTimeOffset.UtcNow - lastStaleSweep >= _staleSessionSweepInterval;
 
@@ -386,10 +397,18 @@ public partial class App : Application
 						await SyncBoardToNotificationsAsync(services);
 						await ReportPendingCrashAsync(services);
 						await SyncAdminAlertsAsync(services);
-						await SyncPiccStatusAsync(services);
+						// Both feed only the Android widget (PiccRosterStore / ContactPhoneCache are read nowhere else), and
+						// change rarely — so not on Windows at all, and on Android not on every ~3-minute sweep.
+#if ANDROID
+						if (SweepStepDue(nameof(SyncPiccStatusAsync), TimeSpan.FromMinutes(10)))
+							await SyncPiccStatusAsync(services);
+#endif
 						await Diagnostics.AppLogUploader.UploadAsync(services);
-						if (services.GetService<ISharedContactService>() is { } sharedContactService)
+#if ANDROID
+						if (SweepStepDue(nameof(Contacts.ContactPhoneCache), TimeSpan.FromMinutes(30))
+							&& services.GetService<ISharedContactService>() is { } sharedContactService)
 							await Contacts.ContactPhoneCache.RefreshAsync(sharedContactService);
+#endif
 						lastStaleSweep = DateTimeOffset.UtcNow;
 					}
 				}
@@ -659,18 +678,23 @@ public partial class App : Application
 	/// the credentials are cleared and a silent re-activation request is submitted automatically;
 	/// no error is ever shown to the user, everything goes to the log.
 	/// </summary>
-	private static async Task TryConnectAsync(IServiceProvider services, IMessageTransport transport)
+	private static async Task<bool> TryConnectAsync(IServiceProvider services, IMessageTransport transport)
 	{
 		using var scope = services.CreateScope();
 		var transportSettings = scope.ServiceProvider.GetRequiredService<ITransportSettingsRepository>();
 		var configuration = await transportSettings.GetAsync();
 		if (configuration is not { AssignedDeviceId: not null, IsAutoConnectEnabled: true, EndpointUri: { } endpoint })
-			return;
+			return false;
 
 		try
 		{
 			await transport.ConnectAsync(endpoint);
-			SecureApp.Presentation.Infrastructure.AppLog.Event("relay.reconnected");
+			var failedBefore = Interlocked.Exchange(ref _consecutiveConnectFailures, 0);
+			if (failedBefore > 0)
+				SecureApp.Presentation.Infrastructure.AppLog.Event("relay.reconnected", ("afterFailures", failedBefore));
+			else
+				SecureApp.Presentation.Infrastructure.AppLog.Event("relay.reconnected");
+			return true;
 		}
 		catch (SecureApp.Presentation.Transport.RelayUnauthorizedException)
 		{
@@ -682,13 +706,40 @@ public partial class App : Application
 			catch (Exception clearEx) { SecureApp.Presentation.Infrastructure.AppLog.Error("App.TryConnect", "failed to clear stale credentials", clearEx); }
 			try { await SilentReactivateAsync(services, transport); }
 			catch (Exception reactivateEx) { SecureApp.Presentation.Infrastructure.AppLog.Error("App.TryConnect", "silent re-activation failed", reactivateEx); }
+			return false;
 		}
 		catch (Exception ex)
 		{
 			// Transient network failure — retried next tick (~10s). Logged so a persistently failing
-			// reconnect (why messages aren't leaving) is diagnosable.
-			SecureApp.Presentation.Infrastructure.AppLog.Error("App.TryConnect", "relay reconnect attempt failed", ex);
+			// reconnect (why messages aren't leaving) is diagnosable — but the first failure and then at most
+			// once per _connectFailureLogInterval (2026-10-24): a phone outside the VPN failed this ~7 000
+			// times a day with a full stack trace each, which filled the 512 KB error log in two hours, pushed
+			// every other error out of it and was then uploaded line by line.
+			var failures = Interlocked.Increment(ref _consecutiveConnectFailures);
+			var now = DateTimeOffset.UtcNow;
+			if (failures == 1 || now - _lastConnectFailureLoggedUtc >= _connectFailureLogInterval)
+			{
+				_lastConnectFailureLoggedUtc = now;
+				SecureApp.Presentation.Infrastructure.AppLog.Error("App.TryConnect", $"relay reconnect attempt failed ({failures} in a row)", ex);
+			}
+			return false;
 		}
+	}
+
+	private static int _consecutiveConnectFailures;
+	private static DateTimeOffset _lastConnectFailureLoggedUtc;
+	private static readonly TimeSpan _connectFailureLogInterval = TimeSpan.FromMinutes(10);
+
+	private static readonly Dictionary<string, DateTimeOffset> _sweepStepLastRunUtc = new();
+
+	/// <summary>Per-process throttle for the sweep steps that do not need to run on every ~3-minute pass; the first call after launch always runs. The sweep itself is single-threaded (the supervisor loop), so no locking is needed.</summary>
+	private static bool SweepStepDue(string step, TimeSpan every)
+	{
+		var now = DateTimeOffset.UtcNow;
+		if (_sweepStepLastRunUtc.TryGetValue(step, out var last) && now - last < every)
+			return false;
+		_sweepStepLastRunUtc[step] = now;
+		return true;
 	}
 
 	/// <summary>
@@ -1274,6 +1325,7 @@ public partial class App : Application
 
 		using var scope = services.CreateScope();
 		var messagingService = scope.ServiceProvider.GetRequiredService<IMessagingService>();
+		var handlerSw = System.Diagnostics.Stopwatch.StartNew();
 
 		try
 		{
@@ -1361,7 +1413,11 @@ public partial class App : Application
 				{
 					// Best-effort — nothing further to do at this level, but logged rather than
 					// silently swallowed (same reasoning as SharedLibraryKeySync's own catch blocks).
-					_ = reporterForImport.ReportAsync(DiagnosticLogLevel.Error, "Přijatý klíč sdílené knihovny se nepodařilo naimportovat.", nameof(OnEnvelopeReceived), importEx);
+					// This covers EVERY kind of system payload (delivery ack, key offer/request, delete command), not
+					// just the key import the message used to name, and it now also lands in the local error log
+					// (2026-10-24: an ack that failed here left no trace on the device at all).
+					AppLog.Error("App.Receive", "processing a received system payload failed", importEx);
+					_ = reporterForImport.ReportAsync(DiagnosticLogLevel.Error, "Přijatou systémovou zprávu (potvrzení, klíč sdílené knihovny nebo smazání) se nepodařilo zpracovat.", nameof(OnEnvelopeReceived), importEx);
 				}
 			}
 			else
@@ -1371,6 +1427,13 @@ public partial class App : Application
 				// unconditionally persisted above, regardless of whether any chat page is open.
 				try
 				{
+					// A re-delivery of a message that is already stored (the sender resent it, or the relay handed the same
+					// frame over twice) makes ReceiveMessageAsync return that very row — the delivery ack above is still
+					// wanted (it is what stops the resending), a second notification is not (2026-10-24: one message had
+					// been announced up to six times).
+					if (!RememberNotified(message.Id))
+						return;
+
 					var notificationRepository = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
 					var nativeNotificationService = scope.ServiceProvider.GetRequiredService<INativeNotificationService>();
 					var plaintext = await messagingService.DecryptMessageAsync(message.Id);
@@ -1431,6 +1494,24 @@ public partial class App : Application
 				// Best-effort — nothing further to do at this level.
 			}
 		}
+		finally
+		{
+			// Normally a few ms; a long one (the ack seen leaving ~100 s after its message arrived) says WHERE
+			// the time went when read next to ws.send.slow.
+			if (handlerSw.ElapsedMilliseconds >= 2000)
+				AppLog.Metric("msg.receive.slow", handlerSw.Elapsed.TotalMilliseconds, "ms", ("system", envelope.IsSystemPayload));
+		}
+	}
+
+	// Ids of the messages this process already raised a notification for (bounded; a restart forgets them, which at
+	// worst announces one old resend again).
+	private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, byte> _notifiedMessages = new();
+
+	private static bool RememberNotified(Guid messageId)
+	{
+		if (_notifiedMessages.Count > 500)
+			_notifiedMessages.Clear();
+		return _notifiedMessages.TryAdd(messageId, 0);
 	}
 
 	private static async Task OnPairingInviteReceived(string inviteBlob)
@@ -1758,10 +1839,16 @@ public partial class App : Application
 		// are still null here), so this waits for Window.Created rather than calling it inline.
 		window.Created += (_, _) =>
 		{
+			Infrastructure.AppStartup.Mark("window_created");
+
 			// Capture protection is chat-only (2026-10-18): follow the visible page instead of blocking
 			// app-wide. The admin override in Settings still switches it off everywhere.
 			if (window.Page is Shell shell)
-				shell.Navigated += (_, _) => ScreenCaptureGuard.Refresh();
+				shell.Navigated += (_, _) =>
+				{
+					Infrastructure.AppStartup.Mark("first_navigated");
+					ScreenCaptureGuard.Refresh();
+				};
 			ScreenCaptureGuard.Refresh();
 
 			// Milestone 5 (E2EE Chat) connect: handled entirely by RunConnectionSupervisorLoopAsync

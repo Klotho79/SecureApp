@@ -568,7 +568,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
 
         var target = MemberGroups.SelectMany(g => g.Devices).FirstOrDefault(d => d.DeviceId == deviceId);
-        var confirmed = await Shell.Current.DisplayAlert(
+        var confirmed = await Shell.Current.DisplayAlertAsync(
             "Odregistrovat zařízení",
             $"Opravdu odregistrovat '{target?.DisplayName ?? deviceId.ToString()}'? Zařízení se bude muset znovu aktivovat od začátku a jeho čekající zprávy budou zahozeny. Tuto akci nelze vrátit zpět.",
             "Odregistrovat", "Zrušit");
@@ -719,7 +719,7 @@ public sealed partial class SettingsViewModel : ObservableObject
                     string.Equals(match.Email ?? string.Empty, ProfileEmail, StringComparison.OrdinalIgnoreCase);
                 if (alreadyInSync || page is null) return;
 
-                var useMyProfile = await page.DisplayAlert(
+                var useMyProfile = await page.DisplayAlertAsync(
                     "Neshoda s kontaktem ARIM",
                     $"Váš profil: {formalName}, {ProfilePhone}, {ProfileEmail}\nKontakt ARIM: {match.DisplayName}, {match.Phone}, {match.Email}\n\nKterý je správně?",
                     "Můj profil", "Kontakt ARIM");
@@ -744,7 +744,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             }
             else if (arimMatches.Count == 0 && page is not null)
             {
-                var create = await page.DisplayAlert(
+                var create = await page.DisplayAlertAsync(
                     "Nenalezen kontakt ARIM",
                     $"Přidat se do Soukromých kontaktů ARIM jako '{formalName}'?",
                     "Přidat", "Ne");

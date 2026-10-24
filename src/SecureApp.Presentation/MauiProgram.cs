@@ -15,7 +15,6 @@ using SecureApp.Presentation.ViewModels;
 using SecureApp.Presentation.Views;
 using SecureApp.Presentation.Workplace;
 using SkiaSharp.Views.Maui.Controls.Hosting;
-using ZXing.Net.Maui.Controls;
 
 namespace SecureApp.Presentation;
 
@@ -23,6 +22,7 @@ public static class MauiProgram
 {
 	public static MauiApp CreateMauiApp()
 	{
+		AppStartup.Begin();
 		FontScaling.Register();
 
 #if WINDOWS
@@ -41,8 +41,7 @@ public static class MauiProgram
 		var builder = MauiApp.CreateBuilder();
 		builder
 			.UseMauiApp<App>()
-			.UseSkiaSharp() // Registers SkiaSharp/HarfBuzz rendering handlers for the in-app document/image viewer.
-			.UseBarcodeReader() // ZXing.Net.MAUI — QR generate (BarcodeGeneratorView) + camera scan (CameraBarcodeReaderView) for chat pairing.
+			.UseSkiaSharp() // Registers the SkiaSharp rendering handlers for the in-app document/image viewer.
 			// isAndroidForegroundServiceEnabled: false (new required parameter as of 8.0.0, 2026-10-04
 			// bump) — this app's video playback is local-only document viewing (see
 			// DocumentViewerViewModel's own remarks: decrypt to a temp file, play, nothing streams),
@@ -51,24 +50,17 @@ public static class MauiProgram
 			.UseMauiCommunityToolkitMediaElement(isAndroidForegroundServiceEnabled: false) // In-app video playback for the document viewer (2026-10-03).
 			.ConfigureFonts(fonts =>
 			{
-				fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
-				fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
 				// 2026-09-06 visual redesign — a serif for headings/document titles (reads as
-				// clinical/editorial authority) paired with a variable-weight sans for everything
-				// else. IBM Plex Sans no longer ships static per-weight files on Google Fonts (the
-				// whole repo has moved to variable fonts) — the single variable file responds to
-				// FontAttributes/requested weight fine on all 4 targets since each platform's own
-				// modern text stack (DirectWrite/CoreText/Android's renderer) resolves the wght axis.
-				fonts.AddFont("Spectral-Medium.ttf", "SpectralMedium");
+				// clinical/editorial authority) paired with a sans for everything else.
+				// 2026-10-24: only the faces the XAML actually names are bundled (SpectralSemibold, PlexSans);
+				// the unused OpenSans-Semibold, Spectral Medium/Bold and the IBM Plex variable font were ~1.2 MB.
 				fonts.AddFont("Spectral-SemiBold.ttf", "SpectralSemibold");
-				fonts.AddFont("Spectral-Bold.ttf", "SpectralBold");
 				// Body/UI font (2026-09-13): the "PlexSans" alias — used across the XAML for every
-				// Label/Button/Entry — now maps to the STATIC OpenSans, not the variable
-				// IBMPlexSans-Variable.ttf it used before. Measured on the S23+: swapping the variable
-				// font for a static face made opening a chat markedly smoother (the user confirmed) —
-				// variable-font text rendering is much heavier on Android. Spectral (headings) was
-				// already static. To restore the exact IBM Plex look later, bundle static IBM Plex Sans
-				// weight files and point this alias at them — just keep it static, not variable.
+				// Label/Button/Entry — maps to the STATIC OpenSans, not the variable IBMPlexSans it used
+				// before. Measured on the S23+: swapping the variable font for a static face made opening a
+				// chat markedly smoother (the user confirmed) — variable-font text rendering is much heavier
+				// on Android. To restore the exact IBM Plex look later, bundle static IBM Plex Sans weight
+				// files and point this alias at them — just keep it static, not variable.
 				fonts.AddFont("OpenSans-Regular.ttf", "PlexSans");
 			});
 

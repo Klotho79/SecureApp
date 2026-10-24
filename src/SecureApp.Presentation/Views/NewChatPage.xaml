@@ -19,10 +19,8 @@
                  mel byt jako skupinovy" — mirror how adding a GROUP member already works, see
                  GroupChatViewModel.LoadAddableMembersAsync's own remarks: "there's no manual paste/QR
                  fallback... this IS the only path"). The manual contact-card/invite-blob paste+QR cards
-                 that used to sit below this as a fallback for someone not yet in the directory are
-                 removed from the UI; NewChatViewModel's underlying commands (CreateSessionCommand,
-                 AcceptInviteCommand, the QR scan toggles) are left in place, unused, rather than torn
-                 out — same low-risk "UI-only" scope as this session's other navigation cleanups. -->
+                 that used to sit below this as a fallback for someone not yet in the directory were
+                 removed from the UI then, and the unused view-model half (2026-10-24). -->
             <Border Style="{StaticResource CardBorder}">
                 <VerticalStackLayout Spacing="8">
                     <Label Text="Chat s někým z komunity" Style="{StaticResource SectionHeader}" Margin="0" />

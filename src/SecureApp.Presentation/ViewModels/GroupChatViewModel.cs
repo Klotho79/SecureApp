@@ -663,7 +663,7 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
             return;
         }
 
-        var confirmed = await Shell.Current.DisplayAlert("Smazat zprávu", "Opravdu smazat tuto zprávu? Smaže se u všech členů skupiny.", "Smazat", "Zrušit");
+        var confirmed = await Shell.Current.DisplayAlertAsync("Smazat zprávu", "Opravdu smazat tuto zprávu? Smaže se u všech členů skupiny.", "Smazat", "Zrušit");
         if (!confirmed) return;
 
         try
@@ -1108,7 +1108,7 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
         var groupMember = _members.FirstOrDefault(m => m.PublicKey.AsSpan().SequenceEqual(target.PublicKey));
         if (groupMember is null) return;
 
-        var confirmed = await Shell.Current.DisplayAlert("Předat vedení skupiny", $"Opravdu předat vedení skupiny uživateli {target.DisplayName}?", "Předat", "Zrušit");
+        var confirmed = await Shell.Current.DisplayAlertAsync("Předat vedení skupiny", $"Opravdu předat vedení skupiny uživateli {target.DisplayName}?", "Předat", "Zrušit");
         if (!confirmed) return;
 
         await TransferFounderToAsync(groupMember.PublicKey, groupMember.DisplayName);
@@ -1120,7 +1120,7 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
     {
         if (!CanClaimFounder) return;
 
-        var confirmed = await Shell.Current.DisplayAlert(
+        var confirmed = await Shell.Current.DisplayAlertAsync(
             "Převzít vedení skupiny",
             "Zakladatel je dlouhodobě nedostupný (nepřipojil se k relay serveru). Opravdu chcete převzít vedení skupiny?",
             "Převzít vedení", "Zrušit");

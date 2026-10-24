@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Net.WebSockets;
 using System.Security.Cryptography;
@@ -46,6 +47,28 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
     // message and a resend can all fire at once; without this the 2nd throws InvalidOperationException
     // (and the message is lost).
     private readonly SemaphoreSlim _sendLock = new(1, 1);
+
+    // Connect + authenticate gets this long (2026-10-24). On an unreachable relay (tunnel down, packets
+    // silently dropped) the OS connect timeout is minutes, and the supervisor tick waits for it — so a relay
+    // that came back a second later was not noticed until that attempt finally gave up.
+    private static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(20);
+
+    // One send (including waiting for the send lock) gets this long. A send on a half-dead connection can hang
+    // for minutes, and every ack / message / invite queues behind it on the lock; cancelling a send aborts the
+    // socket, so the receive loop ends and the supervisor reconnects at once. Frames are small (attachments go
+    // through the library, not the socket).
+    private static readonly TimeSpan SendTimeout = TimeSpan.FromSeconds(30);
+
+    // Ping every 20 s and give up when no pong comes back within 40 s: a connection that died silently (NAT
+    // mapping dropped, phone switched networks) is noticed within about a minute instead of at the next
+    // forced reconnect or the next failed send. The timeout is generous on purpose — while the relay flushes a
+    // reconnecting device's queued frames (75 ms apart, see its /ws handler) it is not reading, hence not
+    // ponging, so a short timeout could abort a long flush and start it over.
+    private static readonly TimeSpan KeepAliveInterval = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan KeepAliveTimeout = TimeSpan.FromSeconds(40);
+
+    private static readonly TimeSpan DirectoryRepublishAfter = TimeSpan.FromMinutes(30);
+    private DateTimeOffset _lastDirectoryPublishUtc;
 
     private ClientWebSocket? _socket;
     private Task? _receiveLoopTask;
@@ -206,19 +229,42 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
             ?? throw new InvalidOperationException("V úložišti chybí tajný klíč zařízení pro relay.");
         var secret = Encoding.UTF8.GetString(secretBytes);
 
-        RaiseConnectionState(TransportConnectionState.Connecting);
+        // Already connected = a make-before-break swap (the supervisor's periodic reconnect): the live
+        // connection keeps serving until the new one is authenticated, so no state change is announced yet.
+        var isSwap = IsConnected;
+        if (!isSwap)
+            RaiseConnectionState(TransportConnectionState.Connecting);
 
         var socket = new ClientWebSocket();
-        var wsUri = new Uri(endpoint, "ws");
-        await socket.ConnectAsync(wsUri, ct);
+        socket.Options.KeepAliveInterval = KeepAliveInterval;
+        socket.Options.KeepAliveTimeout = KeepAliveTimeout;
+        try
+        {
+            using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            connectCts.CancelAfter(ConnectTimeout);
 
-        await SendFrameAsync(socket, new WireFrame { Type = "auth", DeviceId = deviceId, Secret = secret }, ct);
-        var authResult = await ReceiveFrameAsync(socket, ct);
-        if (authResult is not { Type: "authResult", Success: true })
+            await socket.ConnectAsync(new Uri(endpoint, "ws"), connectCts.Token);
+
+            await SendFrameAsync(socket, new WireFrame { Type = "auth", DeviceId = deviceId, Secret = secret }, connectCts.Token);
+            var authResult = await ReceiveFrameAsync(socket, connectCts.Token);
+
+            // Only an actual "authResult: not successful" answer means the credentials were rejected. A
+            // connection that dropped before the answer arrived (relay restart, network blip) is a transient
+            // failure — treating it as "unauthorized" made the supervisor wipe the device's credentials and
+            // register a brand-new device identity.
+            if (authResult is null || ReferenceEquals(authResult, WireFrame.Unreadable))
+                throw new IOException("Relay neodpověděl na přihlášení zařízení (spojení se přerušilo).");
+            if (authResult is not { Type: "authResult", Success: true })
+                throw new RelayUnauthorizedException();
+        }
+        catch
         {
             socket.Dispose();
-            RaiseConnectionState(TransportConnectionState.Disconnected);
-            throw new RelayUnauthorizedException();
+            // A failed attempt must not leave the state stuck on "Connecting" — and must not announce a drop
+            // when an older, still live connection is what this attempt was meant to replace.
+            if (!IsConnected)
+                RaiseConnectionState(TransportConnectionState.Disconnected);
+            throw;
         }
 
         // Release whatever connection this one replaces (a dead socket the supervisor reconnected
@@ -245,14 +291,21 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
         // Best-effort by design, same "never let this block the actual connection" policy already
         // established for SendPairingInviteAsync — a stale/missing directory entry just means this
         // device won't show up in someone else's "New Chat" list yet, not a connection failure.
-        try
+        // A periodic swap (every ~5 minutes) re-publishes at most every DirectoryRepublishAfter: the relay only needs
+        // the entry to stay "recently seen" (it hides members idle for 2 days), and an ordinary reconnect after an
+        // outage still publishes at once.
+        if (!isSwap || DateTimeOffset.UtcNow - _lastDirectoryPublishUtc >= DirectoryRepublishAfter)
         {
-            var directoryService = scope.ServiceProvider.GetRequiredService<IContactDirectoryService>();
-            await directoryService.PublishSelfAsync(ct);
-        }
-        catch
-        {
-            // Best-effort — see the remark above.
+            try
+            {
+                var directoryService = scope.ServiceProvider.GetRequiredService<IContactDirectoryService>();
+                await directoryService.PublishSelfAsync(ct);
+                _lastDirectoryPublishUtc = DateTimeOffset.UtcNow;
+            }
+            catch
+            {
+                // Best-effort — see the remark above.
+            }
         }
 
         RaiseConnectionState(TransportConnectionState.Connected);
@@ -350,37 +403,23 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
                 var frame = await ReceiveFrameAsync(socket, ct);
                 if (frame is null)
                     break;
+                if (ReferenceEquals(frame, WireFrame.Unreadable))
+                    continue;
 
-                if (frame is { Type: "deliver", Envelope: { } envelope })
+                // One bad frame (a database error while correlating, a throwing event handler) must not end
+                // the loop: that left the socket claiming to be open while nothing read it any more, so the
+                // device stayed deaf until the next forced reconnect.
+                try
                 {
-                    var correlated = await CorrelateToLocalSessionAsync(frame.SenderDeviceId, envelope, ct);
-                    if (correlated is not null)
-                        EnvelopeReceived?.Invoke(this, correlated);
+                    await HandleFrameAsync(frame, ct);
                 }
-                else if (frame is { Type: "pairing-deliver", PairingInviteBlob: { } inviteBlob })
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
-                    if (PairingInviteProcessor is { } processInvite)
-                    {
-                        // Finish accepting before the next frame is read — see the property's remarks.
-                        // Bounded so a stuck handler can never freeze the whole receive loop.
-                        try { await processInvite(inviteBlob).WaitAsync(TimeSpan.FromSeconds(60), ct); }
-                        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
-                        {
-                            AppLog.Error("WebSocketTransport", "processing a pairing invite failed or timed out", ex);
-                        }
-                    }
-                    else
-                    {
-                        PairingInviteReceived?.Invoke(this, inviteBlob);
-                    }
+                    throw;
                 }
-                else if (frame is { Type: "group-invite-deliver", GroupInviteBlob: { } groupInviteBlob })
+                catch (Exception ex)
                 {
-                    GroupInviteReceived?.Invoke(this, groupInviteBlob);
-                }
-                else if (frame is { Type: "board-changed", Board: { } board })
-                {
-                    BoardChanged?.Invoke(this, board);
+                    AppLog.Error("WebSocketTransport", $"handling a relay frame ({frame.Type}) failed", ex);
                 }
             }
         }
@@ -392,12 +431,59 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
         {
             // Connection dropped unexpectedly — surfaced to callers via ConnectionStateChanged below, not rethrown (this loop has no caller left to observe an exception).
         }
+        catch (ObjectDisposedException)
+        {
+            // The socket was replaced and disposed by a newer ConnectAsync while this loop was still reading it.
+        }
         finally
         {
             // Only report a drop for the CURRENT connection — a loop that was replaced by a newer
             // ConnectAsync must not flip the state back to Disconnected after the new one is live.
             if (ReferenceEquals(_socket, socket))
+            {
+                // A loop that ended while the socket still says "open" has nobody reading it: close it for
+                // real so IsConnected turns false and the supervisor reconnects at once.
+                if (socket.State == WebSocketState.Open)
+                {
+                    try { socket.Abort(); } catch { /* best-effort */ }
+                }
                 RaiseConnectionState(TransportConnectionState.Disconnected);
+            }
+        }
+    }
+
+    private async Task HandleFrameAsync(WireFrame frame, CancellationToken ct)
+    {
+        if (frame is { Type: "deliver", Envelope: { } envelope })
+        {
+            var correlated = await CorrelateToLocalSessionAsync(frame.SenderDeviceId, envelope, ct);
+            if (correlated is not null)
+                EnvelopeReceived?.Invoke(this, correlated);
+        }
+        else if (frame is { Type: "pairing-deliver", PairingInviteBlob: { } inviteBlob })
+        {
+            if (PairingInviteProcessor is { } processInvite)
+            {
+                // Finish accepting before the next frame is read — see the property's remarks.
+                // Bounded so a stuck handler can never freeze the whole receive loop.
+                try { await processInvite(inviteBlob).WaitAsync(TimeSpan.FromSeconds(60), ct); }
+                catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+                {
+                    AppLog.Error("WebSocketTransport", "processing a pairing invite failed or timed out", ex);
+                }
+            }
+            else
+            {
+                PairingInviteReceived?.Invoke(this, inviteBlob);
+            }
+        }
+        else if (frame is { Type: "group-invite-deliver", GroupInviteBlob: { } groupInviteBlob })
+        {
+            GroupInviteReceived?.Invoke(this, groupInviteBlob);
+        }
+        else if (frame is { Type: "board-changed", Board: { } board })
+        {
+            BoardChanged?.Invoke(this, board);
         }
     }
 
@@ -504,25 +590,47 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
                 break;
         }
 
+        // Null means "the connection is closed"; a frame that arrived but cannot be read is NOT that.
         if (buffer.Length == 0)
-            return null;
+            return WireFrame.Unreadable;
 
         buffer.Position = 0;
         try
         {
-            return await JsonSerializer.DeserializeAsync<WireFrame>(buffer, cancellationToken: ct);
+            return await JsonSerializer.DeserializeAsync<WireFrame>(buffer, cancellationToken: ct) ?? WireFrame.Unreadable;
         }
         catch (JsonException)
         {
-            return null;
+            return WireFrame.Unreadable;
         }
     }
 
     private async Task SendFrameLockedAsync(ClientWebSocket socket, WireFrame frame, CancellationToken ct)
     {
-        await _sendLock.WaitAsync(ct);
-        try { await SendFrameAsync(socket, frame, ct); }
-        finally { _sendLock.Release(); }
+        // Bounded (see SendTimeout) — the lock wait counts too, so a queue behind a stuck send fails instead of hanging.
+        using var sendCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        sendCts.CancelAfter(SendTimeout);
+
+        var sw = Stopwatch.StartNew();
+        double waitedMs;
+        try
+        {
+            await _sendLock.WaitAsync(sendCts.Token);
+            waitedMs = sw.Elapsed.TotalMilliseconds;
+            try { await SendFrameAsync(socket, frame, sendCts.Token); }
+            finally { _sendLock.Release(); }
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested && sendCts.IsCancellationRequested)
+        {
+            // Our own timeout, not the caller's cancellation: callers treat a cancellation as "not an error".
+            AppLog.Metric("ws.send.timeout", sw.Elapsed.TotalMilliseconds, "ms", ("frame", frame.Type));
+            throw new TimeoutException("Odeslání na relay trvalo příliš dlouho — spojení se obnoví.");
+        }
+
+        // Only a slow send is worth a line (2026-10-24): acks have been seen leaving ~100 s after the message
+        // arrived, and this is what tells a stuck lock/socket apart from a slow handler.
+        if (sw.Elapsed.TotalSeconds >= 1)
+            AppLog.Metric("ws.send.slow", sw.Elapsed.TotalMilliseconds, "ms", ("frame", frame.Type), ("lockWaitMs", (int)waitedMs));
     }
 
     private static Task SendFrameAsync(ClientWebSocket socket, WireFrame frame, CancellationToken ct)

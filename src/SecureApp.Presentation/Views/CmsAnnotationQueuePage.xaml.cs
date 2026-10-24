@@ -33,7 +33,7 @@ public partial class CmsAnnotationQueuePage : ContentPage
     {
         var items = Queue.SelectedItems?.Cast<CmsAnnotationQueueItem>().ToList() ?? [];
         if (items.Count == 0) return;
-        if (!await DisplayAlert("Hromadná akce", $"{question} ({items.Count}×)", "Ano", "Zrušit")) return;
+        if (!await DisplayAlertAsync("Hromadná akce", $"{question} ({items.Count}×)", "Ano", "Zrušit")) return;
 
         await _viewModel.ModerateManyAsync(items, decision);
         Queue.SelectedItems?.Clear();

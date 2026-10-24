@@ -86,22 +86,22 @@ public partial class OpicentrumBoardPage : ContentPage
     /// </summary>
     private async void OnPersonChipTapped(object? sender, OpicentrumRosterPersonChip chip)
     {
-        var mode = await DisplayActionSheet(chip.PersonName, "Zrušit", null, "Přesunout", "Přiřadit i na další pracoviště");
+        var mode = await DisplayActionSheetAsync(chip.PersonName, "Zrušit", null, "Přesunout", "Přiřadit i na další pracoviště");
         if (mode is null or "Zrušit") return;
         var keepSourceAssignment = mode == "Přiřadit i na další pracoviště";
 
         var targets = _viewModel.GetTargetWorkplaceNames(chip.WorkplaceId);
         if (targets.Count == 0)
         {
-            await DisplayAlert(chip.PersonName, "Žádné jiné pracoviště k dispozici — zkuste nejprve Obnovit.", "OK");
+            await DisplayAlertAsync(chip.PersonName, "Žádné jiné pracoviště k dispozici — zkuste nejprve Obnovit.", "OK");
             return;
         }
 
-        var target = await DisplayActionSheet("Kam přesunout?", "Zrušit", null, targets.ToArray());
+        var target = await DisplayActionSheetAsync("Kam přesunout?", "Zrušit", null, targets.ToArray());
         if (target is null or "Zrušit") return;
 
         var ok = await _viewModel.MovePersonAsync(chip, target, keepSourceAssignment);
         if (!ok)
-            await DisplayAlert("Nezdařilo se", _viewModel.PositionsErrorText ?? "Přesun se nezdařil.", "OK");
+            await DisplayAlertAsync("Nezdařilo se", _viewModel.PositionsErrorText ?? "Přesun se nezdařil.", "OK");
     }
 }
