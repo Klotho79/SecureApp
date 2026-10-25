@@ -108,11 +108,16 @@
             <!-- Opicentrum roster/volno board (2026-10-21, user's own ask for "tesnejsi pristup k
                  opicentru") — Admin/Modifier only, see NotificationsViewModel.OpicentrumBoard.cs's
                  own remarks on why this one isn't shown to a plain Viewer at all (unlike Stav sálů
-                 above, which everyone sees). -->
+                 above, which everyone sees). 2026-10-25 (user's ask): the whole card is the button, with the
+                 Opicentrum ARO logo instead of the emoji and no separate "Otevřít" button. -->
             <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanSeeOpicentrumBoard}">
-                <Grid ColumnDefinitions="*,Auto">
-                    <Label Grid.Column="0" Text="🗂️ Rozpis pracovišť (Opicentrum)" Style="{StaticResource SectionHeader}" Margin="0" VerticalOptions="Center" />
-                    <Button Grid.Column="1" Text="Otevřít ›" Style="{StaticResource SecondaryButton}" FontSize="10" Padding="12,0" MinimumHeightRequest="32" MinimumWidthRequest="0" Clicked="OnOpicentrumBoardClicked" />
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnOpicentrumBoardClicked" />
+                </Border.GestureRecognizers>
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                    <Image Grid.Column="0" Source="opicentrum_aro.jpg" HeightRequest="32" WidthRequest="28" Aspect="AspectFit" VerticalOptions="Center" />
+                    <Label Grid.Column="1" Text="Rozpis pracovišť (Opicentrum)" Style="{StaticResource SectionHeader}" Margin="0" VerticalOptions="Center" />
+                    <Label Grid.Column="2" Text="›" FontSize="18" TextColor="Gray" VerticalOptions="Center" />
                 </Grid>
             </Border>
 

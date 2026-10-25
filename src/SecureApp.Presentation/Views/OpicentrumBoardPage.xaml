@@ -8,37 +8,42 @@
     x:DataType="vm:OpicentrumBoardViewModel"
     Title="Opicentrum">
 
-    <Grid RowDefinitions="Auto,*" Padding="16,12,16,0" RowSpacing="8">
+    <!-- Sub-tabs in the title bar next to "Opicentrum" (2026-10-25, user's ask: saves the row they used to take) —
+         same Button+DataTrigger convention as SettingsViewModel's SystemSubTab. -->
+    <Shell.TitleView>
+        <HorizontalStackLayout Spacing="6" VerticalOptions="Center">
+            <Label Text="Opicentrum" FontSize="16" FontAttributes="Bold" VerticalOptions="Center" Margin="0,0,6,0"
+                   TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource SecondaryDarkText}}" />
+            <Button Text="Pozice" Style="{StaticResource SubTabButton}" Margin="0" VerticalOptions="Center" IsVisible="{Binding IsAccessGranted}"
+                    Command="{Binding SelectSubTabCommand}" CommandParameter="0">
+                <Button.Triggers>
+                    <DataTrigger TargetType="Button" Binding="{Binding IsPositionsSubTab}" Value="True">
+                        <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                        <Setter Property="TextColor" Value="{StaticResource White}" />
+                    </DataTrigger>
+                </Button.Triggers>
+            </Button>
+            <Button Text="Volno" Style="{StaticResource SubTabButton}" Margin="0" VerticalOptions="Center" IsVisible="{Binding IsAccessGranted}"
+                    Command="{Binding SelectSubTabCommand}" CommandParameter="1">
+                <Button.Triggers>
+                    <DataTrigger TargetType="Button" Binding="{Binding IsVolnoSubTab}" Value="True">
+                        <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                        <Setter Property="TextColor" Value="{StaticResource White}" />
+                    </DataTrigger>
+                </Button.Triggers>
+            </Button>
+        </HorizontalStackLayout>
+    </Shell.TitleView>
+
+    <Grid Padding="16,12,16,0">
 
         <!-- Admin/Modifier only — see OpicentrumBoardViewModel's own remarks. -->
-        <VerticalStackLayout Grid.Row="0" Grid.RowSpan="2" VerticalOptions="Center" Padding="24" IsVisible="{Binding IsAccessDenied}">
+        <VerticalStackLayout VerticalOptions="Center" Padding="24" IsVisible="{Binding IsAccessDenied}">
             <Label Text="Tato stránka je dostupná jen pro Admin/Modifier." HorizontalTextAlignment="Center" FontSize="12" TextColor="Gray" />
         </VerticalStackLayout>
 
-        <VerticalStackLayout Grid.Row="0" Spacing="8" IsVisible="{Binding IsAccessGranted}">
-            <!-- Sub-tabs — same Button+DataTrigger convention as SettingsViewModel's SystemSubTab. -->
-            <FlexLayout Wrap="Wrap">
-                <Button Text="Pozice" Style="{StaticResource SubTabButton}" Command="{Binding SelectSubTabCommand}" CommandParameter="0">
-                    <Button.Triggers>
-                        <DataTrigger TargetType="Button" Binding="{Binding IsPositionsSubTab}" Value="True">
-                            <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
-                            <Setter Property="TextColor" Value="{StaticResource White}" />
-                        </DataTrigger>
-                    </Button.Triggers>
-                </Button>
-                <Button Text="Volno" Style="{StaticResource SubTabButton}" Command="{Binding SelectSubTabCommand}" CommandParameter="1">
-                    <Button.Triggers>
-                        <DataTrigger TargetType="Button" Binding="{Binding IsVolnoSubTab}" Value="True">
-                            <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
-                            <Setter Property="TextColor" Value="{StaticResource White}" />
-                        </DataTrigger>
-                    </Button.Triggers>
-                </Button>
-            </FlexLayout>
-        </VerticalStackLayout>
-
         <!-- ============================ POZICE ============================ -->
-        <Grid Grid.Row="1" RowDefinitions="Auto,Auto,Auto,*" RowSpacing="6" IsVisible="{Binding IsPositionsSubTab}">
+        <Grid RowDefinitions="Auto,Auto,Auto,*" RowSpacing="6" IsVisible="{Binding IsPositionsSubTab}">
             <!-- 2026-10-24 (user: "v sobotu uz chtel videt rozpis na dalsi tyden... a moznost mezi tydny listovat"):
                  the board opens on the current week, from Saturday on on the next one, and pages with ‹ ›. -->
             <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto">
@@ -49,10 +54,13 @@
                         Command="{Binding NextPositionsWeekCommand}" />
             </Grid>
 
-            <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto">
+            <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="6">
                 <Label Grid.Column="0" Text="{Binding PositionsLastUpdatedText, StringFormat='Aktualizováno: {0}'}" FontSize="9" TextColor="Gray" VerticalOptions="Center" />
                 <controls:DelayedActivityIndicator Grid.Column="1" IsBusy="{Binding IsPositionsRefreshing}" />
-                <Button Grid.Column="2" Text="Obnovit" Style="{StaticResource SecondaryButton}" FontSize="10" Padding="10,4" MinimumHeightRequest="30"
+                <!-- Position suggestions' settings (2026-10-25, POZICE_NAVRH_PLAN.md) — Admin on the PC. -->
+                <Button Grid.Column="2" Text="⚙ Profily" Style="{StaticResource SecondaryButton}" FontSize="10" Padding="10,4" MinimumHeightRequest="30"
+                        IsVisible="{Binding CanEditStaffing}" Clicked="OnStaffingClicked" />
+                <Button Grid.Column="3" Text="Obnovit" Style="{StaticResource SecondaryButton}" FontSize="10" Padding="10,4" MinimumHeightRequest="30"
                         Command="{Binding RefreshPositionsCommand}" IsEnabled="{Binding CanRefreshPositions}" />
             </Grid>
 
@@ -81,7 +89,7 @@
         </Grid>
 
         <!-- ============================ VOLNO ============================ -->
-        <Grid Grid.Row="1" RowDefinitions="Auto,Auto,*" RowSpacing="6" IsVisible="{Binding IsVolnoSubTab}">
+        <Grid RowDefinitions="Auto,Auto,*" RowSpacing="6" IsVisible="{Binding IsVolnoSubTab}">
             <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto">
                 <Label Grid.Column="0" Text="{Binding VolnoLastUpdatedText, StringFormat='Aktualizováno: {0}'}" FontSize="9" TextColor="Gray" VerticalOptions="Center" />
                 <controls:DelayedActivityIndicator Grid.Column="1" IsBusy="{Binding IsVolnoRefreshing}" />

@@ -1,0 +1,245 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="SecureApp.Presentation.Views.OpicentrumStaffingPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
+    xmlns:controls="clr-namespace:SecureApp.Presentation.Controls"
+    x:DataType="vm:OpicentrumStaffingViewModel"
+    Title="Profily lékařů">
+
+    <!-- Position suggestions, phase 1 (2026-10-25, POZICE_NAVRH_PLAN.md) — Admin only, laid out for the PC. -->
+    <Grid RowDefinitions="Auto,Auto,*" Padding="16,12,16,12" RowSpacing="8">
+
+        <VerticalStackLayout Grid.Row="0" Grid.RowSpan="3" VerticalOptions="Center" Padding="24" IsVisible="{Binding IsAccessDenied}">
+            <Label Text="Tato stránka je dostupná jen pro Admina." HorizontalTextAlignment="Center" FontSize="12" TextColor="Gray" />
+        </VerticalStackLayout>
+
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto,Auto" ColumnSpacing="6" IsVisible="{Binding IsAccessGranted}">
+            <Button Grid.Column="0" Text="Lékaři" Style="{StaticResource SubTabButton}" Margin="0" Command="{Binding SelectSubTabCommand}" CommandParameter="0">
+                <Button.Triggers>
+                    <DataTrigger TargetType="Button" Binding="{Binding IsPeopleSubTab}" Value="True">
+                        <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                        <Setter Property="TextColor" Value="{StaticResource White}" />
+                    </DataTrigger>
+                </Button.Triggers>
+            </Button>
+            <Button Grid.Column="1" Text="Pracoviště" Style="{StaticResource SubTabButton}" Margin="0" Command="{Binding SelectSubTabCommand}" CommandParameter="1">
+                <Button.Triggers>
+                    <DataTrigger TargetType="Button" Binding="{Binding IsWorkplacesSubTab}" Value="True">
+                        <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                        <Setter Property="TextColor" Value="{StaticResource White}" />
+                    </DataTrigger>
+                </Button.Triggers>
+            </Button>
+            <Button Grid.Column="2" Text="Služby" Style="{StaticResource SubTabButton}" Margin="0" Command="{Binding SelectSubTabCommand}" CommandParameter="2">
+                <Button.Triggers>
+                    <DataTrigger TargetType="Button" Binding="{Binding IsDutySubTab}" Value="True">
+                        <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                        <Setter Property="TextColor" Value="{StaticResource White}" />
+                    </DataTrigger>
+                </Button.Triggers>
+            </Button>
+            <Button Grid.Column="3" Text="Statistika" Style="{StaticResource SubTabButton}" Margin="0" Command="{Binding SelectSubTabCommand}" CommandParameter="3">
+                <Button.Triggers>
+                    <DataTrigger TargetType="Button" Binding="{Binding IsStatsSubTab}" Value="True">
+                        <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
+                        <Setter Property="TextColor" Value="{StaticResource White}" />
+                    </DataTrigger>
+                </Button.Triggers>
+            </Button>
+            <Label Grid.Column="4" Text="{Binding StatusText}" FontSize="10" TextColor="Gray" VerticalOptions="Center" Margin="8,0,0,0" LineBreakMode="TailTruncation" />
+            <controls:DelayedActivityIndicator Grid.Column="5" IsBusy="{Binding IsBusy}" />
+            <Button Grid.Column="6" Text="Načíst z Opicentra" Style="{StaticResource SecondaryButton}" FontSize="10" Padding="10,4" MinimumHeightRequest="30"
+                    Command="{Binding FetchFromOpicentrumCommand}" IsEnabled="{Binding IsIdle}" />
+            <Button Grid.Column="7" Text="Uložit" FontSize="10" Padding="14,4" MinimumHeightRequest="30"
+                    Command="{Binding SaveCommand}" IsEnabled="{Binding IsIdle}" />
+        </Grid>
+
+        <Label Grid.Row="1" Text="{Binding ErrorText}" FontSize="10" LineBreakMode="WordWrap" IsVisible="{Binding HasError}"
+               TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" />
+
+        <!-- ============================ LÉKAŘI ============================ -->
+        <Grid Grid.Row="2" ColumnDefinitions="280,*" ColumnSpacing="16" IsVisible="{Binding IsPeopleSubTab}">
+            <Grid Grid.Column="0" RowDefinitions="Auto,*" RowSpacing="6" IsVisible="{Binding IsAccessGranted}">
+                <Entry Grid.Row="0" Placeholder="Hledat jméno…" Text="{Binding FilterText}" FontSize="11" />
+                <CollectionView Grid.Row="1" ItemsSource="{Binding FilteredPeople}" SelectionMode="Single" SelectedItem="{Binding SelectedPerson}">
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate x:DataType="vm:StaffProfileItem">
+                            <Grid Padding="8,6" ColumnDefinitions="*,Auto">
+                                <Label Grid.Column="0" Text="{Binding PersonName}" FontSize="11" VerticalOptions="Center" LineBreakMode="TailTruncation" />
+                                <Label Grid.Column="1" Text="{Binding Summary}" FontSize="9.5" TextColor="Gray" VerticalOptions="Center">
+                                    <Label.Triggers>
+                                        <DataTrigger TargetType="Label" Binding="{Binding IsGradeMissing}" Value="True">
+                                            <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" />
+                                        </DataTrigger>
+                                    </Label.Triggers>
+                                </Label>
+                            </Grid>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+            </Grid>
+
+            <Label Grid.Column="1" Text="Vyberte lékaře vlevo." FontSize="11" TextColor="Gray" HorizontalOptions="Center" VerticalOptions="Center"
+                   IsVisible="{Binding HasNoSelectedPerson}" />
+
+            <ScrollView Grid.Column="1" IsVisible="{Binding HasSelectedPerson}">
+                <VerticalStackLayout Spacing="10" BindingContext="{Binding SelectedPerson}" x:DataType="vm:StaffProfileItem">
+                    <Label Text="{Binding PersonName}" Style="{StaticResource SectionHeader}" Margin="0" />
+
+                    <Grid ColumnDefinitions="120,220" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="8">
+                        <Label Grid.Row="0" Grid.Column="0" Text="Grade" FontSize="11" VerticalOptions="Center" />
+                        <Picker Grid.Row="0" Grid.Column="1" ItemsSource="{Binding GradeOptions}" SelectedItem="{Binding SelectedGrade}" ItemDisplayBinding="{Binding Label}" FontSize="11" />
+
+                        <Label Grid.Row="1" Grid.Column="0" Text="Úsek (u L4)" FontSize="11" VerticalOptions="Center" />
+                        <Picker Grid.Row="1" Grid.Column="1" ItemsSource="{Binding WorkplaceOptions}" SelectedItem="{Binding HomeWorkplace}" ItemDisplayBinding="{Binding Label}" FontSize="11" />
+
+                        <Label Grid.Row="2" Grid.Column="0" Text="Specializace" FontSize="11" VerticalOptions="Center" />
+                        <Entry Grid.Row="2" Grid.Column="1" Text="{Binding SpecializationsText}" Placeholder="např. kardio, dětská (čárkou)" FontSize="11" />
+
+                        <Label Grid.Row="3" Grid.Column="0" Text="Vyřadit z návrhu" FontSize="11" VerticalOptions="Center" />
+                        <CheckBox Grid.Row="3" Grid.Column="1" IsChecked="{Binding ExcludedFromSuggestions}" HorizontalOptions="Start" />
+                    </Grid>
+
+                    <Label Text="Požadované obsazení pracovišť (%) — šedě skutečnost za 6 měsíců" FontSize="11" FontAttributes="Bold" Margin="0,6,0,0" />
+                    <Label Text="{Binding TotalPercentText}" FontSize="10" TextColor="Gray" />
+                    <FlexLayout Wrap="Wrap" BindableLayout.ItemsSource="{Binding Shares}">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="vm:StaffShareItem">
+                                <Grid ColumnDefinitions="150,56,50" ColumnSpacing="6" WidthRequest="270" Margin="0,0,12,4">
+                                    <Label Grid.Column="0" Text="{Binding WorkplaceName}" FontSize="10.5" VerticalOptions="Center" LineBreakMode="TailTruncation" />
+                                    <Entry Grid.Column="1" Text="{Binding PercentText}" Keyboard="Numeric" FontSize="10.5" HorizontalTextAlignment="End" />
+                                    <!-- actual share over the last six months -->
+                                    <Label Grid.Column="2" Text="{Binding ActualText}" FontSize="9.5" TextColor="Gray" VerticalOptions="Center" />
+                                </Grid>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </FlexLayout>
+                </VerticalStackLayout>
+            </ScrollView>
+        </Grid>
+
+        <!-- ============================ PRACOVIŠTĚ ============================ -->
+        <Grid Grid.Row="2" RowDefinitions="Auto,Auto,*" RowSpacing="6" IsVisible="{Binding IsWorkplacesSubTab}">
+            <Label Grid.Row="0" FontSize="10" TextColor="Gray" LineBreakMode="WordWrap"
+                   Text="Min. grade: sály L1, detašovaná pracoviště L3, výjimky (např. DIOP) L1. L1N nikdy nejde sám — jen jako druhý ke školiteli tam, kde je povolené zaškolování. Počet lidí prázdný = typický počet z historie." />
+            <Grid Grid.Row="1" ColumnDefinitions="220,110,110,180,90,90" ColumnSpacing="10" Padding="8,0">
+                <Label Grid.Column="0" Text="Pracoviště" FontSize="10" FontAttributes="Bold" />
+                <Label Grid.Column="1" Text="Min. grade" FontSize="10" FontAttributes="Bold" />
+                <Label Grid.Column="2" Text="Zaškolování L1N" FontSize="10" FontAttributes="Bold" />
+                <Label Grid.Column="3" Text="Vyžaduje specializaci" FontSize="10" FontAttributes="Bold" />
+                <Label Grid.Column="4" Text="Počet lidí" FontSize="10" FontAttributes="Bold" />
+                <Label Grid.Column="5" Text="Vyřadit" FontSize="10" FontAttributes="Bold" />
+            </Grid>
+            <CollectionView Grid.Row="2" ItemsSource="{Binding Workplaces}">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="vm:WorkplaceProfileItem">
+                        <Grid ColumnDefinitions="220,110,110,180,90,90" ColumnSpacing="10" Padding="8,2">
+                            <Label Grid.Column="0" Text="{Binding WorkplaceName}" FontSize="11" VerticalOptions="Center" LineBreakMode="TailTruncation" />
+                            <Picker Grid.Column="1" ItemsSource="{Binding MinGradeOptions}" SelectedItem="{Binding SelectedMinGrade}" ItemDisplayBinding="{Binding Label}" FontSize="11" />
+                            <CheckBox Grid.Column="2" IsChecked="{Binding AllowsTrainee}" HorizontalOptions="Start" />
+                            <Entry Grid.Column="3" Text="{Binding RequiredSpecialization}" Placeholder="—" FontSize="11" />
+                            <Entry Grid.Column="4" Text="{Binding HeadcountText}" Placeholder="z historie" Keyboard="Numeric" FontSize="11" />
+                            <CheckBox Grid.Column="5" IsChecked="{Binding ExcludedFromSuggestions}" HorizontalOptions="Start" />
+                        </Grid>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </Grid>
+
+        <!-- ============================ STATISTIKA (phase 2) ============================ -->
+        <Grid Grid.Row="2" RowDefinitions="Auto,Auto,Auto,*" RowSpacing="6" IsVisible="{Binding IsStatsSubTab}">
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+                <Label Grid.Column="0" Text="{Binding HistoryStatusText}" FontSize="10" TextColor="Gray" VerticalOptions="Center" LineBreakMode="WordWrap" />
+                <controls:DelayedActivityIndicator Grid.Column="1" IsBusy="{Binding IsHistoryRunning}" />
+                <Button Grid.Column="2" Text="Aktualizovat historii" Style="{StaticResource SecondaryButton}" FontSize="10" Padding="10,4" MinimumHeightRequest="30"
+                        Command="{Binding UpdateHistoryCommand}" IsEnabled="{Binding CanUpdateHistory}" />
+            </Grid>
+            <Label Grid.Row="1" FontSize="10" TextColor="Gray" LineBreakMode="WordWrap"
+                   Text="Za posledních 6 měsíců. Den na dvou pracovištích se počítá napůl. Odchylka: kdo má cílová procenta, největší rozdíl od cíle; kdo ne, rozdíl od průměru svého grade. Červeně 15 b. a víc. Neuložené změny cílů se započítají hned." />
+            <Grid Grid.Row="2" ColumnDefinitions="200,50,60,60,80,*,150" ColumnSpacing="10" Padding="8,0">
+                <Label Grid.Column="0" Text="Lékař" FontSize="10" FontAttributes="Bold" />
+                <Label Grid.Column="1" Text="Grade" FontSize="10" FontAttributes="Bold" />
+                <Label Grid.Column="2" Text="Dní" FontSize="10" FontAttributes="Bold" />
+                <Label Grid.Column="3" Text="Služeb" FontSize="10" FontAttributes="Bold" />
+                <Label Grid.Column="4" Text="Nezařazen" FontSize="10" FontAttributes="Bold" />
+                <Label Grid.Column="5" Text="Nejčastěji" FontSize="10" FontAttributes="Bold" />
+                <Label Grid.Column="6" Text="Odchylka" FontSize="10" FontAttributes="Bold" />
+            </Grid>
+            <Grid Grid.Row="3" ColumnDefinitions="*,360" ColumnSpacing="16">
+                <CollectionView Grid.Column="0" ItemsSource="{Binding Stats}" SelectionMode="Single" SelectedItem="{Binding SelectedStat}">
+                    <CollectionView.EmptyView>
+                        <Label Text="Zatím žádná historie — stahuje se na pozadí." FontSize="10" TextColor="Gray" Margin="8" />
+                    </CollectionView.EmptyView>
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate x:DataType="vm:PersonStatItem">
+                            <Grid ColumnDefinitions="200,50,60,60,80,*,150" ColumnSpacing="10" Padding="8,4">
+                                <Label Grid.Column="0" Text="{Binding PersonName}" FontSize="11" LineBreakMode="TailTruncation" />
+                                <Label Grid.Column="1" Text="{Binding GradeLabel}" FontSize="11" />
+                                <Label Grid.Column="2" Text="{Binding WorkedDaysText}" FontSize="11" />
+                                <Label Grid.Column="3" Text="{Binding DutyCount}" FontSize="11" />
+                                <Label Grid.Column="4" Text="{Binding UnassignedDays}" FontSize="11" />
+                                <Label Grid.Column="5" Text="{Binding TopText}" FontSize="10" TextColor="Gray" LineBreakMode="TailTruncation" />
+                                <Label Grid.Column="6" Text="{Binding DeviationText}" FontSize="10.5">
+                                    <Label.Triggers>
+                                        <DataTrigger TargetType="Label" Binding="{Binding IsUnfair}" Value="True">
+                                            <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" />
+                                            <Setter Property="FontAttributes" Value="Bold" />
+                                        </DataTrigger>
+                                    </Label.Triggers>
+                                </Label>
+                            </Grid>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+
+                <ScrollView Grid.Column="1" IsVisible="{Binding HasSelectedStat}">
+                    <VerticalStackLayout Spacing="4" BindingContext="{Binding SelectedStat}" x:DataType="vm:PersonStatItem">
+                        <Label Text="{Binding PersonName}" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Grid ColumnDefinitions="*,44,50,50,50" ColumnSpacing="6">
+                            <Label Grid.Column="0" Text="Pracoviště" FontSize="10" FontAttributes="Bold" />
+                            <Label Grid.Column="1" Text="Dní" FontSize="10" FontAttributes="Bold" />
+                            <Label Grid.Column="2" Text="Skut." FontSize="10" FontAttributes="Bold" />
+                            <Label Grid.Column="3" Text="Cíl" FontSize="10" FontAttributes="Bold" />
+                            <Label Grid.Column="4" Text="Rozdíl" FontSize="10" FontAttributes="Bold" />
+                        </Grid>
+                        <VerticalStackLayout BindableLayout.ItemsSource="{Binding Rows}" Spacing="2">
+                            <BindableLayout.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ShareStatRow">
+                                    <Grid ColumnDefinitions="*,44,50,50,50" ColumnSpacing="6">
+                                        <Label Grid.Column="0" Text="{Binding WorkplaceName}" FontSize="10.5" LineBreakMode="TailTruncation" />
+                                        <Label Grid.Column="1" Text="{Binding DaysText}" FontSize="10.5" />
+                                        <Label Grid.Column="2" Text="{Binding ActualText}" FontSize="10.5" />
+                                        <Label Grid.Column="3" Text="{Binding TargetText}" FontSize="10.5" TextColor="Gray" />
+                                        <Label Grid.Column="4" Text="{Binding DiffText}" FontSize="10.5" />
+                                    </Grid>
+                                </DataTemplate>
+                            </BindableLayout.ItemTemplate>
+                        </VerticalStackLayout>
+                    </VerticalStackLayout>
+                </ScrollView>
+            </Grid>
+        </Grid>
+
+        <!-- ============================ SLUŽBY ============================ -->
+        <Grid Grid.Row="2" RowDefinitions="Auto,*" RowSpacing="6" IsVisible="{Binding IsDutySubTab}">
+            <Label Grid.Row="0" FontSize="10" TextColor="Gray" LineBreakMode="WordWrap"
+                   Text="Na které pracoviště jde ten den lékař, který slouží danou službu (při zapnutém „Respektovat službu“). Sloty se berou ze stažených služeb; chybí-li, otevřete Rozpis, aby se služby načetly." />
+            <CollectionView Grid.Row="1" ItemsSource="{Binding DutySlots}">
+                <CollectionView.EmptyView>
+                    <Label Text="Zatím žádné služby — otevřete Rozpis a pak se sem vraťte." FontSize="10" TextColor="Gray" Margin="8" />
+                </CollectionView.EmptyView>
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="vm:DutySlotItem">
+                        <Grid ColumnDefinitions="220,240" ColumnSpacing="10" Padding="8,2">
+                            <Label Grid.Column="0" Text="{Binding SlotLabel}" FontSize="11" VerticalOptions="Center" />
+                            <Picker Grid.Column="1" ItemsSource="{Binding WorkplaceOptions}" SelectedItem="{Binding SelectedWorkplace}" ItemDisplayBinding="{Binding Label}" FontSize="11" />
+                        </Grid>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </Grid>
+
+    </Grid>
+</ContentPage>

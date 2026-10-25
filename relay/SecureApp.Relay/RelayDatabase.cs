@@ -564,6 +564,17 @@ public sealed class RelayDatabase
                 updated_at_utc     TEXT NOT NULL
             )
             """);
+        // Staffing config for the position suggestions (2026-10-25, POZICE_NAVRH_PLAN.md): doctors' grades,
+        // target shares, workplace rules, duty-slot mapping. Same singleton-row shape; read Admin/Modifier,
+        // write Admin only (Program.cs).
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS opicentrum_staffing_config (
+                id                 TEXT PRIMARY KEY NOT NULL,
+                content_blob       TEXT NOT NULL,
+                updated_by_device  TEXT NOT NULL,
+                updated_at_utc     TEXT NOT NULL
+            )
+            """);
 
         // Shared-library-key escrow (2026-09-11) — the robust, fully-automatic way a device gets the
         // community's shared library key with zero user action, replacing the fragile peer-to-peer-
@@ -2320,7 +2331,11 @@ public sealed class RelayDatabase
 
     public (string ContentBlob, DateTimeOffset UpdatedAtUtc)? GetOpicentrumVolnoBoard() => GetOpicentrumBoard("opicentrum_volno_board");
 
-    // table is always one of the two compile-time literals above, never caller input.
+    public void SetOpicentrumStaffingConfig(Guid updatedByDeviceId, string contentBlob) => SetOpicentrumBoard("opicentrum_staffing_config", updatedByDeviceId, contentBlob);
+
+    public (string ContentBlob, DateTimeOffset UpdatedAtUtc)? GetOpicentrumStaffingConfig() => GetOpicentrumBoard("opicentrum_staffing_config");
+
+    // table is always one of the compile-time literals above, never caller input.
     private void SetOpicentrumBoard(string table, Guid updatedByDeviceId, string contentBlob)
     {
         using var connection = OpenConnection();

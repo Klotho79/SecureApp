@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.1.1",
+    "code": 107,
+    "date": "25. 10. 2026",
+    "items": [
+      "Systémové tlačítko Zpět se vrací na předchozí okno i mezi záložkami (dřív na hlavní stránce záložky zavřelo appku).",
+      "Opicentrum: tlačítka Pozice a Volno jsou v horní liště vedle názvu, nad týdnem je jen datum.",
+      "Nástěnka: celá karta Rozpis pracovišť je tlačítko, s logem Opicentra ARO.",
+      "Experimentálně (Admin na PC): Pozice → ⚙ Profily — grade, úsek, specializace a cílová procenta lékařů, pravidla pracovišť, mapování služeb a statistika obsazení za 6 měsíců."
+    ]
+  },
+  {
     "version": "1.78",
     "code": 81,
     "date": "19. 10. 2026",

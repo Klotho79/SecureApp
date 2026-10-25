@@ -72,6 +72,10 @@ public sealed partial class OpicentrumBoardViewModel : ObservableObject
 
     partial void OnIsAccessDeniedChanged(bool value) => OnPropertyChanged(nameof(IsAccessGranted));
 
+    /// <summary>The "Profily" button (position suggestions, POZICE_NAVRH_PLAN.md) — Admin on the PC only.</summary>
+    [ObservableProperty]
+    public partial bool CanEditStaffing { get; set; }
+
     public OpicentrumBoardViewModel(
         IOpicentrumSyncService opicentrumSyncService,
         IOpicentrumRosterBoardService rosterBoardCacheService,
@@ -91,7 +95,9 @@ public sealed partial class OpicentrumBoardViewModel : ObservableObject
     private async Task LoadAsync()
     {
         await _currentUserService.InitializeAsync();
-        IsAccessDenied = _rolePreviewService.Resolve(_currentUserService.Current.Role) is not (Role.Admin or Role.Modifier);
+        var role = _rolePreviewService.Resolve(_currentUserService.Current.Role);
+        IsAccessDenied = role is not (Role.Admin or Role.Modifier);
+        CanEditStaffing = role == Role.Admin && DeviceInfo.Current.Platform == DevicePlatform.WinUI;
         if (IsAccessDenied) return;
 
         await LoadPositionsAsync();

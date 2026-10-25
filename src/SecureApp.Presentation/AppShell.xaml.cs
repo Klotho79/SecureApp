@@ -140,6 +140,8 @@ public partial class AppShell : Shell
 		// Opicentrum roster/volno board (2026-10-21) — reached via a gated nav button on
 		// NotificationsPage; global like Stav sálů above, not tied to any one tab.
 		Routing.RegisterRoute(nameof(OpicentrumBoardPage), typeof(OpicentrumBoardPage));
+		// Doctors'/workplaces' settings for the position suggestions (2026-10-25) — from the Pozice board.
+		Routing.RegisterRoute(nameof(OpicentrumStaffingPage), typeof(OpicentrumStaffingPage));
 
 		// Smart Search (2026-09-20, Phase 4 — see NOTIFICATION_HUB_SPEC.md) — reached via the 🔍
 		// button on NotificationsPage; global, not tied to any one tab, so a plain pushed route
@@ -155,6 +157,51 @@ public partial class AppShell : Shell
 		// AddAssignmentViewModel.ApplyQueryAttributes picks up.
 		Routing.RegisterRoute(nameof(WorkplacePage), typeof(WorkplacePage));
 		Routing.RegisterRoute(nameof(AddAssignmentPage), typeof(AddAssignmentPage));
+	}
+
+	/// <summary>Tabs (and Soubory's sub-tabs) in the order last visited, most recent last — see <see cref="OnBackButtonPressed"/>.</summary>
+	private readonly List<ShellContent> _tabHistory = [];
+
+	protected override void OnNavigated(ShellNavigatedEventArgs args)
+	{
+		base.OnNavigated(args);
+		if (CurrentItem?.CurrentItem?.CurrentItem is not { } content) return;
+		_tabHistory.Remove(content);
+		_tabHistory.Add(content);
+	}
+
+	/// <summary>
+	/// System back (2026-10-25, user: "aby se systemovym navratovym tlacitkem clovek mohl vratit na predchozi
+	/// okno"). Pushed pages already pop in base; on a tab's root page Android used to leave the app, even when
+	/// the tab was opened from a Nástěnka button ("//ContactsTab", "//LibraryTab", …). Now back returns to the
+	/// previously visited tab, then to Nástěnka, and only from Nástěnka's root leaves the app.
+	/// </summary>
+	protected override bool OnBackButtonPressed()
+	{
+		if (base.OnBackButtonPressed()) return true;
+		if (Items.Count == 0 || Items[0] is not TabBar tabBar || tabBar.CurrentItem?.CurrentItem is not { } current) return false;
+
+		_tabHistory.Remove(current);
+		while (_tabHistory.Count > 0)
+		{
+			var previous = _tabHistory[^1];
+			if (previous.Parent is ShellSection section && tabBar.Items.Contains(section))
+			{
+				section.CurrentItem = previous;
+				tabBar.CurrentItem = section;
+				return true;
+			}
+			_tabHistory.RemoveAt(_tabHistory.Count - 1); // its tab was hidden meanwhile
+		}
+
+		if (tabBar.CurrentItem != NotificationsTab && tabBar.Items.Contains(NotificationsTab))
+		{
+			tabBar.CurrentItem = NotificationsTab;
+			return true;
+		}
+
+		_tabHistory.Add(current); // leaving the app; the current tab stays the newest entry
+		return false;
 	}
 
 	/// <summary>

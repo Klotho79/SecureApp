@@ -230,6 +230,9 @@ public static class MauiProgram
 		// remarks on why this is a relay-cached snapshot rather than a per-device live scrape).
 		builder.Services.AddSingleton<IOpicentrumRosterBoardService, SecureApp.Presentation.Workplace.HttpOpicentrumRosterBoardService>();
 		builder.Services.AddSingleton<IOpicentrumVolnoBoardService, SecureApp.Presentation.Workplace.HttpOpicentrumVolnoBoardService>();
+		builder.Services.AddSingleton<IOpicentrumStaffingConfigService, SecureApp.Presentation.Workplace.HttpOpicentrumStaffingConfigService>();
+		// Six months of Opicentrum history for the position statistics (2026-10-25) — singleton so a download keeps going after the page closes.
+		builder.Services.AddSingleton<SecureApp.Presentation.Workplace.OpicentrumHistoryService>();
 
 		// --- Milestone 3: Presentation (pages + view models) ---
 		builder.Services.AddTransient<DocumentBrowserViewModel>();
@@ -320,6 +323,9 @@ public static class MauiProgram
 		// (see NotificationsViewModel.OpicentrumBoard.cs's own remarks), Admin/Modifier only.
 		builder.Services.AddTransient<OpicentrumBoardViewModel>();
 		builder.Services.AddTransient<OpicentrumBoardPage>();
+		// Position-suggestion settings (2026-10-25, POZICE_NAVRH_PLAN.md) — from the Pozice board, Admin on the PC.
+		builder.Services.AddTransient<OpicentrumStaffingViewModel>();
+		builder.Services.AddTransient<OpicentrumStaffingPage>();
 
 		// Redakce (2026-10-13) — consolidated edit/post tab, its own standalone tab like Nástěnka above.
 		builder.Services.AddTransient<RedakceViewModel>();

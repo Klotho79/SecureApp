@@ -831,6 +831,40 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
         }
     }
 
+    /// <inheritdoc cref="IOpicentrumSyncService.FetchDutiesForMonthAsync"/>
+    /// <remarks>Same page and column/row/cell parsing as <see cref="MergeSluzbyAsync"/>, for everyone and the whole month.</remarks>
+    public Task<OpicentrumDutySnapshot> FetchDutiesForMonthAsync(DateOnly month, CancellationToken ct = default) =>
+        WithSessionAsync(async http =>
+        {
+            var form = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["mesic"] = month.Month.ToString(CultureInfo.InvariantCulture),
+                ["rok"] = month.Year.ToString(CultureInfo.InvariantCulture),
+            });
+            using var response = await http.PostAsync("sluzby7.php?akce=ukazsluzby", form, ct);
+            var html = await response.Content.ReadAsStringAsync(ct);
+
+            var entries = new List<OpicentrumDutyEntry>();
+            var columns = SluzbyColumnRegex().Matches(html).Select(m => WebUtility.HtmlDecode(m.Groups["name"].Value).Trim()).ToList();
+            foreach (Match rowMatch in SluzbyRowRegex().Matches(html))
+            {
+                if (columns.Count == 0) break;
+                if (!DateOnly.TryParseExact(rowMatch.Groups["date"].Value, "dd.MM.yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)) continue;
+                if (date.Year != month.Year || date.Month != month.Month) continue;
+
+                var cellIndex = 0;
+                foreach (Match cellMatch in SluzbyCellRegex().Matches(rowMatch.Value))
+                {
+                    if (cellIndex >= columns.Count) break;
+                    var name = WebUtility.HtmlDecode(StripTags(cellMatch.Groups["name"].Value)).Replace(' ', ' ').Trim();
+                    if (name.Any(char.IsLetter))
+                        entries.Add(new OpicentrumDutyEntry(date, columns[cellIndex], name));
+                    cellIndex++;
+                }
+            }
+            return new OpicentrumDutySnapshot(month.Year, month.Month, DateTimeOffset.UtcNow, entries);
+        }, ct);
+
     private static async Task MergeSpravavolnaAsync(HttpClient http, DateOnly rangeStart, DateOnly rangeEnd, int myId, Dictionary<DateOnly, (AssignmentType Type, string? WorkplaceName, string? OnCallWorkplaceName)> resolved, CancellationToken ct)
     {
         foreach (var (year, month) in DistinctMonthsInRange(rangeStart, rangeEnd))

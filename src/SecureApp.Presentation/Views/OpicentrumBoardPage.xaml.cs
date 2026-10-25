@@ -33,6 +33,9 @@ public partial class OpicentrumBoardPage : ContentPage
         _viewModel.LoadCommand.Execute(null);
     }
 
+    private async void OnStaffingClicked(object? sender, EventArgs e)
+        => await ShellNavigation.GoToAsync(nameof(OpicentrumStaffingPage));
+
     private void OnRosterPushed(OpicentrumRosterBoardSnapshot snapshot) => MainThread.BeginInvokeOnMainThread(() => _viewModel.ApplyPushedPositions(snapshot));
 
     private void OnVolnoPushed(OpicentrumVolnoSnapshot snapshot) => MainThread.BeginInvokeOnMainThread(() => _viewModel.ApplyPushedVolno(snapshot));

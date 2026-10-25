@@ -55,14 +55,14 @@ public sealed partial class OpicentrumBoardViewModel
     private int _positionsLoadVersion;
     private int _positionsFetches;
 
-    /// <summary>The week's date range with its position relative to today ("příští týden"), shown between the ‹ › buttons.</summary>
+    /// <summary>The week's date range, shown between the ‹ › buttons — the date alone (2026-10-25, user: "neni nutne vypisovat pristi tyden, staci datum").</summary>
     [ObservableProperty]
     public partial string PositionsWeekLabel { get; set; } = string.Empty;
 
     private static bool IsDefaultWeek(DateOnly week) => week == WeekMath.DefaultViewWeek(DateOnly.FromDateTime(DateTime.Today));
 
     private void UpdatePositionsWeekLabel() =>
-        PositionsWeekLabel = WeekMath.DescribeWeek(_positionsWeek, DateOnly.FromDateTime(DateTime.Today));
+        PositionsWeekLabel = WeekMath.FormatWeekLabel(_positionsWeek, _positionsWeek.AddDays(6));
 
     [RelayCommand]
     private Task PreviousPositionsWeekAsync() => ShowPositionsWeekAsync(_positionsWeek.AddDays(-7));

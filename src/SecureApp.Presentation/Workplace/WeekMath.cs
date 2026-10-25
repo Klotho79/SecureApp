@@ -28,18 +28,4 @@ public static class WeekMath
             return $"{start.Day}.–{end.Day}. {CzechMonthGenitive[end.Month - 1]} {end.Year}";
         return $"{start.Day}. {CzechMonthGenitive[start.Month - 1]} – {end.Day}. {CzechMonthGenitive[end.Month - 1]} {end.Year}";
     }
-
-    /// <summary>The week's label plus where it sits relative to <paramref name="today"/> ("příští týden") when that is one of the neighbouring weeks.</summary>
-    public static string DescribeWeek(DateOnly weekStart, DateOnly today)
-    {
-        var label = FormatWeekLabel(weekStart, weekStart.AddDays(6));
-        var weeksFromToday = (weekStart.DayNumber - StartOfWeek(today).DayNumber) / 7;
-        return weeksFromToday switch
-        {
-            0 => $"{label} · tento týden",
-            1 => $"{label} · příští týden",
-            -1 => $"{label} · minulý týden",
-            _ => label,
-        };
-    }
 }

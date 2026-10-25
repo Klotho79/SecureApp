@@ -104,4 +104,11 @@ public interface IOpicentrumSyncService
     /// message when there are no credentials or the login fails.
     /// </summary>
     Task<OpicentrumVolnoSnapshot> FetchVolnoForMonthAsync(DateOnly month, CancellationToken ct = default);
+
+    /// <summary>
+    /// Everyone's duty slots for <paramref name="month"/> from sluzby7.php (2026-10-25, the position-suggestion
+    /// history — POZICE_NAVRH_PLAN.md phase 2). The page names people, not ids. Read-only; throws
+    /// <see cref="InvalidOperationException"/> with a user-facing message when there are no credentials or the login fails.
+    /// </summary>
+    Task<OpicentrumDutySnapshot> FetchDutiesForMonthAsync(DateOnly month, CancellationToken ct = default);
 }

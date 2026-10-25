@@ -1217,14 +1217,16 @@ void MapOpicentrumBoard(
     string route,
     string board,
     Action<RelayDatabase, Guid, string> set,
-    Func<RelayDatabase, (string ContentBlob, DateTimeOffset UpdatedAtUtc)?> get)
+    Func<RelayDatabase, (string ContentBlob, DateTimeOffset UpdatedAtUtc)?> get,
+    bool adminOnlyWrite = false)
 {
     app.MapPost(route, (HttpRequest request, SetOpicentrumBoardRequest body, RelayDatabase db, ConnectionRegistry registry) =>
     {
         if (!TryGetDeviceAuth(request, db, out var deviceId))
             return Results.Unauthorized();
 
-        if (!IsAdminOrModifier(db, deviceId)) // Admin or Modifier only
+        var canWrite = adminOnlyWrite ? db.GetDevicePolicy(deviceId)?.Role == 0 : IsAdminOrModifier(db, deviceId);
+        if (!canWrite) // Admin or Modifier (Admin only for the staffing config)
             return Results.StatusCode(StatusCodes.Status403Forbidden);
 
         set(db, deviceId, body.ContentBlob);
@@ -1257,6 +1259,8 @@ void MapOpicentrumBoard(
 
 MapOpicentrumBoard("/opicentrum-roster-board", "roster", (db, id, blob) => db.SetOpicentrumRosterBoard(id, blob), db => db.GetOpicentrumRosterBoard());
 MapOpicentrumBoard("/opicentrum-volno-board", "volno", (db, id, blob) => db.SetOpicentrumVolnoBoard(id, blob), db => db.GetOpicentrumVolnoBoard());
+// Position-suggestion staffing config (2026-10-25, POZICE_NAVRH_PLAN.md) — older clients ignore its "board-changed" push.
+MapOpicentrumBoard("/opicentrum-staffing-config", "staffing", (db, id, blob) => db.SetOpicentrumStaffingConfig(id, blob), db => db.GetOpicentrumStaffingConfig(), adminOnlyWrite: true);
 
 // Notice board. Posting is gated on the caller's assigned role (Admin=0/Modifier=1) — reading is
 // open to any member. content_blob is opaque ciphertext (encrypted client-side with the shared
