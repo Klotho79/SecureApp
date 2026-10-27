@@ -312,6 +312,16 @@ public sealed class RelayDatabase
                 updated_at_utc    TEXT NOT NULL
             )
             """);
+        // device_emails (2026-10-26, user: "sloučit pod jeden mail všechna zařízení, na kterých se zaregistroval pod
+        // stejným mailem") — the e-mail a device reports for its person (typed at registration / in Účet). One person =
+        // one e-mail, any number of devices; see GetSiblingDevices for how that links devices and what is shared.
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS device_emails (
+                device_id         TEXT PRIMARY KEY NOT NULL,
+                email             TEXT NOT NULL,
+                updated_at_utc    TEXT NOT NULL
+            )
+            """);
         // document_reviewer (2026-10-01) — a separate, orthogonal capability for the Document Library
         // content-approval workflow, deliberately NOT folded into `role`: the user scoped review
         // capability to documents only, and a device can be Modifier-and-Reviewer at once. Same
@@ -1881,6 +1891,22 @@ public sealed class RelayDatabase
         return results;
     }
 
+    /// <summary>Every document not yet published: still a Draft, awaiting review, or sent back (Rejected — its editor keeps working on it). Most recently touched first.</summary>
+    public IReadOnlyList<LibraryDocumentRecord> SearchInProgressLibraryDocuments()
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT id, title, folder_path, status, current_version_id, current_library_file_id, created_by_device_id, submitted_by_device_id, submitted_at_utc, created_at_utc, updated_at_utc
+            FROM library_documents WHERE status IN ('Draft', 'PendingReview', 'Rejected') ORDER BY updated_at_utc DESC
+            """;
+
+        var results = new List<LibraryDocumentRecord>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read()) results.Add(ReadLibraryDocument(reader));
+        return results;
+    }
+
     public IReadOnlyList<LibraryDocumentVersionRecord> GetLibraryDocumentVersions(Guid documentId)
     {
         using var connection = OpenConnection();
@@ -2138,6 +2164,77 @@ public sealed class RelayDatabase
             ("@reviewer", existingReviewer ? 1 : 0),
             ("@picc", existingPiccTeam ? 1 : 0),
             ("@now", Format(DateTimeOffset.UtcNow)));
+    }
+
+    // --- One person, several devices (2026-10-26): devices that share an e-mail are the same person.
+
+    public void SetDeviceEmail(Guid deviceId, string email)
+    {
+        using var connection = OpenConnection();
+        Execute(connection,
+            """
+            INSERT INTO device_emails (device_id, email, updated_at_utc) VALUES (@id, @email, @now)
+            ON CONFLICT(device_id) DO UPDATE SET email = @email, updated_at_utc = @now
+            """,
+            ("@id", deviceId.ToString()), ("@email", email.Trim().ToLowerInvariant()), ("@now", Format(DateTimeOffset.UtcNow)));
+    }
+
+    /// <summary>
+    /// The other devices of the same person: every device sharing an e-mail with <paramref name="deviceId"/>, where a
+    /// device's e-mails are what it reported itself (<c>device_emails</c>), the one it was activated with, and the e-mail
+    /// of the ARIM contact it is linked to.
+    /// </summary>
+    public IReadOnlyList<Guid> GetSiblingDevices(Guid deviceId)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            WITH pe(device_id, email) AS (
+                SELECT device_id, lower(trim(email)) FROM device_emails
+                UNION
+                SELECT assigned_device_id, lower(trim(email)) FROM activation_requests WHERE status = 'Approved' AND assigned_device_id IS NOT NULL
+                UNION
+                SELECT e.device_id, lower(trim(sc.email)) FROM directory_entries e JOIN shared_contacts sc ON sc.id = e.arim_contact_id WHERE sc.email IS NOT NULL
+            )
+            SELECT DISTINCT b.device_id FROM pe a JOIN pe b ON a.email = b.email AND b.device_id <> a.device_id
+            WHERE a.device_id = @id AND a.email <> ''
+            """;
+        command.Parameters.AddWithValue("@id", deviceId.ToString());
+
+        var results = new List<Guid>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            if (Guid.TryParse(reader.GetString(0), out var sibling)) results.Add(sibling);
+        return results;
+    }
+
+    /// <summary>
+    /// A brand-new device of a known person starts with that person's policy (role, reviewer, PICC, hidden tabs) instead
+    /// of "unmanaged". Never when it already has a policy, and NEVER an Admin role: knowing an admin's e-mail must not be
+    /// enough to become admin — an admin confirms that in Správa členů, which then keeps all the person's devices equal.
+    /// Returns whether a policy was copied.
+    /// </summary>
+    public bool InheritPolicyFromSibling(Guid deviceId)
+    {
+        if (GetDevicePolicy(deviceId) is not null) return false;
+
+        foreach (var sibling in GetSiblingDevices(deviceId)
+                     .Select(id => (Id: id, Policy: GetDevicePolicy(id)))
+                     .Where(s => s.Policy is not null)
+                     .OrderByDescending(s => s.Policy!.Value.UpdatedAtUtc))
+        {
+            var policy = sibling.Policy!.Value;
+            SetDevicePolicy(deviceId, policy.Role == 0 ? null : policy.Role, policy.HiddenTabs, policy.DocumentReviewer, policy.PiccTeam);
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>After an admin sets one device's policy: the person's other devices get the same role and capabilities (their own hidden tabs stay — a phone may hide different tabs than the PC).</summary>
+    public void ApplyPolicyToSiblings(Guid deviceId, int? role, bool? documentReviewer, bool? piccTeam)
+    {
+        foreach (var sibling in GetSiblingDevices(deviceId))
+            SetDevicePolicy(sibling, role, GetDevicePolicy(sibling)?.HiddenTabs ?? [], documentReviewer, piccTeam);
     }
 
     /// <summary>Every registered device with whatever policy it currently has, for the admin's own management screen. Names come from the live directory (a device that has never published shows its registration-time name instead). <c>ArimContactId</c>/<c>ArimContactName</c>/<c>ArimContactEmail</c> (2026-10-17) — same join <see cref="GetAllDevicesWithStatus"/> already does, added here too so "Členové" can be grouped/merged by the same person as "Zařízení".</summary>

@@ -129,9 +129,11 @@ public sealed partial class OpicentrumStaffingViewModel : ObservableObject
     });
 
     [RelayCommand]
-    private void UpdateHistory()
+    private async Task UpdateHistoryAsync()
     {
         if (IsAccessDenied) return;
+        if (!await OpicentrumCredentialsRequest.EnsureAsync(_opicentrumSyncService)) return; // explicit action: always open the credentials
+        ErrorText = null;
         _ = _historyService.UpdateAsync();
         UpdateHistoryStatus();
     }
@@ -258,14 +260,23 @@ public sealed partial class OpicentrumStaffingViewModel : ObservableObject
         }
 
         // Fills in / refreshes the six months of history in the background (gently — see OpicentrumHistoryService).
-        UpdateHistory();
+        // Without credentials Nastavení → Opicentrum opens instead — once per visit, so coming back without saving does not loop.
+        if (await OpicentrumCredentialsRequest.EnsureAsync(_opicentrumSyncService, _credentialsPrompted))
+            _ = _historyService.UpdateAsync();
+        else
+            ErrorText = OpicentrumCredentialsRequest.MissingText;
+        _credentialsPrompted = true;
+        UpdateHistoryStatus();
     }
+
+    private bool _credentialsPrompted;
 
     /// <summary>Scrapes the default week and the <see cref="ScrapedPastWeeks"/> before it, plus this month's Volno, for people/workplaces this device has not seen yet.</summary>
     [RelayCommand]
     private async Task FetchFromOpicentrumAsync()
     {
         if (IsBusy || IsAccessDenied) return;
+        if (!await OpicentrumCredentialsRequest.EnsureAsync(_opicentrumSyncService)) return;
         IsBusy = true;
         ErrorText = null;
         try

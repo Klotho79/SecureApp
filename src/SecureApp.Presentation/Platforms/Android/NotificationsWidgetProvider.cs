@@ -70,19 +70,64 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
     }
 
     private const string ActionToggleMode = "com.companyname.secureapp.presentation.WIDGET_TOGGLE_MODE";
-    private const string ShowDutyPreferenceKey = "widget_show_duty";
+    private const string ActionCalendarPrev = "com.companyname.secureapp.presentation.WIDGET_CAL_PREV";
+    private const string ActionCalendarNext = "com.companyname.secureapp.presentation.WIDGET_CAL_NEXT";
+    private const string ActionCalendarToday = "com.companyname.secureapp.presentation.WIDGET_CAL_TODAY";
+    private const string ShowDutyPreferenceKey = "widget_show_duty"; // legacy 2-state switch, still read once so an existing widget keeps its view
+    private const string ModePreferenceKey = "widget_mode";
+    private const string CalendarOffsetPreferenceKey = "widget_calendar_month_offset";
 
-    /// <summary>The Rozpis ⇄ Služby switch — flips the stored mode and redraws in place, never opening the app.</summary>
+    // 2026-10-27, user's ask: "další v pořadí bude tedy kalendář, rozpis, služby, kalendář" — the one tap
+    // target cycles Kalendář → Rozpis → Služby → Kalendář. Rozpis stays the default for a widget that never toggled.
+    private const int ModeCalendar = 0;
+    private const int ModeRozpis = 1;
+    private const int ModeDuty = 2;
+    private const int MaxCalendarMonthOffset = 12;
+
+    private static int GetMode()
+    {
+        var preferences = Microsoft.Maui.Storage.Preferences.Default;
+        if (preferences.ContainsKey(ModePreferenceKey))
+            return preferences.Get(ModePreferenceKey, ModeRozpis);
+        return preferences.Get(ShowDutyPreferenceKey, false) ? ModeDuty : ModeRozpis;
+    }
+
+    private static int GetCalendarOffset() =>
+        Math.Clamp(Microsoft.Maui.Storage.Preferences.Default.Get(CalendarOffsetPreferenceKey, 0), -MaxCalendarMonthOffset, MaxCalendarMonthOffset);
+
+    /// <summary>True when <paramref name="action"/> was one of this widget's own in-place taps (state changed, redraw needed).</summary>
+    private static bool HandleLocalAction(string? action)
+    {
+        var preferences = Microsoft.Maui.Storage.Preferences.Default;
+        switch (action)
+        {
+            case ActionToggleMode:
+                var next = (GetMode() + 1) % 3;
+                preferences.Set(ModePreferenceKey, next);
+                preferences.Set(CalendarOffsetPreferenceKey, 0);
+                return true;
+            case ActionCalendarPrev:
+                preferences.Set(CalendarOffsetPreferenceKey, Math.Max(-MaxCalendarMonthOffset, GetCalendarOffset() - 1));
+                return true;
+            case ActionCalendarNext:
+                preferences.Set(CalendarOffsetPreferenceKey, Math.Min(MaxCalendarMonthOffset, GetCalendarOffset() + 1));
+                return true;
+            case ActionCalendarToday:
+                preferences.Set(CalendarOffsetPreferenceKey, 0);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>The Kalendář → Rozpis → Služby switch and the calendar's month arrows — flip the stored state and redraw in place, never opening the app.</summary>
     public override void OnReceive(Context? context, Intent? intent)
     {
-        if (context is null || intent?.Action != ActionToggleMode)
+        if (context is null || !HandleLocalAction(intent?.Action))
         {
             base.OnReceive(context, intent);
             return;
         }
-
-        var showDuty = !Microsoft.Maui.Storage.Preferences.Default.Get(ShowDutyPreferenceKey, false);
-        Microsoft.Maui.Storage.Preferences.Default.Set(ShowDutyPreferenceKey, showDuty);
 
         var manager = AppWidgetManager.GetInstance(context);
         var ids = manager?.GetAppWidgetIds(new ComponentName(context, Java.Lang.Class.FromType(typeof(NotificationsWidgetProvider))));
@@ -204,6 +249,8 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
                 context, "widgetContacts".GetHashCode(), openContactsIntent, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable));
 
             ApplyMode(context, views, today);
+            if (GetMode() == ModeCalendar)
+                await ApplyCalendarAsync(context, views, workAssignmentRepository, today);
 
             for (var i = 0; i < DayCount; i++)
                 ApplyDay(context, views, DayRowIds[i], DayColorIds[i], DayLabelIds[i], DayTextIds[i], today.AddDays(i), byDate.GetValueOrDefault(today.AddDays(i)), isToday: i == 0);
@@ -229,17 +276,25 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
     /// </summary>
     private static void ApplyMode(Context context, RemoteViews views, DateOnly today)
     {
-        var showDuty = Microsoft.Maui.Storage.Preferences.Default.Get(ShowDutyPreferenceKey, false);
+        var mode = GetMode();
+        var showDuty = mode == ModeDuty;
 
         var toggleIntent = new Intent(context, typeof(NotificationsWidgetProvider));
         toggleIntent.SetAction(ActionToggleMode);
         views.SetOnClickPendingIntent(Resource.Id.widget_mode_toggle, PendingIntent.GetBroadcast(
             context, "widgetToggleMode".GetHashCode(), toggleIntent, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable));
-        views.SetTextViewText(Resource.Id.widget_mode_toggle, showDuty ? "Rozpis ›" : "Služby ›");
+        // The label names the view a tap leads to: Kalendář → Rozpis → Služby → Kalendář.
+        views.SetTextViewText(Resource.Id.widget_mode_toggle, mode switch
+        {
+            ModeCalendar => "Rozpis ›",
+            ModeRozpis => "Služby ›",
+            _ => "Kalendář ›",
+        });
 
-        var rowsVisibility = showDuty ? global::Android.Views.ViewStates.Gone : global::Android.Views.ViewStates.Visible;
+        var rowsVisibility = mode == ModeRozpis ? global::Android.Views.ViewStates.Visible : global::Android.Views.ViewStates.Gone;
         foreach (var rowId in DayRowIds)
             views.SetViewVisibility(rowId, rowsVisibility);
+        views.SetViewVisibility(Resource.Id.widget_calendar, mode == ModeCalendar ? global::Android.Views.ViewStates.Visible : global::Android.Views.ViewStates.Gone);
         views.SetViewVisibility(Resource.Id.widget_duty_list, showDuty ? global::Android.Views.ViewStates.Visible : global::Android.Views.ViewStates.Gone);
         if (!showDuty) return;
 
@@ -292,6 +347,143 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
             views.SetOnClickPendingIntent(DutyPhoneIds[i], PendingIntent.GetActivity(
                 context, ("widgetDial" + i).GetHashCode(), dialIntent, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable));
         }
+    }
+
+    // Month calendar (2026-10-27, user's ask: "měsíční kalendář, s čísly dnů a barevně odlišené služby,
+    // dovolené, služební cesty, svátky"). A fixed Monday-first 6×7 grid for the same reason as the rows
+    // above (no dynamic list in RemoteViews): each day is an inner TextView (number + fill colour) inside
+    // an outer FrameLayout whose own background is the white "today" ring showing around the inner fill.
+    private const int CalendarCells = 42;
+    private static readonly int[] CalendarCellIds =
+    [
+        Resource.Id.widget_cal_c0, Resource.Id.widget_cal_c1, Resource.Id.widget_cal_c2, Resource.Id.widget_cal_c3, Resource.Id.widget_cal_c4, Resource.Id.widget_cal_c5, Resource.Id.widget_cal_c6,
+        Resource.Id.widget_cal_c7, Resource.Id.widget_cal_c8, Resource.Id.widget_cal_c9, Resource.Id.widget_cal_c10, Resource.Id.widget_cal_c11, Resource.Id.widget_cal_c12, Resource.Id.widget_cal_c13,
+        Resource.Id.widget_cal_c14, Resource.Id.widget_cal_c15, Resource.Id.widget_cal_c16, Resource.Id.widget_cal_c17, Resource.Id.widget_cal_c18, Resource.Id.widget_cal_c19, Resource.Id.widget_cal_c20,
+        Resource.Id.widget_cal_c21, Resource.Id.widget_cal_c22, Resource.Id.widget_cal_c23, Resource.Id.widget_cal_c24, Resource.Id.widget_cal_c25, Resource.Id.widget_cal_c26, Resource.Id.widget_cal_c27,
+        Resource.Id.widget_cal_c28, Resource.Id.widget_cal_c29, Resource.Id.widget_cal_c30, Resource.Id.widget_cal_c31, Resource.Id.widget_cal_c32, Resource.Id.widget_cal_c33, Resource.Id.widget_cal_c34,
+        Resource.Id.widget_cal_c35, Resource.Id.widget_cal_c36, Resource.Id.widget_cal_c37, Resource.Id.widget_cal_c38, Resource.Id.widget_cal_c39, Resource.Id.widget_cal_c40, Resource.Id.widget_cal_c41,
+    ];
+    private static readonly int[] CalendarDayIds =
+    [
+        Resource.Id.widget_cal_d0, Resource.Id.widget_cal_d1, Resource.Id.widget_cal_d2, Resource.Id.widget_cal_d3, Resource.Id.widget_cal_d4, Resource.Id.widget_cal_d5, Resource.Id.widget_cal_d6,
+        Resource.Id.widget_cal_d7, Resource.Id.widget_cal_d8, Resource.Id.widget_cal_d9, Resource.Id.widget_cal_d10, Resource.Id.widget_cal_d11, Resource.Id.widget_cal_d12, Resource.Id.widget_cal_d13,
+        Resource.Id.widget_cal_d14, Resource.Id.widget_cal_d15, Resource.Id.widget_cal_d16, Resource.Id.widget_cal_d17, Resource.Id.widget_cal_d18, Resource.Id.widget_cal_d19, Resource.Id.widget_cal_d20,
+        Resource.Id.widget_cal_d21, Resource.Id.widget_cal_d22, Resource.Id.widget_cal_d23, Resource.Id.widget_cal_d24, Resource.Id.widget_cal_d25, Resource.Id.widget_cal_d26, Resource.Id.widget_cal_d27,
+        Resource.Id.widget_cal_d28, Resource.Id.widget_cal_d29, Resource.Id.widget_cal_d30, Resource.Id.widget_cal_d31, Resource.Id.widget_cal_d32, Resource.Id.widget_cal_d33, Resource.Id.widget_cal_d34,
+        Resource.Id.widget_cal_d35, Resource.Id.widget_cal_d36, Resource.Id.widget_cal_d37, Resource.Id.widget_cal_d38, Resource.Id.widget_cal_d39, Resource.Id.widget_cal_d40, Resource.Id.widget_cal_d41,
+    ];
+    private static readonly int[] CalendarRowIds =
+    [
+        Resource.Id.widget_cal_row0, Resource.Id.widget_cal_row1, Resource.Id.widget_cal_row2,
+        Resource.Id.widget_cal_row3, Resource.Id.widget_cal_row4, Resource.Id.widget_cal_row5,
+    ];
+    private static readonly string[] CzechMonthNames =
+        ["Leden", "Únor", "Březen", "Duben", "Květen", "Červen", "Červenec", "Srpen", "Září", "Říjen", "Listopad", "Prosinec"];
+
+    // Fixed calendar palette (2026-10-27, user's own pick: "služba červená, víkendy šedé, dovolená zelená,
+    // SC žlutá") — deliberately NOT the per-device Nastavení colours, which are tuned for the app's own
+    // light/dark surfaces and read poorly on the widget's dark translucent card.
+    private const int DutyFill = unchecked((int)0xFFD32F2F);
+    private const int VacationFill = unchecked((int)0xFF2E9E5B);
+    private const int TripFill = unchecked((int)0xFFFBC02D);
+    private const int WeekendFill = unchecked((int)0xFF616161);
+    private const int DayOffFill = unchecked((int)0xFF4A90C2);
+    private const int SickFill = unchecked((int)0xFFEF6C00);
+    private const int HolidayFill = unchecked((int)0xFF8E24AA);
+    private const int WhiteText = unchecked((int)0xFFFFFFFF);
+    private const int DarkText = unchecked((int)0xFF202020); // on the yellow trip fill
+    private const int OtherMonthText = unchecked((int)0x66FFFFFF);
+    private const int TodayRing = unchecked((int)0xFFFFFFFF);
+    private const int TodayEmptyInner = unchecked((int)0xFF2A2F33);
+
+    private static async Task ApplyCalendarAsync(Context context, RemoteViews views, IWorkAssignmentRepository repository, DateOnly today)
+    {
+        var shown = today.AddMonths(GetCalendarOffset());
+        var firstOfMonth = new DateOnly(shown.Year, shown.Month, 1);
+        var lastOfMonth = firstOfMonth.AddMonths(1).AddDays(-1);
+        var gridStart = firstOfMonth.AddDays(-(((int)firstOfMonth.DayOfWeek + 6) % 7));
+
+        var assignments = await repository.GetByDateRangeAsync(gridStart, gridStart.AddDays(CalendarCells - 1));
+        // Several rows can share a day — show the one that matters most (a duty beats a plain work row).
+        var byDate = assignments.GroupBy(a => a.Date).ToDictionary(g => g.Key, g => g.OrderBy(CalendarRank).ThenBy(a => a.CreatedAtUtc).First());
+
+        views.SetTextViewText(Resource.Id.widget_cal_title, $"{CzechMonthNames[shown.Month - 1]} {shown.Year}");
+        views.SetOnClickPendingIntent(Resource.Id.widget_cal_prev, CalendarBroadcast(context, ActionCalendarPrev));
+        views.SetOnClickPendingIntent(Resource.Id.widget_cal_next, CalendarBroadcast(context, ActionCalendarNext));
+        views.SetOnClickPendingIntent(Resource.Id.widget_cal_title, CalendarBroadcast(context, ActionCalendarToday));
+
+        views.SetInt(Resource.Id.widget_cal_legend_duty, "setTextColor", DutyFill);
+        views.SetInt(Resource.Id.widget_cal_legend_vacation, "setTextColor", VacationFill);
+        views.SetInt(Resource.Id.widget_cal_legend_trip, "setTextColor", TripFill);
+        views.SetInt(Resource.Id.widget_cal_legend_off, "setTextColor", DayOffFill);
+        views.SetInt(Resource.Id.widget_cal_legend_holiday, "setTextColor", HolidayFill);
+
+        // A month needs 4–6 rows; the unused trailing ones are hidden to give the widget its height back.
+        var rowsNeeded = (lastOfMonth.DayNumber - gridStart.DayNumber) / 7 + 1;
+        for (var row = 0; row < CalendarRowIds.Length; row++)
+            views.SetViewVisibility(CalendarRowIds[row], row < rowsNeeded ? global::Android.Views.ViewStates.Visible : global::Android.Views.ViewStates.Gone);
+
+        for (var i = 0; i < CalendarCells; i++)
+        {
+            var date = gridStart.AddDays(i);
+            var inMonth = date.Month == shown.Month;
+            var isToday = date == today;
+            var fill = CalendarFill(byDate.GetValueOrDefault(date), date);
+            if (fill is int solid && !inMonth)
+                fill = (solid & 0x00FFFFFF) | 0x55000000;
+
+            var textColor = !inMonth ? OtherMonthText : fill == TripFill ? DarkText : WhiteText;
+
+            views.SetTextViewText(CalendarDayIds[i], date.Day.ToString());
+            views.SetInt(CalendarDayIds[i], "setTextColor", textColor);
+            views.SetInt(CalendarDayIds[i], "setBackgroundColor", fill ?? (isToday ? TodayEmptyInner : 0));
+            views.SetInt(CalendarCellIds[i], "setBackgroundColor", isToday ? TodayRing : 0);
+        }
+    }
+
+    private static PendingIntent? CalendarBroadcast(Context context, string action)
+    {
+        var intent = new Intent(context, typeof(NotificationsWidgetProvider));
+        intent.SetAction(action);
+        return PendingIntent.GetBroadcast(context, action.GetHashCode(), intent, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
+    }
+
+    /// <summary>Ordinary work days stay unfilled so the special days stand out. Priority: the day's own entry (duty, leave, trip …), then a public holiday, then the weekend grey.</summary>
+    private static int? CalendarFill(WorkAssignment? assignment, DateOnly date)
+    {
+        if (assignment is not null)
+        {
+            var isDuty = assignment.Type == AssignmentType.OnCall || !string.IsNullOrEmpty(assignment.OnCallWorkplaceName);
+            var type = isDuty ? AssignmentType.OnCall : assignment.Type;
+            switch (type)
+            {
+                case AssignmentType.OnCall: return DutyFill;
+                case AssignmentType.Vacation: return VacationFill;
+                case AssignmentType.BusinessTrip:
+                case AssignmentType.Training: return TripFill;
+                case AssignmentType.SickLeave: return SickFill;
+                case AssignmentType.DayOff:
+                case AssignmentType.Other: return DayOffFill;
+            }
+        }
+
+        if (CzechCalendar.HolidayName(date) is not null) return HolidayFill;
+        return CzechCalendar.IsWeekend(date) ? WeekendFill : null;
+    }
+
+    private static int CalendarRank(WorkAssignment assignment)
+    {
+        if (assignment.Type == AssignmentType.OnCall || !string.IsNullOrEmpty(assignment.OnCallWorkplaceName))
+            return 0;
+        return assignment.Type switch
+        {
+            AssignmentType.BusinessTrip or AssignmentType.Training => 1,
+            AssignmentType.Vacation => 2,
+            AssignmentType.SickLeave => 3,
+            AssignmentType.DayOff => 4,
+            AssignmentType.Other => 5,
+            _ => 6,
+        };
     }
 
     private static void ApplyDay(Context context, RemoteViews views, int rowId, int colorId, int labelId, int textId, DateOnly date, WorkAssignment? assignment, bool isToday)

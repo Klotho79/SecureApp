@@ -35,8 +35,10 @@
 
             <!-- New-profile creation (2026-10-05). -->
             <VerticalStackLayout Spacing="10" IsVisible="{Binding IsCreatingNewProfile}">
-                <Label Text="Jméno" FontAttributes="Bold" FontSize="11" />
-                <Entry Placeholder="Vaše jméno" Text="{Binding NewProfileNameText}" />
+                <Label Text="Registrace" FontAttributes="Bold" FontSize="11" />
+                <Entry Placeholder="Jméno" Text="{Binding NewFirstNameText}" />
+                <Entry Placeholder="Příjmení" Text="{Binding NewLastNameText}" />
+                <Entry Placeholder="E-mail" Keyboard="Email" Text="{Binding NewEmailText}" />
                 <Label Text="Heslo" FontAttributes="Bold" FontSize="11" />
                 <Entry Placeholder="Nové heslo" IsPassword="True" Text="{Binding NewPasswordText}" />
                 <Entry Placeholder="Heslo znovu" IsPassword="True" Text="{Binding NewPasswordConfirmText}" />

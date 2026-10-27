@@ -29,7 +29,8 @@ public static class ProfileRegistry
     private const int DerivedKeyLengthBytes = 32;
     private const int SaltLengthBytes = 16;
 
-    public sealed record Profile(string Name, string FolderName, string PasswordHash, string PasswordSalt, bool IsOwner, DateTimeOffset CreatedAtUtc);
+    /// <param name="FirstName">Registration fields (2026-10-26): entered when the profile was created and copied once into the profile's own User (Jméno/Příjmení/E-mail) by <c>App.SeedProfileFromRegistrationAsync</c>, so an admin can recognise the new member and hand them a role or a document to write. Null on profiles created before this existed.</param>
+    public sealed record Profile(string Name, string FolderName, string PasswordHash, string PasswordSalt, bool IsOwner, DateTimeOffset CreatedAtUtc, string? FirstName = null, string? LastName = null, string? Email = null);
 
     private static string RegistryPath => Path.Combine(ActiveProfile.BaseDirectory, "profiles.json");
 
@@ -62,7 +63,7 @@ public static class ProfileRegistry
     }
 
     /// <summary>Creates a brand-new profile (name must not already exist). The very first profile ever created on this machine becomes the "owner" profile — see <see cref="Infrastructure.TrustedAdminDevices"/>'s own remarks on why that matters.</summary>
-    public static Profile Create(string name, string password)
+    public static Profile Create(string name, string password, string? firstName = null, string? lastName = null, string? email = null)
     {
         var existing = LoadAll();
         var salt = RandomNumberGenerator.GetBytes(SaltLengthBytes);
@@ -73,7 +74,10 @@ public static class ProfileRegistry
             PasswordHash: Convert.ToHexStringLower(hash),
             PasswordSalt: Convert.ToHexStringLower(salt),
             IsOwner: existing.Count == 0,
-            CreatedAtUtc: DateTimeOffset.UtcNow);
+            CreatedAtUtc: DateTimeOffset.UtcNow,
+            FirstName: firstName,
+            LastName: lastName,
+            Email: email);
 
         var updated = existing.Append(profile).ToList();
         Save(updated);

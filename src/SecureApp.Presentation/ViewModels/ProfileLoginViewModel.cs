@@ -33,8 +33,15 @@ public sealed partial class ProfileLoginViewModel : ObservableObject
 
     partial void OnIsCreatingNewProfileChanged(bool value) => OnPropertyChanged(nameof(IsSelectingExistingProfile));
 
+    /// <summary>Registration (2026-10-26): the profile is named "Jméno Příjmení"; the e-mail lets an admin find the new member and grant a role / a document to write.</summary>
     [ObservableProperty]
-    public partial string NewProfileNameText { get; set; } = string.Empty;
+    public partial string NewFirstNameText { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string NewLastNameText { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string NewEmailText { get; set; } = string.Empty;
 
     [ObservableProperty]
     public partial string NewPasswordText { get; set; } = string.Empty;
@@ -62,7 +69,9 @@ public sealed partial class ProfileLoginViewModel : ObservableObject
     private void CancelCreateNewProfile()
     {
         IsCreatingNewProfile = false;
-        NewProfileNameText = string.Empty;
+        NewFirstNameText = string.Empty;
+        NewLastNameText = string.Empty;
+        NewEmailText = string.Empty;
         NewPasswordText = string.Empty;
         NewPasswordConfirmText = string.Empty;
         ErrorText = null;
@@ -89,12 +98,20 @@ public sealed partial class ProfileLoginViewModel : ObservableObject
     [RelayCommand]
     private void CreateAndLogIn()
     {
-        var name = NewProfileNameText.Trim();
-        if (name.Length == 0)
+        var firstName = NewFirstNameText.Trim();
+        var lastName = NewLastNameText.Trim();
+        var email = NewEmailText.Trim();
+        if (firstName.Length == 0 || lastName.Length == 0)
         {
-            ErrorText = "Zadejte jméno nového profilu.";
+            ErrorText = "Zadejte jméno a příjmení.";
             return;
         }
+        if (!IsPlausibleEmail(email))
+        {
+            ErrorText = "Zadejte platný e-mail — podle něj vás admin najde mezi členy.";
+            return;
+        }
+        var name = $"{firstName} {lastName}";
         if (Profiles.Any(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase)))
         {
             ErrorText = "Profil s tímto jménem už existuje.";
@@ -111,7 +128,13 @@ public sealed partial class ProfileLoginViewModel : ObservableObject
             return;
         }
 
-        var profile = ProfileRegistry.Create(name, NewPasswordText);
+        var profile = ProfileRegistry.Create(name, NewPasswordText, firstName, lastName, email);
         ActiveProfile.SetActiveAndRestart(profile);
+    }
+
+    private static bool IsPlausibleEmail(string email)
+    {
+        var at = email.IndexOf('@');
+        return at > 0 && email.IndexOf('.', at) > at + 1 && !email.EndsWith('.') && !email.Contains(' ');
     }
 }

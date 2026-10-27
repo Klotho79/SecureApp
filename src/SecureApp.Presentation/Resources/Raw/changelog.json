@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.1.2",
+    "code": 108,
+    "date": "27. 10. 2026",
+    "items": [
+      "Widget: nová stránka Měsíční kalendář s čísly dnů — služba červeně, dovolená zeleně, služební cesta žlutě, víkendy šedě, svátky fialově. Pořadí přepínače: Kalendář → Rozpis → Služby.",
+      "Pozice a statistika obsazení: když chybí přihlašovací údaje do Opicentra, appka otevře Nastavení → Systém → Opicentrum s hláškou a kurzorem v poli jména.",
+      "Redakce je přehledné menu tlačítek; každá položka otevírá vlastní okno. Na telefonu a tabletu má Redakci jen Admin.",
+      "PC: registrace při přihlášení (jméno, příjmení, e-mail) a nové okno Rozpracované dokumenty s náhledem pro Admina a Moderátora.",
+      "Jeden člověk = jeden e-mail: zařízení se stejným e-mailem sdílejí roli, schvalovatele dokumentů a PICC (Admin se nepřebírá automaticky)."
+    ]
+  },
+  {
     "version": "0.1.1",
     "code": 107,
     "date": "25. 10. 2026",

@@ -190,6 +190,12 @@ public sealed record LibraryDocumentDto(
     Guid CreatedByDeviceId, Guid? SubmittedByDeviceId, DateTimeOffset? SubmittedAtUtc,
     DateTimeOffset CreatedAtUtc, DateTimeOffset UpdatedAtUtc);
 
+/// <summary>The e-mail a device reports for its person — see <c>POST /me/email</c>.</summary>
+public sealed record SetDeviceEmailRequest(string Email);
+
+/// <summary>A document still being written or waiting for review, with its author's name — the Admin/Modifier overview "Rozpracované dokumenty" (2026-10-26).</summary>
+public sealed record LibraryDocumentInProgressDto(LibraryDocumentDto Document, string AuthorName);
+
 /// <summary>One content revision of a <see cref="LibraryDocumentDto"/>.</summary>
 public sealed record LibraryDocumentVersionDto(Guid Id, Guid LibraryDocumentId, int VersionNumber, Guid LibraryFileId, Guid AuthorDeviceId, DateTimeOffset CreatedAtUtc, string? ChangeNote);
 

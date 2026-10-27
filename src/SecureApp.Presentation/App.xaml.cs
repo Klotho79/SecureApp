@@ -431,12 +431,73 @@ public partial class App : Application
 		}
 	}
 
+	private static bool _profileSeeded;
+
+	/// <summary>
+	/// Windows profile registration (2026-10-26): the Jméno/Příjmení/E-mail typed when the profile was created are
+	/// copied once into this profile's own User — only into fields that are still empty, so anything the user has
+	/// since edited in Nastavení → Účet is never overwritten. No-op for profiles without registration data.
+	/// </summary>
+	private static async Task SeedProfileFromRegistrationAsync(IServiceProvider services)
+	{
+		if (_profileSeeded) return;
+		if (Profiles.ActiveProfile.Current is not { } profile
+			|| (string.IsNullOrWhiteSpace(profile.Email) && string.IsNullOrWhiteSpace(profile.FirstName)))
+		{
+			_profileSeeded = true;
+			return;
+		}
+
+		using var scope = services.CreateScope();
+		var currentUser = scope.ServiceProvider.GetRequiredService<ICurrentUserService>();
+		await currentUser.InitializeAsync();
+		var user = currentUser.Current;
+		await currentUser.UpdateProfileAsync(
+			string.IsNullOrWhiteSpace(user.FirstName) ? profile.FirstName : null,
+			string.IsNullOrWhiteSpace(user.LastName) ? profile.LastName : null,
+			null,
+			string.IsNullOrWhiteSpace(user.Email) ? profile.Email : null);
+		_profileSeeded = true;
+	}
+
+	private const string PublishedEmailPreferenceKey = "published_person_email";
+
+	/// <summary>
+	/// One person, several devices (2026-10-26): reports this device's e-mail (Nastavení → Účet / the PC registration) to
+	/// the relay, which links every device with the same e-mail and lets a new one start with the person's role. Sent once
+	/// per e-mail value; a failure just means the next tick tries again. Per profile on a shared PC.
+	/// </summary>
+	private static async Task PublishOwnEmailAsync(IServiceProvider services)
+	{
+		try
+		{
+			using var scope = services.CreateScope();
+			var currentUser = scope.ServiceProvider.GetRequiredService<ICurrentUserService>();
+			await currentUser.InitializeAsync();
+			var email = currentUser.Current.Email?.Trim();
+			if (string.IsNullOrEmpty(email)) return;
+
+			var key = Profiles.ActiveProfile.PrefKey(PublishedEmailPreferenceKey);
+			if (string.Equals(Microsoft.Maui.Storage.Preferences.Default.Get(key, string.Empty), email, StringComparison.OrdinalIgnoreCase)) return;
+
+			var policyService = scope.ServiceProvider.GetService<IDevicePolicyService>();
+			if (policyService is not null && await policyService.PublishMyEmailAsync(email))
+				Microsoft.Maui.Storage.Preferences.Default.Set(key, email);
+		}
+		catch (Exception ex)
+		{
+			SecureApp.Presentation.Infrastructure.AppLog.Warning(nameof(App), "publishing the person e-mail failed", ex);
+		}
+	}
+
 	private static int _backgroundJobsRunning;
 
 	private static async Task RunBackgroundJobsAsync(IServiceProvider services)
 	{
 		try
 		{
+			await SeedProfileFromRegistrationAsync(services);
+			await PublishOwnEmailAsync(services);
 			await RunBackgroundOpicentrumSyncAsync(services);
 			await RunBackgroundOpicentrumRosterBoardPublishAsync(services);
 			await RunBackgroundOpicentrumVolnoBoardPublishAsync(services);
@@ -943,6 +1004,12 @@ public partial class App : Application
 				AppShell.NotificationsTabVisibilityPreferenceKey,
 				AppShell.LogbookVisibilityPreferenceKey,
 			};
+			// Redakce on a phone/tablet is for the Admin only (2026-10-26, user: "na mobilu kromě admina nikdo redakci
+			// nemá") — hidden for everyone else there, whatever their role elsewhere. The device's own show/hide
+			// preference is only touched while this rule applies (and given back once it stops), so it never
+			// overrides a choice made in Nastavení on a PC or by an admin.
+			var effectiveRole = policy.Role ?? services.GetService<ICurrentUserService>()?.Current.Role;
+			var redakceBlockedHere = DeviceInfo.Idiom != DeviceIdiom.Desktop && effectiveRole != Role.Admin;
 			MainThread.BeginInvokeOnMainThread(() =>
 			{
 				foreach (var key in hideable)
@@ -950,6 +1017,20 @@ public partial class App : Application
 					var visible = !policy.HiddenTabs.Contains(key);
 					Microsoft.Maui.Storage.Preferences.Default.Set(key, visible);
 					(Shell.Current as AppShell)?.ApplyTabVisibility(key, visible);
+				}
+
+				var prefs = Microsoft.Maui.Storage.Preferences.Default;
+				var forcedKey = Profiles.ActiveProfile.PrefKey("redakce_forced_hidden");
+				var forcedBefore = prefs.Get(forcedKey, false);
+				if (redakceBlockedHere)
+				{
+					prefs.Set(forcedKey, true);
+					(Shell.Current as AppShell)?.ApplyTabVisibility(AppShell.RedakceTabVisibilityPreferenceKey, false);
+				}
+				else if (forcedBefore)
+				{
+					prefs.Set(forcedKey, false);
+					(Shell.Current as AppShell)?.ApplyTabVisibility(AppShell.RedakceTabVisibilityPreferenceKey, true);
 				}
 			});
 		}

@@ -410,7 +410,7 @@
 
                         <Label Text="✓ Přihlašovací údaje jsou nastavené." FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding HasOpicentrumCredentials}" />
 
-                        <Entry Text="{Binding OpicentrumUsernameInput}" Placeholder="Uživatelské jméno" />
+                        <Entry x:Name="OpicentrumUsernameEntry" Text="{Binding OpicentrumUsernameInput}" Placeholder="Uživatelské jméno" />
                         <Entry Text="{Binding OpicentrumPasswordInput}" Placeholder="Heslo" IsPassword="True" />
                         <Button Text="Uložit přihlašovací údaje" Command="{Binding SaveOpicentrumCredentialsCommand}" IsEnabled="{Binding CanSaveOpicentrumCredentials}" />
                         <Button Text="Odstranit přihlašovací údaje" Style="{StaticResource SecondaryButton}" Command="{Binding ClearOpicentrumCredentialsCommand}" IsVisible="{Binding HasOpicentrumCredentials}" />

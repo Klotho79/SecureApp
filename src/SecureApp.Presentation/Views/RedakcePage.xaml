@@ -4,195 +4,50 @@
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
-    xmlns:controls="clr-namespace:SecureApp.Presentation.Controls"
     x:DataType="vm:RedakceViewModel"
     Title="Redakce"
     Shell.NavBarIsVisible="False">
 
+    <ContentPage.Resources>
+        <Style x:Key="RedakceMenuButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+            <Setter Property="HorizontalOptions" Value="Fill" />
+            <Setter Property="MinimumHeightRequest" Value="44" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+    </ContentPage.Resources>
+
+    <!-- 2026-10-26 (user: "v redakci budou jen tlačítka otevírající okna… tlačítko s příslušným názvem je
+         přehlednější"): one button per action, each gated by the same permission its card always had; the
+         former inline cards open in RedakceSectionPage, the rest go straight to their existing pages. -->
     <ScrollView>
-        <VerticalStackLayout Padding="16" Spacing="12">
+        <VerticalStackLayout Padding="16" Spacing="10">
 
             <Label Text="Redakce" Style="{StaticResource PageTitle}" />
-            <Label Text="Všechny úpravy, zprávy a správa na jednom místě — podle vašich oprávnění." FontSize="9.5" TextColor="Gray" />
 
             <Label Text="Nemáte žádná oprávnění k úpravám." FontSize="9.5" TextColor="Gray" IsVisible="{Binding HasNoEditorialAccess}" HorizontalOptions="Center" Margin="0,20" />
 
-            <!-- Zpráva na nástěnku (Admin/Modifier) — přesunuto z Nastavení/Uživatel/Nástěnka. -->
-            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanPostToBoard}">
-                <VerticalStackLayout Spacing="8">
-                    <Label Text="Zpráva na nástěnku" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Label Text="Zpráva se objeví všem členům na jejich Nástěnce. Vyžaduje nastavený klíč sdílené knihovny." FontSize="9.5" TextColor="Gray" />
-                    <Editor Text="{Binding BoardMessageText}" Placeholder="Co chcete oznámit…" AutoSize="TextChanges" HeightRequest="80" />
-                    <Button Text="Odeslat na nástěnku" Command="{Binding PostToBoardCommand}" />
-                    <Label Text="{Binding BoardStatusText}" IsVisible="{Binding HasBoardStatus}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" LineBreakMode="WordWrap" />
-                </VerticalStackLayout>
-            </Border>
-
-            <!-- Možné stavy sálů (Admin/Modifier) — přesunuto z Nástěnky. -->
-            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanManageRoomStatusOptions}">
-                <VerticalStackLayout Spacing="8">
-                    <Label Text="Možné stavy sálů" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Label Text="Seznam stavů, které si může vybrat kdokoliv v Picker na řádku svého sálu na Nástěnce." FontSize="9.5" TextColor="Gray" />
-                    <VerticalStackLayout Spacing="4" BindableLayout.ItemsSource="{Binding RoomStatusOptions}">
-                        <BindableLayout.ItemTemplate>
-                            <DataTemplate x:DataType="x:String">
-                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                                    <Label Grid.Column="0" Text="{Binding .}" FontSize="10.5" VerticalOptions="Center" />
-                                    <Button Grid.Column="1" Text="✕" Style="{StaticResource SecondaryButton}" WidthRequest="36" Padding="0"
-                                            Command="{Binding Source={RelativeSource AncestorType={x:Type vm:RedakceViewModel}}, Path=RemoveStatusOptionCommand}"
-                                            CommandParameter="{Binding .}" />
-                                </Grid>
-                            </DataTemplate>
-                        </BindableLayout.ItemTemplate>
-                    </VerticalStackLayout>
-                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                        <Entry Grid.Column="0" Placeholder="Nový stav…" Text="{Binding NewStatusOptionText}" FontSize="10.5" />
-                        <Button Grid.Column="1" Text="Přidat" Style="{StaticResource SecondaryButton}" Command="{Binding AddStatusOptionCommand}" />
-                    </Grid>
-                </VerticalStackLayout>
-            </Border>
-
-            <!-- Možné poznámky k sálům (Admin/Modifier, 2026-10-14) — druhý, nezávislý Picker na řádku sálu na Stavu sálů. -->
-            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanManageRoomStatusOptions}">
-                <VerticalStackLayout Spacing="8">
-                    <Label Text="Možné poznámky k sálům" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Label Text="Např. „poslední uzavření sálu“, „poslední výkon“, „sál pokračuje do služby“ — volitelný druhý Picker na řádku sálu na Stavu sálů." FontSize="9.5" TextColor="Gray" />
-                    <VerticalStackLayout Spacing="4" BindableLayout.ItemsSource="{Binding RoomStatusNoteOptions}">
-                        <BindableLayout.ItemTemplate>
-                            <DataTemplate x:DataType="x:String">
-                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                                    <Label Grid.Column="0" Text="{Binding .}" FontSize="10.5" VerticalOptions="Center" />
-                                    <Button Grid.Column="1" Text="✕" Style="{StaticResource SecondaryButton}" WidthRequest="36" Padding="0"
-                                            Command="{Binding Source={RelativeSource AncestorType={x:Type vm:RedakceViewModel}}, Path=RemoveNoteOptionCommand}"
-                                            CommandParameter="{Binding .}" />
-                                </Grid>
-                            </DataTemplate>
-                        </BindableLayout.ItemTemplate>
-                    </VerticalStackLayout>
-                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                        <Entry Grid.Column="0" Placeholder="Nová poznámka…" Text="{Binding NewNoteOptionText}" FontSize="10.5" />
-                        <Button Grid.Column="1" Text="Přidat" Style="{StaticResource SecondaryButton}" Command="{Binding AddNoteOptionCommand}" />
-                    </Grid>
-                </VerticalStackLayout>
-            </Border>
-
-            <!-- Logbook (Modifier/Admin) — odkaz na stávající správu check-listů a katalogu výkonů. -->
-            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanManageLogbook}">
-                <VerticalStackLayout Spacing="8">
-                    <Label Text="Logbook" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Label Text="Správa check-listů a katalogu výkonů Logbooku." FontSize="9.5" TextColor="Gray" />
-                    <Button Text="⚙ Správa Logbooku" Style="{StaticResource SecondaryButton}" Command="{Binding OpenLogbookManageCommand}" HorizontalOptions="Start" />
-                </VerticalStackLayout>
-            </Border>
-
-            <!-- Výukové materiály (CMS, jen PC) — tvorba nového dokumentu; existující se upravují v prohlížeči Soubory přes „Upravit“. -->
-            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanAuthorCms}">
-                <VerticalStackLayout Spacing="8">
-                    <Label Text="Výukové materiály" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Label Text="Vytvořte nový dokument s textem, obrázky a videem. Čtenáři ho uvidí na PC i v mobilu. Existující dokument upravíte v Souborech tlačítkem „Upravit“." FontSize="9.5" TextColor="Gray" LineBreakMode="WordWrap" />
-                    <Button Text="📝 Nový dokument" Command="{Binding OpenCmsEditorCommand}" HorizontalOptions="Start" />
-                </VerticalStackLayout>
-            </Border>
-
-            <!-- Moje zadání (kdokoli s přiděleným dokumentem, jen PC) — právo trvá do schválení dokumentu. -->
-            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding HasMyAssignments}">
-                <VerticalStackLayout Spacing="8">
-                    <Label Text="Moje zadání" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Label Text="Dokumenty, které vám byly přiděleny k vypracování. Právo upravovat trvá do schválení dokumentu." FontSize="9.5" TextColor="Gray" LineBreakMode="WordWrap" />
-                    <VerticalStackLayout Spacing="6" BindableLayout.ItemsSource="{Binding MyAssignments}">
-                        <BindableLayout.ItemTemplate>
-                            <DataTemplate x:DataType="vm:CmsAssignmentItem">
-                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                                    <VerticalStackLayout Grid.Column="0" Spacing="0">
-                                        <Label Text="{Binding Title}" FontSize="10.5" FontAttributes="Bold" />
-                                        <Label Text="{Binding StatusText}" FontSize="9.5" TextColor="Gray" />
-                                    </VerticalStackLayout>
-                                    <Button Grid.Column="1" Text="✏ Vypracovat" Style="{StaticResource SecondaryButton}"
-                                            Command="{Binding Source={RelativeSource AncestorType={x:Type vm:RedakceViewModel}}, Path=OpenMyAssignmentCommand}"
-                                            CommandParameter="{Binding .}" />
-                                </Grid>
-                            </DataTemplate>
-                        </BindableLayout.ItemTemplate>
-                    </VerticalStackLayout>
-                </VerticalStackLayout>
-            </Border>
-
-            <!-- Zadání dokumentů (Admin/Modifier, jen PC) — přidělení a odebrání editora. -->
-            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanAssignCms}">
-                <VerticalStackLayout Spacing="8">
-                    <Label Text="Zadání dokumentů" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Label Text="Zadejte název dokumentu a vyberte člena, který ho vypracuje. Editor smí upravovat jen tento dokument, a to do jeho schválení." FontSize="9.5" TextColor="Gray" LineBreakMode="WordWrap" />
-                    <Entry Placeholder="Název dokumentu…" Text="{Binding NewAssignmentTitle}" FontSize="10.5" />
-                    <Picker Title="Editor…" ItemsSource="{Binding AssignableMembers}" ItemDisplayBinding="{Binding Label}" SelectedItem="{Binding SelectedAssignee}" FontSize="10.5" />
-                    <Button Text="Přidělit" Command="{Binding AssignCmsEditorCommand}" HorizontalOptions="Start" />
-                    <Label Text="{Binding AssignmentStatusText}" IsVisible="{Binding HasAssignmentStatus}" FontSize="9.5" LineBreakMode="WordWrap" />
-                    <VerticalStackLayout Spacing="4" BindableLayout.ItemsSource="{Binding AllAssignments}">
-                        <BindableLayout.ItemTemplate>
-                            <DataTemplate x:DataType="vm:CmsAssignmentItem">
-                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                                    <VerticalStackLayout Grid.Column="0" Spacing="0">
-                                        <Label Text="{Binding Title}" FontSize="10.5" FontAttributes="Bold" />
-                                        <Label FontSize="9.5" TextColor="Gray" Text="{Binding EditorName, StringFormat='Editor: {0}'}" />
-                                        <Label Text="{Binding StatusText}" FontSize="9.5" TextColor="Gray" />
-                                    </VerticalStackLayout>
-                                    <Button Grid.Column="1" Text="Odebrat" Style="{StaticResource SecondaryButton}"
-                                            Command="{Binding Source={RelativeSource AncestorType={x:Type vm:RedakceViewModel}}, Path=RevokeCmsEditorCommand}"
-                                            CommandParameter="{Binding .}" />
-                                </Grid>
-                            </DataTemplate>
-                        </BindableLayout.ItemTemplate>
-                    </VerticalStackLayout>
-                </VerticalStackLayout>
-            </Border>
-
-            <!-- Poznámky ke schválení (fáze 5, jen Admin/Modifier) — fronta přes všechny dokumenty, hromadné Ponechat/Odmítnout, Začlenit otevře editor. -->
-            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanAssignCms}">
-                <VerticalStackLayout Spacing="8">
-                    <Label Text="Poznámky ke schválení" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Label Text="Návrhy čtenářů na začlenění poznámky do výukového dokumentu, napříč všemi dokumenty." FontSize="9.5" TextColor="Gray" LineBreakMode="WordWrap" />
-                    <Button Text="📋 Otevřít frontu" Style="{StaticResource SecondaryButton}" Command="{Binding OpenCmsAnnotationQueueCommand}" HorizontalOptions="Start" />
-                </VerticalStackLayout>
-            </Border>
-
-            <!-- Kategorie knihovny (Modifier/Admin) — přesunuto z Nastavení/Systém/Knihovna. -->
-            <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanManageLibrary}">
-                <VerticalStackLayout Spacing="8">
-                    <Label Text="Kategorie knihovny" Style="{StaticResource SectionHeader}" Margin="0" />
-                    <Button Text="✏ Spravovat obsah (nahrát, koncepty, schvalování)" Style="{StaticResource SecondaryButton}" Command="{Binding OpenLibraryManageCommand}" />
-                    <Label Text="Podkategorie se otevírají a procházejí v Knihovně — přidávání a mazání je tady." FontSize="9.5" TextColor="Gray" />
-
-                    <Picker ItemsSource="{Binding LibraryTopCategories}" SelectedItem="{Binding SelectedLibraryTopCategory}" Title="Kategorie" />
-
-                    <controls:DelayedActivityIndicator IsBusy="{Binding IsLoadingLibrarySubcategories}" HorizontalOptions="Center" />
-                    <Label Text="Tato kategorie zatím nemá žádné podkategorie." FontSize="9.5" TextColor="Gray" IsVisible="{Binding HasNoLibrarySubcategories}" />
-
-                    <CollectionView ItemsSource="{Binding LibrarySubcategories}" IsVisible="{Binding HasLibrarySubcategories}">
-                        <CollectionView.ItemsLayout>
-                            <LinearItemsLayout Orientation="Vertical" ItemSpacing="6" />
-                        </CollectionView.ItemsLayout>
-                        <CollectionView.ItemTemplate>
-                            <DataTemplate x:DataType="vm:SubcategoryItem">
-                                <Border Style="{StaticResource CardBorder}" Margin="0" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
-                                    <Grid ColumnDefinitions="*,Auto">
-                                        <Label Grid.Column="0" Text="{Binding Name}" FontSize="10.5" VerticalOptions="Center" />
-                                        <Button Grid.Column="1" Text="🗑" BackgroundColor="Transparent" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" Padding="4,0"
-                                                IsVisible="{Binding CanDelete}"
-                                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:RedakceViewModel}}, Path=DeleteLibrarySubcategoryCommand}"
-                                                CommandParameter="{Binding .}" />
-                                    </Grid>
-                                </Border>
-                            </DataTemplate>
-                        </CollectionView.ItemTemplate>
-                    </CollectionView>
-
-                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                        <Entry Grid.Column="0" Text="{Binding NewLibrarySubcategoryNameText}" Placeholder="Název nové podkategorie" />
-                        <Button Grid.Column="1" Text="＋ Přidat" Style="{StaticResource SecondaryButton}" Command="{Binding AddLibrarySubcategoryCommand}" />
-                    </Grid>
-
-                    <Label Text="{Binding LibraryCategoriesStatusText}" FontSize="9.5" IsVisible="{Binding HasLibraryCategoriesStatus}" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" LineBreakMode="WordWrap" />
-                </VerticalStackLayout>
-            </Border>
+            <Button Text="📢 Zpráva na nástěnku" Style="{StaticResource RedakceMenuButton}" IsVisible="{Binding CanPostToBoard}"
+                    Command="{Binding OpenSectionCommand}" CommandParameter="board" />
+            <Button Text="🚦 Možné stavy sálů" Style="{StaticResource RedakceMenuButton}" IsVisible="{Binding CanManageRoomStatusOptions}"
+                    Command="{Binding OpenSectionCommand}" CommandParameter="roomstatus" />
+            <Button Text="🗒 Možné poznámky k sálům" Style="{StaticResource RedakceMenuButton}" IsVisible="{Binding CanManageRoomStatusOptions}"
+                    Command="{Binding OpenSectionCommand}" CommandParameter="roomnotes" />
+            <Button Text="📓 Správa Logbooku" Style="{StaticResource RedakceMenuButton}" IsVisible="{Binding CanManageLogbook}"
+                    Command="{Binding OpenLogbookManageCommand}" />
+            <Button Text="📝 Nový výukový dokument" Style="{StaticResource RedakceMenuButton}" IsVisible="{Binding CanAuthorCms}"
+                    Command="{Binding OpenCmsEditorCommand}" />
+            <Button Text="✏ Moje zadání" Style="{StaticResource RedakceMenuButton}" IsVisible="{Binding HasMyAssignments}"
+                    Command="{Binding OpenSectionCommand}" CommandParameter="myassignments" />
+            <Button Text="👥 Zadání dokumentů" Style="{StaticResource RedakceMenuButton}" IsVisible="{Binding CanAssignCms}"
+                    Command="{Binding OpenSectionCommand}" CommandParameter="cmsassign" />
+            <Button Text="🗃 Rozpracované dokumenty" Style="{StaticResource RedakceMenuButton}" IsVisible="{Binding CanSeeInProgressDocuments}"
+                    Command="{Binding OpenInProgressDocumentsCommand}" />
+            <Button Text="📋 Poznámky ke schválení" Style="{StaticResource RedakceMenuButton}" IsVisible="{Binding CanAssignCms}"
+                    Command="{Binding OpenCmsAnnotationQueueCommand}" />
+            <Button Text="📚 Obsah knihovny (nahrát, koncepty, schvalování)" Style="{StaticResource RedakceMenuButton}" IsVisible="{Binding CanManageLibrary}"
+                    Command="{Binding OpenLibraryManageCommand}" />
+            <Button Text="🗂 Kategorie knihovny" Style="{StaticResource RedakceMenuButton}" IsVisible="{Binding CanManageLibrary}"
+                    Command="{Binding OpenSectionCommand}" CommandParameter="library" />
 
         </VerticalStackLayout>
     </ScrollView>

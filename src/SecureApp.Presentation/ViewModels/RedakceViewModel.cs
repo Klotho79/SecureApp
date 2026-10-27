@@ -114,9 +114,19 @@ public sealed partial class RedakceViewModel : ObservableObject
         await _currentUserService.InitializeAsync();
         var role = _rolePreviewService.Resolve(_currentUserService.Current.Role);
 
+        // On a phone/tablet only the Admin has Redakce (2026-10-26) — the tab is hidden by App.ApplyDevicePolicyAsync;
+        // this also keeps a page reached any other way (widget, old shortcut) empty.
+        if (DeviceInfo.Idiom != DeviceIdiom.Desktop && role != Role.Admin)
+        {
+            CanPostToBoard = CanSeeInProgressDocuments = CanManageRoomStatusOptions = CanManageLogbook = CanManageLibrary = CanAuthorCms = false;
+            HasNoEditorialAccess = true;
+            return;
+        }
+
         // Same role gate POST /board already enforces server-side (see HttpCommunityBoardService's
         // own remarks) — mirrored here, same as it was in SettingsViewModel before this moved.
         CanPostToBoard = role is Role.Admin or Role.Modifier;
+        CanSeeInProgressDocuments = role is Role.Admin or Role.Modifier;
 
         // Same role gate POST /room-status/options already enforces server-side (see
         // IRoomStatusService's own remarks).
@@ -160,7 +170,7 @@ public sealed partial class RedakceViewModel : ObservableObject
 
         await LoadCmsAssignmentsAsync(role);
 
-        HasNoEditorialAccess = !CanPostToBoard && !CanManageRoomStatusOptions && !CanManageLogbook && !CanManageLibrary && !CanAuthorCms && !HasMyAssignments;
+        HasNoEditorialAccess = !CanPostToBoard && !CanSeeInProgressDocuments &&!CanManageRoomStatusOptions && !CanManageLogbook && !CanManageLibrary && !CanAuthorCms && !HasMyAssignments;
     }
 
     [RelayCommand]

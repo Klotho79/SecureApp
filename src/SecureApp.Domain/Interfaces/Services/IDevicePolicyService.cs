@@ -10,4 +10,11 @@ namespace SecureApp.Domain.Interfaces.Services;
 public interface IDevicePolicyService
 {
     Task<DevicePolicy> GetMyPolicyAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Tells the relay which e-mail this device's person goes by (2026-10-26): devices sharing an e-mail are one person,
+    /// and a fresh device of a known person starts with that person's role. Returns false when the device is not
+    /// registered yet (nothing sent); throws on a relay/network failure — callers retry on their next tick.
+    /// </summary>
+    Task<bool> PublishMyEmailAsync(string email, CancellationToken ct = default);
 }

@@ -330,6 +330,9 @@ public static class MauiProgram
 		// Redakce (2026-10-13) — consolidated edit/post tab, its own standalone tab like Nástěnka above.
 		builder.Services.AddTransient<RedakceViewModel>();
 		builder.Services.AddTransient<RedakcePage>();
+		builder.Services.AddTransient<RedakceSectionPage>();
+		builder.Services.AddTransient<InProgressDocumentsViewModel>();
+		builder.Services.AddTransient<InProgressDocumentsPage>();
 
 		// Role preview (2026-10-13, user's own ask: "v nastaveni admina dej rolmenu zobrazeni co vidi
 		// jednotlive role") — one shared in-memory override, see RolePreviewService's own remarks.

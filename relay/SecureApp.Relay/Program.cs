@@ -1036,6 +1036,22 @@ app.MapGet("/library-documents/pending", (HttpRequest request, RelayDatabase db)
     return Results.Ok(db.SearchPendingLibraryDocuments().Select(ToLibraryDocumentDto).ToList());
 });
 
+// Overview of everything still being written (2026-10-26, "seznam a náhled tvořených dokumentů"): Admin/Modifier
+// or a document reviewer. Reading is safe — the content itself stays an encrypted library file, opened client-side.
+app.MapGet("/library-documents/in-progress", (HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+
+    var policy = db.GetDevicePolicy(deviceId);
+    if (policy is not { } p || (!p.DocumentReviewer && p.Role is not (0 or 1)))
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+
+    return Results.Ok(db.SearchInProgressLibraryDocuments()
+        .Select(d => new LibraryDocumentInProgressDto(ToLibraryDocumentDto(d), db.GetDeviceDisplayName(d.CreatedByDeviceId)))
+        .ToList());
+});
+
 app.MapGet("/library-documents/{id:guid}", (Guid id, HttpRequest request, RelayDatabase db) =>
 {
     if (!TryGetDeviceAuth(request, db, out _))
@@ -1139,6 +1155,23 @@ app.MapGet("/me/policy", (HttpRequest request, RelayDatabase db) =>
     return Results.Ok(new DevicePolicyResponse(policy?.Role, policy?.HiddenTabs ?? Array.Empty<string>(), policy?.DocumentReviewer ?? false, policy?.PiccTeam ?? false));
 });
 
+// The e-mail this device's person goes by (2026-10-26): devices with the same e-mail are one person — a fresh device
+// inherits the person's policy (never Admin, see InheritPolicyFromSibling) and an admin's later policy change reaches all.
+app.MapPost("/me/email", (HttpRequest request, SetDeviceEmailRequest body, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+
+    var email = body.Email?.Trim() ?? string.Empty;
+    var at = email.IndexOf('@');
+    if (at <= 0 || email.IndexOf('.', at) <= at + 1 || email.Length > 200 || email.Contains(' '))
+        return Results.BadRequest("A valid e-mail is required.");
+
+    db.SetDeviceEmail(deviceId, email);
+    db.InheritPolicyFromSibling(deviceId);
+    return Results.NoContent();
+});
+
 app.MapGet("/admin/users", (HttpRequest request, RelayDatabase db) =>
 {
     if (!IsAdminAuthorizedOrAdminDevice(request, adminSecret, db))
@@ -1156,6 +1189,7 @@ app.MapPost("/admin/users/{id:guid}/policy", (HttpRequest request, Guid id, SetD
         return Results.Unauthorized();
 
     db.SetDevicePolicy(id, body.Role, body.HiddenTabs ?? new List<string>(), body.DocumentReviewer, body.PiccTeam);
+    db.ApplyPolicyToSiblings(id, body.Role, body.DocumentReviewer, body.PiccTeam);
     return Results.NoContent();
 });
 

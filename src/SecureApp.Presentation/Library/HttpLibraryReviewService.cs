@@ -104,6 +104,22 @@ public sealed class HttpLibraryReviewService : ILibraryReviewService
         return dtos.Select(ToSummary).ToList();
     }
 
+    public async Task<IReadOnlyList<InProgressDocument>> GetInProgressAsync(CancellationToken ct = default)
+    {
+        var endpoint = await GetHttpEndpointAsync(ct);
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(endpoint, "library-documents/in-progress"));
+        await AddDeviceAuthAsync(request, ct);
+        using var response = await _httpClient.SendAsync(request, ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+            return []; // not Admin/Modifier/reviewer — an empty overview, same tolerance as the review queue
+        response.EnsureSuccessStatusCode();
+
+        var dtos = await response.Content.ReadFromJsonAsync<List<InProgressDto>>(HttpJsonOptions, ct) ?? [];
+        return dtos.Select(d => new InProgressDocument(ToSummary(d.Document), d.AuthorName)).ToList();
+    }
+
+    private sealed record InProgressDto(LibraryDocumentDto Document, string AuthorName);
+
     public async Task<LibraryDocumentDetail> GetDetailAsync(Guid documentId, CancellationToken ct = default)
     {
         var endpoint = await GetHttpEndpointAsync(ct);

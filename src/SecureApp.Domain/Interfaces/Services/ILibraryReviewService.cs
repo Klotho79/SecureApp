@@ -27,6 +27,9 @@ public interface ILibraryReviewService
     /// <summary>Every document currently awaiting review — only meaningful for a device with review capability; the relay itself also enforces this.</summary>
     Task<IReadOnlyList<LibraryDocumentSummary>> GetPendingReviewAsync(CancellationToken ct = default);
 
+    /// <summary>Every document still being written or waiting for review, from every author, with the author's name — the Admin/Modifier overview (2026-10-26); empty for anyone else.</summary>
+    Task<IReadOnlyList<InProgressDocument>> GetInProgressAsync(CancellationToken ct = default);
+
     /// <summary>Full detail (versions + review history) for one document.</summary>
     Task<LibraryDocumentDetail> GetDetailAsync(Guid documentId, CancellationToken ct = default);
 

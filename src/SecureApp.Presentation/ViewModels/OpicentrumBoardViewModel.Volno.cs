@@ -104,8 +104,14 @@ public sealed partial class OpicentrumBoardViewModel
     [RelayCommand]
     private async Task RefreshVolnoAsync()
     {
-        IsVolnoRefreshing = true;
         VolnoErrorText = null;
+        if (!await OpicentrumCredentialsRequest.EnsureAsync(_opicentrumSyncService))
+        {
+            VolnoErrorText = OpicentrumCredentialsRequest.MissingText;
+            return;
+        }
+
+        IsVolnoRefreshing = true;
         try
         {
             var month = DateOnly.FromDateTime(DateTime.Today);

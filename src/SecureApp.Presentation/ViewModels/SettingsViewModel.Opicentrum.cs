@@ -45,8 +45,26 @@ public sealed partial class SettingsViewModel
         HasOpicentrumCredentials = await _opicentrumSyncService.HasCredentialsAsync();
         OpicentrumUsernameInput = string.Empty;
         OpicentrumPasswordInput = string.Empty;
-        OpicentrumStatusText = null;
+        OpicentrumStatusText = _opicentrumCredentialsRequested && !HasOpicentrumCredentials ? Workplace.OpicentrumCredentialsRequest.MissingText : null;
+        _opicentrumCredentialsRequested = false;
         CanSaveOpicentrumCredentials = true;
+    }
+
+    private bool _opicentrumCredentialsRequested;
+
+    /// <summary>
+    /// Called by the page on appearing, before Load (2026-10-26): when an Opicentrum action sent the user here for
+    /// missing credentials (<see cref="Workplace.OpicentrumCredentialsRequest"/>), switch to Systém → Opicentrum at
+    /// once and keep the message through the load. True = the page should put the cursor in the username field.
+    /// </summary>
+    public bool ApplyPendingOpicentrumCredentialsRequest()
+    {
+        if (!Workplace.OpicentrumCredentialsRequest.TryConsume()) return false;
+        _opicentrumCredentialsRequested = true;
+        SettingsTab = 1;
+        SystemSubTab = 2;
+        OpicentrumStatusText = Workplace.OpicentrumCredentialsRequest.MissingText;
+        return true;
     }
 
     [RelayCommand]

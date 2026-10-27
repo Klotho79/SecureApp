@@ -81,6 +81,10 @@
                 android:textSize="12sp" />
         </LinearLayout>
 
+        <!-- Month calendar page (2026-10-27, user's ask) — hidden until the Kalendář → Rozpis → Služby switch
+             above lands on it; see widget_calendar.xml's own remarks. -->
+        <include layout="@layout/widget_calendar" />
+
         <!-- Today's full duty list, one row per person, "Pozice: Jméno" + a tappable phone icon
              (2026-09-29, user's ask) when that person resolves to a dialable number in the shared
              contact directory — shown instead of the day rows. RemoteViews has no dynamic-length list

@@ -72,6 +72,9 @@ public sealed partial class OpicentrumBoardViewModel : ObservableObject
 
     partial void OnIsAccessDeniedChanged(bool value) => OnPropertyChanged(nameof(IsAccessGranted));
 
+    /// <summary>The Opicentrum login was already opened automatically during this page visit (see ScrapePositionsWeekAsync).</summary>
+    private bool _credentialsPrompted;
+
     /// <summary>The "Profily" button (position suggestions, POZICE_NAVRH_PLAN.md) — Admin on the PC only.</summary>
     [ObservableProperty]
     public partial bool CanEditStaffing { get; set; }

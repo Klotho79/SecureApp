@@ -19,6 +19,10 @@ public partial class SettingsPage : ContentPage
     protected override void OnAppearing()
     {
         base.OnAppearing();
+        // Sent here by an Opicentrum action for missing credentials (OpicentrumCredentialsRequest): the section is
+        // switched to before the load, the cursor goes to the username once the section has been laid out.
+        if (_viewModel.ApplyPendingOpicentrumCredentialsRequest())
+            Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(400), () => OpicentrumUsernameEntry.Focus());
         _viewModel.LoadCommand.Execute(null);
         _viewModel.StartObservingConnection();
         // Coming back from Android's battery setting resumes the window without re-firing OnAppearing.

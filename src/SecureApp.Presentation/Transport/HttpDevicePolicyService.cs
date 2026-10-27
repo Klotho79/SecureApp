@@ -51,6 +51,28 @@ public sealed class HttpDevicePolicyService : IDevicePolicyService
         return new DevicePolicy(role, dto.HiddenTabs ?? [], dto.DocumentReviewer, dto.PiccTeam);
     }
 
+    public async Task<bool> PublishMyEmailAsync(string email, CancellationToken ct = default)
+    {
+        var configuration = await _transportSettingsRepository.GetAsync(ct);
+        var deviceId = configuration?.AssignedDeviceId;
+        var wsEndpoint = configuration?.EndpointUri;
+        if (deviceId is null || wsEndpoint is null) return false;
+
+        var secretBytes = await _vault.RetrieveSecretAsync(RelayDeviceVaultKeys.DeviceSecret, ct);
+        if (secretBytes is null) return false;
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(ToHttpUri(wsEndpoint), "me/email"))
+        {
+            Content = JsonContent.Create(new { Email = email }, options: HttpJsonOptions),
+        };
+        request.Headers.Add("X-Device-Id", deviceId.Value.ToString());
+        request.Headers.Add("X-Device-Secret", Encoding.UTF8.GetString(secretBytes));
+
+        using var response = await _httpClient.SendAsync(request, ct);
+        response.EnsureSuccessStatusCode();
+        return true;
+    }
+
     private static Uri ToHttpUri(Uri wsEndpoint) => RelayHttp.ToHttpUri(wsEndpoint);
 
     private sealed record PolicyDto(int? Role, List<string>? HiddenTabs, bool DocumentReviewer = false, bool PiccTeam = false);

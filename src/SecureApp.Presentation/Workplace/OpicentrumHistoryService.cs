@@ -97,6 +97,14 @@ public sealed class OpicentrumHistoryService(IOpicentrumSyncService opicentrumSy
         var data = Data;
         try
         {
+            if (!await opicentrumSyncService.HasCredentialsAsync())
+            {
+                ErrorText = OpicentrumCredentialsRequest.MissingText;
+                _isRunning = false;
+                Report(null);
+                return;
+            }
+
             var weeks = NeededWeeks(today).Where(w => IsDue(data.Weeks.GetValueOrDefault(WeekKey(w))?.UpdatedAtUtc, w.AddDays(6), today)).ToList();
             var months = NeededMonths(today).ToList();
             var volno = months.Where(m => IsDue(data.VolnoMonths.GetValueOrDefault(MonthKey(m))?.UpdatedAtUtc, MonthEnd(m), today)).ToList();

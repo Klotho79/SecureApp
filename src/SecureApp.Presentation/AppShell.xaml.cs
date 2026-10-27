@@ -90,6 +90,12 @@ public partial class AppShell : Shell
 		// RedakcePage, Admin/Modifier only (RedakceViewModel.CanAssignCms gates the button).
 		Routing.RegisterRoute(nameof(CmsAnnotationQueuePage), typeof(CmsAnnotationQueuePage));
 
+		// One Redakce action in its own window (2026-10-26) — Redakce itself is a menu of buttons.
+		Routing.RegisterRoute(nameof(RedakceSectionPage), typeof(RedakceSectionPage));
+
+		// Admin/Modifier overview of unfinished and waiting documents (2026-10-26), from Redakce.
+		Routing.RegisterRoute(nameof(InProgressDocumentsPage), typeof(InProgressDocumentsPage));
+
 		// Upload/drafts/review-queue entry (2026-10-02) — reached via the "✏ Spravovat" button on
 		// LibraryPage (LibraryViewModel.CanManageLibrary gates the button).
 		Routing.RegisterRoute(nameof(LibraryManagePage), typeof(LibraryManagePage));

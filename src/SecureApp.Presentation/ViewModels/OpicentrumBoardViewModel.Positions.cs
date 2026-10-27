@@ -234,6 +234,14 @@ public sealed partial class OpicentrumBoardViewModel
     /// </summary>
     private async Task ScrapePositionsWeekAsync(DateOnly week)
     {
+        // No credentials: Nastavení → Opicentrum opens (once per page visit for this automatic path — see OpicentrumCredentialsRequest).
+        if (!await OpicentrumCredentialsRequest.EnsureAsync(_opicentrumSyncService, _credentialsPrompted))
+        {
+            _credentialsPrompted = true;
+            PositionsErrorText = OpicentrumCredentialsRequest.MissingText;
+            return;
+        }
+
         _positionsFetches++;
         IsPositionsRefreshing = true;
         try
@@ -273,6 +281,7 @@ public sealed partial class OpicentrumBoardViewModel
     private async Task RefreshPositionsAsync()
     {
         PositionsErrorText = null;
+        _credentialsPrompted = false; // an explicit "Obnovit" always opens the credentials again
         try
         {
             await ScrapePositionsWeekAsync(_positionsWeek);

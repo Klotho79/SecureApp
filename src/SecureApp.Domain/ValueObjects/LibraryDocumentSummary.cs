@@ -10,6 +10,9 @@ namespace SecureApp.Domain.ValueObjects;
 /// <c>library_files</c> row with no matching row here simply has no approval history — it is still an
 /// ordinary published file, found the same way it always was via <c>GET /library/files</c>.
 /// </summary>
+/// <summary>An unpublished document with its author's display name (the relay resolves it) — see <c>ILibraryReviewService.GetInProgressAsync</c>.</summary>
+public sealed record InProgressDocument(LibraryDocumentSummary Summary, string AuthorName);
+
 public sealed record LibraryDocumentSummary(
     Guid Id,
     string Title,
