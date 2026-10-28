@@ -47,6 +47,7 @@ namespace SecureApp.Presentation.Workplace;
 public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
 {
     private const string BaseUrl = "https://opicentrum.cz/ARO/";
+    private const string NurseBaseUrl = "https://opicentrum.cz/AROS/";
 
     /// <summary>
     /// .NET's default HttpClient User-Agent on Android is "Dalvik/2.1.0 (...)" — the site sniffs this
@@ -140,6 +141,36 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
         await _vault.RemoveSecretAsync(OpicentrumVaultKeys.Username, ct);
         await _vault.RemoveSecretAsync(OpicentrumVaultKeys.Password, ct);
     }
+
+    public async Task<bool> HasNurseCredentialsAsync(CancellationToken ct = default)
+        => await _vault.RetrieveSecretAsync(OpicentrumVaultKeys.NurseUsername, ct) is not null;
+
+    public async Task SetNurseCredentialsAsync(string username, string password, CancellationToken ct = default)
+    {
+        await _vault.StoreSecretAsync(OpicentrumVaultKeys.NurseUsername, Encoding.UTF8.GetBytes(username), ct);
+        await _vault.StoreSecretAsync(OpicentrumVaultKeys.NursePassword, Encoding.UTF8.GetBytes(password), ct);
+    }
+
+    public async Task ClearNurseCredentialsAsync(CancellationToken ct = default)
+    {
+        await _vault.RemoveSecretAsync(OpicentrumVaultKeys.NurseUsername, ct);
+        await _vault.RemoveSecretAsync(OpicentrumVaultKeys.NursePassword, ct);
+    }
+
+    /// <inheritdoc cref="IOpicentrumSyncService.FetchRosterGridAsync"/>
+    public Task<OpicentrumGridWeek> FetchRosterGridAsync(DateOnly weekOf, bool nurses, CancellationToken ct = default) =>
+        WithSessionAsync<OpicentrumGridWeek>(async http =>
+        {
+            var monday = StartOfWeek(weekOf);
+            var html = await http.GetStringAsync($"pracoviste.php?akce=ukazpracoviste&datum={monday:yyyyMMdd}", ct);
+            var rows = OpicentrumParsing.ParsePracovisteGrid(html);
+
+            // Like the board: a week the site has no roster for may come back as some other week's page — keep it only
+            // if its own days are in there, so an alert is never raised from the wrong week's gaps.
+            var sunday = monday.AddDays(6);
+            if (!rows.Any(r => r.Cells.Keys.Any(d => d >= monday && d <= sunday))) rows = [];
+            return new OpicentrumGridWeek(monday, rows);
+        }, ct, nurses);
 
     public async Task<OpicentrumSyncResult> SyncAsync(DateOnly rangeStart, DateOnly rangeEnd, CancellationToken ct = default)
     {
@@ -395,6 +426,8 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
     /// </summary>
     private const string NotConfiguredMessage = "Nejprve níže uložte přihlašovací údaje do Opicentra.";
     private const string LoginFailedMessage = "Přihlášení do Opicentra se nezdařilo — zkontrolujte uživatelské jméno a heslo.";
+    private const string NurseNotConfiguredMessage = "Nejprve uložte v Nastavení přihlašovací údaje k rozpisu sester (Opicentrum – sestry).";
+    private const string NurseLoginFailedMessage = "Přihlášení do rozpisu sester se nezdařilo — zkontrolujte jméno a heslo v Nastavení.";
 
     /// <summary>
     /// One logged-in Opicentrum session for the read-only fetches (2026-10-22 — this preamble was
@@ -403,23 +436,24 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
     /// logs in, runs <paramref name="work"/>, and releases the gate. Throws
     /// <see cref="InvalidOperationException"/> if no credentials are stored or the login fails.
     /// </summary>
-    private async Task<T> WithSessionAsync<T>(Func<HttpClient, Task<T>> work, CancellationToken ct)
+    private async Task<T> WithSessionAsync<T>(Func<HttpClient, Task<T>> work, CancellationToken ct, bool nurses = false)
     {
-        var usernameBytes = await _vault.RetrieveSecretAsync(OpicentrumVaultKeys.Username, ct);
-        var passwordBytes = await _vault.RetrieveSecretAsync(OpicentrumVaultKeys.Password, ct);
+        // The nurses' portal (2026-10-28) is the same phpRS site under /AROS/ with its own shared viewer account.
+        var usernameBytes = await _vault.RetrieveSecretAsync(nurses ? OpicentrumVaultKeys.NurseUsername : OpicentrumVaultKeys.Username, ct);
+        var passwordBytes = await _vault.RetrieveSecretAsync(nurses ? OpicentrumVaultKeys.NursePassword : OpicentrumVaultKeys.Password, ct);
         if (usernameBytes is null || passwordBytes is null)
-            throw new InvalidOperationException(NotConfiguredMessage);
+            throw new InvalidOperationException(nurses ? NurseNotConfiguredMessage : NotConfiguredMessage);
 
         var cookies = new CookieContainer();
         using var handler = new HttpClientHandler { CookieContainer = cookies, UseCookies = true };
-        using var http = new HttpClient(handler) { BaseAddress = new Uri(BaseUrl) };
+        using var http = new HttpClient(handler) { BaseAddress = new Uri(nurses ? NurseBaseUrl : BaseUrl) };
         http.DefaultRequestHeaders.UserAgent.ParseAdd(BrowserUserAgent);
 
         await LoginGate.WaitAsync(ct);
         try
         {
             if (await LoginAsync(http, Encoding.UTF8.GetString(usernameBytes), Encoding.UTF8.GetString(passwordBytes), ct) is null)
-                throw new InvalidOperationException(LoginFailedMessage);
+                throw new InvalidOperationException(nurses ? NurseLoginFailedMessage : LoginFailedMessage);
 
             return await work(http);
         }

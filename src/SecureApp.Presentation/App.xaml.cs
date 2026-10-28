@@ -499,6 +499,7 @@ public partial class App : Application
 			await SeedProfileFromRegistrationAsync(services);
 			await PublishOwnEmailAsync(services);
 			await RunBackgroundOpicentrumSyncAsync(services);
+			await RunBackgroundStaffingGapCheckAsync(services);
 			await RunBackgroundOpicentrumRosterBoardPublishAsync(services);
 			await RunBackgroundOpicentrumVolnoBoardPublishAsync(services);
 			await RunBackgroundUpdateCheckAsync(services);
@@ -543,6 +544,36 @@ public partial class App : Application
 		catch (Exception ex)
 		{
 			AppLog.Error(nameof(RunBackgroundOpicentrumSyncAsync), "background Opicentrum sync failed", ex);
+		}
+	}
+
+	private const string LastStaffingGapCheckPreferenceKey = "staffing_gap_last_check_utc";
+	private static readonly TimeSpan _staffingGapCheckInterval = TimeSpan.FromMinutes(30);
+
+	/// <summary>
+	/// Unstaffed-position alerts (2026-10-28, user's ask): on an Admin/Modifier device, every 30 min look at the doctors' and
+	/// nurses' rosters for an empty afternoon shift (7 days ahead) and a workplace with a doctor but no nurse or the reverse
+	/// (2 days ahead). Notifies once per hole and flags the day in the widget calendar. The checker itself ignores other roles.
+	/// </summary>
+	private static async Task RunBackgroundStaffingGapCheckAsync(IServiceProvider services)
+	{
+		try
+		{
+			var prefs = Microsoft.Maui.Storage.Preferences.Default;
+			var key = Profiles.ActiveProfile.PrefKey(LastStaffingGapCheckPreferenceKey);
+			var lastTicks = prefs.Get(key, 0L);
+			if (lastTicks > 0 && DateTimeOffset.UtcNow - new DateTimeOffset(lastTicks, TimeSpan.Zero) < _staffingGapCheckInterval) return;
+
+			var checker = services.GetService<Workplace.StaffingGapChecker>();
+			if (checker is null) return;
+			prefs.Set(key, DateTimeOffset.UtcNow.UtcTicks);
+
+			var gaps = await checker.CheckAsync();
+			AppLog.Event("staffing-gaps.check", ("gaps", gaps));
+		}
+		catch (Exception ex)
+		{
+			AppLog.Error(nameof(RunBackgroundStaffingGapCheckAsync), "staffing gap check failed", ex);
 		}
 	}
 

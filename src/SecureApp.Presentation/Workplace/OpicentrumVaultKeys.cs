@@ -5,4 +5,8 @@ internal static class OpicentrumVaultKeys
 {
     public const string Username = "opicentrum:username";
     public const string Password = "opicentrum:password";
+
+    /// <summary>The nurses' read-only portal (opicentrum.cz/AROS) — a second, shared viewer account (2026-10-28).</summary>
+    public const string NurseUsername = "opicentrum:nurse-username";
+    public const string NursePassword = "opicentrum:nurse-password";
 }

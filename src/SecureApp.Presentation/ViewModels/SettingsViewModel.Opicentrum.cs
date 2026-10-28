@@ -40,8 +40,75 @@ public sealed partial class SettingsViewModel
     partial void OnIsSavingOpicentrumCredentialsChanged(bool value) => CanSaveOpicentrumCredentials = !value;
     partial void OnOpicentrumStatusTextChanged(string? value) => HasOpicentrumStatus = !string.IsNullOrEmpty(value);
 
+    // Nurses' roster login (2026-10-28, the unstaffed-position alerts) — a separate shared viewer account for
+    // opicentrum.cz/AROS, only meaningful on the Admin/Modifier devices that run the check (StaffingGapChecker).
+    [ObservableProperty]
+    public partial bool CanSetNurseCredentials { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasNurseCredentials { get; set; }
+
+    [ObservableProperty]
+    public partial string NurseUsernameInput { get; set; }
+
+    [ObservableProperty]
+    public partial string NursePasswordInput { get; set; }
+
+    [ObservableProperty]
+    public partial string? NurseStatusText { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasNurseStatus { get; set; }
+
+    partial void OnNurseStatusTextChanged(string? value) => HasNurseStatus = !string.IsNullOrEmpty(value);
+
+    [RelayCommand]
+    private async Task SaveNurseCredentialsAsync()
+    {
+        NurseStatusText = null;
+        var username = NurseUsernameInput?.Trim() ?? string.Empty;
+        var password = NursePasswordInput ?? string.Empty;
+        if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
+        {
+            NurseStatusText = "Zadejte jméno i heslo.";
+            return;
+        }
+
+        try
+        {
+            await _opicentrumSyncService.SetNurseCredentialsAsync(username, password);
+            HasNurseCredentials = true;
+            NurseUsernameInput = string.Empty;
+            NursePasswordInput = string.Empty;
+            NurseStatusText = "Uloženo — kontrola obsazení pracovišť poběží sama na pozadí.";
+        }
+        catch (Exception ex)
+        {
+            NurseStatusText = $"Nepodařilo se uložit: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private async Task ClearNurseCredentialsAsync()
+    {
+        try
+        {
+            await _opicentrumSyncService.ClearNurseCredentialsAsync();
+            HasNurseCredentials = false;
+            NurseStatusText = "Údaje odstraněny.";
+        }
+        catch (Exception ex)
+        {
+            NurseStatusText = $"Nepodařilo se odstranit: {ex.Message}";
+        }
+    }
+
     private async Task LoadOpicentrumStateAsync()
     {
+        CanSetNurseCredentials = _currentUserService.Current.Role is SecureApp.Domain.Enums.Role.Admin or SecureApp.Domain.Enums.Role.Modifier;
+        HasNurseCredentials = await _opicentrumSyncService.HasNurseCredentialsAsync();
+        NurseUsernameInput = string.Empty;
+        NursePasswordInput = string.Empty;
         HasOpicentrumCredentials = await _opicentrumSyncService.HasCredentialsAsync();
         OpicentrumUsernameInput = string.Empty;
         OpicentrumPasswordInput = string.Empty;

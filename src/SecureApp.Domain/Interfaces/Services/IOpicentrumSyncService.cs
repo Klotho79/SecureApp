@@ -111,4 +111,20 @@ public interface IOpicentrumSyncService
     /// <see cref="InvalidOperationException"/> with a user-facing message when there are no credentials or the login fails.
     /// </summary>
     Task<OpicentrumDutySnapshot> FetchDutiesForMonthAsync(DateOnly month, CancellationToken ct = default);
+
+    /// <summary>
+    /// The separate read-only login to the nurses' roster at opicentrum.cz/AROS (2026-10-28, the unstaffed-position
+    /// alerts: "zkontroluješ zda je obsazeno pracoviště lékařem i sestrou"). A shared viewer account, stored in the
+    /// device's encrypted vault like the main one and never sent anywhere but the portal.
+    /// </summary>
+    Task<bool> HasNurseCredentialsAsync(CancellationToken ct = default);
+    Task SetNurseCredentialsAsync(string username, string password, CancellationToken ct = default);
+    Task ClearNurseCredentialsAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// The full roster grid of the week containing <paramref name="weekOf"/> — every workplace row, empty cells included —
+    /// from the doctors' portal, or from the nurses' one when <paramref name="nurses"/> is set. Read-only; throws
+    /// <see cref="InvalidOperationException"/> with a user-facing message when there are no credentials or the login fails.
+    /// </summary>
+    Task<OpicentrumGridWeek> FetchRosterGridAsync(DateOnly weekOf, bool nurses, CancellationToken ct = default);
 }

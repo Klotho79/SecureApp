@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
+using SecureApp.Domain.ValueObjects;
 
 namespace SecureApp.Presentation.Workplace;
 
@@ -76,6 +77,58 @@ internal static partial class OpicentrumParsing
         }
 
         return entries;
+    }
+
+    /// <summary>
+    /// The whole grid of one pracoviste.php week, EMPTY cells included (2026-10-28, the unstaffed-position alerts) —
+    /// <see cref="ParsePracovisteWeek"/> only ever yields people, so it cannot tell "nobody is rostered here" from
+    /// "this row is not on the page". A cell that reads "--" is a closed day, not an empty one. Works the same on the
+    /// doctors' (ARO) and the nurses' (AROS) portal; the "NEPŘÍTOMNÍ" and "Plánované AKCE" rows are skipped here too.
+    /// </summary>
+    public static List<OpicentrumGridRow> ParsePracovisteGrid(string html)
+    {
+        var rows = new List<OpicentrumGridRow>();
+        List<DateOnly>? columnDates = null;
+
+        foreach (Match rowMatch in TableRowRegex().Matches(html))
+        {
+            var cells = TableCellRegex().Matches(rowMatch.Value);
+            if (cells.Count < 2) continue;
+
+            var headerDates = new List<DateOnly>();
+            for (var i = 1; i < cells.Count; i++)
+            {
+                var m = HeaderDateRegex().Match(cells[i].Groups["inner"].Value);
+                if (!m.Success) { headerDates = null; break; }
+                headerDates.Add(DateOnly.ParseExact(m.Groups["date"].Value, "dd.MM.yyyy", CultureInfo.InvariantCulture));
+            }
+            if (headerDates is not null)
+            {
+                columnDates = headerDates;
+                continue;
+            }
+
+            var label = CleanText(cells[0].Groups["inner"].Value);
+            if (columnDates is null || label.Length == 0 || label is "NEPŘÍTOMNÍ" or "Plánované AKCE") continue;
+
+            var byDate = new Dictionary<DateOnly, OpicentrumGridCell>();
+            for (var i = 1; i < cells.Count && i - 1 < columnDates.Count; i++)
+            {
+                var inner = cells[i].Groups["inner"].Value;
+                if (CleanText(inner) == "--")
+                {
+                    byDate[columnDates[i - 1]] = new OpicentrumGridCell([], true);
+                    continue;
+                }
+
+                var names = ExtractPeople(inner).Select(p => p.Name).Where(n => n.Any(char.IsLetter)).ToList();
+                byDate[columnDates[i - 1]] = new OpicentrumGridCell(names, false);
+            }
+
+            rows.Add(new OpicentrumGridRow(label == "NEZAŘAZENÍ" ? "Nezařazen" : label, byDate));
+        }
+
+        return rows;
     }
 
     /// <summary>

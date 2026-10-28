@@ -225,6 +225,8 @@ public static class MauiProgram
 
 		// Opicentrum/ARO portal sync (2026-09-21, Phase 5 follow-up — see IOpicentrumSyncService's own remarks).
 		builder.Services.AddSingleton<IOpicentrumSyncService, OpicentrumSyncService>();
+		// Unstaffed-position alerts (2026-10-28): afternoon shift a week ahead, doctor-without-nurse two days ahead.
+		builder.Services.AddSingleton<StaffingGapChecker>();
 
 		// Opicentrum roster/volno board cache (2026-10-21 — see IOpicentrumRosterBoardService's own
 		// remarks on why this is a relay-cached snapshot rather than a per-device live scrape).

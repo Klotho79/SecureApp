@@ -295,6 +295,8 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
         foreach (var rowId in DayRowIds)
             views.SetViewVisibility(rowId, rowsVisibility);
         views.SetViewVisibility(Resource.Id.widget_calendar, mode == ModeCalendar ? global::Android.Views.ViewStates.Visible : global::Android.Views.ViewStates.Gone);
+        // INVISIBLE (not Gone) so the header's spare width stays and Kontakty keeps its right edge.
+        views.SetViewVisibility(Resource.Id.widget_cal_nav, mode == ModeCalendar ? global::Android.Views.ViewStates.Visible : global::Android.Views.ViewStates.Invisible);
         views.SetViewVisibility(Resource.Id.widget_duty_list, showDuty ? global::Android.Views.ViewStates.Visible : global::Android.Views.ViewStates.Gone);
         if (!showDuty) return;
 
@@ -383,17 +385,19 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
     // Fixed calendar palette (2026-10-27, user's own pick: "služba červená, víkendy šedé, dovolená zelená,
     // SC žlutá") — deliberately NOT the per-device Nastavení colours, which are tuned for the app's own
     // light/dark surfaces and read poorly on the widget's dark translucent card.
-    private const int DutyFill = unchecked((int)0xFFD32F2F);
-    private const int VacationFill = unchecked((int)0xFF2E9E5B);
-    private const int TripFill = unchecked((int)0xFFFBC02D);
-    private const int WeekendFill = unchecked((int)0xFF616161);
-    private const int DayOffFill = unchecked((int)0xFF4A90C2);
-    private const int SickFill = unchecked((int)0xFFEF6C00);
-    private const int HolidayFill = unchecked((int)0xFF8E24AA);
+    // Softened (2026-10-28, user's ask: "méně výrazné barvy nebo příjemnější pro oko") — same hues, muted.
+    private const int DutyFill = unchecked((int)0xFFC96A6A);
+    private const int VacationFill = unchecked((int)0xFF5FA777);
+    private const int TripFill = unchecked((int)0xFFE3C25B);
+    private const int WeekendFill = unchecked((int)0xFF555B61);
+    private const int DayOffFill = unchecked((int)0xFF6C9BC4);
+    private const int SickFill = unchecked((int)0xFFD98A4E);
+    private const int HolidayFill = unchecked((int)0xFF9A6BB5);
     private const int WhiteText = unchecked((int)0xFFFFFFFF);
     private const int DarkText = unchecked((int)0xFF202020); // on the yellow trip fill
     private const int OtherMonthText = unchecked((int)0x66FFFFFF);
     private const int TodayRing = unchecked((int)0xFFFFFFFF);
+    private const int AlertRing = unchecked((int)0xFFFF4081); // unstaffed position / afternoon shift
     private const int TodayEmptyInner = unchecked((int)0xFF2A2F33);
 
     private static async Task ApplyCalendarAsync(Context context, RemoteViews views, IWorkAssignmentRepository repository, DateOnly today)
@@ -417,6 +421,8 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
         views.SetInt(Resource.Id.widget_cal_legend_trip, "setTextColor", TripFill);
         views.SetInt(Resource.Id.widget_cal_legend_off, "setTextColor", DayOffFill);
         views.SetInt(Resource.Id.widget_cal_legend_holiday, "setTextColor", HolidayFill);
+        views.SetInt(Resource.Id.widget_cal_legend_gap, "setTextColor", AlertRing);
+        var gapDates = StaffingGapStore.GapDates(today);
 
         // A month needs 4–6 rows; the unused trailing ones are hidden to give the widget its height back.
         var rowsNeeded = (lastOfMonth.DayNumber - gridStart.DayNumber) / 7 + 1;
@@ -437,7 +443,8 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
             views.SetTextViewText(CalendarDayIds[i], date.Day.ToString());
             views.SetInt(CalendarDayIds[i], "setTextColor", textColor);
             views.SetInt(CalendarDayIds[i], "setBackgroundColor", fill ?? (isToday ? TodayEmptyInner : 0));
-            views.SetInt(CalendarCellIds[i], "setBackgroundColor", isToday ? TodayRing : 0);
+            // A day with an unstaffed position / afternoon shift gets the loud ring (StaffingGapChecker); today's white ring yields to it.
+            views.SetInt(CalendarCellIds[i], "setBackgroundColor", gapDates.Contains(date) ? AlertRing : isToday ? TodayRing : 0);
         }
     }
 

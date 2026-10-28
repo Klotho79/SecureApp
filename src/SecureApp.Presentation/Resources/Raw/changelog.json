@@ -1,5 +1,15 @@
 [
   {
+    "version": "0.1.3",
+    "code": 109,
+    "date": "28. 10. 2026",
+    "items": [
+      "Upozornění pro Admina a Moderátora: neobsazená odpolední směna týden dopředu a pracoviště, kde je na 2 dny dopředu jen lékař nebo jen sestra. Každá chybějící obsazenost se ohlásí jednou a ve widgetu se den v kalendáři označí výrazným růžovým rámečkem.",
+      "Nastavení → Systém → Opicentrum: nová karta „Opicentrum – sestry“ pro přístup jen pro čtení k rozpisu sester (opicentrum.cz/AROS); bez něj se hlídá jen odpolední směna.",
+      "Widget – kalendář: měsíc a šipky jsou v horní liště mezi přepínačem a Kontakty (o řádek méně), vyšší buňky aby se do nich vešla čísla, jemnější barvy a v legendě PS místo Volno."
+    ]
+  },
+  {
     "version": "0.1.2",
     "code": 108,
     "date": "27. 10. 2026",

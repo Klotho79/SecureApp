@@ -63,14 +63,28 @@
             android:gravity="center_vertical">
             <TextView
                 android:id="@+id/widget_mode_toggle"
-                android:layout_width="0dp"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
                 android:padding="3dp"
                 android:text="Služby ›"
                 android:textColor="@color/widgetOnCallHighlight"
                 android:textSize="12sp"
                 android:textStyle="bold" />
+            <!-- Calendar month title + ‹ › (2026-10-27, user's ask: "měsíc a šipky dej mezi rozpis a kontakty
+                 a získáme řádek"). Always takes the spare width so Kontakty stays right-aligned; hidden
+                 (INVISIBLE, not GONE) outside the calendar view, see ApplyMode. -->
+            <LinearLayout
+                android:id="@+id/widget_cal_nav"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="horizontal"
+                android:gravity="center"
+                android:visibility="invisible">
+                <TextView android:id="@+id/widget_cal_prev" android:layout_width="wrap_content" android:layout_height="wrap_content" android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="1dp" android:paddingBottom="1dp" android:text="‹" android:textColor="@color/widgetCardText" android:textSize="16sp" android:textStyle="bold" />
+                <TextView android:id="@+id/widget_cal_title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_weight="0" android:gravity="center" android:text="" android:textColor="@color/widgetCardText" android:textSize="12sp" android:textStyle="bold" android:singleLine="true" android:ellipsize="end" />
+                <TextView android:id="@+id/widget_cal_next" android:layout_width="wrap_content" android:layout_height="wrap_content" android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="1dp" android:paddingBottom="1dp" android:text="›" android:textColor="@color/widgetCardText" android:textSize="16sp" android:textStyle="bold" />
+            </LinearLayout>
             <TextView
                 android:id="@+id/widget_open_contacts"
                 android:layout_width="wrap_content"

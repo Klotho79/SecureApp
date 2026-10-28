@@ -428,6 +428,20 @@
                         </VerticalStackLayout>
                     </VerticalStackLayout>
                 </Border>
+
+                <!-- 2026-10-28: rozpis sester (opicentrum.cz/AROS, sdílený přístup jen pro čtení) — kontrola, zda je pracoviště obsazené lékařem i sestrou; jen Admin/Modifier. -->
+                <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanSetNurseCredentials}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Opicentrum – sestry (kontrola obsazení)" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Label Text="Přístup jen pro čtení k rozpisu sester na opicentrum.cz/AROS. Appka podle něj hlídá, zda je pracoviště na 2 dny dopředu obsazené lékařem i sestrou, a upozorní, když ne. Údaje se ukládají jen v šifrovaném úložišti tohoto zařízení." FontSize="9.5" TextColor="Gray" LineBreakMode="WordWrap" />
+                        <Label Text="{Binding NurseStatusText}" IsVisible="{Binding HasNurseStatus}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" LineBreakMode="WordWrap" />
+                        <Label Text="✓ Přihlašovací údaje jsou nastavené." FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding HasNurseCredentials}" />
+                        <Entry Text="{Binding NurseUsernameInput}" Placeholder="Uživatelské jméno" />
+                        <Entry Text="{Binding NursePasswordInput}" Placeholder="Heslo" IsPassword="True" />
+                        <Button Text="Uložit" Command="{Binding SaveNurseCredentialsCommand}" />
+                        <Button Text="Odstranit" Style="{StaticResource SecondaryButton}" Command="{Binding ClearNurseCredentialsCommand}" IsVisible="{Binding HasNurseCredentials}" />
+                    </VerticalStackLayout>
+                </Border>
                 </VerticalStackLayout>
 
                 <VerticalStackLayout Spacing="12" IsVisible="{Binding IsSystemUpdateSubTab}">
