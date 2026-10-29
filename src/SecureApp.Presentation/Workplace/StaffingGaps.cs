@@ -180,6 +180,9 @@ public sealed class StaffingGapChecker(
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
 
+    /// <summary>How old a doctors' week from the regular sync may be and still count as current (the sync runs every 10 min by day).</summary>
+    private static readonly TimeSpan DoctorCacheMaxAge = TimeSpan.FromMinutes(25);
+
     /// <summary>The caller throttles; this only guards against two overlapping runs.</summary>
     public async Task<int> CheckAsync(CancellationToken ct = default)
     {
@@ -193,17 +196,19 @@ public sealed class StaffingGapChecker(
             var today = DateOnly.FromDateTime(DateTime.Today);
             var weekStarts = new[] { StartOfWeek(today), StartOfWeek(today).AddDays(7) };
 
-            var doctorWeeks = new List<OpicentrumGridWeek>();
-            foreach (var monday in weekStarts)
-                doctorWeeks.Add(await opicentrum.FetchRosterGridAsync(monday, nurses: false, ct));
+            // The doctors' weeks are normally already here: the regular Opicentrum sync (every 10 min) downloads them for
+            // the schedule, so asking the portal again would only load it twice. Only a week the sync has not delivered
+            // recently is fetched — all missing weeks in one login.
+            var doctorWeeks = weekStarts.Select(m => OpicentrumSyncService.TryGetCachedDoctorGrid(m, DoctorCacheMaxAge)).ToList();
+            if (doctorWeeks.Any(w => w is null))
+                doctorWeeks = (await opicentrum.FetchRosterGridsAsync(weekStarts, nurses: false, ct)).Select(w => (OpicentrumGridWeek?)w).ToList();
 
             var nurseWeeks = new List<OpicentrumGridWeek>();
             if (await opicentrum.HasNurseCredentialsAsync(ct))
             {
                 try
                 {
-                    foreach (var monday in weekStarts)
-                        nurseWeeks.Add(await opicentrum.FetchRosterGridAsync(monday, nurses: true, ct));
+                    nurseWeeks.AddRange(await opicentrum.FetchRosterGridsAsync(weekStarts, nurses: true, ct));
                 }
                 catch (InvalidOperationException)
                 {
@@ -212,7 +217,7 @@ public sealed class StaffingGapChecker(
                 }
             }
 
-            var gaps = StaffingGapAnalysis.Analyze(doctorWeeks, nurseWeeks, today);
+            var gaps = StaffingGapAnalysis.Analyze(doctorWeeks.Select(w => w!).ToList(), nurseWeeks, today);
             if (StaffingGapStore.Save(gaps))
                 WidgetRefreshSignal.Raise();
 

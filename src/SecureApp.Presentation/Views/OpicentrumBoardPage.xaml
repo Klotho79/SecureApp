@@ -55,7 +55,7 @@
             </Grid>
 
             <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="6">
-                <Label Grid.Column="0" Text="{Binding PositionsLastUpdatedText, StringFormat='Aktualizováno: {0}'}" FontSize="9" TextColor="Gray" VerticalOptions="Center" />
+                <Label Grid.Column="0" Text="{Binding PositionsLastUpdatedText, StringFormat='Aktualizováno: {0} · červeně = služba'}" FontSize="9" TextColor="Gray" VerticalOptions="Center" />
                 <controls:DelayedActivityIndicator Grid.Column="1" IsBusy="{Binding IsPositionsRefreshing}" />
                 <!-- Position suggestions' settings (2026-10-25, POZICE_NAVRH_PLAN.md) — Admin on the PC. -->
                 <Button Grid.Column="2" Text="⚙ Profily" Style="{StaticResource SecondaryButton}" FontSize="10" Padding="10,4" MinimumHeightRequest="30"

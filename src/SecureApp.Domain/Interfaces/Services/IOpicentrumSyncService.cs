@@ -122,9 +122,10 @@ public interface IOpicentrumSyncService
     Task ClearNurseCredentialsAsync(CancellationToken ct = default);
 
     /// <summary>
-    /// The full roster grid of the week containing <paramref name="weekOf"/> — every workplace row, empty cells included —
-    /// from the doctors' portal, or from the nurses' one when <paramref name="nurses"/> is set. Read-only; throws
+    /// The full roster grids of the weeks containing <paramref name="weeks"/> — every workplace row, empty cells included —
+    /// from the doctors' portal, or from the nurses' one when <paramref name="nurses"/> is set. ONE login for all the weeks
+    /// (the portal is a third party's server; every login and page is a request to it). Read-only; throws
     /// <see cref="InvalidOperationException"/> with a user-facing message when there are no credentials or the login fails.
     /// </summary>
-    Task<OpicentrumGridWeek> FetchRosterGridAsync(DateOnly weekOf, bool nurses, CancellationToken ct = default);
+    Task<IReadOnlyList<OpicentrumGridWeek>> FetchRosterGridsAsync(IReadOnlyList<DateOnly> weeks, bool nurses, CancellationToken ct = default);
 }

@@ -1,5 +1,15 @@
 [
   {
+    "version": "0.1.4",
+    "code": 110,
+    "date": "29. 10. 2026",
+    "items": [
+      "Rozpis pracovišť (Pozice): kdo ten den slouží, je vidět červeně i s pozicí služby („Jméno · pozice“); data se berou z už stažených služeb, nic se nestahuje navíc.",
+      "Widget – kalendář: ještě tlumenější barvy; dnešní den se pozná jen červeným rámečkem a červeným číslem (barva buňky se nemění) a je čitelný i při listování do sousedního měsíce.",
+      "Méně dotazů na Opicentrum: kontrola obsazení znovu používá týdny, které už stáhla synchronizace (sestry v jednom přihlášení, kontrola jednou za hodinu), synchronizace rozpisu stahuje po 10 minutách jen nejbližší 3 týdny (celé období jednou za hodinu) a v noci (22–5) zpomaluje."
+    ]
+  },
+  {
     "version": "0.1.3",
     "code": 109,
     "date": "28. 10. 2026",

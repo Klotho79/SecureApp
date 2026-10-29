@@ -21,6 +21,13 @@ public static class DutyRosterStore
     public static IReadOnlyList<DutyEntry> Get(DateOnly date)
         => Load().TryGetValue(Key(date), out var day) ? day : [];
 
+    /// <summary>Several days with one read of the stored roster (the per-day <see cref="Get"/> deserializes all of it each time).</summary>
+    public static IReadOnlyDictionary<DateOnly, IReadOnlyList<DutyEntry>> GetMany(IEnumerable<DateOnly> dates)
+    {
+        var all = Load();
+        return dates.Distinct().ToDictionary(d => d, d => all.TryGetValue(Key(d), out var day) ? (IReadOnlyList<DutyEntry>)day : []);
+    }
+
     /// <summary>Replaces every day in [rangeStart, rangeEnd] with the freshly synced data; days outside the range are kept, days older than a week dropped.</summary>
     public static void Save(DateOnly rangeStart, DateOnly rangeEnd, IReadOnlyDictionary<DateOnly, List<DutyEntry>> duty)
     {

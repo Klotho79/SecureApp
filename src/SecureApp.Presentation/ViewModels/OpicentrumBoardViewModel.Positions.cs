@@ -339,13 +339,17 @@ public sealed partial class OpicentrumBoardViewModel
             .ToList();
 
         var buildSw = Stopwatch.StartNew();
+        // Who is on duty (slouží) that day and where — from the duty roster this device already synced (no network);
+        // the duty slot need not match the day's position, so it is shown on the chip in addition to it.
+        var dutyByDate = DutyRosterStore.GetMany(snapshot.Days.Select(d => d.Date));
         var rows = allWorkplaceNames.Select(name =>
         {
             var workplaceId = _workplaceIdByName.GetValueOrDefault(name, -1);
             var cells = snapshot.Days.Select(day =>
             {
                 var wp = day.Workplaces.FirstOrDefault(w => string.Equals(w.WorkplaceName, name, StringComparison.OrdinalIgnoreCase));
-                var people = (wp?.People ?? []).Select(p => new OpicentrumRosterPersonChip(p.PersonId, p.PersonName, workplaceId, day.Date)).ToList();
+                var duty = dutyByDate[day.Date];
+                var people = (wp?.People ?? []).Select(p => new OpicentrumRosterPersonChip(p.PersonId, p.PersonName, workplaceId, day.Date, DutyPositionOf(duty, p.PersonName))).ToList();
                 return new OpicentrumRosterCellItem(day.Date, people);
             }).ToList();
             return new OpicentrumRosterRowItem(workplaceId, name, cells);
@@ -359,6 +363,14 @@ public sealed partial class OpicentrumBoardViewModel
         _positionsAllRows = rows;
         PositionsRows = new ObservableCollection<OpicentrumRosterRowItem>(rows);
         AppLog.Metric("opicentrum.positions.apply.assign", assignSw.Elapsed.TotalMilliseconds, "ms", ("shown", PositionsRows.Count));
+    }
+
+    /// <summary>The duty slot(s) this person holds that day ("ARO 1", "Odpolední 13-21 h"…), joined with " + "; null when they are not on duty.</summary>
+    private static string? DutyPositionOf(IReadOnlyList<DutyEntry> duty, string personName)
+    {
+        if (duty.Count == 0) return null;
+        var slots = duty.Where(e => OpicentrumParsing.NamesMatch(e.Name, personName)).Select(e => e.Position.Trim()).Where(s => s.Length > 0).Distinct().ToList();
+        return slots.Count == 0 ? null : string.Join(" + ", slots);
     }
 
     /// <summary>True when two snapshots show exactly the same board (same days, workplaces and people in the same order) — everything except <see cref="OpicentrumRosterBoardSnapshot.UpdatedAtUtc"/>.</summary>
@@ -496,4 +508,4 @@ public sealed record OpicentrumRosterCellItem(DateOnly Date, IReadOnlyList<Opice
 }
 
 /// <summary>One person's chip in one cell — carries everything <see cref="OpicentrumBoardViewModel.MovePersonAsync"/> needs, so the page's code-behind doesn't have to look anything else up.</summary>
-public sealed record OpicentrumRosterPersonChip(int PersonId, string PersonName, int WorkplaceId, DateOnly Date);
+public sealed record OpicentrumRosterPersonChip(int PersonId, string PersonName, int WorkplaceId, DateOnly Date, string? DutyPosition = null);

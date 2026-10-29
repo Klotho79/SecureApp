@@ -157,20 +157,42 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
         await _vault.RemoveSecretAsync(OpicentrumVaultKeys.NursePassword, ct);
     }
 
-    /// <inheritdoc cref="IOpicentrumSyncService.FetchRosterGridAsync"/>
-    public Task<OpicentrumGridWeek> FetchRosterGridAsync(DateOnly weekOf, bool nurses, CancellationToken ct = default) =>
-        WithSessionAsync<OpicentrumGridWeek>(async http =>
-        {
-            var monday = StartOfWeek(weekOf);
-            var html = await http.GetStringAsync($"pracoviste.php?akce=ukazpracoviste&datum={monday:yyyyMMdd}", ct);
-            var rows = OpicentrumParsing.ParsePracovisteGrid(html);
+    /// <summary>
+    /// The doctors' grids of the weeks the regular sync has just downloaded anyway (<see cref="MergePracovisteAsync"/> keeps
+    /// them here), so the staffing check needs no request of its own for the doctors' side. In memory only: both run in the
+    /// same process, and after a restart the first sync refills it.
+    /// </summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<DateOnly, (OpicentrumGridWeek Grid, DateTimeOffset FetchedAtUtc)> DoctorGridCache = new();
 
-            // Like the board: a week the site has no roster for may come back as some other week's page — keep it only
-            // if its own days are in there, so an alert is never raised from the wrong week's gaps.
-            var sunday = monday.AddDays(6);
-            if (!rows.Any(r => r.Cells.Keys.Any(d => d >= monday && d <= sunday))) rows = [];
-            return new OpicentrumGridWeek(monday, rows);
+    /// <summary>The doctors' grid of the week of <paramref name="weekOf"/> if the sync downloaded it within <paramref name="maxAge"/>; null otherwise.</summary>
+    public static OpicentrumGridWeek? TryGetCachedDoctorGrid(DateOnly weekOf, TimeSpan maxAge) =>
+        DoctorGridCache.TryGetValue(StartOfWeek(weekOf), out var entry) && DateTimeOffset.UtcNow - entry.FetchedAtUtc <= maxAge ? entry.Grid : null;
+
+    /// <inheritdoc cref="IOpicentrumSyncService.FetchRosterGridsAsync"/>
+    public Task<IReadOnlyList<OpicentrumGridWeek>> FetchRosterGridsAsync(IReadOnlyList<DateOnly> weeks, bool nurses, CancellationToken ct = default) =>
+        WithSessionAsync<IReadOnlyList<OpicentrumGridWeek>>(async http =>
+        {
+            var grids = new List<OpicentrumGridWeek>();
+            foreach (var week in weeks)
+            {
+                var monday = StartOfWeek(week);
+                var html = await http.GetStringAsync($"pracoviste.php?akce=ukazpracoviste&datum={monday:yyyyMMdd}", ct);
+                grids.Add(BuildGridWeek(monday, html));
+            }
+            return grids;
         }, ct, nurses);
+
+    /// <summary>
+    /// Like the board: a week the site has no roster for may come back as some other week's page — keep it only
+    /// if its own days are in there, so an alert is never raised from the wrong week's gaps.
+    /// </summary>
+    private static OpicentrumGridWeek BuildGridWeek(DateOnly monday, string html)
+    {
+        var rows = OpicentrumParsing.ParsePracovisteGrid(html);
+        var sunday = monday.AddDays(6);
+        if (!rows.Any(r => r.Cells.Keys.Any(d => d >= monday && d <= sunday))) rows = [];
+        return new OpicentrumGridWeek(monday, rows);
+    }
 
     public async Task<OpicentrumSyncResult> SyncAsync(DateOnly rangeStart, DateOnly rangeEnd, CancellationToken ct = default)
     {
@@ -769,6 +791,10 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
             string html;
             try { html = await http.GetStringAsync($"pracoviste.php?akce=ukazpracoviste&datum={monday:yyyyMMdd}", ct); }
             catch { continue; } // best-effort per week — one bad week must not abort the whole sync
+
+            // The page is already here: keep its grid for the staffing check instead of letting it download the week again.
+            try { DoctorGridCache[monday] = (BuildGridWeek(monday, html), DateTimeOffset.UtcNow); }
+            catch { /* best-effort — the check then fetches the week itself */ }
 
             foreach (var entry in OpicentrumParsing.ParsePracovisteWeek(html))
             {

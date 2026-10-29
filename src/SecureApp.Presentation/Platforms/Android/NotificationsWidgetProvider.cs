@@ -386,19 +386,20 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
     // SC žlutá") — deliberately NOT the per-device Nastavení colours, which are tuned for the app's own
     // light/dark surfaces and read poorly on the widget's dark translucent card.
     // Softened (2026-10-28, user's ask: "méně výrazné barvy nebo příjemnější pro oko") — same hues, muted.
-    private const int DutyFill = unchecked((int)0xFFC96A6A);
-    private const int VacationFill = unchecked((int)0xFF5FA777);
-    private const int TripFill = unchecked((int)0xFFE3C25B);
-    private const int WeekendFill = unchecked((int)0xFF555B61);
-    private const int DayOffFill = unchecked((int)0xFF6C9BC4);
-    private const int SickFill = unchecked((int)0xFFD98A4E);
-    private const int HolidayFill = unchecked((int)0xFF9A6BB5);
+    // Muted again (2026-10-29, user's ask: "ještě méně výrazné barvy") — darker, less saturated.
+    private const int DutyFill = unchecked((int)0xFFA65F5F);
+    private const int VacationFill = unchecked((int)0xFF4F8466);
+    private const int TripFill = unchecked((int)0xFFB5A163);
+    private const int WeekendFill = unchecked((int)0xFF484D52);
+    private const int DayOffFill = unchecked((int)0xFF58798F);
+    private const int SickFill = unchecked((int)0xFFA87A55);
+    private const int HolidayFill = unchecked((int)0xFF7A6090);
     private const int WhiteText = unchecked((int)0xFFFFFFFF);
     private const int DarkText = unchecked((int)0xFF202020); // on the yellow trip fill
     private const int OtherMonthText = unchecked((int)0x66FFFFFF);
-    private const int TodayRing = unchecked((int)0xFFFFFFFF);
+    private const int TodayRing = unchecked((int)0xFFD05A5A); // muted red frame for today
+    private const int TodayText = unchecked((int)0xFFE87878);
     private const int AlertRing = unchecked((int)0xFFFF4081); // unstaffed position / afternoon shift
-    private const int TodayEmptyInner = unchecked((int)0xFF2A2F33);
 
     private static async Task ApplyCalendarAsync(Context context, RemoteViews views, IWorkAssignmentRepository repository, DateOnly today)
     {
@@ -435,14 +436,19 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
             var inMonth = date.Month == shown.Month;
             var isToday = date == today;
             var fill = CalendarFill(byDate.GetValueOrDefault(date), date);
+            // Adjacent-month days are dimmed; today only lightly, so it stays readable when it spills into the shown month's grid.
             if (fill is int solid && !inMonth)
-                fill = (solid & 0x00FFFFFF) | 0x55000000;
+                fill = (solid & 0x00FFFFFF) | (isToday ? unchecked((int)0x99000000) : 0x55000000);
 
-            var textColor = !inMonth ? OtherMonthText : fill == TripFill ? DarkText : WhiteText;
+            // Today: muted red number on an unfilled/dimmed cell (a filled cell keeps its white number — red on red would vanish).
+            var textColor = isToday && (fill is null || !inMonth) ? TodayText
+                : !inMonth ? OtherMonthText
+                : fill == TripFill ? DarkText : WhiteText;
 
             views.SetTextViewText(CalendarDayIds[i], date.Day.ToString());
             views.SetInt(CalendarDayIds[i], "setTextColor", textColor);
-            views.SetInt(CalendarDayIds[i], "setBackgroundColor", fill ?? (isToday ? TodayEmptyInner : 0));
+            // Today is marked by the ring only — the cell keeps its own colour (user's ask: "aktuální den neměnit barvu jen orámování").
+            views.SetInt(CalendarDayIds[i], "setBackgroundColor", fill ?? 0);
             // A day with an unstaffed position / afternoon shift gets the loud ring (StaffingGapChecker); today's white ring yields to it.
             views.SetInt(CalendarCellIds[i], "setBackgroundColor", gapDates.Contains(date) ? AlertRing : isToday ? TodayRing : 0);
         }

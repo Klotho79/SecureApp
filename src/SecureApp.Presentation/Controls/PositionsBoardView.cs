@@ -136,6 +136,8 @@ public sealed class PositionsBoardView : GraphicsView
 
     private sealed class BoardDrawable(PositionsBoardView owner) : IDrawable
     {
+        private static readonly Color DutyChipBackground = Color.FromArgb("#A65F5F");
+
         public void Draw(ICanvas canvas, RectF dirtyRect)
         {
             var sw = Stopwatch.StartNew();
@@ -180,9 +182,12 @@ public sealed class PositionsBoardView : GraphicsView
             canvas.Font = Font.Default;
             canvas.FontSize = PositionsLayout.ChipFont;
             canvas.FontColor = text;
-            canvas.FillColor = chipBackground;
             foreach (var chip in layout.Chips)
             {
+                // On duty (slouží): a muted red chip with white text, same hue as the duty colour of the widget calendar.
+                var onDuty = chip.Person.DutyPosition is not null;
+                canvas.FillColor = onDuty ? DutyChipBackground : chipBackground;
+                canvas.FontColor = onDuty ? Colors.White : text;
                 canvas.FillRoundedRectangle(chip.Rect, PositionsLayout.ChipRadius);
                 canvas.DrawString(chip.Text, chip.Rect.X + PositionsLayout.ChipPadX, chip.Rect.Y, chip.Rect.Width - 2 * PositionsLayout.ChipPadX, chip.Rect.Height,
                     HorizontalAlignment.Left, VerticalAlignment.Center);
@@ -287,8 +292,10 @@ internal sealed class PositionsLayout
                 float x = 0, line = 0;
                 foreach (var person in rows[r].Cells[c].People)
                 {
-                    var text = BoardCanvas.Fit(person.PersonName, inner - 2 * ChipPadX - ChipMargin, Width);
-                    var w = Math.Min(Width(text) + 2 * ChipPadX, inner - ChipMargin);
+                    // A person on duty carries the duty slot too ("Jméno · slot"), so the chip takes the cell's whole width.
+                    var label = person.DutyPosition is { Length: > 0 } slot ? $"{person.PersonName} · {slot}" : person.PersonName;
+                    var text = BoardCanvas.Fit(label, inner - 2 * ChipPadX - ChipMargin, Width);
+                    var w = person.DutyPosition is null ? Math.Min(Width(text) + 2 * ChipPadX, inner - ChipMargin) : inner - ChipMargin;
                     if (x > 0 && x + w + ChipMargin > inner) { line++; x = 0; }
                     placed[c].Add((x, line * lineHeight, w, text, person));
                     x += w + ChipMargin;

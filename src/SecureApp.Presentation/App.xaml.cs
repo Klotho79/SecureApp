@@ -517,6 +517,11 @@ public partial class App : Application
 
 	private const string LastBackgroundOpicentrumSyncPreferenceKey = "opicentrum_last_bg_sync_utc";
 	private static readonly TimeSpan _backgroundOpicentrumSyncInterval = TimeSpan.FromMinutes(10);
+	private static readonly TimeSpan _backgroundOpicentrumFullSyncInterval = TimeSpan.FromMinutes(60);
+	private const string LastBackgroundOpicentrumFullSyncPreferenceKey = "opicentrum_last_bg_full_sync_utc";
+
+	/// <summary>22:00–05:00 local time: the background jobs that only exist to surface a change quickly slow down or pause.</summary>
+	private static bool IsNightHour() => DateTime.Now.Hour is >= 22 or < 5;
 
 	/// <summary>
 	/// Opicentrum sync without opening the Rozpis (2026-09-26): with the background service keeping the
@@ -530,16 +535,26 @@ public partial class App : Application
 		{
 			var prefs = Microsoft.Maui.Storage.Preferences.Default;
 			var lastTicks = prefs.Get(LastBackgroundOpicentrumSyncPreferenceKey, 0L);
-			if (lastTicks > 0 && DateTimeOffset.UtcNow - new DateTimeOffset(lastTicks, TimeSpan.Zero) < _backgroundOpicentrumSyncInterval) return;
+			if (lastTicks > 0 && DateTimeOffset.UtcNow - new DateTimeOffset(lastTicks, TimeSpan.Zero) < (IsNightHour() ? _backgroundOpicentrumNightSyncInterval : _backgroundOpicentrumSyncInterval)) return; // night (22–05): nobody reads a schedule change then, so the portal is asked hourly
 
 			var sync = services.GetService<IOpicentrumSyncService>();
 			if (sync is null || !await sync.HasCredentialsAsync()) return;
 			prefs.Set(LastBackgroundOpicentrumSyncPreferenceKey, DateTimeOffset.UtcNow.UtcTicks);
 
 			var today = DateOnly.FromDateTime(DateTime.Today);
-			var nextMonth = new DateOnly(today.Year, today.Month, 1).AddMonths(1);
-			var result = await sync.SyncAsync(today.AddDays(-7), nextMonth.AddMonths(1).AddDays(-1));
-			AppLog.Event("opicentrum.bg-sync", ("ok", result.Success), ("created", result.CreatedCount), ("updated", result.UpdatedCount));
+			// Two tiers (2026-10-29, "zkontroluj zda se data nestahuji moc krat"): the near window — last week to three weeks ahead, ~4 weekly
+				// pages — every tick; the whole range through the end of next month (~9 weekly pages plus the monthly duty and leave
+				// pages) only once an hour. A change far ahead surfaces within the hour.
+				var fullLastTicks = prefs.Get(LastBackgroundOpicentrumFullSyncPreferenceKey, 0L);
+				var fullDue = fullLastTicks <= 0 || DateTimeOffset.UtcNow - new DateTimeOffset(fullLastTicks, TimeSpan.Zero) >= _backgroundOpicentrumFullSyncInterval;
+				var rangeEnd = today.AddDays(21);
+				if (fullDue)
+				{
+					rangeEnd = new DateOnly(today.Year, today.Month, 1).AddMonths(2).AddDays(-1);
+					prefs.Set(LastBackgroundOpicentrumFullSyncPreferenceKey, DateTimeOffset.UtcNow.UtcTicks);
+				}
+			var result = await sync.SyncAsync(today.AddDays(-7), rangeEnd);
+			AppLog.Event("opicentrum.bg-sync", ("ok", result.Success), ("full", fullDue), ("created", result.CreatedCount), ("updated", result.UpdatedCount));
 		}
 		catch (Exception ex)
 		{
@@ -548,7 +563,9 @@ public partial class App : Application
 	}
 
 	private const string LastStaffingGapCheckPreferenceKey = "staffing_gap_last_check_utc";
-	private static readonly TimeSpan _staffingGapCheckInterval = TimeSpan.FromMinutes(30);
+	private static readonly TimeSpan _staffingGapCheckInterval = TimeSpan.FromMinutes(60);
+	// Night sync is hourly, so the doctors' weeks the check reuses are up to an hour old — and a hole found at 3 a.m. helps nobody.
+	private static readonly TimeSpan _backgroundOpicentrumNightSyncInterval = TimeSpan.FromMinutes(60);
 
 	/// <summary>
 	/// Unstaffed-position alerts (2026-10-28, user's ask): on an Admin/Modifier device, every 30 min look at the doctors' and
@@ -560,7 +577,8 @@ public partial class App : Application
 		try
 		{
 			var prefs = Microsoft.Maui.Storage.Preferences.Default;
-			var key = Profiles.ActiveProfile.PrefKey(LastStaffingGapCheckPreferenceKey);
+			if (IsNightHour()) return;
+				var key = Profiles.ActiveProfile.PrefKey(LastStaffingGapCheckPreferenceKey);
 			var lastTicks = prefs.Get(key, 0L);
 			if (lastTicks > 0 && DateTimeOffset.UtcNow - new DateTimeOffset(lastTicks, TimeSpan.Zero) < _staffingGapCheckInterval) return;
 
