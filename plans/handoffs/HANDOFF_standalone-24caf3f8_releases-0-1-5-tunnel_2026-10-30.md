@@ -328,3 +328,9 @@ curl.exe -s http://192.168.50.8:8080/download/android/version          # expect 
 # Ask the user: "Chcete veřejné HTTPS (bez tunelu pro členy) – stačí jméno typu něco.duckdns.org? Nebo nasadit jen opravenou konfiguraci tunelu?"
 # Do NOT push, deploy, release or touch the router/Pi without the explicit OK.
 ```
+
+## Session Closed
+**Closed at:** 2026-10-30 22:01 (local)
+**Commits:** `2a165d2` (relay: split-tunnel config, local only, NOT pushed), `a1c4c84` (this handoff); release HEAD before them: `a9c3af1` (0.1.5, pushed)
+**Session status:** Handed off to next session
+
