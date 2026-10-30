@@ -148,7 +148,7 @@ internal static partial class OpicentrumParsing
             var names = CleanText(ShiftCodeSuffixRegex().Replace(chunk, " "))
                 .Split(';')
                 .Select(n => n.Trim())
-                .Where(n => n.Length > 0)
+                .Where(n => n.Any(char.IsLetter)) // a closed day (holiday) reads "--", which is not a person
                 .ToList();
 
             foreach (var name in names)
@@ -167,7 +167,7 @@ internal static partial class OpicentrumParsing
     {
         var left = NormalizeName(a);
         var right = NormalizeName(b);
-        if (left.Length == 0 || right.Length == 0) return false;
+        if (!left.Any(char.IsLetter) || !right.Any(char.IsLetter)) return false;
         if (left == right) return true;
 
         // "Faltus Petr" vs "Petr Faltus" — the portal is not consistent about order between pages.

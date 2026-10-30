@@ -1,5 +1,13 @@
 [
   {
+    "version": "0.1.5",
+    "code": 111,
+    "date": "30. 10. 2026",
+    "items": [
+      "Rozpis pracovišť (Pozice): ve dnech, kdy je v Opicentru zavřeno (svátek, 28. 10.), se už nezobrazuje „--“ jako osoba se službou „Odpolední 13-21 h“ v každém řádku."
+    ]
+  },
+  {
     "version": "0.1.4",
     "code": 110,
     "date": "29. 10. 2026",

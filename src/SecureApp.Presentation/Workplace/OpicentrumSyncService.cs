@@ -841,7 +841,7 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
     /// </summary>
     private static void AddDuty(Dictionary<DateOnly, List<DutyEntry>> byDate, DateOnly date, string position, string name)
     {
-        if (name.Length == 0) return;
+        if (!name.Any(char.IsLetter)) return;
         if (!byDate.TryGetValue(date, out var list)) byDate[date] = list = [];
         if (!list.Any(e => e.Position == position && NamesMatch(e.Name, name)))
             list.Add(new DutyEntry(position, name));
