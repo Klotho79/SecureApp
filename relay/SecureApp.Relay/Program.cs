@@ -400,7 +400,7 @@ app.MapPost("/admin/wireguard/clients", async (HttpRequest request, CreateWireGu
     if (newest is null)
         return Results.Problem("wg-easy created the client but it couldn't be found afterward.", statusCode: 502);
 
-    var configText = await wg.GetStringAsync($"api/wireguard/client/{newest.Id}/configuration");
+    var configText = TuneWireGuardClientConfig(await wg.GetStringAsync($"api/wireguard/client/{newest.Id}/configuration"));
 
     // 2026-10-05, user's own ask — see pending_wireguard_peers' own schema remarks: this peer is
     // real network access as of right now, tracked here so WireGuardOnboardingSweepService can
@@ -1818,6 +1818,40 @@ static bool TryGetAdminOrDevice(HttpRequest request, string adminSecret, RelayDa
 }
 
 /// <summary>Best-effort VersionName out of a platform's own version.json (never throws — a missing/corrupt manifest just falls back to the generic download filename, same tolerance as a missing file).</summary>
+// 2026-10-30 — wg-easy hands out a FULL tunnel (AllowedIPs 0.0.0.0/0, DNS 1.1.1.1), which sends ALL of a phone's
+// traffic through the Pi's home line, and PersistentKeepalive = 0, which lets an idle tunnel die silently behind
+// carrier NAT. A new member's config is rewritten here, so every onboarding path (app QR, .conf download,
+// new-pc-onboarding pickup code) gets the same one: only the relay/VPN subnets go through the tunnel, the rest of
+// the phone's traffic stays on its own connection, and a keepalive every 25 s holds the NAT mapping open.
+static string TuneWireGuardClientConfig(string config)
+{
+    const string splitAllowedIps = "10.8.0.0/24, 192.168.50.8/32";
+    var lines = config.Replace("\r\n", "\n").Split('\n').ToList();
+    var inPeer = false;
+    var hasKeepalive = false;
+    for (var i = 0; i < lines.Count; i++)
+    {
+        var trimmed = lines[i].Trim();
+        if (trimmed.StartsWith('['))
+            inPeer = trimmed.Equals("[Peer]", StringComparison.OrdinalIgnoreCase);
+        else if (inPeer && trimmed.StartsWith("AllowedIPs", StringComparison.OrdinalIgnoreCase))
+            lines[i] = $"AllowedIPs = {splitAllowedIps}";
+        else if (inPeer && trimmed.StartsWith("PersistentKeepalive", StringComparison.OrdinalIgnoreCase))
+        {
+            lines[i] = "PersistentKeepalive = 25";
+            hasKeepalive = true;
+        }
+    }
+    // The tunnel's own DNS only matters for the full tunnel; with a split one the phone keeps its own resolver.
+    lines.RemoveAll(l => l.TrimStart().StartsWith("DNS", StringComparison.OrdinalIgnoreCase) && l.Contains('='));
+    if (!hasKeepalive)
+    {
+        var allowed = lines.FindIndex(l => l.TrimStart().StartsWith("AllowedIPs", StringComparison.OrdinalIgnoreCase));
+        if (allowed >= 0) lines.Insert(allowed + 1, "PersistentKeepalive = 25");
+    }
+    return string.Join("\n", lines);
+}
+
 static string? ReadVersionName(string versionPath)
 {
     if (!File.Exists(versionPath))
