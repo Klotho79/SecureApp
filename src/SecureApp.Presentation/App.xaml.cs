@@ -342,7 +342,21 @@ public partial class App : Application
 	/// regardless of what `IsConnected` currently claims, bounds how long that kind of failure can
 	/// go unnoticed — worst case <see cref="_forcedReconnectInterval"/>, not indefinitely.
 	/// </summary>
-	private static readonly TimeSpan _forcedReconnectInterval = TimeSpan.FromMinutes(5);
+	private static readonly TimeSpan _forcedReconnectInterval = TimeSpan.FromMinutes(30);
+
+	// Reconnect backoff (2026-10-31, energy audit): a down relay used to be retried on every 10 s tick (~7 000×/day
+	// outside the VPN, each up to a 20 s connect timeout, so the radio never slept). A network change or the app
+	// coming to the foreground clears the wait, so a real recovery is still immediate.
+	private static DateTimeOffset _nextConnectAttemptUtc = DateTimeOffset.MinValue;
+	private static void RequestImmediateReconnect() => _nextConnectAttemptUtc = DateTimeOffset.MinValue;
+
+	private static void ScheduleNextConnectAttempt()
+	{
+		var seconds = Math.Min(120, 10 * (1 << Math.Clamp(Volatile.Read(ref _consecutiveConnectFailures) - 1, 0, 4)));
+		// No network at all is also reported when Android merely lags behind a VPN switch, so never "wait for the network" forever - just probe slower.
+		if (Connectivity.Current.NetworkAccess == NetworkAccess.None) seconds = Math.Max(seconds, 60);
+		_nextConnectAttemptUtc = DateTimeOffset.UtcNow.AddSeconds(seconds);
+	}
 
 	/// <summary>
 	/// Runs for the app's whole foreground lifetime (started once, from the constructor — honest
@@ -356,6 +370,9 @@ public partial class App : Application
 	/// </summary>
 	private static async Task RunConnectionSupervisorLoopAsync()
 	{
+		try { Connectivity.Current.ConnectivityChanged += (_, _) => RequestImmediateReconnect(); }
+		catch { /* no connectivity API on this platform - the backoff alone still bounds the wait to 2 min */ }
+
 		var lastStaleSweep = DateTimeOffset.MinValue;
 		var lastForcedReconnect = DateTimeOffset.UtcNow;
 
@@ -377,13 +394,17 @@ public partial class App : Application
 						// that gap was gone for good (the relay does not queue a frame it "delivered" live). Now the new
 						// socket connects and authenticates while the old one keeps serving, and ConnectAsync swaps them.
 						// Only a successful swap restarts the timer; a failed one is retried on the next tick.
-						if (await TryConnectAsync(services, transport))
-							lastForcedReconnect = DateTimeOffset.UtcNow;
-					}
-					else if (!wasConnected)
-					{
-						await TryConnectAsync(services, transport);
-					}
+						lastForcedReconnect = await TryConnectAsync(services, transport)
+								? DateTimeOffset.UtcNow
+								: DateTimeOffset.UtcNow - _forcedReconnectInterval + TimeSpan.FromMinutes(2); // the old socket still works - retry the swap in 2 min, not on every tick
+						}
+						else if (!wasConnected && DateTimeOffset.UtcNow >= _nextConnectAttemptUtc)
+						{
+							if (await TryConnectAsync(services, transport))
+								RequestImmediateReconnect();
+							else
+								ScheduleNextConnectAttempt();
+						}
 
 					// A periodic swap above is not a reconnect after an outage — only a real one triggers the extra sweep.
 					var justReconnected = !wasConnected && transport.IsConnected;
@@ -392,18 +413,25 @@ public partial class App : Application
 					if (transport.IsConnected && (justReconnected || sweepDue))
 					{
 						await RunStaleSessionSweepAsync(services, transport);
-						await RunPeerIdentityReconciliationAsync(services, transport);
-						await ApplyDevicePolicyAsync(services);
-						await SyncBoardToNotificationsAsync(services);
-						await ReportPendingCrashAsync(services);
-						await SyncAdminAlertsAsync(services);
+						// Session self-healing above stays on the 3-minute cadence (hard requirement); these steps only ask the relay whether
+							// anything changed, so they run every 5-10 min - or all at once right after a reconnect.
+							if (SweepStepDue(nameof(RunPeerIdentityReconciliationAsync), TimeSpan.FromMinutes(10), justReconnected))
+								await RunPeerIdentityReconciliationAsync(services, transport);
+							if (SweepStepDue(nameof(ApplyDevicePolicyAsync), TimeSpan.FromMinutes(10), justReconnected))
+								await ApplyDevicePolicyAsync(services);
+							if (SweepStepDue(nameof(SyncBoardToNotificationsAsync), TimeSpan.FromMinutes(5), justReconnected))
+								await SyncBoardToNotificationsAsync(services);
+							await ReportPendingCrashAsync(services);
+							if (SweepStepDue(nameof(SyncAdminAlertsAsync), TimeSpan.FromMinutes(5), justReconnected))
+								await SyncAdminAlertsAsync(services);
 						// Both feed only the Android widget (PiccRosterStore / ContactPhoneCache are read nowhere else), and
 						// change rarely — so not on Windows at all, and on Android not on every ~3-minute sweep.
 #if ANDROID
 						if (SweepStepDue(nameof(SyncPiccStatusAsync), TimeSpan.FromMinutes(10)))
 							await SyncPiccStatusAsync(services);
 #endif
-						await Diagnostics.AppLogUploader.UploadAsync(services);
+						if (SweepStepDue(nameof(Diagnostics.AppLogUploader), TimeSpan.FromMinutes(10), justReconnected))
+								await Diagnostics.AppLogUploader.UploadAsync(services);
 #if ANDROID
 						if (SweepStepDue(nameof(Contacts.ContactPhoneCache), TimeSpan.FromMinutes(30))
 							&& services.GetService<ISharedContactService>() is { } sharedContactService)
@@ -535,8 +563,7 @@ public partial class App : Application
 		try
 		{
 			var prefs = Microsoft.Maui.Storage.Preferences.Default;
-			var lastTicks = prefs.Get(LastBackgroundOpicentrumSyncPreferenceKey, 0L);
-			if (lastTicks > 0 && DateTimeOffset.UtcNow - new DateTimeOffset(lastTicks, TimeSpan.Zero) < (IsNightHour() ? _backgroundOpicentrumNightSyncInterval : _backgroundOpicentrumSyncInterval)) return; // night (22–05): nobody reads a schedule change then, so the portal is asked hourly
+			if (!JobDue(LastBackgroundOpicentrumSyncPreferenceKey, (IsNightHour() ? _backgroundOpicentrumNightSyncInterval : _backgroundOpicentrumSyncInterval))) return; // night (22–05): nobody reads a schedule change then, so the portal is asked hourly
 
 			var sync = services.GetService<IOpicentrumSyncService>();
 			if (sync is null || !await sync.HasCredentialsAsync()) return;
@@ -580,8 +607,7 @@ public partial class App : Application
 			var prefs = Microsoft.Maui.Storage.Preferences.Default;
 			if (IsNightHour()) return;
 				var key = Profiles.ActiveProfile.PrefKey(LastStaffingGapCheckPreferenceKey);
-			var lastTicks = prefs.Get(key, 0L);
-			if (lastTicks > 0 && DateTimeOffset.UtcNow - new DateTimeOffset(lastTicks, TimeSpan.Zero) < _staffingGapCheckInterval) return;
+			if (!JobDue(key, _staffingGapCheckInterval)) return;
 
 			var checker = services.GetService<Workplace.StaffingGapChecker>();
 			if (checker is null) return;
@@ -614,8 +640,7 @@ public partial class App : Application
 		try
 		{
 			var prefs = Microsoft.Maui.Storage.Preferences.Default;
-			var lastTicks = prefs.Get(lastAttemptPreferenceKey, 0L);
-			if (lastTicks > 0 && DateTimeOffset.UtcNow - new DateTimeOffset(lastTicks, TimeSpan.Zero) < TimeSpan.FromMinutes(5)) return;
+			if (!JobDue(lastAttemptPreferenceKey, TimeSpan.FromMinutes(5))) return;
 
 			var sync = services.GetService<IOpicentrumSyncService>();
 			var cache = services.GetService<TCache>();
@@ -684,8 +709,7 @@ public partial class App : Application
 		try
 		{
 			var prefs = Microsoft.Maui.Storage.Preferences.Default;
-			var lastTicks = prefs.Get(LastBackgroundUpdateCheckPreferenceKey, 0L);
-			if (lastTicks > 0 && DateTimeOffset.UtcNow - new DateTimeOffset(lastTicks, TimeSpan.Zero) < _backgroundUpdateCheckInterval) return;
+			if (!JobDue(LastBackgroundUpdateCheckPreferenceKey, _backgroundUpdateCheckInterval)) return;
 
 			if (!Microsoft.Maui.Networking.Connectivity.Current.ConnectionProfiles.Contains(Microsoft.Maui.Networking.ConnectionProfile.WiFi))
 				return;
@@ -743,8 +767,7 @@ public partial class App : Application
 		try
 		{
 			var prefs = Microsoft.Maui.Storage.Preferences.Default;
-			var lastTicks = prefs.Get(LastBackgroundCmsAnnotationCheckPreferenceKey, 0L);
-			if (lastTicks > 0 && DateTimeOffset.UtcNow - new DateTimeOffset(lastTicks, TimeSpan.Zero) < _backgroundCmsAnnotationCheckInterval) return;
+			if (!JobDue(LastBackgroundCmsAnnotationCheckPreferenceKey, _backgroundCmsAnnotationCheckInterval)) return;
 
 			var annotations = services.GetService<ICmsAnnotationService>();
 			if (annotations is null) return;
@@ -800,8 +823,7 @@ public partial class App : Application
 			if (controller is null) return;
 
 			var prefs = Microsoft.Maui.Storage.Preferences.Default;
-			var lastTicks = prefs.Get(LastWireGuardTunnelSyncPreferenceKey, 0L);
-			if (lastTicks > 0 && DateTimeOffset.UtcNow - new DateTimeOffset(lastTicks, TimeSpan.Zero) < _wireGuardTunnelSyncInterval) return;
+			if (!JobDue(LastWireGuardTunnelSyncPreferenceKey, _wireGuardTunnelSyncInterval)) return;
 			prefs.Set(LastWireGuardTunnelSyncPreferenceKey, DateTimeOffset.UtcNow.UtcTicks);
 
 			await controller.SyncAsync();
@@ -871,13 +893,19 @@ public partial class App : Application
 	private static DateTimeOffset _lastConnectFailureLoggedUtc;
 	private static readonly TimeSpan _connectFailureLogInterval = TimeSpan.FromMinutes(10);
 
+	/// <summary>True when <paramref name="interval"/> has passed since the UTC-ticks timestamp a background job stored under <paramref name="key"/> (or it never ran). The job itself still writes the timestamp when it starts.</summary>
+	private static bool JobDue(string key, TimeSpan interval)
+	{
+		var last = Microsoft.Maui.Storage.Preferences.Default.Get(key, 0L);
+		return last <= 0 || DateTimeOffset.UtcNow - new DateTimeOffset(last, TimeSpan.Zero) >= interval;
+	}
 	private static readonly Dictionary<string, DateTimeOffset> _sweepStepLastRunUtc = new();
 
 	/// <summary>Per-process throttle for the sweep steps that do not need to run on every ~3-minute pass; the first call after launch always runs. The sweep itself is single-threaded (the supervisor loop), so no locking is needed.</summary>
-	private static bool SweepStepDue(string step, TimeSpan every)
+	private static bool SweepStepDue(string step, TimeSpan every, bool force = false)
 	{
 		var now = DateTimeOffset.UtcNow;
-		if (_sweepStepLastRunUtc.TryGetValue(step, out var last) && now - last < every)
+		if (!force && _sweepStepLastRunUtc.TryGetValue(step, out var last) && now - last < every)
 			return false;
 		_sweepStepLastRunUtc[step] = now;
 		return true;
@@ -1992,6 +2020,7 @@ public partial class App : Application
 		window.Resumed += (_, _) =>
 		{
 			Notifications.ActiveChatThread.OnAppResumed();
+			RequestImmediateReconnect(); // opened the app: don't make the user wait out a backoff
 			ScreenCaptureGuard.Refresh(); // the OS window may have been recreated without our flag
 		};
 

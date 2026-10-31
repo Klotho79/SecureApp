@@ -1,5 +1,13 @@
 [
   {
+    "version": "0.1.9",
+    "code": 115,
+    "date": "31. 10. 2026",
+    "items": [
+      "Šetrnější k baterii a datům: appka už nezkouší připojení k relay každých 10 sekund, když je nedostupný (zkouší postupně méně často a hned po změně sítě nebo otevření appky), vynucené přepojení je 30 minut místo 5 a dotazy na změny (nástěnka, politika, adresář, log) se dělají po 5–10 minutách místo po 3."
+    ]
+  },
+  {
     "version": "0.1.8",
     "code": 114,
     "date": "31. 10. 2026",

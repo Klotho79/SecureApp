@@ -204,10 +204,7 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
         var username = Encoding.UTF8.GetString(usernameBytes);
         var password = Encoding.UTF8.GetString(passwordBytes);
 
-        var cookies = new CookieContainer();
-        using var handler = new HttpClientHandler { CookieContainer = cookies, UseCookies = true };
-        using var http = new HttpClient(handler) { BaseAddress = new Uri(BaseUrl) };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd(BrowserUserAgent);
+        using var http = CreateSessionClient(BaseUrl);
 
         // 2026-10-16, user's own ask ("prisla hlaska... bylo by dobre blizzsi info vice zachytnych
         // bodu aby to nebylo tak anonymni" — a sync-failure notification was too generic to tell what
@@ -365,10 +362,7 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
         var password = Encoding.UTF8.GetString(passwordBytes);
         var targetNote = Truncate(note ?? string.Empty, 20);
 
-        var cookies = new CookieContainer();
-        using var handler = new HttpClientHandler { CookieContainer = cookies, UseCookies = true };
-        using var http = new HttpClient(handler) { BaseAddress = new Uri(BaseUrl) };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd(BrowserUserAgent);
+        using var http = CreateSessionClient(BaseUrl);
 
         await LoginGate.WaitAsync(ct);
         try
@@ -451,6 +445,14 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
     private const string NurseNotConfiguredMessage = "Nejprve uložte v Nastavení přihlašovací údaje k rozpisu sester (Opicentrum – sestry).";
     private const string NurseLoginFailedMessage = "Přihlášení do rozpisu sester se nezdařilo — zkontrolujte jméno a heslo v Nastavení.";
 
+    /// <summary>A fresh cookie-bearing client for one Opicentrum session (disposing it disposes its handler too).</summary>
+    private static HttpClient CreateSessionClient(string baseUrl)
+    {
+        var http = new HttpClient(new HttpClientHandler { CookieContainer = new CookieContainer(), UseCookies = true }) { BaseAddress = new Uri(baseUrl) };
+        http.DefaultRequestHeaders.UserAgent.ParseAdd(BrowserUserAgent);
+        return http;
+    }
+
     /// <summary>
     /// One logged-in Opicentrum session for the read-only fetches (2026-10-22 — this preamble was
     /// copy-pasted into five methods): reads the stored credentials, opens a fresh cookie-bearing
@@ -466,10 +468,7 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
         if (usernameBytes is null || passwordBytes is null)
             throw new InvalidOperationException(nurses ? NurseNotConfiguredMessage : NotConfiguredMessage);
 
-        var cookies = new CookieContainer();
-        using var handler = new HttpClientHandler { CookieContainer = cookies, UseCookies = true };
-        using var http = new HttpClient(handler) { BaseAddress = new Uri(nurses ? NurseBaseUrl : BaseUrl) };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd(BrowserUserAgent);
+        using var http = CreateSessionClient(nurses ? NurseBaseUrl : BaseUrl);
 
         await LoginGate.WaitAsync(ct);
         try
@@ -624,10 +623,7 @@ public sealed partial class OpicentrumSyncService : IOpicentrumSyncService
         if (usernameBytes is null || passwordBytes is null)
             return new OpicentrumMoveResult(OpicentrumMoveStatus.LoginFailed, "Nejprve uložte přihlašovací údaje do Opicentra.");
 
-        var cookies = new CookieContainer();
-        using var handler = new HttpClientHandler { CookieContainer = cookies, UseCookies = true };
-        using var http = new HttpClient(handler) { BaseAddress = new Uri(BaseUrl) };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd(BrowserUserAgent);
+        using var http = CreateSessionClient(BaseUrl);
 
         await LoginGate.WaitAsync(ct);
         try

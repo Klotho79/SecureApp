@@ -223,8 +223,7 @@ public sealed class HttpPiccRosterService : IPiccRosterService
         var secretBytes = await _vault.RetrieveSecretAsync(RelayDeviceVaultKeys.DeviceSecret, ct)
             ?? throw new InvalidOperationException("V úložišti chybí tajný klíč zařízení.");
 
-        var scheme = wsEndpoint.Scheme switch { "ws" => "http", "wss" => "https", _ => wsEndpoint.Scheme };
-        var baseUri = new UriBuilder(wsEndpoint) { Scheme = scheme, Port = wsEndpoint.Port }.Uri;
+        var baseUri = RelayHttp.ToHttpUri(wsEndpoint);
         return (baseUri, deviceId, Encoding.UTF8.GetString(secretBytes));
     }
 

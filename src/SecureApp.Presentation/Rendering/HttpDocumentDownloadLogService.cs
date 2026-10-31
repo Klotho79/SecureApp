@@ -10,8 +10,7 @@ namespace SecureApp.Presentation.Rendering;
 /// <inheritdoc cref="IDocumentDownloadLogService"/>
 /// <remarks>
 /// Lives in Presentation, same established split every other Http*Service here already follows —
-/// device-auth header helper and ws-&gt;http rewrite duplicated from <c>HttpSharedContactService</c>
-/// rather than shared, same "duplicated, stays independently readable" call this codebase already made.
+/// device-auth header helper is the shared <c>RelayHttp</c> one (2026-10-31).
 /// </remarks>
 public sealed class HttpDocumentDownloadLogService : IDocumentDownloadLogService
 {
@@ -64,15 +63,6 @@ public sealed class HttpDocumentDownloadLogService : IDocumentDownloadLogService
         return new UriBuilder(wsEndpoint) { Scheme = scheme, Port = wsEndpoint.Port, Path = "/" }.Uri;
     }
 
-    private async Task AddDeviceAuthAsync(HttpRequestMessage request, CancellationToken ct)
-    {
-        var configuration = await _transportSettingsRepository.GetAsync(ct);
-        var deviceId = configuration?.AssignedDeviceId
-            ?? throw new InvalidOperationException("Zařízení ještě není zaregistrované u relay serveru.");
-        var secretBytes = await _vault.RetrieveSecretAsync(RelayDeviceVaultKeys.DeviceSecret, ct)
-            ?? throw new InvalidOperationException("V úložišti chybí tajný klíč zařízení pro relay.");
-
-        request.Headers.Add("X-Device-Id", deviceId.ToString());
-        request.Headers.Add("X-Device-Secret", Encoding.UTF8.GetString(secretBytes));
-    }
+    private Task AddDeviceAuthAsync(HttpRequestMessage request, CancellationToken ct)
+        => RelayHttp.AddDeviceAuthAsync(request, _transportSettingsRepository, _vault, ct);
 }
