@@ -50,6 +50,8 @@ public sealed class RelayConnectionService : Service
             else
                 StartForeground(NotificationId, notification);
             AppLog.Event("bg-service.started");
+            if (Microsoft.Maui.IPlatformApplication.Current?.Services.GetService(typeof(SecureApp.Domain.Interfaces.Services.IWireGuardTunnelController)) is WireGuardTunnelController tunnel)
+                _ = Task.Run(() => tunnel.StartFromCacheAsync());
         }
         catch (Exception ex)
         {

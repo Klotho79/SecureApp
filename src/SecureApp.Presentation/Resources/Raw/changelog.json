@@ -1,5 +1,13 @@
 [
   {
+    "version": "0.1.8",
+    "code": 114,
+    "date": "31. 10. 2026",
+    "items": [
+      "Síťové vylepšení (jen testované zařízení): tunel se po restartu telefonu spustí sám, bez otevření appky."
+    ]
+  },
+  {
     "version": "0.1.7",
     "code": 113,
     "date": "31. 10. 2026",

@@ -38,12 +38,36 @@ public sealed class WireGuardTunnelController : IWireGuardTunnelController
                 return; // background job nemůže zobrazit systémový dialog - to řeší MainActivity
             }
 
+            if (_tunnel.IsUpWith(configText))
+                return; // už běží přesně s tímhle configem - nepřekonfigurovávat každých 15 min
+
             await _tunnel.UpAsync(configText);
         }
         catch (Exception ex)
         {
             AppLog.Error(nameof(WireGuardTunnelController), "tunnel sync failed", ex);
             WireGuardTunnelStatus.Set($"Tunel: chyba ({ex.Message})");
+        }
+    }
+
+    /// <summary>
+    /// Start tunelu hned po restartu telefonu / spuštění procesu, z configu uloženého na zařízení — relay je
+    /// dosažitelný jen přes tunel, takže čekat na stažení configu by znamenalo nikdy nenaběhnout.
+    /// Bez uloženého configu nebo bez VPN souhlasu nedělá nic.
+    /// </summary>
+    public async Task StartFromCacheAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var cached = await _configService.GetCachedConfigAsync(ct);
+            if (cached is null || _tunnel.PrepareIntent is not null || _tunnel.IsUpWith(cached))
+                return;
+            AppLog.Event("wireguard.start-from-cache");
+            await _tunnel.UpAsync(cached);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error(nameof(WireGuardTunnelController), "starting the tunnel from the cached config failed", ex);
         }
     }
 

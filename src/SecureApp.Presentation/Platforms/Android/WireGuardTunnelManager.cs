@@ -32,8 +32,15 @@ public sealed class WireGuardTunnelManager : Java.Lang.Object, ITunnel
 
     public string? Name => TunnelName;
 
+    private volatile bool _isUp;
+    private volatile string? _appliedConfig;
+
+    /// <summary>True když tunel běží přesně s tímhle configem — volající pak nemusí SetState(Up) opakovat (zbytečně by tunel překonfiguroval).</summary>
+    public bool IsUpWith(string configText) => _isUp && _appliedConfig == configText;
+
     public void OnStateChange(ITunnel.State? state)
     {
+        _isUp = state == ITunnel.State.Up;
         AppLog.Event($"wireguard.state={state}");
         WireGuardTunnelStatus.Set(state == ITunnel.State.Up ? "Tunel: aktivní"
             : state == ITunnel.State.Down ? "Tunel: vypnutý"
@@ -67,6 +74,7 @@ public sealed class WireGuardTunnelManager : Java.Lang.Object, ITunnel
                 var config = Config.Parse(stream);
                 _backend.SetState(this, ITunnel.State.Up!, config);
             }).ConfigureAwait(true);
+            _appliedConfig = configText;
             return true;
         }
         catch (Exception ex)
@@ -82,6 +90,7 @@ public sealed class WireGuardTunnelManager : Java.Lang.Object, ITunnel
         try
         {
             await Task.Run(() => _backend?.SetState(this, ITunnel.State.Down!, null)).ConfigureAwait(true);
+            _appliedConfig = null;
         }
         catch (Exception ex)
         {
