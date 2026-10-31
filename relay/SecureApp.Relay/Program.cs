@@ -23,6 +23,13 @@ var outboxFlushPacing = TimeSpan.FromMilliseconds(75);
 var wgEasyUrl = builder.Configuration["SECUREAPP_WGEASY_URL"];
 var wgEasyPassword = builder.Configuration["SECUREAPP_WGEASY_PASSWORD"];
 
+// PILOT (2026-10-31, VPN_EMBED_PLAN.md) - vestavěný tunel (appka si sama vyžádá/zapne WireGuard,
+// viz /device/wireguard/config níže) nikdy neběžel na reálném zařízení. Uživatelovo rozhodnutí:
+// nejdřív jen "Zařízení S23+ uživatele Vilém" (6b4bf8e9-131b-4304-8368-c831a32c5a2b, zjištěno
+// 2026-10-31 read-only dotazem na devices table), dokud se nepotvrdí stabilní. Smazat tuhle
+// množinu (a dát endpoint všem autentizovaným zařízením) po ověření na S23+.
+var wireGuardTunnelPilotDeviceIds = new HashSet<Guid> { Guid.Parse("6b4bf8e9-131b-4304-8368-c831a32c5a2b") };
+
 var port = builder.Configuration["SECUREAPP_RELAY_PORT"] ?? "8080";
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
@@ -421,6 +428,55 @@ app.MapPost("/admin/wireguard/clients", async (HttpRequest request, CreateWireGu
         db.SetPendingMemberRole(body.Name, role);
 
     return Results.Ok(new WireGuardClientResponse(configText, pickupCode));
+});
+
+// Vestavěný tunel (2026-10-31, VPN_EMBED_PLAN.md) — appka si sama vyžádá svůj WireGuard config,
+// authentizovaně vlastním device tokenem (TryGetDeviceAuth), žádný admin secret ani pickup kód
+// (na rozdíl od /admin/wireguard/clients výše, co je pro lidmi zprostředkovaný onboarding). První
+// zavolání appce vytvoří nový peer a napořád ho s ní propojí (device_wireguard_peers); každé další
+// zavolání vrátí AKTUÁLNÍ config téhož peera, takže admin může AllowedIPs/keepalive změnit centrálně
+// (TuneWireGuardClientConfig) a appka si to sama vyzvedne. Pokud admin peer v wg-easy zruší, config
+// fetch 404ne a appka NEDOSTANE nový náhradní — zrušení administrátorem musí doopravdy zrušit přístup,
+// ne se samo tiše obnovit.
+app.MapPost("/device/wireguard/config", async (HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+    // PILOT (2026-10-31, uživatelovo rozhodnutí "nejdřív jen S23+") - vestavěný tunel nikdy neběžel
+    // na reálném zařízení, appka ukazuje systémový VPN dialog podle TOHO, jestli tahle výzva uspěje,
+    // takže tahle kontrola je i gate pro ten dialog, ne jen pro samotný tunel. Smazat, až se potvrdí
+    // stabilní na S23+ - viz VPN_EMBED_PLAN.md "Pilot".
+    if (!wireGuardTunnelPilotDeviceIds.Contains(deviceId))
+        return Results.NotFound("WireGuard tunnel pilot not enabled for this device yet.");
+    if (string.IsNullOrEmpty(wgEasyUrl) || string.IsNullOrEmpty(wgEasyPassword))
+        return Results.NotFound("WireGuard onboarding not configured on this relay (SECUREAPP_WGEASY_URL/SECUREAPP_WGEASY_PASSWORD).");
+
+    using var wg = new HttpClient { BaseAddress = new Uri(wgEasyUrl) };
+    wg.DefaultRequestHeaders.Add("Authorization", wgEasyPassword);
+
+    var clientId = db.GetDeviceWireGuardClientId(deviceId);
+    if (clientId is null)
+    {
+        var name = $"device-{deviceId:N}";
+        var createResponse = await wg.PostAsJsonAsync("api/wireguard/client", new { name });
+        if (!createResponse.IsSuccessStatusCode)
+            return Results.Problem($"wg-easy rejected client creation: {createResponse.StatusCode}", statusCode: 502);
+
+        var clients = await wg.GetFromJsonAsync<List<WgEasyClient>>("api/wireguard/client", new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+        var newest = clients?.OrderByDescending(c => c.CreatedAt).FirstOrDefault();
+        if (newest is null)
+            return Results.Problem("wg-easy created the client but it couldn't be found afterward.", statusCode: 502);
+
+        clientId = newest.Id;
+        db.SetDeviceWireGuardClientId(deviceId, clientId);
+    }
+
+    var configResponse = await wg.GetAsync($"api/wireguard/client/{clientId}/configuration");
+    if (!configResponse.IsSuccessStatusCode)
+        return Results.NotFound("Tunel pro tohle zařízení na relay už neexistuje (pravděpodobně zrušen administrátorem).");
+
+    var configText = TuneWireGuardClientConfig(await configResponse.Content.ReadAsStringAsync());
+    return Results.Ok(new DeviceWireGuardConfigResponse(configText));
 });
 
 // Public, deliberately unauthenticated (2026-10-07) — the ENTIRE POINT is that a non-admin colleague

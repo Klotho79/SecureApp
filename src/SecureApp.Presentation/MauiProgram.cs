@@ -155,6 +155,15 @@ public static class MauiProgram
 		builder.Services.AddSingleton<IDevicePolicyService, SecureApp.Presentation.Transport.HttpDevicePolicyService>();
 		builder.Services.AddSingleton<ICommunityBoardService, SecureApp.Presentation.Transport.HttpCommunityBoardService>();
 
+		// Vestavěný tunel (2026-10-31, VPN_EMBED_PLAN.md) — appka si sama vyžádá svůj WireGuard config.
+		builder.Services.AddSingleton<IWireGuardTunnelConfigService, SecureApp.Presentation.Transport.HttpWireGuardTunnelConfigService>();
+#if ANDROID
+		// Jen Android má vestavěný tunel zatím (fáze "Windows: vestavěný tunel" v VPN_EMBED_PLAN.md
+		// ještě nezačala) - App.xaml.cs volá GetService<IWireGuardTunnelController>() a na platformách
+		// bez registrace to přeskočí, stejně jako u ISharedContactService výše.
+		builder.Services.AddSingleton<IWireGuardTunnelController, SecureApp.Presentation.Platforms.Android.WireGuardTunnelController>();
+#endif
+
 		// PICC roster (2026-10-12) — manual xlsx upload, doctor-name status public, nurses gated. See
 		// IPiccRosterService's own remarks.
 		builder.Services.AddSingleton<IPiccRosterService, SecureApp.Presentation.Transport.HttpPiccRosterService>();

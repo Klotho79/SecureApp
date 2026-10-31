@@ -356,6 +356,15 @@
                     </VerticalStackLayout>
                 </Border>
 
+                <!-- Vestavěný tunel (2026-10-31, VPN_EMBED_PLAN.md) — jen status, nic se tu
+                     nenastavuje (appka se konfiguruje sama, admin parametry upravuje přes relay). -->
+                <Border Style="{StaticResource CardBorder}" IsVisible="{Binding IsTunnelSupported}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Tunel" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Label Text="{Binding TunnelStatusText}" IsVisible="{Binding HasTunnelStatus}" FontSize="9.5" TextColor="Gray" LineBreakMode="WordWrap" />
+                    </VerticalStackLayout>
+                </Border>
+
                 <!-- Profil (2026-10-05, Windows multi-profile login — Profiles.ActiveProfile's own
                      remarks): this PC is shared by several people, each with their own profile. Only
                      shown when a profile is actually active (i.e. on Windows, logged in). -->

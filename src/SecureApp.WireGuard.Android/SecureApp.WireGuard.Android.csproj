@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>24</SupportedOSPlatformVersion>
+    <RootNamespace>SecureApp.WireGuard.Android</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsTrimmable>true</IsTrimmable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Oficiální embeddable WireGuard knihovna pro Android (Apache 2.0), stejný kód jako
+         oficiální WireGuard app (GoBackend = JNI na wireguard-go). Viz VPN_EMBED_PLAN.md
+         a CHANGELOG.md (2026-10-31) - ověřeno feasibility testem mimo repo, tohle je ostrý
+         binding projekt. Verze ověřit na https://central.sonatype.com/artifact/com.wireguard.android/tunnel
+         při další aktualizaci. -->
+    <AndroidMavenLibrary Include="com.wireguard.android:tunnel" Version="1.0.20260102" />
+    <!-- Transitivní závislosti tunnel knihovny - Maven je nedotáhne samo, musí být uvedené
+         explicitně; verze zjištěné z tunnel-1.0.20260102.pom. -->
+    <PackageReference Include="Xamarin.AndroidX.Annotation" Version="1.9.1.3" />
+    <PackageReference Include="Xamarin.AndroidX.Collection" Version="1.5.0.1" />
+  </ItemGroup>
+</Project>

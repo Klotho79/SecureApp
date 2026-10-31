@@ -25,6 +25,9 @@ public sealed record CreateWireGuardClientRequest(string Name, int? Role = null)
 /// </summary>
 public sealed record WireGuardClientResponse(string ConfigurationText, string? PickupCode = null);
 
+/// <summary>Vestavěný tunel (2026-10-31, VPN_EMBED_PLAN.md) — POST /device/wireguard/config vrací appce rovnou tohle, authentizovaně přes její vlastní X-Device-Id/X-Device-Secret, žádný admin secret ani pickup kód (na rozdíl od <see cref="WireGuardClientResponse"/>, co je pro lidmi zprostředkované onboardingy).</summary>
+public sealed record DeviceWireGuardConfigResponse(string ConfigurationText);
+
 /// <summary>Shape of wg-easy's own GET /api/wireguard/client response — only the fields this relay actually reads (id, to fetch the configuration afterward; createdAt, to identify the just-created client). Not the full wg-easy client shape.</summary>
 public sealed record WgEasyClient(string Id, string Name, DateTimeOffset CreatedAt);
 

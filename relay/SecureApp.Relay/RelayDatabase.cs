@@ -155,6 +155,18 @@ public sealed class RelayDatabase
         // already-created WireGuard client's real .conf content (admin already paid wg-easy's own
         // "create a client" cost via /admin/wireguard/clients; this table just lets ONE later
         // unauthenticated GET hand that same content back exactly once).
+        // Vestavěný tunel (2026-10-31, VPN_EMBED_PLAN.md) — appka si teď o svůj WireGuard peer žádá
+        // sama (POST /device/wireguard/config, authentizovaně vlastním device tokenem), ne člověk
+        // přes pickup kód. Tahle tabulka páruje device_id s wg-easy peerem napořád, aby appka při
+        // druhém a dalším zavolání dostala AKTUÁLNÍ config téhož peera (ne nový pokaždé) — admin tak
+        // může parametry (AllowedIPs/keepalive) měnit centrálně a appka si je sama vyzvedne.
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS device_wireguard_peers (
+                device_id         TEXT PRIMARY KEY NOT NULL,
+                wg_client_id      TEXT NOT NULL,
+                created_at_utc    TEXT NOT NULL
+            )
+            """);
         Execute(connection, """
             CREATE TABLE IF NOT EXISTS wireguard_pickup_codes (
                 code              TEXT PRIMARY KEY NOT NULL,
@@ -889,6 +901,25 @@ public sealed class RelayDatabase
     {
         using var connection = OpenConnection();
         Execute(connection, "DELETE FROM pending_wireguard_peers WHERE wg_client_id = @id", ("@id", wgClientId));
+    }
+
+    /// <summary>The wg-easy peer already linked to this device, if any — see <c>device_wireguard_peers</c>'s own schema remarks.</summary>
+    public string? GetDeviceWireGuardClientId(Guid deviceId)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT wg_client_id FROM device_wireguard_peers WHERE device_id = @id";
+        command.Parameters.AddWithValue("@id", deviceId.ToString());
+        using var reader = command.ExecuteReader();
+        return reader.Read() ? reader.GetString(0) : null;
+    }
+
+    public void SetDeviceWireGuardClientId(Guid deviceId, string wgClientId)
+    {
+        using var connection = OpenConnection();
+        Execute(connection,
+            "INSERT OR REPLACE INTO device_wireguard_peers (device_id, wg_client_id, created_at_utc) VALUES (@device, @wg, @now)",
+            ("@device", deviceId.ToString()), ("@wg", wgClientId), ("@now", Format(DateTimeOffset.UtcNow)));
     }
 
     /// <summary>Every pending peer older than <paramref name="olderThanUtc"/> — <see cref="WireGuardOnboardingSweepService"/> decides per-entry whether a matching device actually showed up before deleting it from wg-easy.</summary>

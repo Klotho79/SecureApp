@@ -433,6 +433,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         LoadAccent();
         LoadChatAppearance();
         RefreshBackgroundRunStatus();
+        RefreshTunnelStatus();
         if (IsAdmin)
             LoadScreenCaptureState();
         IsSaved = false;

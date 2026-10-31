@@ -13,6 +13,19 @@
 			android:grantUriPermissions="true">
 			<meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/update_file_paths" />
 		</provider>
+		<!-- Vestavěný tunel (2026-10-31, VPN_EMBED_PLAN.md) — GoBackend.VpnService je hotová třída
+		     z com.wireguard.android:tunnel (binding SecureApp.WireGuard.Android), appka ji sama
+		     nespouští přímo, GoBackend ji startuje interně při SetState(..., Up, ...). Musí být
+		     deklarovaná v manifestu s BIND_VPN_SERVICE a intent-filter android.net.VpnService,
+		     jinak ji systém nenajde. -->
+		<service
+			android:name="com.wireguard.android.backend.GoBackend$VpnService"
+			android:exported="false"
+			android:permission="android.permission.BIND_VPN_SERVICE">
+			<intent-filter>
+				<action android:name="android.net.VpnService" />
+			</intent-filter>
+		</service>
 	</application>
 	<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 	<uses-permission android:name="android.permission.INTERNET" />

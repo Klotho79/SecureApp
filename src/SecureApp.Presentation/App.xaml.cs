@@ -504,6 +504,7 @@ public partial class App : Application
 			await RunBackgroundOpicentrumVolnoBoardPublishAsync(services);
 			await RunBackgroundUpdateCheckAsync(services);
 			await RunBackgroundCmsAnnotationCheckAsync(services);
+			await RunWireGuardTunnelSyncAsync(services);
 		}
 		catch
 		{
@@ -778,6 +779,36 @@ public partial class App : Application
 		catch (Exception ex)
 		{
 			AppLog.Error(nameof(RunBackgroundCmsAnnotationCheckAsync), "background CMS annotation check failed", ex);
+		}
+	}
+
+	private const string LastWireGuardTunnelSyncPreferenceKey = "wireguard_last_bg_sync_utc";
+	private static readonly TimeSpan _wireGuardTunnelSyncInterval = TimeSpan.FromMinutes(15);
+
+	/// <summary>
+	/// Vestavěný tunel (2026-10-31, VPN_EMBED_PLAN.md) — stáhne appčin aktuální WireGuard config
+	/// z relay a podle něj tunel zapne/aktualizuje/vypne (admin může AllowedIPs/keepalive změnit
+	/// centrálně, appka si to tímhle tickem sama vyzvedne; zrušení peera adminem appku odpojí).
+	/// Jen Android má <see cref="IWireGuardTunnelController"/> registrovaný (MauiProgram.cs) - na
+	/// ostatních platformách GetService vrátí null a tenhle job se jen přeskočí.
+	/// </summary>
+	private static async Task RunWireGuardTunnelSyncAsync(IServiceProvider services)
+	{
+		try
+		{
+			var controller = services.GetService<IWireGuardTunnelController>();
+			if (controller is null) return;
+
+			var prefs = Microsoft.Maui.Storage.Preferences.Default;
+			var lastTicks = prefs.Get(LastWireGuardTunnelSyncPreferenceKey, 0L);
+			if (lastTicks > 0 && DateTimeOffset.UtcNow - new DateTimeOffset(lastTicks, TimeSpan.Zero) < _wireGuardTunnelSyncInterval) return;
+			prefs.Set(LastWireGuardTunnelSyncPreferenceKey, DateTimeOffset.UtcNow.UtcTicks);
+
+			await controller.SyncAsync();
+		}
+		catch (Exception ex)
+		{
+			AppLog.Error(nameof(RunWireGuardTunnelSyncAsync), "background WireGuard tunnel sync failed", ex);
 		}
 	}
 

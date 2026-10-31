@@ -75,7 +75,11 @@ public partial class SettingsPage : ContentPage
 #endif
     }
 
-    private void OnWindowResumed(object? sender, EventArgs e) => _viewModel.RefreshBackgroundRunStatus();
+    private void OnWindowResumed(object? sender, EventArgs e)
+    {
+        _viewModel.RefreshBackgroundRunStatus();
+        _viewModel.RefreshTunnelStatus();
+    }
 
     protected override void OnDisappearing()
     {

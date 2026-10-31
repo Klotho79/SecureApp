@@ -5,6 +5,8 @@ using Android.OS;
 using Android.Views;
 using AndroidX.Core.App;
 using AndroidX.Core.View;
+using Microsoft.Maui;
+using SecureApp.Domain.Interfaces.Services;
 
 namespace SecureApp.Presentation;
 
@@ -38,6 +40,7 @@ public class MainActivity : MauiAppCompatActivity
         ApplyWindowSoftInputMode();
         RequestNotificationPermissionIfNeeded();
         Platforms.Android.RelayConnectionService.Start(this);
+        RequestWireGuardTunnelPermissionIfNeeded();
         HandleNotificationIntent(Intent);
         HandleWidgetIntent(Intent);
     }
@@ -46,6 +49,14 @@ public class MainActivity : MauiAppCompatActivity
     {
         base.OnResume();
         ApplyWindowSoftInputMode();
+    }
+
+    protected override void OnActivityResult(int requestCode, Result resultCode, Intent? data)
+    {
+        base.OnActivityResult(requestCode, resultCode, data);
+        if (requestCode != WireGuardPrepareRequestCode || resultCode != Result.Ok) return;
+        if (IPlatformApplication.Current?.Services.GetService<IWireGuardTunnelController>() is Platforms.Android.WireGuardTunnelController controller)
+            _ = controller.SyncAsync();
     }
 
     // LaunchMode.SingleTop ([Activity] attribute above) means tapping a SecureApp notification
@@ -89,5 +100,33 @@ public class MainActivity : MauiAppCompatActivity
         if (Window is null) return;
         WindowCompat.SetDecorFitsSystemWindows(Window, true);
         Window.SetSoftInputMode(SoftInput.AdjustResize);
+    }
+
+    private const int WireGuardPrepareRequestCode = 7201;
+
+    /// <summary>
+    /// Vestavěný tunel (2026-10-31, VPN_EMBED_PLAN.md) — Androidí jednorázový systémový souhlas
+    /// "SecureApp chce vytvořit VPN připojení". Zjistí napřed (relay), jestli pro tohle zařízení
+    /// vůbec existuje config (pilot - zatím jen S23+, viz VPN_EMBED_PLAN.md "Pilot") — zařízení bez
+    /// configu tenhle dialog NIKDY neuvidí. Jen pak: null = appka souhlas už má, zkusí tunel hned;
+    /// jinak se zobrazí systémový dialog a <see cref="OnActivityResult"/> spustí sync po odsouhlasení.
+    /// </summary>
+    private void RequestWireGuardTunnelPermissionIfNeeded()
+    {
+        if (IPlatformApplication.Current?.Services.GetService<IWireGuardTunnelController>() is not Platforms.Android.WireGuardTunnelController controller)
+            return;
+        _ = RequestWireGuardTunnelPermissionCoreAsync(controller);
+    }
+
+    private async Task RequestWireGuardTunnelPermissionCoreAsync(Platforms.Android.WireGuardTunnelController controller)
+    {
+        if (!await controller.HasPendingConfigAsync())
+            return; // relay pro tohle zařízení tunel (zatím) nemá - žádný dialog, žádný pokus o sync
+
+        var prepareIntent = controller.PrepareIntent;
+        if (prepareIntent is null)
+            _ = controller.SyncAsync();
+        else
+            StartActivityForResult(prepareIntent, WireGuardPrepareRequestCode);
     }
 }
