@@ -1,5 +1,13 @@
 [
   {
+    "version": "0.1.7",
+    "code": 113,
+    "date": "31. 10. 2026",
+    "items": [
+      "Síťové vylepšení (jen testované zařízení): oprava chyby, která mohla krátce přerušit spojení s relay."
+    ]
+  },
+  {
     "version": "0.1.6",
     "code": 112,
     "date": "31. 10. 2026",

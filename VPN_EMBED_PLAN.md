@@ -1,6 +1,6 @@
 # Vestavěný tunel (WireGuard v appce) — plán
 
-Stav: návrh, nic implementováno. Navazuje na `HANDOFF_standalone-24caf3f8_releases-0-1-5-tunnel_2026-10-30.md` (volba mezi "A: veřejné HTTPS bez tunelu" a "B: opravit tunel") — uživatel zvolil třetí cestu: **tunel zůstává, ale uživatel o něm nemá vědět a nic nastavovat.**
+Stav: **release 0.1.7 (113) živý na relay od 2026-10-31** — opravuje deadlock z 0.1.6 (viz CHANGELOG.md), pilot jen na S23+ (viz "Pilot" níže) — zbývá ověřit stabilitu přes delší dobu (reboot, přes noc) před odstraněním pilotní brány. Navazuje na `HANDOFF_standalone-24caf3f8_releases-0-1-5-tunnel_2026-10-30.md` (volba mezi "A: veřejné HTTPS bez tunelu" a "B: opravit tunel") — uživatel zvolil třetí cestu: **tunel zůstává, ale uživatel o něm nemá vědět a nic nastavovat.**
 
 ## Cíl
 

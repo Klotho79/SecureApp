@@ -14,9 +14,9 @@ namespace SecureApp.Presentation.Platforms.Android;
 /// s TuneWireGuardClientConfig), jen ho teď appka sama spotřebuje přes <see cref="Config.Parse(Stream?)"/>
 /// místo člověka, co ho importoval do cizí appky.
 ///
-/// Zatím jen plumbing — nic appku nevolá (žádné napojení na Nastavení / background job / data
-/// z relay). <see cref="Up"/> musí volající spustit mimo hlavní vlákno (GoBackend.SetState je
-/// blokující). VPN souhlas systému (<see cref="PrepareIntent"/>) se appce zobrazí jen jednou.
+/// <see cref="UpAsync"/>/<see cref="DownAsync"/> si samy odloží blokující GoBackend.SetState na
+/// thread-pool vlákno (viz jejich komentáře — volání přímo na hlavním vlákně způsobí deadlock).
+/// VPN souhlas systému (<see cref="PrepareIntent"/>) se appce zobrazí jen jednou.
 /// </summary>
 public sealed class WireGuardTunnelManager : Java.Lang.Object, ITunnel
 {
@@ -47,15 +47,26 @@ public sealed class WireGuardTunnelManager : Java.Lang.Object, ITunnel
     /// </summary>
     public Intent? PrepareIntent => VpnService.Prepare(_context);
 
-    /// <summary>Spustí/aktualizuje tunel z config textu, jak ho appka dostala z relay (stejný formát jako .conf, který dnes stahuje člověk).</summary>
-    public bool Up(string configText)
+    /// <summary>
+    /// Spustí/aktualizuje tunel z config textu, jak ho appka dostala z relay (stejný formát jako .conf,
+    /// který dnes stahuje člověk). <see cref="GoBackend.SetState"/> uvnitř čeká na vlastní VpnService
+    /// callback, který doběhne jen na hlavním vlákně (Looper) — proto tahle metoda jen zadá blokující
+    /// práci na thread-pool vlákno a sama na výsledek čeká asynchronně (ne <c>.Wait()</c>/<c>.Result</c>),
+    /// aby hlavní vlákno zůstalo volné zpracovat ten callback. Bez tohohle (volání přímo na hlavním
+    /// vlákně) vznikne deadlock, který GoBackend po chvíli shodí jako TimeoutException (nalezeno
+    /// 2026-10-31 v device_app_logs pro S23+ pilot).
+    /// </summary>
+    public async Task<bool> UpAsync(string configText)
     {
         try
         {
-            _backend ??= new GoBackend(_context);
-            using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(configText));
-            var config = Config.Parse(stream);
-            _backend.SetState(this, ITunnel.State.Up!, config);
+            await Task.Run(() =>
+            {
+                _backend ??= new GoBackend(_context);
+                using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(configText));
+                var config = Config.Parse(stream);
+                _backend.SetState(this, ITunnel.State.Up!, config);
+            }).ConfigureAwait(true);
             return true;
         }
         catch (Exception ex)
@@ -66,11 +77,11 @@ public sealed class WireGuardTunnelManager : Java.Lang.Object, ITunnel
         }
     }
 
-    public void Down()
+    public async Task DownAsync()
     {
         try
         {
-            _backend?.SetState(this, ITunnel.State.Down!, null);
+            await Task.Run(() => _backend?.SetState(this, ITunnel.State.Down!, null)).ConfigureAwait(true);
         }
         catch (Exception ex)
         {

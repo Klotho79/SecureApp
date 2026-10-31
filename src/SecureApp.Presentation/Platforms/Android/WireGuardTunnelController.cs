@@ -28,7 +28,7 @@ public sealed class WireGuardTunnelController : IWireGuardTunnelController
             var configText = await _configService.FetchConfigAsync(ct);
             if (configText is null)
             {
-                _tunnel.Down();
+                await _tunnel.DownAsync();
                 return;
             }
 
@@ -38,7 +38,7 @@ public sealed class WireGuardTunnelController : IWireGuardTunnelController
                 return; // background job nemůže zobrazit systémový dialog - to řeší MainActivity
             }
 
-            _tunnel.Up(configText);
+            await _tunnel.UpAsync(configText);
         }
         catch (Exception ex)
         {
