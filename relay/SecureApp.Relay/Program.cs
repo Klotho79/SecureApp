@@ -28,7 +28,12 @@ var wgEasyPassword = builder.Configuration["SECUREAPP_WGEASY_PASSWORD"];
 // nejdřív jen "Zařízení S23+ uživatele Vilém" (6b4bf8e9-131b-4304-8368-c831a32c5a2b, zjištěno
 // 2026-10-31 read-only dotazem na devices table), dokud se nepotvrdí stabilní. Smazat tuhle
 // množinu (a dát endpoint všem autentizovaným zařízením) po ověření na S23+.
-var wireGuardTunnelPilotDeviceIds = new HashSet<Guid> { Guid.Parse("6b4bf8e9-131b-4304-8368-c831a32c5a2b") };
+// 2026-11-01: + DESKTOP-F8AS2U6 (744abac3-8f75-4db9-8ac3-ceba65bdf0f5, vývojové PC) jako pilot Windows tunelu.
+var wireGuardTunnelPilotDeviceIds = new HashSet<Guid>
+{
+    Guid.Parse("6b4bf8e9-131b-4304-8368-c831a32c5a2b"),
+    Guid.Parse("744abac3-8f75-4db9-8ac3-ceba65bdf0f5"),
+};
 
 var port = builder.Configuration["SECUREAPP_RELAY_PORT"] ?? "8080";
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");

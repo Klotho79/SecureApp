@@ -1,5 +1,13 @@
 [
   {
+    "version": "0.1.10",
+    "code": 116,
+    "date": "1. 11. 2026",
+    "items": [
+      "Příprava síťového vylepšení pro Windows (testuje se zatím jen na jednom počítači) — pro ostatní se nic nemění."
+    ]
+  },
+  {
     "version": "0.1.9",
     "code": 115,
     "date": "31. 10. 2026",
