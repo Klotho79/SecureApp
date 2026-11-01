@@ -3,9 +3,8 @@ namespace SecureApp.Domain.Interfaces.Services;
 /// <summary>
 /// Vestavěný tunel (2026-10-31, VPN_EMBED_PLAN.md) — platformní protějšek k
 /// <see cref="IWireGuardTunnelConfigService"/>: stáhne aktuální config a podle něj tunel
-/// zapne/aktualizuje/vypne. Jen Android má implementaci (registrováno podmíněně v MauiProgram.cs);
-/// na platformách bez vestavěného tunelu (dnes Windows, fáze "Windows: vestavěný tunel" v plánu)
-/// <c>GetService&lt;IWireGuardTunnelController&gt;()</c> vrátí null a volající to má přeskočit,
+/// zapne/aktualizuje/vypne. Android a Windows mají implementaci (registrováno podmíněně v MauiProgram.cs);
+/// na ostatních platformách <c>GetService&lt;IWireGuardTunnelController&gt;()</c> vrátí null a volající to má přeskočit,
 /// stejně jako ostatní jen-Android služby v App.xaml.cs.
 /// </summary>
 public interface IWireGuardTunnelController
