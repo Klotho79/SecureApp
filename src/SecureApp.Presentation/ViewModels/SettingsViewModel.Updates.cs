@@ -377,6 +377,12 @@ public sealed partial class SettingsViewModel
         {
             try
             {
+                if (_nativeUpdateDownloader.TryInstallCached(_latestVersionCode, _latestVersionName))
+                {
+                    UpdateStatusText = "Aktualizace je stažená — potvrďte instalaci, pak může telefon dál normálně běžet.";
+                    return;
+                }
+
                 var url = await _updateService.GetDownloadUrlAsync();
                 _nativeUpdateDownloader.StartBackgroundDownload(url, _latestVersionCode, _latestVersionName);
                 UpdateStatusText = "Stahování běží na pozadí — průběh uvidíte v oznámení. Telefon můžete běžně používat.";

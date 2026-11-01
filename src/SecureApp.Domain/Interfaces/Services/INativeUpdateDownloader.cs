@@ -18,4 +18,12 @@ public interface INativeUpdateDownloader
     /// tap-to-install prompt are surfaced through a system notification, not back through this call.
     /// </summary>
     void StartBackgroundDownload(string absoluteApkUrl, int versionCode, string versionName);
+
+    /// <summary>
+    /// If an update of exactly <paramref name="versionCode"/> is already downloaded, opens the installer
+    /// for it right away (no network, no notification tap) and returns true; otherwise false. Meant for
+    /// a user tap in the foreground — the installer screen closes when the user switches away, so
+    /// retrying has to be one tap.
+    /// </summary>
+    bool TryInstallCached(int versionCode, string versionName);
 }

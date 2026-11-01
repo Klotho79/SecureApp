@@ -40,6 +40,7 @@ public class MainActivity : MauiAppCompatActivity
         ApplyWindowSoftInputMode();
         RequestNotificationPermissionIfNeeded();
         Platforms.Android.RelayConnectionService.Start(this);
+        try { SecureApp.Presentation.Infrastructure.UpdateDownloadService.ClearIfInstalled(this, (int)PackageManager!.GetPackageInfo(PackageName!, 0)!.LongVersionCode); } catch { /* úklid po aktualizaci nesmí shodit start */ }
         RequestWireGuardTunnelPermissionIfNeeded();
         HandleNotificationIntent(Intent);
         HandleWidgetIntent(Intent);

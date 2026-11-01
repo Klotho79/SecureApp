@@ -1,5 +1,6 @@
 using Android.App;
 using Android.Content;
+using Android.Content.PM;
 using Android.OS;
 using AndroidX.Core.App;
 using SecureApp.Domain.Interfaces.Services;
@@ -168,30 +169,66 @@ public sealed class UpdateDownloadService : Service
 
     private void ShowInstallReady(string localPath, string versionName)
     {
-        var file = new Java.IO.File(localPath);
-        var uri = AndroidX.Core.Content.FileProvider.GetUriForFile(this, ProviderAuthority, file);
-
-        // The install Activity is launched by the NOTIFICATION TAP (a user gesture), not by this
-        // background service directly — the latter is blocked on Android 10+.
-        var install = new Intent(Intent.ActionView);
-        install.SetDataAndType(uri, "application/vnd.android.package-archive");
-        install.SetFlags(ActivityFlags.NewTask | ActivityFlags.GrantReadUriPermission);
-
-        var pending = PendingIntent.GetActivity(
-            this, 0, install, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
-
-        var done = new NotificationCompat.Builder(this, ChannelId)
-            .SetContentTitle("Aktualizace připravena")
-            .SetContentText($"Verze {versionName} stažena — klepnutím nainstalujte.")
-            .SetSmallIcon(ApplicationInfo!.Icon)
-            .SetPriority(NotificationCompat.PriorityHigh)
-            .SetAutoCancel(true)
-            .SetContentIntent(pending)
-            .Build();
-
-        NotificationManagerCompat.From(this).Notify(DoneNotificationId, done);
+        try
+        {
+            StartInstallSession(this, localPath, versionName);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"UpdateDownloadService install session failed: {ex}");
+            ShowFailed();
+        }
     }
 
+    /// <summary>
+    /// Hands the APK to the system through a <c>PackageInstaller</c> session (2026-11-01). The old
+    /// <c>ACTION_VIEW</c> flow tied the install to the installer screen, which Android closes when the user
+    /// switches to another app — and the install was cancelled with it. Here the APK is written into the
+    /// session by this process, so only the one confirmation tap needs the screen; the install itself then
+    /// runs inside the system. The outcome arrives in <see cref="UpdateInstallReceiver"/>.
+    /// </summary>
+    public static void StartInstallSession(Context context, string apkPath, string versionName)
+    {
+        var installer = context.PackageManager!.PackageInstaller;
+        foreach (var stale in installer.MySessions)
+            installer.AbandonSession(stale.SessionId);
+
+        var parameters = new PackageInstaller.SessionParams(PackageInstallMode.FullInstall);
+        if (Build.VERSION.SdkInt >= BuildVersionCodes.S)
+            parameters.SetRequireUserAction((int)PackageInstallUserAction.NotRequired);
+        var sessionId = installer.CreateSession(parameters);
+        using var session = installer.OpenSession(sessionId);
+
+        var length = new FileInfo(apkPath).Length;
+        using (var input = File.OpenRead(apkPath))
+        using (var output = session.OpenWrite("secureapp", 0, length)!)
+        {
+            input.CopyTo(output);
+            session.Fsync(output);
+        }
+
+        var result = new Intent(context, typeof(UpdateInstallReceiver));
+        result.PutExtra(ExtraVersionName, versionName);
+        var pending = PendingIntent.GetBroadcast(context, sessionId, result, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Mutable)!;
+        session.Commit(pending.IntentSender!);
+    }
+
+    internal static void PostInstallNotification(Context context, string title, string text, PendingIntent? tap)
+    {
+        var builder = new NotificationCompat.Builder(context, ChannelId)
+            .SetContentTitle(title)
+            .SetContentText(text)
+            .SetSmallIcon(context.ApplicationInfo!.Icon)
+            .SetPriority(NotificationCompat.PriorityHigh)
+            // Stays until the new version has started (ClearIfInstalled) — the confirmation screen can be
+            // closed by switching apps and this is the way back to it.
+            .SetAutoCancel(false);
+        if (tap is not null) builder.SetContentIntent(tap);
+        NotificationManagerCompat.From(context).Notify(DoneNotificationId, builder.Build());
+    }
+
+    internal static void CancelInstallNotification(Context context) =>
+        NotificationManagerCompat.From(context).Cancel(DoneNotificationId);
     private void ShowFailed()
     {
         var failed = new NotificationCompat.Builder(this, ChannelId)
@@ -246,6 +283,41 @@ public sealed class UpdateDownloadService : Service
         });
     }
 
+    private static string CachedApkPath(Context context) => Path.Combine(context.CacheDir!.AbsolutePath, "secureapp-update.apk");
+
+    private static bool IsCachedVersion(Context context, int versionCode) =>
+        versionCode > 0 && File.Exists(CachedApkPath(context)) && File.Exists(CachedApkPath(context) + ".versioncode") &&
+        int.TryParse(File.ReadAllText(CachedApkPath(context) + ".versioncode").Trim(), out var cached) && cached == versionCode;
+
+    /// <summary>
+    /// Opens the system installer for an already downloaded APK of exactly <paramref name="versionCode"/>.
+    /// Called from a user tap inside the running app (an Activity may be started from the foreground).
+    /// </summary>
+    public static bool TryInstallCached(Context context, int versionCode, string versionName)
+    {
+        if (!IsCachedVersion(context, versionCode)) return false;
+        var apk = CachedApkPath(context);
+        _ = Task.Run(() =>
+        {
+            try { StartInstallSession(context, apk, versionName); }
+            catch (Exception ex) { Debug.WriteLine($"UpdateDownloadService install session failed: {ex}"); }
+        });
+        return true;
+    }
+    /// <summary>
+    /// Once the running version is at least the downloaded one, the "ready to install" notification and
+    /// the cached APK have done their job: remove both (the notification no longer clears itself on tap).
+    /// </summary>
+    public static void ClearIfInstalled(Context context, int currentVersionCode)
+    {
+        var apk = CachedApkPath(context);
+        var marker = apk + ".versioncode";
+        if (!File.Exists(marker) || !int.TryParse(File.ReadAllText(marker).Trim(), out var cached) || cached > currentVersionCode) return;
+        CancelInstallNotification(context);
+        File.Delete(marker);
+        if (File.Exists(apk)) File.Delete(apk);
+    }
+
     /// <summary>Starts the service for a given APK url — the app-facing entry point (see <see cref="AndroidUpdateDownloader"/>).</summary>
     public static void Start(Context context, string url, int versionCode, string versionName)
     {
@@ -266,4 +338,50 @@ public sealed class AndroidUpdateDownloader : INativeUpdateDownloader
 {
     public void StartBackgroundDownload(string absoluteApkUrl, int versionCode, string versionName)
         => UpdateDownloadService.Start(Microsoft.Maui.ApplicationModel.Platform.AppContext, absoluteApkUrl, versionCode, versionName);
+
+    public bool TryInstallCached(int versionCode, string versionName)
+        => UpdateDownloadService.TryInstallCached(Microsoft.Maui.ApplicationModel.Platform.AppContext, versionCode, versionName);
+}
+
+/// <summary>
+/// Receives the result of the <c>PackageInstaller</c> session from <see cref="UpdateDownloadService.StartInstallSession"/>:
+/// "pending user action" carries the system confirmation screen (opened right away when the app is in the
+/// foreground, otherwise offered as a notification), a failure is reported with its reason.
+/// </summary>
+[BroadcastReceiver(Enabled = true, Exported = false)]
+public sealed class UpdateInstallReceiver : BroadcastReceiver
+{
+    public override void OnReceive(Context? context, Intent? intent)
+    {
+        if (context is null || intent is null) return;
+        var status = (PackageInstallStatus)intent.GetIntExtra(PackageInstaller.ExtraStatus, (int)PackageInstallStatus.Failure);
+        var versionName = intent.GetStringExtra(UpdateDownloadService.ExtraVersionName) ?? string.Empty;
+        switch (status)
+        {
+            case PackageInstallStatus.PendingUserAction:
+#pragma warning disable CA1422
+                var confirm = intent.GetParcelableExtra(Intent.ExtraIntent) as Intent;
+#pragma warning restore CA1422
+                if (confirm is null) return;
+                confirm.AddFlags(ActivityFlags.NewTask);
+                var tap = PendingIntent.GetActivity(context, 0, confirm, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
+                UpdateDownloadService.PostInstallNotification(context, "Aktualizace připravena",
+                    $"Verze {versionName} — klepnutím potvrďte instalaci. Instalace pak běží na pozadí.", tap);
+                try { context.StartActivity(confirm); } catch { /* aplikace není v popředí - zbývá oznámení */ }
+                break;
+            case PackageInstallStatus.Success:
+                UpdateDownloadService.CancelInstallNotification(context);
+                break;
+            default:
+                var reason = status switch
+                {
+                    PackageInstallStatus.FailureStorage => "V telefonu je málo místa.",
+                    PackageInstallStatus.FailureAborted => "Instalace byla zrušena.",
+                    _ => intent.GetStringExtra(PackageInstaller.ExtraStatusMessage) ?? "Instalace se nezdařila.",
+                };
+                UpdateDownloadService.PostInstallNotification(context, "Aktualizace se nenainstalovala",
+                    $"{reason} Zkuste to znovu v Nastavení.", null);
+                break;
+        }
+    }
 }

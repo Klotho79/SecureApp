@@ -1,5 +1,13 @@
 [
   {
+    "version": "0.1.11",
+    "code": 117,
+    "date": "1. 11. 2026",
+    "items": [
+      "Aktualizace se už nepřeruší, když během instalace přepnete do jiné aplikace: po jednom potvrzení běží instalace na pozadí. Když potvrzení zavřete, zůstane v oznámení, takže se k němu dá vrátit. Při neúspěchu oznámení řekne důvod (např. málo místa v telefonu)."
+    ]
+  },
+  {
     "version": "0.1.10",
     "code": 116,
     "date": "1. 11. 2026",

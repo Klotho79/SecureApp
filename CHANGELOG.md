@@ -63,3 +63,13 @@ Tohle je technická historie změn a rozhodnutí — pro mě a pro budoucí Clau
 - **Známé omezení (platí i pro Android):** první stažení configu potřebuje dosažitelný relay (LAN nebo starý tunel) — úplně nové zařízení bez jakéhokoli tunelu se tímhle samo nenakonfiguruje. Řeší až veřejný bootstrap (varianta A odložená) nebo stávající onboarding kód.
 - **Zbývá z .NET Desktop Runtime 10 / Windows App SDK Runtime 1.7:** `new-pc-onboarding.ps1` je dosud bere z relay (`/download/ops/…`), uživatel chce oficiální zdroje i pro ně — samostatný krok, zatím nezapsán do kódu.
 - **Vydáno jako 0.1.10 (116), 2026-11-01** (Android APK 41 885 324 B, Windows zip 67 174 049 B, 218 položek): Windows tunel + pilotní brána relay rozšířená o DESKTOP-F8AS2U6 (744abac3-…). Ostatní Windows zařízení dostanou z /device/wireguard/config 404, takže se jim nic nezobrazí. Android beze změny chování. **S9+ (SM-G965F) se od 0.1.2 neaktualizoval kvůli plnému úložišti:** logcat ukázal esult of install: -4 a installd: /data has 705 MB free; requested 3 GB (Samsung Android 10 chce ~3 GB rezervu i pro 40MB APK); 0.1.9 tam šla nainstalovat přes db install -r. Appka zatím nemá srozumitelnou hlášku o nedostatku místa (nabídnuto uživateli, nezadáno).
+
+---
+
+## 2026-11-01 — Release 0.1.11 (117, jen Android): instalace aktualizace přes PackageInstaller
+
+- **Problém (hlášení uživatele):** když se během instalace aktualizace přepne do jiné aplikace, instalace se zruší. Dosud se APK otevíralo přes `ACTION_VIEW` (systémová instalační obrazovka, ta APK sama kopíruje a commituje, takže zavření obrazovky = konec). Příčina je odhad z kódu, na zařízení neověřeno.
+- **Změna:** `UpdateDownloadService.StartInstallSession` zapíše APK do `PackageInstaller` session z vlastního procesu a commitne; výsledek přijímá `UpdateInstallReceiver` (manifest receiver): `PendingUserAction` = otevře potvrzovací obrazovku (pokud je appka v popředí) a dá oznámení, `Success` = zruší oznámení, selhání = oznámení s důvodem (`FailureStorage` → „málo místa"). Na Androidu 12+ se žádá `USER_ACTION_NOT_REQUIRED` (u ostatních se potvrzení nedá obejít). Staré vlastní session se před novou ruší.
+- Oznámení „Aktualizace připravena" už není auto-cancel; maže se při startu appky v nové verzi (`ClearIfInstalled`, volá `MainActivity.OnCreate`), spolu s cachovaným APK. `INativeUpdateDownloader.TryInstallCached(versionCode, versionName)` — tlačítko v Nastavení při už staženém APK jen znovu odešle session, bez sítě.
+- Windows beze změny (relay nabízí pro Windows dál 0.1.10/116).
+- **Ověření:** kompilace Android Debug bez chyb; funkčně nezkoušeno. První skutečný test až při aktualizaci z 0.1.11 na další verzi (0.1.10 → 0.1.11 jede ještě starým způsobem).
