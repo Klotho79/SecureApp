@@ -165,7 +165,8 @@ public sealed partial class ChatListViewModel : ObservableObject
             // happened (directoryNames.Count > 0); an empty directory just means "nothing fetched yet".
             var isUnavailable = directoryNames.Count > 0 && !DirectoryNameResolver.IsActive(directoryNames, s.PeerIdentityPublicKey);
             return new ChatSessionItem(s.Id, name, s.State, DescribeLastActivity(s), ComputeInitials(name), isUnavailable,
-                DirectoryNameResolver.ResolveFormalName(s.PeerIdentityPublicKey));
+                DirectoryNameResolver.ResolveFormalName(s.PeerIdentityPublicKey),
+                isUnavailable ? DirectoryNameResolver.DescribeInactivity(s.PeerIdentityPublicKey) : null);
         }
 
         // 2.3 (2026-09-14): archived chats/groups are moved OUT of the main list into a separate,
@@ -352,8 +353,9 @@ public sealed partial class ChatListViewModel : ObservableObject
 /// </summary>
 public sealed partial class ChatSessionItem : ObservableObject
 {
-    public ChatSessionItem(Guid id, string peerDisplayName, ChatSessionState state, string lastActivityText, string initials, bool isUnavailable = false, string? formalName = null)
+    public ChatSessionItem(Guid id, string peerDisplayName, ChatSessionState state, string lastActivityText, string initials, bool isUnavailable = false, string? formalName = null, string? unavailableText = null)
     {
+        UnavailableText = unavailableText;
         Id = id;
         PeerDisplayName = peerDisplayName;
         State = state;
@@ -371,6 +373,8 @@ public sealed partial class ChatSessionItem : ObservableObject
     public string LastActivityText { get; }
     public string Initials { get; }
     public bool IsUnavailable { get; }
+    /// <summary>"bez připojení 3 dny" — how long the peer has not connected to the relay (see <see cref="DirectoryNameResolver.DescribeInactivity"/>); null while available.</summary>
+    public string? UnavailableText { get; }
     public string? FormalName { get; }
 
     [ObservableProperty]

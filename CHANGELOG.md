@@ -81,3 +81,9 @@ Tohle je technická historie změn a rozhodnutí — pro mě a pro budoucí Clau
 - **Oprava:** config se kopíruje do `C:\ProgramData\SecureApp\tunnel\SecureApp.conf` (ACL jen SYSTEM + Administrators, zkontroluje se vlastník složky), přechodná kopie v profilu se maže; při selhání skript zapíše kód + posledních 40 řádků `wireguard /dumplog` do `setup-diagnostics.txt`, appka je vloží do logu jako `wireguard.windows.setup-failed` (jeden řádek, bez klíčů), odinstaluje napůl vzniklou službu a smaže config. Odklad dalšího pokusu (24 h / 6 h) platí jen pro build, který ho nastavil — po aktualizaci appky se zkusí hned.
 - **Neověřeno:** že oprava uvedené cesty vyřeší i okamžitý pád služby. Pokud selže znovu, příčina bude v logu zařízení (`setup-failed`).
 - Možná souvislost k ověření: relay posílá `AllowedIPs = 10.8.0.0/24, 192.168.50.8/32` (split tunel); na PC ve stejné LAN jako Pi může /32 na adresu Pi vést provoz do tunelu místo přímo.
+
+## 2026-11-02 — Release 0.1.12 (118, Android + Windows + relay)
+
+- **Chat: „bez připojení X dní“** místo „⚠ nedostupný — zkuste přepárovat“ (uživatel nevěděl, co to znamená: appka vypnutá, offline, …). Relay má nový `GET /directory/last-seen` (veřejný klíč → čas posledního publikování, i neaktivní; `RelayDatabase.GetDirectoryLastSeen`), appka ho bere v `DirectoryNameResolver.BuildAsync` (cache 5 min, 404 u starého relay = obecný text „déle než 2 dny“). Zobrazuje se v seznamu chatů, u členů skupiny a v tlačítku „převzít vedení“. Signál zůstává „nepublikoval na relay 2+ dny“ — appka vypnutá a offline nerozliší.
+- **Windows: karta Tunel v Nastavení** ukazuje živý stav (`WireGuardWindowsSetup.DescribeAsync`: služba neexistuje / neběží / běží + síťové rozhraní Up), ne jen zprávu z posledního běhu synchronizace (ta je po startu prázdná). „Běží“ neříká nic o handshake s relay.
+- Windows build 0.1.12 obsahuje i opravu instalace tunelu z 0.1.11 (viz záznam výše), kterou na PC ještě nikdo nezkoušel.

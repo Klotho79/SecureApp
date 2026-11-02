@@ -104,6 +104,19 @@ public sealed class HttpContactDirectoryService : IContactDirectoryService
         return dtos.Select(d => new DirectoryMember(d.DeviceId, d.DisplayName, Convert.FromBase64String(d.PublicKeyBase64), d.FormalName)).ToList();
     }
 
+    public async Task<IReadOnlyDictionary<string, DateTimeOffset>> GetLastSeenAsync(CancellationToken ct = default)
+    {
+        var endpoint = await GetHttpEndpointAsync(ct);
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(endpoint, "directory/last-seen"));
+        await AddDeviceAuthAsync(request, ct);
+        using var response = await _httpClient.SendAsync(request, ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return new Dictionary<string, DateTimeOffset>(); // older relay
+        response.EnsureSuccessStatusCode();
+
+        var dtos = await response.Content.ReadFromJsonAsync<List<DirectoryLastSeenDto>>(HttpJsonOptions, ct) ?? [];
+        return dtos.GroupBy(d => d.PublicKeyBase64).ToDictionary(g => g.Key, g => g.Max(d => d.LastActiveAtUtc));
+    }
+
     public async Task LinkArimContactAsync(Guid arimContactId, CancellationToken ct = default)
     {
         var endpoint = await GetHttpEndpointAsync(ct);
@@ -119,6 +132,8 @@ public sealed class HttpContactDirectoryService : IContactDirectoryService
     private Task<Uri> GetHttpEndpointAsync(CancellationToken ct) => RelayHttp.GetHttpEndpointAsync(_transportSettingsRepository, ct);
 
     private Task AddDeviceAuthAsync(HttpRequestMessage request, CancellationToken ct) => RelayHttp.AddDeviceAuthAsync(request, _transportSettingsRepository, _vault, ct);
+
+    private sealed record DirectoryLastSeenDto(string PublicKeyBase64, DateTimeOffset LastActiveAtUtc);
 
     private sealed record DirectoryMemberDto(Guid DeviceId, string DisplayName, string PublicKeyBase64, string? FormalName = null);
 }

@@ -72,6 +72,9 @@ public sealed record LinkArimContactRequest(Guid ArimContactId);
 /// <summary>One other community member, resolvable straight into a chat session with no QR/paste step — <c>PublicKeyBase64</c> is the same chat-identity key a manually-shared contact card would have carried.</summary>
 public sealed record DirectoryMemberSummary(Guid DeviceId, string DisplayName, string PublicKeyBase64, string? FormalName = null);
 
+/// <summary>When a published identity last connected to the relay — INCLUDING ones the active-only member listing already hides, so a client can say "nepřipojen 3 dny" instead of just "missing".</summary>
+public sealed record DirectoryLastSeen(string PublicKeyBase64, DateTimeOffset LastActiveAtUtc);
+
 // --- Shared-library-key escrow (2026-09-11) — see the wrapped_library_keys table's own remarks. A
 // device that HAS the key uploads it wrapped (ML-KEM to each recipient's public identity key) via
 // the POST; a device that LACKS it fetches its own wrapped blob via the GET and unwraps locally.

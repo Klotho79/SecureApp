@@ -81,6 +81,27 @@ public static class WireGuardWindowsSetup
     }
 
     /// <summary>
+    /// Skutečný stav tunelu právě teď pro Nastavení (bez sítě a bez práv správce): existuje služba, běží a má
+    /// aktivní síťové rozhraní. Neříká, že handshake s relay proběhl — ten vidí jen správce na relay.
+    /// </summary>
+    public static async Task<string> DescribeAsync(CancellationToken ct = default)
+    {
+        var running = await QueryServiceRunningAsync(ct);
+        if (running is null)
+            return IsClientInstalled
+                ? "Tunel: zatím není nastaven (služba neexistuje) — nastaví se po potvrzení správce"
+                : "Tunel: zatím není nastaven — chybí komponenta WireGuard, doinstaluje se po potvrzení správce";
+        if (running == false)
+            return "Tunel: služba existuje, ale neběží";
+
+        var interfaceUp = System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
+            .Any(n => n.Name == TunnelName && n.OperationalStatus == System.Net.NetworkInformation.OperationalStatus.Up);
+        return interfaceUp
+            ? "Tunel: běží (služba i síťové rozhraní jsou aktivní)"
+            : "Tunel: služba běží, ale síťové rozhraní není aktivní";
+    }
+
+    /// <summary>
     /// Zapíše config do přechodného souboru a spustí zvýšený krok (UAC). Vrací <see cref="SetupResult"/>;
     /// přechodný config je po skončení smazaný vždy (zvýšený skript ho maže ve <c>finally</c>, tohle je pojistka).
     /// </summary>

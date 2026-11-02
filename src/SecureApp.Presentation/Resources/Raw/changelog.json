@@ -1,5 +1,14 @@
 [
   {
+    "version": "0.1.12",
+    "code": 118,
+    "date": "2. 11. 2026",
+    "items": [
+      "V chatech a skupinách místo nejasného „nedostupný“ vidíte, jak dlouho se člověk nepřipojil (např. „bez připojení 3 dny“).",
+      "Windows: v Nastavení → Připojení je u položky Tunel vidět, jestli tunel opravdu běží."
+    ]
+  },
+  {
     "version": "0.1.11",
     "code": 117,
     "date": "1. 11. 2026",

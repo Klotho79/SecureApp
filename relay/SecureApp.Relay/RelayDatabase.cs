@@ -2509,6 +2509,21 @@ public sealed class RelayDatabase
         return results;
     }
 
+    /// <summary>Last directory refresh of EVERY published identity except the caller, active or not (2026-11-02) — <see cref="GetDirectoryMembers"/> hides the inactive ones, which left clients only able to say "missing"; this lets them say for how long.</summary>
+    public IReadOnlyList<(byte[] PublicKey, DateTimeOffset LastActiveAtUtc)> GetDirectoryLastSeen(Guid excludingDeviceId)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT public_key, updated_at_utc FROM directory_entries WHERE device_id != @excluded";
+        command.Parameters.AddWithValue("@excluded", excludingDeviceId.ToString());
+
+        var results = new List<(byte[], DateTimeOffset)>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            results.Add(((byte[])reader["public_key"], DateTimeOffset.Parse((string)reader["updated_at_utc"])));
+        return results;
+    }
+
     /// <summary>Stores (or replaces) the shared library key wrapped for one recipient device — see the wrapped_library_keys table's own remarks. The blob is opaque ciphertext to the relay.</summary>
     public void UpsertWrappedLibraryKey(Guid recipientDeviceId, string wrappedBlob)
     {

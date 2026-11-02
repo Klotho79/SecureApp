@@ -1201,6 +1201,16 @@ app.MapGet("/directory/members", (HttpRequest request, RelayDatabase db) =>
     return Results.Ok(members.Select(m => new DirectoryMemberSummary(m.DeviceId, m.DisplayName, Convert.ToBase64String(m.PublicKey), m.FormalName)).ToList());
 });
 
+// 2026-11-02: when each published identity last connected, inactive ones included — the chat list says
+// "nepřipojen 3 dny" from this instead of an unexplained "nedostupný". Same device-auth as /directory/members.
+app.MapGet("/directory/last-seen", (HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+
+    return Results.Ok(db.GetDirectoryLastSeen(deviceId).Select(e => new DirectoryLastSeen(Convert.ToBase64String(e.PublicKey), e.LastActiveAtUtc)).ToList());
+});
+
 // --- Admin-assigned device policy + notice board (2026-09-24) — see the device_policy/board_posts
 // tables' own remarks. Roles and tab visibility used to be decided purely on-device; these make the
 // relay the source of truth, with the admin (X-Admin-Secret) setting policy for anyone.

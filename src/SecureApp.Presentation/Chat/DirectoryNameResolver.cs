@@ -36,6 +36,40 @@ public static class DirectoryNameResolver
     /// </summary>
     public static IReadOnlyDictionary<string, string> LastKnownFormalNames { get; private set; } = new Dictionary<string, string>();
 
+    /// <summary>
+    /// When each published identity last connected (2026-11-02), keyed like <see cref="LastKnown"/> but INCLUDING the inactive ones
+    /// the active-only directory hides — the only source for "bez připojení 3 dny". Refreshed by <see cref="BuildAsync"/> at most
+    /// every 5 min; stays empty against an older relay (then <see cref="DescribeInactivity"/> falls back to "déle než 2 dny").
+    /// </summary>
+    public static IReadOnlyDictionary<string, DateTimeOffset> LastKnownLastSeen { get; private set; } = new Dictionary<string, DateTimeOffset>();
+
+    private static DateTimeOffset _lastSeenFetchedAtUtc = DateTimeOffset.MinValue;
+
+    /// <summary>What to show for a peer that is absent from the active directory: how long it has been since it last connected.</summary>
+    public static string DescribeInactivity(byte[] publicKey)
+    {
+        if (LastKnownLastSeen.TryGetValue(Convert.ToBase64String(publicKey), out var seenAtUtc))
+        {
+            var days = (int)Math.Floor((DateTimeOffset.UtcNow - seenAtUtc).TotalDays);
+            if (days >= 2) return days < 5 ? $"bez připojení {days} dny" : $"bez připojení {days} dní";
+        }
+        return "bez připojení déle než 2 dny";
+    }
+
+    private static async Task RefreshLastSeenAsync(IContactDirectoryService contactDirectoryService, CancellationToken ct)
+    {
+        if (DateTimeOffset.UtcNow - _lastSeenFetchedAtUtc < TimeSpan.FromMinutes(5)) return;
+        try
+        {
+            LastKnownLastSeen = await contactDirectoryService.GetLastSeenAsync(ct);
+            _lastSeenFetchedAtUtc = DateTimeOffset.UtcNow;
+        }
+        catch
+        {
+            // Best-effort like the directory itself: the label just falls back to the generic wording.
+        }
+    }
+
     /// <summary>Fetches the whole directory once and keys it by public key (base64) for repeated lookups — call once per screen load, not per row. Updates <see cref="LastKnown"/> and <see cref="LastKnownFormalNames"/> on success.</summary>
     public static async Task<IReadOnlyDictionary<string, string>> BuildAsync(IContactDirectoryService contactDirectoryService, CancellationToken ct = default)
     {
@@ -48,6 +82,7 @@ public static class DirectoryNameResolver
                 .Where(g => !string.IsNullOrWhiteSpace(g.First().FormalName))
                 .ToDictionary(g => g.Key, g => g.First().FormalName!);
             LastKnown = result;
+            await RefreshLastSeenAsync(contactDirectoryService, ct);
             return result;
         }
         catch

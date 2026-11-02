@@ -54,7 +54,7 @@
                      genuinely stale on the relay's directory (not just offline right now), so a group
                      is never permanently hostage to a dead founder identity. -->
                 <Button
-                    Text="👑 Zakladatel je nedostupný — převzít vedení"
+                    Text="👑 Zakladatel je déle než 2 dny bez připojení — převzít vedení"
                     Style="{StaticResource SecondaryButton}"
                     FontSize="10"
                     IsVisible="{Binding CanClaimFounder}"

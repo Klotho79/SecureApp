@@ -28,6 +28,12 @@ public interface IContactDirectoryService
     Task<IReadOnlyList<DirectoryMember>> ListMembersAsync(CancellationToken ct = default);
 
     /// <summary>
+    /// When each published identity (base64 public key) last connected to the relay, including those the active-only
+    /// <see cref="ListMembersAsync"/> hides (2026-11-02) — so the UI can say "nepřipojen 3 dny". Empty if the relay is too old to know.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, DateTimeOffset>> GetLastSeenAsync(CancellationToken ct = default);
+
+    /// <summary>
     /// 2026-10-08 — records which "Soukromé kontakty ARIM" row this device successfully reconciled
     /// against (<c>SettingsViewModel</c>'s Save flow), so the admin device list can group devices by
     /// person instead of listing unrelated rows. Best-effort: callers should swallow a failure the

@@ -383,7 +383,8 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
             ViewerCanManage: CanManageMembers,
             RemoveCommand,
             ResetPairingCommand,
-            TransferFounderCommand)));
+            TransferFounderCommand,
+            InactivityText: _directoryNames.Count > 0 && !DirectoryNameResolver.IsActive(_directoryNames, m.PublicKey) ? DirectoryNameResolver.DescribeInactivity(m.PublicKey) : null)));
     }
 
     /// <summary>
@@ -981,7 +982,8 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
                 ViewerCanManage: CanManageMembers,
                 RemoveCommand,
                 ResetPairingCommand,
-                TransferFounderCommand)));
+                TransferFounderCommand,
+                InactivityText: _directoryNames.Count > 0 && !DirectoryNameResolver.IsActive(_directoryNames, m.PublicKey) ? DirectoryNameResolver.DescribeInactivity(m.PublicKey) : null)));
 
             var inviteBlob = ContactCardCodec.Encode(new GroupInviteBlob(
                 _groupChatId, Title, _founderPublicKey,
@@ -1266,15 +1268,15 @@ public sealed record GroupMessageItem(Guid Id, bool IsOutbound, string SenderDis
 /// what <c>GroupChatViewModel.ResetPairingAsync</c> actually needs to look up this member's
 /// pairwise <c>ChatSession</c> — not otherwise displayed.
 /// </summary>
-public sealed record GroupMemberItem(Guid Id, string DisplayName, byte[] PublicKey, bool IsMe, bool IsFounder, bool IsUnavailable, bool ViewerCanManage, System.Windows.Input.ICommand RemoveCommand, System.Windows.Input.ICommand ResetPairingCommand, System.Windows.Input.ICommand TransferFounderCommand)
+public sealed record GroupMemberItem(Guid Id, string DisplayName, byte[] PublicKey, bool IsMe, bool IsFounder, bool IsUnavailable, bool ViewerCanManage, System.Windows.Input.ICommand RemoveCommand, System.Windows.Input.ICommand ResetPairingCommand, System.Windows.Input.ICommand TransferFounderCommand, string? InactivityText = null)
 {
     public string DisplayNameWithRoleSuffix => (IsMe, IsFounder, IsUnavailable) switch
     {
         (true, true, _) => $"{DisplayName} (já, zakladatel)",
         (true, false, _) => $"{DisplayName} (já)",
-        (false, true, true) => $"{DisplayName} (zakladatel, nedostupný)",
+        (false, true, true) => $"{DisplayName} (zakladatel, {InactivityText ?? "bez připojení déle než 2 dny"})",
         (false, true, false) => $"{DisplayName} (zakladatel)",
-        (false, false, true) => $"{DisplayName} (nedostupný)",
+        (false, false, true) => $"{DisplayName} ({InactivityText ?? "bez připojení déle než 2 dny"})",
         _ => DisplayName
     };
 
