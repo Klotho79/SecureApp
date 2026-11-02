@@ -18,6 +18,7 @@ public sealed class WireGuardWindowsTunnelController : IWireGuardTunnelControlle
 {
     private const string AppliedHashKey = "wireguard.windows.applied-config-sha256";
     private const string RetryNotBeforeKey = "wireguard.windows.retry-not-before-utc";
+    private const string RetryBuildKey = "wireguard.windows.retry-build";
 
     private static readonly TimeSpan DeclinedRetry = TimeSpan.FromHours(24);
     private static readonly TimeSpan FailedRetry = TimeSpan.FromHours(6);
@@ -50,6 +51,10 @@ public sealed class WireGuardWindowsTunnelController : IWireGuardTunnelControlle
                 WireGuardTunnelStatus.Set("Tunel: aktivní");
                 return;
             }
+
+            // Odklad platí jen pro verzi appky, která ho nastavila: po aktualizaci (typicky oprava právě té instalace) se zkusí hned.
+            if (Preferences.Default.Get(RetryBuildKey, "") != AppInfo.Current.BuildString)
+                Preferences.Default.Remove(RetryNotBeforeKey);
 
             if (DateTimeOffset.UtcNow.UtcTicks < Preferences.Default.Get(RetryNotBeforeKey, 0L))
             {
@@ -125,8 +130,11 @@ public sealed class WireGuardWindowsTunnelController : IWireGuardTunnelControlle
         return await shell.DisplayAlertAsync("Připojení k relay", message, "Pokračovat", "Později");
     });
 
-    private static void ScheduleRetry(TimeSpan delay) =>
+    private static void ScheduleRetry(TimeSpan delay)
+    {
         Preferences.Default.Set(RetryNotBeforeKey, DateTimeOffset.UtcNow.Add(delay).UtcTicks);
+        Preferences.Default.Set(RetryBuildKey, AppInfo.Current.BuildString);
+    }
 
     private static string Hash(string text) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
 }

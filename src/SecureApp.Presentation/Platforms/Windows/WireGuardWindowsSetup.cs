@@ -23,6 +23,14 @@ namespace SecureApp.Presentation.Infrastructure;
 /// 2026-11-01) a Authenticode podpis vydavatele "WireGuard LLC". Přechod na novější verzi tedy
 /// vyžaduje nové vydání appky s novým hashem — záměrně, aby kompromitace serveru nemohla podstrčit
 /// jiný instalátor.
+///
+/// 2026-11-02 oprava prvního ostrého pokusu na vývojovém PC: <c>/installtunnelservice</c> službě jen
+/// zapíše CESTU k configu (služba si ho čte při každém startu), takže config nesmí být dočasný soubor,
+/// který skript po instalaci maže — služba by po restartu Windows neměla co načíst. Config tedy žije
+/// trvale v <see cref="ConfigDirectory"/> (ProgramData, jen SYSTEM a správci, obsahuje privátní klíč)
+/// a přechodná kopie v profilu uživatele se maže. Selhání zvýšeného kroku navíc zapíše příčinu
+/// (kód + konec logu WireGuardu, který jde číst jen jako správce) do <see cref="DiagnosticsPath"/>
+/// a nic napůl nainstalovaného nezanechá.
 /// </remarks>
 public static class WireGuardWindowsSetup
 {
@@ -44,6 +52,13 @@ public static class WireGuardWindowsSetup
     /// <summary>Složka s přechodným configem — profil přihlášeného uživatele, ne sdílená složka.</summary>
     public static string StagingDirectory { get; } =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SecureApp", "tunnel");
+
+    /// <summary>Trvalé místo configu, na který ukazuje služba (zvýšený skript ho vytváří jen pro SYSTEM a správce).</summary>
+    public static string ConfigDirectory { get; } =
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SecureApp", "tunnel");
+
+    /// <summary>Příčina neúspěchu zapsaná zvýšeným skriptem (bez klíčů) — čte ji appka a dává do logu.</summary>
+    private static string DiagnosticsPath => Path.Combine(StagingDirectory, "setup-diagnostics.txt");
 
     /// <summary>Stav služby tunelu: <c>null</c> = služba neexistuje, jinak true = běží. Nepotřebuje práva správce.</summary>
     public static async Task<bool?> QueryServiceRunningAsync(CancellationToken ct = default)
@@ -73,6 +88,7 @@ public static class WireGuardWindowsSetup
     {
         Directory.CreateDirectory(StagingDirectory);
         var configPath = Path.Combine(StagingDirectory, TunnelName + ".conf");
+        try { File.Delete(DiagnosticsPath); } catch { /* starý výpis není důležitý */ }
         await File.WriteAllTextAsync(configPath, configText, new UTF8Encoding(false), ct);
         try
         {
@@ -88,6 +104,8 @@ public static class WireGuardWindowsSetup
             using var process = Process.Start(psi);
             if (process is null) return SetupResult.Failed;
             await process.WaitForExitAsync(ct);
+            if (process.ExitCode != 0)
+                LogFailure(process.ExitCode);
             return process.ExitCode switch
             {
                 0 => SetupResult.Ok,
@@ -107,50 +125,97 @@ public static class WireGuardWindowsSetup
 
     public enum SetupResult { Ok, Declined, UntrustedDownload, Failed }
 
-    private static string BuildElevatedScript(string configPath)
+    private static void LogFailure(int exitCode)
+    {
+        string detail;
+        try
+        {
+            detail = File.Exists(DiagnosticsPath) ? File.ReadAllText(DiagnosticsPath) : "(skript nezapsal příčinu)";
+            File.Delete(DiagnosticsPath);
+        }
+        catch (Exception ex)
+        {
+            detail = "(výpis příčiny nejde přečíst: " + ex.Message + ")";
+        }
+
+        // Jeden řádek logu: žádné tabulátory ani zalomení, a rozumná délka.
+        detail = Regex.Replace(detail, @"\s*[\r\n]+\s*", " | ").Replace('\t', ' ');
+        if (detail.Length > 1800) detail = detail[^1800..];
+        AppLog.Event("wireguard.windows.setup-failed", ("exit", exitCode), ("detail", detail));
+    }
+
+    private static string BuildElevatedScript(string stagePath)
     {
         var arm = RuntimeInformation.OSArchitecture == Architecture.Arm64;
         var file = $"wireguard-{(arm ? "arm64" : "amd64")}-{MsiVersion}.msi";
 
-        // Žádné interpolace: skript je konstantní text a dosazují se jen tyto čtyři hodnoty - cesty
-        // pocházejí z profilu uživatele, hash a URL z konstant výše, nikdy ze vstupu zvenčí.
-        // Kódy ukončení čte InstallAsync: 10 = hash nesedí, 11 = podpis nesedí, ostatní = chyba.
+        // Žádné interpolace: skript je konstantní text a dosazují se jen tyto hodnoty - cesty
+        // pocházejí z profilu uživatele / ProgramData, hash a URL z konstant výše, nikdy ze vstupu zvenčí.
+        // Kódy ukončení čte InstallAsync: 10 = hash nesedí, 11 = podpis nesedí, ostatní = chyba
+        // (12 msi, 13 chybí wireguard.exe, 14 /installtunnelservice selhal, 15 služba neběží, 20 výjimka).
         return """
             $ErrorActionPreference = 'Stop'
             [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-            $conf = '@@CONF@@'
+            $stage = '@@STAGE@@'
+            $dir = '@@DIR@@'
+            $conf = Join-Path $dir '@@TUNNEL@@.conf'
+            $diag = '@@DIAG@@'
             $wg = Join-Path $env:ProgramFiles 'WireGuard\wireguard.exe'
             $svc = '@@SERVICE@@'
+            $ok = $false
+            function Fail($code, $text) { Set-Content -Path $diag -Value $text -Encoding UTF8; exit $code }
             try {
                 if (-not (Test-Path $wg)) {
                     $msi = Join-Path $env:TEMP '@@FILE@@'
                     Invoke-WebRequest -Uri '@@URL@@' -OutFile $msi -UseBasicParsing
-                    if ((Get-FileHash $msi -Algorithm SHA256).Hash -ne '@@SHA@@') { Remove-Item $msi -Force; exit 10 }
+                    if ((Get-FileHash $msi -Algorithm SHA256).Hash -ne '@@SHA@@') { Remove-Item $msi -Force; Fail 10 'hash instalatoru nesedi' }
                     $sig = Get-AuthenticodeSignature $msi
-                    if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notlike 'CN=WireGuard LLC,*') { Remove-Item $msi -Force; exit 11 }
+                    if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notlike 'CN=WireGuard LLC,*') { Remove-Item $msi -Force; Fail 11 'podpis instalatoru nesedi' }
                     $p = Start-Process -FilePath msiexec.exe -ArgumentList '/i', ('"' + $msi + '"'), '/qn', '/norestart', 'DO_NOT_LAUNCH=1' -Wait -PassThru
                     Remove-Item $msi -Force
-                    if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) { exit 12 }
+                    if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) { Fail 12 ('msiexec exit=' + $p.ExitCode) }
                 }
-                if (-not (Test-Path $wg)) { exit 13 }
+                if (-not (Test-Path $wg)) { Fail 13 'wireguard.exe po instalaci chybi' }
+
+                if ((Test-Path $dir) -and ((Get-Acl $dir).Owner -notmatch 'Administrators|SYSTEM|Správci')) { Remove-Item $dir -Recurse -Force }
+                New-Item -ItemType Directory -Path $dir -Force | Out-Null
+                & icacls.exe $dir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null
+                Copy-Item -Path $stage -Destination $conf -Force
 
                 if (Get-Service -Name $svc -ErrorAction SilentlyContinue) {
                     & $wg /uninstalltunnelservice '@@TUNNEL@@'
                     for ($i = 0; $i -lt 30 -and (Get-Service -Name $svc -ErrorAction SilentlyContinue); $i++) { Start-Sleep -Milliseconds 500 }
                 }
                 & $wg /installtunnelservice $conf
-                if ($LASTEXITCODE -ne 0) { exit 14 }
+                $code = $LASTEXITCODE
+                if ($code -ne 0) { Fail 14 ('installtunnelservice exit=' + $code) }
                 for ($i = 0; $i -lt 30; $i++) {
                     $s = Get-Service -Name $svc -ErrorAction SilentlyContinue
-                    if ($s -and $s.Status -eq 'Running') { exit 0 }
+                    if ($s -and $s.Status -eq 'Running') { $ok = $true; exit 0 }
                     Start-Sleep -Milliseconds 500
                 }
-                exit 15
+                Fail 15 'sluzba po 15 s nebezi'
             }
-            catch { exit 20 }
-            finally { Remove-Item $conf -Force -ErrorAction SilentlyContinue }
+            catch { Fail 20 $_.Exception.Message }
+            finally {
+                Remove-Item $stage -Force -ErrorAction SilentlyContinue
+                if (-not $ok) {
+                    # Nic napůl nainstalovaného: příčina do výpisu, rozbitá služba pryč a s ní i config s klíčem.
+                    try {
+                        $ErrorActionPreference = 'Continue'
+                        if (Test-Path $wg) {
+                            $tail = (& $wg /dumplog 2>&1 | ForEach-Object { "$_" } | Select-Object -Last 40) -join "`n"
+                            Add-Content -Path $diag -Value ("`n--- dumplog ---`n" + $tail) -Encoding UTF8
+                            if (Get-Service -Name $svc -ErrorAction SilentlyContinue) { & $wg /uninstalltunnelservice '@@TUNNEL@@' | Out-Null }
+                        }
+                        Remove-Item $conf -Force -ErrorAction SilentlyContinue
+                    } catch { }
+                }
+            }
             """
-            .Replace("@@CONF@@", configPath.Replace("'", "''"))
+            .Replace("@@STAGE@@", stagePath.Replace("'", "''"))
+            .Replace("@@DIR@@", ConfigDirectory.Replace("'", "''"))
+            .Replace("@@DIAG@@", DiagnosticsPath.Replace("'", "''"))
             .Replace("@@SERVICE@@", ServiceName)
             .Replace("@@TUNNEL@@", TunnelName)
             .Replace("@@FILE@@", file)
