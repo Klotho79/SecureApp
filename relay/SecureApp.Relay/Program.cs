@@ -33,6 +33,9 @@ var wireGuardTunnelPilotDeviceIds = new HashSet<Guid>
 {
     Guid.Parse("6b4bf8e9-131b-4304-8368-c831a32c5a2b"),
     Guid.Parse("744abac3-8f75-4db9-8ac3-ceba65bdf0f5"),
+    // 2026-11-02, uživatel: "nový klient Machat i Faltus se nepropisuje tunel a mně jo" - Petr (S25) a Libor (nové zařízení).
+    Guid.Parse("c1b2f0ab-b6c9-4b20-a86b-94cac376b13c"),
+    Guid.Parse("9757f6bd-7c1e-4b71-808e-8fc03396d750"),
 };
 
 var port = builder.Configuration["SECUREAPP_RELAY_PORT"] ?? "8080";
