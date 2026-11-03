@@ -20,6 +20,10 @@ services:
       - SECUREAPP_RELAY_HTTPS_PORT=8443
       - SECUREAPP_RELAY_TLS_PFX=/data/tls/relay.pfx
       - SECUREAPP_RELAY_TLS_PASSWORD=${SECUREAPP_RELAY_TLS_PASSWORD}
+      # Public-internet callers only (LAN/VPN stay trusted by network position): /self-register needs a
+      # recovery token, /activation/request the app-build secret. Both from the Pi's untracked .env.
+      - SECUREAPP_REQUIRE_RECOVERY_TOKEN=${SECUREAPP_REQUIRE_RECOVERY_TOKEN:-false}
+      - SECUREAPP_APP_BUILD_SECRET=${SECUREAPP_APP_BUILD_SECRET:-}
       - SECUREAPP_RELAY_DB_PATH=/data/relay.db3
       - SECUREAPP_RELAY_LIBRARY_DIR=/data/library-files
       # Public download page (2026-09-10, see Program.cs's own remarks) — put built release
