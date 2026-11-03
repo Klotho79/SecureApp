@@ -53,7 +53,17 @@ var wireGuardTunnelPilotDeviceIds = new HashSet<Guid>
 };
 
 var port = builder.Configuration["SECUREAPP_RELAY_PORT"] ?? "8080";
-builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+
+// Public HTTPS (2026-11-03, see CHANGELOG.md): an optional second listener with a self-signed certificate
+// for the relay's static public IP (no domain, so no Certificate Transparency entry); the app pins its
+// public key. Only started when the pfx and its password exist, so a relay without them is unchanged.
+// Setting Kestrel endpoints explicitly makes UseUrls ignored, hence the plain listener is declared below too.
+var httpsPort = builder.Configuration["SECUREAPP_RELAY_HTTPS_PORT"] ?? "8443";
+var tlsPfxPath = builder.Configuration["SECUREAPP_RELAY_TLS_PFX"] ?? "/data/tls/relay.pfx";
+var tlsPassword = builder.Configuration["SECUREAPP_RELAY_TLS_PASSWORD"];
+System.Security.Cryptography.X509Certificates.X509Certificate2? tlsCertificate = null;
+if (!string.IsNullOrEmpty(tlsPassword) && File.Exists(tlsPfxPath))
+    tlsCertificate = System.Security.Cryptography.X509Certificates.X509CertificateLoader.LoadPkcs12FromFile(tlsPfxPath, tlsPassword);
 
 // Kestrel's own default request-body cap (~28.6 MB) would silently reject a larger shared-library
 // upload (a multi-page scanned PDF can easily exceed that) with no code on either side actually
@@ -61,7 +71,13 @@ builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 // removed: an explicit cap still protects the Pi's own (limited, non-redundant) disk from an
 // unbounded upload, it's just sized for a realistic clinical document rather than Kestrel's
 // generic default. 200 MB comfortably covers even a large scanned/multi-page PDF.
-builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 200 * 1024 * 1024);
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestBodySize = 200 * 1024 * 1024;
+    options.ListenAnyIP(int.Parse(port));
+    if (tlsCertificate is not null)
+        options.ListenAnyIP(int.Parse(httpsPort), listen => listen.UseHttps(tlsCertificate));
+});
 
 // Same directory RelayDatabase resolves SECUREAPP_RELAY_DB_PATH into (the mounted /data volume in
 // production) — reused here rather than introducing a second env var, since the marker just needs

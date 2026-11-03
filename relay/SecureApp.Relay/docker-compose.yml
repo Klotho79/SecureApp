@@ -14,6 +14,12 @@ services:
       - SECUREAPP_WGEASY_URL=${SECUREAPP_WGEASY_URL}
       - SECUREAPP_WGEASY_PASSWORD=${SECUREAPP_WGEASY_PASSWORD}
       - SECUREAPP_RELAY_PORT=8080
+      # Public HTTPS listener (2026-11-03): self-signed cert for the static public IP at
+      # data/tls/relay.pfx; its password lives only in the Pi's untracked .env. Without both the relay
+      # just doesn't start the 8443 listener.
+      - SECUREAPP_RELAY_HTTPS_PORT=8443
+      - SECUREAPP_RELAY_TLS_PFX=/data/tls/relay.pfx
+      - SECUREAPP_RELAY_TLS_PASSWORD=${SECUREAPP_RELAY_TLS_PASSWORD}
       - SECUREAPP_RELAY_DB_PATH=/data/relay.db3
       - SECUREAPP_RELAY_LIBRARY_DIR=/data/library-files
       # Public download page (2026-09-10, see Program.cs's own remarks) — put built release
@@ -31,4 +37,7 @@ services:
       # internet, so this port is never reachable from outside the LAN/VPN either way. Update
       # this IP if the Pi's wired address ever changes (check with: hostname -I).
       - "192.168.50.8:8080:8080"
+      # HTTPS on the Pi's LAN address, port 443. Still not reachable from the internet until the
+      # router forwards WAN 443 here — that port-forward is the one manual step that publishes it.
+      - "192.168.50.8:443:8443"
     restart: unless-stopped
