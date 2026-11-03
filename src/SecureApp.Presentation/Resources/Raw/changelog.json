@@ -1,5 +1,13 @@
 [
   {
+    "version": "0.1.14",
+    "code": 120,
+    "date": "3. 11. 2026",
+    "items": [
+      "Příprava na šifrované připojení k relay přes internet (bez nutnosti VPN): aplikace umí ověřit certifikát relay. Zatím se nic nemění, připojení běží jako dřív."
+    ]
+  },
+  {
     "version": "0.1.13",
     "code": 119,
     "date": "3. 11. 2026",
