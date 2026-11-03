@@ -14,7 +14,7 @@ public sealed class HttpWireGuardTunnelConfigService : IWireGuardTunnelConfigSer
 
     private readonly ITransportSettingsRepository _transportSettingsRepository;
     private readonly ISecureVaultKeyStore _vault;
-    private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(20) };
+    private readonly HttpClient _httpClient = RelayHttp.CreateClient(TimeSpan.FromSeconds(20));
 
     public HttpWireGuardTunnelConfigService(ITransportSettingsRepository transportSettingsRepository, ISecureVaultKeyStore vault)
     {

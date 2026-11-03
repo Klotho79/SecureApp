@@ -36,7 +36,7 @@ public sealed class HttpPiccRosterService : IPiccRosterService
     private readonly ISecureVaultKeyStore _vault;
     private readonly ICryptoService _crypto;
     private readonly IDevicePolicyService _devicePolicyService;
-    private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromMinutes(2) };
+    private readonly HttpClient _httpClient = RelayHttp.CreateClient(TimeSpan.FromMinutes(2));
 
     public HttpPiccRosterService(
         ITransportSettingsRepository transportSettingsRepository,

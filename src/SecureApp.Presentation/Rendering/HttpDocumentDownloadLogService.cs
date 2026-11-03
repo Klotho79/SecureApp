@@ -19,7 +19,7 @@ public sealed class HttpDocumentDownloadLogService : IDocumentDownloadLogService
     private readonly ISecureVaultKeyStore _vault;
     private readonly ITransportSettingsRepository _transportSettingsRepository;
     private readonly ICurrentUserService _currentUserService;
-    private readonly HttpClient _httpClient = new();
+    private readonly HttpClient _httpClient = SecureApp.Presentation.Transport.RelayHttp.CreateClient();
 
     public HttpDocumentDownloadLogService(ISecureVaultKeyStore vault, ITransportSettingsRepository transportSettingsRepository, ICurrentUserService currentUserService)
     {

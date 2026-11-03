@@ -41,7 +41,7 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
 
     private readonly ISecureVaultKeyStore _vault;
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly HttpClient _httpClient = new();
+    private readonly HttpClient _httpClient = RelayHttp.CreateClient();
 
     // ClientWebSocket.SendAsync must not run concurrently on one socket — a delivery ack, a user
     // message and a resend can all fire at once; without this the 2nd throws InvalidOperationException
@@ -277,6 +277,7 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
         var socket = new ClientWebSocket();
         socket.Options.KeepAliveInterval = KeepAliveInterval;
         socket.Options.KeepAliveTimeout = KeepAliveTimeout;
+        socket.Options.RemoteCertificateValidationCallback = RelayTls.ValidateWebSocket;
         try
         {
             using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(ct);

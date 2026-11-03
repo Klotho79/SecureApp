@@ -22,7 +22,7 @@ public abstract class HttpBoardCacheServiceBase<TSnapshot> where TSnapshot : cla
     private readonly ISecureVaultKeyStore _vault;
     private readonly ITransportSettingsRepository _transportSettingsRepository;
     private readonly string _route;
-    private readonly HttpClient _httpClient = new();
+    private readonly HttpClient _httpClient = SecureApp.Presentation.Transport.RelayHttp.CreateClient();
 
     protected HttpBoardCacheServiceBase(ISecureVaultKeyStore vault, ITransportSettingsRepository transportSettingsRepository, string route)
     {

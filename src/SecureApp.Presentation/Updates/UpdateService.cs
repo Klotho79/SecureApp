@@ -43,7 +43,7 @@ public sealed class UpdateService : IUpdateService
     {
         try
         {
-            using var http = new HttpClient { BaseAddress = await ResolveHttpBaseAsync(ct) };
+            using var http = SecureApp.Presentation.Transport.RelayHttp.CreateClient(); http.BaseAddress = await ResolveHttpBaseAsync(ct);
             var manifest = await http.GetFromJsonAsync<UpdateManifestDto>($"download/{PlatformName}/version", ct);
             if (manifest is null)
                 return new UpdateCheckResult(false, null, null, "Na relay serveru zatím není nahraná žádná verze appky.");
@@ -74,7 +74,7 @@ public sealed class UpdateService : IUpdateService
                 return delta;
         }
 
-        using var http = new HttpClient { BaseAddress = await ResolveHttpBaseAsync(ct) };
+        using var http = SecureApp.Presentation.Transport.RelayHttp.CreateClient(); http.BaseAddress = await ResolveHttpBaseAsync(ct);
         using var response = await http.GetAsync($"download/{PlatformName}", HttpCompletionOption.ResponseHeadersRead, ct);
         response.EnsureSuccessStatusCode();
 
@@ -115,7 +115,7 @@ public sealed class UpdateService : IUpdateService
     {
         try
         {
-            using var http = new HttpClient { BaseAddress = await ResolveHttpBaseAsync(ct) };
+            using var http = SecureApp.Presentation.Transport.RelayHttp.CreateClient(); http.BaseAddress = await ResolveHttpBaseAsync(ct);
             var manifest = await http.GetFromJsonAsync<Dictionary<string, string>>("download/windows/manifest", ct);
             if (manifest is null || manifest.Count == 0)
                 return null;

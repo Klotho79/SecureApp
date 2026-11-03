@@ -23,7 +23,7 @@ public sealed class HttpContactDirectoryService : IContactDirectoryService
     private readonly ISecureVaultKeyStore _vault;
     private readonly ITransportSettingsRepository _transportSettingsRepository;
     private readonly ISharedLibraryService _sharedLibraryService;
-    private readonly HttpClient _httpClient = new();
+    private readonly HttpClient _httpClient = SecureApp.Presentation.Transport.RelayHttp.CreateClient();
 
     public HttpContactDirectoryService(
         ICurrentUserService currentUserService,

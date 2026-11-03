@@ -26,7 +26,7 @@ public sealed class HttpCmsAnnotationService : ICmsAnnotationService
     private readonly ITransportSettingsRepository _transportSettingsRepository;
     private readonly ISecureVaultKeyStore _vault;
     private readonly ICryptoService _crypto;
-    private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(30) };
+    private readonly HttpClient _httpClient = SecureApp.Presentation.Transport.RelayHttp.CreateClient(TimeSpan.FromSeconds(30));
 
     public HttpCmsAnnotationService(ITransportSettingsRepository transportSettingsRepository, ISecureVaultKeyStore vault, ICryptoService crypto)
     {

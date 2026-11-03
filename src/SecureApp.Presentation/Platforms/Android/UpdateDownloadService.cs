@@ -96,7 +96,7 @@ public sealed class UpdateDownloadService : Service
 
             var have = File.Exists(partial) ? new FileInfo(partial).Length : 0;
 
-            using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(20) };
+            using var http = SecureApp.Presentation.Transport.RelayHttp.CreateClient(TimeSpan.FromMinutes(20));
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
             if (have > 0)
                 request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(have, null);

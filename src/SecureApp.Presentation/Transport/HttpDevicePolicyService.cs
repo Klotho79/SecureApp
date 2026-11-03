@@ -15,7 +15,7 @@ public sealed class HttpDevicePolicyService : IDevicePolicyService
 
     private readonly ITransportSettingsRepository _transportSettingsRepository;
     private readonly ISecureVaultKeyStore _vault;
-    private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(20) };
+    private readonly HttpClient _httpClient = RelayHttp.CreateClient(TimeSpan.FromSeconds(20));
 
     public HttpDevicePolicyService(ITransportSettingsRepository transportSettingsRepository, ISecureVaultKeyStore vault)
     {

@@ -43,7 +43,7 @@ public sealed class HttpSharedLibraryService : ISharedLibraryService
     // longer than 100 seconds without anything being actually wrong. 5 minutes is a generous margin
     // for a document-sized file even on a slow cellular connection, not an attempt to support
     // arbitrarily large transfers.
-    private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromMinutes(5) };
+    private readonly HttpClient _httpClient = SecureApp.Presentation.Transport.RelayHttp.CreateClient(TimeSpan.FromMinutes(5));
 
     public HttpSharedLibraryService(
         ICryptoService crypto,

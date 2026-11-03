@@ -16,7 +16,7 @@ public sealed class HttpCmsAssignmentService : ICmsAssignmentService
 
     private readonly ITransportSettingsRepository _transportSettingsRepository;
     private readonly ISecureVaultKeyStore _vault;
-    private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(30) };
+    private readonly HttpClient _httpClient = SecureApp.Presentation.Transport.RelayHttp.CreateClient(TimeSpan.FromSeconds(30));
 
     public HttpCmsAssignmentService(ITransportSettingsRepository transportSettingsRepository, ISecureVaultKeyStore vault)
     {

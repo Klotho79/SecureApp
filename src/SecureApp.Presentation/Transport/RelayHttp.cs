@@ -12,6 +12,15 @@ namespace SecureApp.Presentation.Transport;
 /// </summary>
 internal static class RelayHttp
 {
+    /// <summary>An HttpClient for relay calls: system trust as usual, plus the relay's pinned self-signed certificate (see <see cref="RelayTls"/>). Plain http:// endpoints are unaffected.</summary>
+    public static HttpClient CreateClient(TimeSpan? timeout = null)
+    {
+        var client = new HttpClient(new HttpClientHandler { ServerCertificateCustomValidationCallback = RelayTls.Validate });
+        if (timeout is { } value)
+            client.Timeout = value;
+        return client;
+    }
+
     /// <summary>The Settings UI stores one ws:// address used for both the WebSocket connection and every HTTP call, so HTTP callers need the same ws->http / wss->https rewrite.</summary>
     public static Uri ToHttpUri(Uri wsEndpoint)
     {

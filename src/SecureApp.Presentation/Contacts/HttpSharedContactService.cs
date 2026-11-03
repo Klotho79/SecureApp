@@ -20,7 +20,7 @@ public sealed class HttpSharedContactService : ISharedContactService
 
     private readonly ISecureVaultKeyStore _vault;
     private readonly ITransportSettingsRepository _transportSettingsRepository;
-    private readonly HttpClient _httpClient = new();
+    private readonly HttpClient _httpClient = SecureApp.Presentation.Transport.RelayHttp.CreateClient();
 
     public HttpSharedContactService(ISecureVaultKeyStore vault, ITransportSettingsRepository transportSettingsRepository)
     {

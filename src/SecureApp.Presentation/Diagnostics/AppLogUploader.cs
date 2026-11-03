@@ -21,7 +21,7 @@ public static class AppLogUploader
     private const int MaxLinesPerRequest = 1500;
     private const int MaxRequestsPerRun = 5;
     private static readonly JsonSerializerOptions HttpJsonOptions = new(JsonSerializerDefaults.Web);
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(30) };
+    private static readonly HttpClient Http = SecureApp.Presentation.Transport.RelayHttp.CreateClient(TimeSpan.FromSeconds(30));
     private static readonly SemaphoreSlim Gate = new(1, 1);
 
     public static async Task UploadAsync(IServiceProvider services, CancellationToken ct = default)

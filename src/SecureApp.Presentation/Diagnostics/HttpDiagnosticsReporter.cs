@@ -27,7 +27,7 @@ public sealed class HttpDiagnosticsReporter : IDiagnosticsReporter
 
     private readonly ISecureVaultKeyStore _vault;
     private readonly ITransportSettingsRepository _transportSettingsRepository;
-    private readonly HttpClient _httpClient = new();
+    private readonly HttpClient _httpClient = SecureApp.Presentation.Transport.RelayHttp.CreateClient();
 
     public HttpDiagnosticsReporter(ISecureVaultKeyStore vault, ITransportSettingsRepository transportSettingsRepository)
     {

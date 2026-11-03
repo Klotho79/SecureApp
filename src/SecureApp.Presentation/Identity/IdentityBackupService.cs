@@ -28,7 +28,7 @@ public sealed class IdentityBackupService : IIdentityBackupService
     private readonly ICryptoService _crypto;
     private readonly IMessagingService _messaging;
     private readonly ICurrentUserService _currentUser;
-    private readonly HttpClient _httpClient = new();
+    private readonly HttpClient _httpClient = SecureApp.Presentation.Transport.RelayHttp.CreateClient();
 
     public IdentityBackupService(ICryptoService crypto, IMessagingService messaging, ICurrentUserService currentUser)
     {

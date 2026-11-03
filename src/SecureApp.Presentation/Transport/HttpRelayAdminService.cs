@@ -15,7 +15,7 @@ public sealed class HttpRelayAdminService : IRelayAdminService
     // serialize/bind camelCase by default, plain JsonSerializerOptions.Default is case-sensitive.
     private static readonly JsonSerializerOptions HttpJsonOptions = new(JsonSerializerDefaults.Web);
 
-    private readonly HttpClient _httpClient = new();
+    private readonly HttpClient _httpClient = RelayHttp.CreateClient();
 
     // Still deliberately no persisted admin secret (2026-09-07) — see IRelayAdminService's own
     // remarks: every WRITE call below keeps taking it as a plain parameter, supplied fresh by the

@@ -27,7 +27,7 @@ public sealed class HttpCommunityBoardService : ICommunityBoardService
     private readonly ITransportSettingsRepository _transportSettingsRepository;
     private readonly ISecureVaultKeyStore _vault;
     private readonly ICryptoService _crypto;
-    private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(30) };
+    private readonly HttpClient _httpClient = RelayHttp.CreateClient(TimeSpan.FromSeconds(30));
 
     public HttpCommunityBoardService(ITransportSettingsRepository transportSettingsRepository, ISecureVaultKeyStore vault, ICryptoService crypto)
     {
