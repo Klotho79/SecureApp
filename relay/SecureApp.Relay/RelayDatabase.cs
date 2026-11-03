@@ -800,6 +800,35 @@ public sealed class RelayDatabase
                 sort_order    INTEGER NOT NULL
             )
             """);
+
+        // Device recovery tokens (2026-11-03, public-HTTPS security audit): /self-register used to need
+        // no credential at all — "reachable on the VPN/LAN" WAS the credential, which stops being true
+        // once the relay is reachable over the public internet. A fresh, high-entropy token is minted by
+        // CreateDevice alongside every device secret (so every existing issuance path — /register,
+        // /admin/devices, /activation/request's approval, self-register itself — covers this with no
+        // extra call) and stored ONLY as a SHA-256 hash here, never raw. token_hash is the lookup key
+        // (not salted — this is 256 bits of pure randomness, not a low-entropy password, so a rainbow
+        // table buys an attacker nothing; a plain hash lets TryConsumeRecoveryToken look it up directly
+        // instead of scanning every row with a random salt). One-time use: TryConsumeRecoveryToken
+        // deletes the row it matches, and SelfRegisterAsync is handed a fresh replacement token together
+        // with its fresh device secret, so a legitimate device always has an unused token on hand for
+        // next time. Deliberately NOT tied to devices.id by a foreign key — an admin's own deliberate
+        // DeregisterDevice (hard delete, see its own remarks) is a separate, unrelated action; whether a
+        // presented recovery token should still work for a device the admin just removed is a judgment
+        // call left to whoever operates this relay, not hard-coded here either way.
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS device_recovery_tokens (
+                token_hash      TEXT PRIMARY KEY NOT NULL,
+                display_name    TEXT NOT NULL,
+                created_at_utc  TEXT NOT NULL
+            )
+            """);
+
+        // activation_requests.device_recovery_token mirrors device_secret right above (same column,
+        // same reasoning: PLAINTEXT and recoverable, because this is the one-shot channel that hands the
+        // still-unregistered device its token at all — ActivationStatusResponse reads it back once).
+        if (!ColumnExists(connection, "activation_requests", "device_recovery_token"))
+            Execute(connection, "ALTER TABLE activation_requests ADD COLUMN device_recovery_token TEXT NULL");
     }
 
     public string CreateInvite(string? displayNameHint, TimeSpan validFor, out DateTimeOffset expiresAtUtc)
@@ -1006,7 +1035,7 @@ public sealed class RelayDatabase
         Execute(connection, "DELETE FROM devices WHERE id = @id", ("@id", deviceId.ToString()));
     }
 
-    public (Guid DeviceId, string Secret) CreateDevice(string displayName)
+    public (Guid DeviceId, string Secret, string RecoveryToken) CreateDevice(string displayName)
     {
         var deviceId = Guid.NewGuid();
         var secretBytes = RandomNumberGenerator.GetBytes(32);
@@ -1019,7 +1048,46 @@ public sealed class RelayDatabase
             "INSERT INTO devices (id, secret_salt, secret_hash, display_name, created_at_utc) VALUES (@id, @salt, @hash, @name, @created)",
             ("@id", deviceId.ToString()), ("@salt", salt), ("@hash", hash), ("@name", displayName), ("@created", Format(DateTimeOffset.UtcNow)));
 
-        return (deviceId, secret);
+        var recoveryToken = MintRecoveryToken(connection, displayName);
+
+        return (deviceId, secret, recoveryToken);
+    }
+
+    /// <summary>Mints a recovery token for an already-registered device (POST /me/recovery-token) — for devices created before tokens existed.</summary>
+    public string IssueRecoveryToken(Guid deviceId)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT display_name FROM devices WHERE id = @id";
+        command.Parameters.AddWithValue("@id", deviceId.ToString());
+        var displayName = command.ExecuteScalar() as string ?? "Unknown";
+        return MintRecoveryToken(connection, displayName);
+    }
+
+    /// <summary>Inserts a fresh recovery token row (see device_recovery_tokens' own schema remarks) and returns the RAW token — never stored raw itself, only its hash.</summary>
+    private static string MintRecoveryToken(SqliteConnection connection, string displayName)
+    {
+        var token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+        var tokenHash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
+        Execute(connection,
+            "INSERT INTO device_recovery_tokens (token_hash, display_name, created_at_utc) VALUES (@hash, @name, @created)",
+            ("@hash", tokenHash), ("@name", displayName), ("@created", Format(DateTimeOffset.UtcNow)));
+        return token;
+    }
+
+    /// <summary>
+    /// Validates and atomically consumes a device recovery token (one-time use, same shape as
+    /// TryConsumeInvite) — the real gate /self-register now needs now that "reachable on the
+    /// VPN/LAN" can no longer stand in for a credential. False for a missing/already-used/foreign token.
+    /// </summary>
+    public bool TryConsumeRecoveryToken(string token)
+    {
+        var tokenHash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM device_recovery_tokens WHERE token_hash = @hash";
+        command.Parameters.AddWithValue("@hash", tokenHash);
+        return command.ExecuteNonQuery() > 0;
     }
 
     public bool TryAuthenticate(Guid deviceId, string secret)
@@ -2051,7 +2119,7 @@ public sealed class RelayDatabase
     }
 
     /// <summary>Atomically approves a still-pending request: mints a new device credential (same underlying <see cref="CreateDevice"/> as the old invite-code path) and records it against the request. Returns null if the request doesn't exist or was already decided (approved/rejected) — e.g. a double-tap on "Potvrdit", or someone else already acted on it.</summary>
-    public (Guid DeviceId, string Secret)? ApproveActivationRequest(Guid id)
+    public (Guid DeviceId, string Secret, string RecoveryToken)? ApproveActivationRequest(Guid id)
     {
         using var connection = OpenConnection();
         using var checkCommand = connection.CreateCommand();
@@ -2063,25 +2131,27 @@ public sealed class RelayDatabase
         var displayName = (string)reader["display_name"];
         reader.Close();
 
-        var (deviceId, secret) = CreateDevice(displayName);
+        var (deviceId, secret, recoveryToken) = CreateDevice(displayName);
 
         Execute(connection,
-            "UPDATE activation_requests SET status = 'Approved', decided_at_utc = @now, assigned_device_id = @device, device_secret = @secret WHERE id = @id",
-            ("@now", Format(DateTimeOffset.UtcNow)), ("@device", deviceId.ToString()), ("@id", id.ToString()), ("@secret", secret));
+            "UPDATE activation_requests SET status = 'Approved', decided_at_utc = @now, assigned_device_id = @device, device_secret = @secret, device_recovery_token = @recovery WHERE id = @id",
+            ("@now", Format(DateTimeOffset.UtcNow)), ("@device", deviceId.ToString()), ("@id", id.ToString()), ("@secret", secret), ("@recovery", recoveryToken));
 
-        return (deviceId, secret);
+        return (deviceId, secret, recoveryToken);
     }
 
-    /// <summary>Reads back the plaintext secret an approved activation request is holding for its still-polling device — see the `device_secret` column's own remarks in <see cref="Initialize"/> for why this one genuinely needs to be recoverable, unlike a device's own stored secret hash. Returns null for a request that isn't Approved (or doesn't exist) — never partially exposes a secret before a human has actually decided.</summary>
-    public string? GetActivationRequestSecret(Guid id)
+    /// <summary>Reads back the plaintext secret + recovery token an approved activation request is holding for its still-polling device — see the `device_secret`/`device_recovery_token` columns' own remarks in <see cref="Initialize"/> for why these genuinely need to be recoverable, unlike a device's own stored secret hash. Returns null for a request that isn't Approved (or doesn't exist) — never partially exposes either value before a human has actually decided.</summary>
+    public (string Secret, string RecoveryToken)? GetActivationRequestSecret(Guid id)
     {
         using var connection = OpenConnection();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT device_secret FROM activation_requests WHERE id = @id AND status = 'Approved'";
+        command.CommandText = "SELECT device_secret, device_recovery_token FROM activation_requests WHERE id = @id AND status = 'Approved'";
         command.Parameters.AddWithValue("@id", id.ToString());
 
         using var reader = command.ExecuteReader();
-        return reader.Read() && reader["device_secret"] is string secret ? secret : null;
+        if (!reader.Read() || reader["device_secret"] is not string secret || reader["device_recovery_token"] is not string recoveryToken)
+            return null;
+        return (secret, recoveryToken);
     }
 
     /// <summary>Parks the role an admin picked for a not-yet-existing member's device — see <c>pending_member_roles</c>'s own schema remarks. Overwrites any earlier pending entry for the same name (the admin re-ran "Vytvořit WireGuard přístup" for the same person, e.g. after a mistake).</summary>

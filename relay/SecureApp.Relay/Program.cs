@@ -1,8 +1,11 @@
 using System.IO.Compression;
+using System.Net;
 using System.Net.Http.Json;
+using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading.RateLimiting;
 using SecureApp.Domain.Policies;
 using SecureApp.Relay;
 
@@ -22,6 +25,17 @@ var outboxFlushPacing = TimeSpan.FromMilliseconds(75);
 // something every deployment of this relay necessarily has wg-easy for.
 var wgEasyUrl = builder.Configuration["SECUREAPP_WGEASY_URL"];
 var wgEasyPassword = builder.Configuration["SECUREAPP_WGEASY_PASSWORD"];
+
+// Public-HTTPS security audit (2026-11-03) — see CreateActivationRequestRequest's own remarks. Optional:
+// null/unset leaves /activation/request exactly as open as it always was, for an existing VPN-only
+// deployment that never set this. Set it before putting the relay on the public internet.
+var appBuildSecret = builder.Configuration["SECUREAPP_APP_BUILD_SECRET"];
+
+// Same audit: /self-register only REQUIRES a recovery token when this is "true". Devices registered before
+// the token existed have none until they fetch one (POST /me/recovery-token, done by the app on its next
+// sweep) — enforcing earlier would stop exactly those devices from healing themselves. Turn it on only
+// once every device has a token, and before the relay is reachable from the public internet.
+var requireRecoveryToken = string.Equals(builder.Configuration["SECUREAPP_REQUIRE_RECOVERY_TOKEN"], "true", StringComparison.OrdinalIgnoreCase);
 
 // PILOT (2026-10-31, VPN_EMBED_PLAN.md) - vestavěný tunel (appka si sama vyžádá/zapne WireGuard,
 // viz /device/wireguard/config níže) nikdy neběžel na reálném zařízení. Uživatelovo rozhodnutí:
@@ -74,7 +88,42 @@ builder.Services.AddSingleton<ConnectionRegistry>();
 // itself) — see WireGuardOnboardingSweepService's own remarks.
 builder.Services.AddHostedService(sp => new WireGuardOnboardingSweepService(sp.GetRequiredService<RelayDatabase>(), wgEasyUrl, wgEasyPassword));
 
+// Rate limiting (2026-11-03, public-HTTPS security audit) — until now nothing here limited how often a
+// caller could try an admin secret, an invite/pickup code or an identity-backup lookup key, because only
+// someone already on the LAN/VPN could reach it. Per client IP, in three tiers, one partitioned limiter
+// instead of a policy on each of the ~70 routes:
+//   - private/loopback addresses (LAN, the wg-easy peers) are not limited at all — exactly as before;
+//   - "strict" (20/min): the unauthenticated credential-minting and code-redeeming routes, where a
+//     guess costs the attacker nothing;
+//   - "admin" (30/min): every /admin/* route (the shared X-Admin-Secret is the only gate on those);
+//   - everything else 1200/min — generous on purpose, many hospital devices can share one public NAT address.
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+    {
+        var ip = context.Connection.RemoteIpAddress;
+        if (ip is null || IsPrivateOrLoopback(ip))
+            return RateLimitPartition.GetNoLimiter("trusted");
+
+        var path = context.Request.Path.Value ?? string.Empty;
+        var (tier, permits) =
+            IsStrictRateLimitedPath(path) ? ("strict", 20) :
+            path.StartsWith("/admin/", StringComparison.OrdinalIgnoreCase) ? ("admin", 30) :
+            ("general", 1200);
+
+        return RateLimitPartition.GetFixedWindowLimiter($"{tier}:{ip}", _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = permits,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        });
+    });
+});
+
 var app = builder.Build();
+
+app.UseRateLimiter();
 
 app.Services.GetRequiredService<RelayDatabase>().Initialize();
 // Frames queued for devices that no longer exist (2026-10-23): ~90 had collected since September.
@@ -438,6 +487,17 @@ app.MapPost("/admin/wireguard/clients", async (HttpRequest request, CreateWireGu
     return Results.Ok(new WireGuardClientResponse(configText, pickupCode));
 });
 
+// A device that registered before recovery tokens existed has none; this hands it one while its own
+// credentials still work (the app calls it only when its vault holds no token). Device-authenticated, so a
+// stranger cannot mint one.
+app.MapPost("/me/recovery-token", (HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+
+    return Results.Ok(new RecoveryTokenResponse(db.IssueRecoveryToken(deviceId)));
+});
+
 // Vestavěný tunel (2026-10-31, VPN_EMBED_PLAN.md) — appka si sama vyžádá svůj WireGuard config,
 // authentizovaně vlastním device tokenem (TryGetDeviceAuth), žádný admin secret ani pickup kód
 // (na rozdíl od /admin/wireguard/clients výše, co je pro lidmi zprostředkovaný onboarding). První
@@ -510,8 +570,8 @@ app.MapPost("/admin/devices", (HttpRequest request, CreateDeviceRequest body, Re
     if (!IsAdminAuthorized(request, adminSecret))
         return Results.Unauthorized();
 
-    var (deviceId, secret) = db.CreateDevice(body.DisplayName);
-    return Results.Ok(new DeviceCredentialResponse(deviceId, secret));
+    var (deviceId, secret, recoveryToken) = db.CreateDevice(body.DisplayName);
+    return Results.Ok(new DeviceCredentialResponse(deviceId, secret, recoveryToken));
 });
 
 // The relay only ever REQUESTS a redeploy — it never runs `docker compose` on itself. Doing that
@@ -534,21 +594,29 @@ app.MapPost("/register", (RegisterRequest body, RelayDatabase db) =>
     if (!db.TryConsumeInvite(body.InviteCode))
         return Results.BadRequest("Invite code is invalid, already used, or expired.");
 
-    var (deviceId, secret) = db.CreateDevice(body.DisplayName);
-    return Results.Ok(new DeviceCredentialResponse(deviceId, secret));
+    var (deviceId, secret, recoveryToken) = db.CreateDevice(body.DisplayName);
+    return Results.Ok(new DeviceCredentialResponse(deviceId, secret, recoveryToken));
 });
 
-// No admin approval required — WireGuard is the trust boundary: only devices on the VPN/LAN
-// can reach this endpoint at all, so "you're on the network" is the credential check.
-// Used by the app's silent self-re-registration path when a device's stored credentials are
-// rejected (registration was deleted). The device recovers on the next supervisor tick with no
-// user-visible error or confirmation step.
-app.MapPost("/self-register", (CreateDeviceRequest body, RelayDatabase db, ILogger<Program> logger) =>
+// 2026-11-03, public-HTTPS security audit: this used to need no credential at all — "reachable on
+// the VPN/LAN" WAS the credential ("you're on the network"), which stops meaning anything once the
+// relay is reachable over the public internet. Now gated on a one-time RecoveryToken the device
+// itself was handed alongside its PREVIOUS device secret (see device_recovery_tokens' own schema
+// remarks) — a stranger with no prior relationship to this relay has no token to present and gets
+// 401, exactly like today's VPN gate meant to exclude them. Used by the app's silent self-
+// re-registration path when a device's stored credentials are rejected (registration was deleted,
+// or the relay's own DB was reset) — the device recovers on the next supervisor tick with no
+// user-visible error or confirmation step, same as before this existed.
+app.MapPost("/self-register", (SelfRegisterRequest body, RelayDatabase db, ILogger<Program> logger) =>
 {
+    var tokenValid = !string.IsNullOrWhiteSpace(body.RecoveryToken) && db.TryConsumeRecoveryToken(body.RecoveryToken);
+    if (requireRecoveryToken && !tokenValid)
+        return Results.Unauthorized();
+
     var displayName = string.IsNullOrWhiteSpace(body.DisplayName) ? "Unknown" : body.DisplayName;
-    var (deviceId, secret) = db.CreateDevice(displayName);
+    var (deviceId, secret, recoveryToken) = db.CreateDevice(displayName);
     logger.LogInformation("Self-registered device {DeviceId} ({DisplayName})", deviceId, displayName);
-    return Results.Ok(new DeviceCredentialResponse(deviceId, secret));
+    return Results.Ok(new DeviceCredentialResponse(deviceId, secret, recoveryToken));
 });
 
 // --- Activation requests (2026-09-06) — see Contracts.cs's own remarks for why this exists
@@ -556,6 +624,16 @@ app.MapPost("/self-register", (CreateDeviceRequest body, RelayDatabase db, ILogg
 
 app.MapPost("/activation/request", (CreateActivationRequestRequest body, RelayDatabase db) =>
 {
+    // 2026-11-03, public-HTTPS security audit — see CreateActivationRequestRequest's own remarks.
+    // Only enforced when the relay operator actually set SECUREAPP_APP_BUILD_SECRET; an existing
+    // VPN-only deployment that never set it behaves exactly as before.
+    if (!string.IsNullOrEmpty(appBuildSecret))
+    {
+        var providedBytes = Encoding.UTF8.GetBytes(body.AppBuildSecret ?? string.Empty);
+        var expectedBytes = Encoding.UTF8.GetBytes(appBuildSecret);
+        if (providedBytes.Length != expectedBytes.Length || !CryptographicOperations.FixedTimeEquals(providedBytes, expectedBytes))
+            return Results.Unauthorized();
+    }
     if (string.IsNullOrWhiteSpace(body.DisplayName) || string.IsNullOrWhiteSpace(body.Email) || string.IsNullOrWhiteSpace(body.KeyFingerprint))
         return Results.BadRequest("DisplayName, Email, and KeyFingerprint are all required.");
 
@@ -596,13 +674,13 @@ app.MapGet("/activation/status/{id:guid}", (Guid id, RelayDatabase db) =>
         return Results.Ok(new ActivationStatusResponse(record.Status, null, null));
 
     // Approved: the device row already exists (ApproveActivationRequest created it), but its
-    // bearer secret was only ever returned once from that call, at approval time — RelayDatabase
-    // doesn't store secrets in recoverable form (see its own remarks: salted + HMAC-hashed only).
-    // So the secret returned here is cached at approval time onto the activation request row's own
+    // bearer secret (and recovery token) were only ever returned once from that call, at approval
+    // time — RelayDatabase doesn't store secrets in recoverable form (see its own remarks: salted +
+    // HMAC-hashed only). So both are cached at approval time onto the activation request row's own
     // (unauthenticated-but-unguessable) storage, not re-derived. See ApproveActivationRequest's
-    // caller below for where that value actually comes from.
-    var cachedSecret = db.GetActivationRequestSecret(id);
-    return Results.Ok(new ActivationStatusResponse(record.Status, deviceId, cachedSecret));
+    // caller below for where these values actually come from.
+    var cached = db.GetActivationRequestSecret(id);
+    return Results.Ok(new ActivationStatusResponse(record.Status, deviceId, cached?.Secret, cached?.RecoveryToken));
 });
 
 app.MapGet("/admin/activation-requests", (HttpRequest request, RelayDatabase db) =>
@@ -1850,6 +1928,33 @@ app.Map("/ws", async (HttpContext context, RelayDatabase db, ConnectionRegistry 
 
 app.Run();
 
+/// <summary>LAN, loopback and the wg-easy peers — the callers the relay always trusted by network position; the rate limiter leaves them alone.</summary>
+static bool IsPrivateOrLoopback(IPAddress ip)
+{
+    if (ip.IsIPv4MappedToIPv6)
+        ip = ip.MapToIPv4();
+    if (IPAddress.IsLoopback(ip))
+        return true;
+
+    if (ip.AddressFamily == AddressFamily.InterNetwork)
+    {
+        var b = ip.GetAddressBytes();
+        return b[0] == 10 || (b[0] == 172 && b[1] is >= 16 and <= 31) || (b[0] == 192 && b[1] == 168);
+    }
+
+    return ip.IsIPv6LinkLocal || ip.IsIPv6SiteLocal || (ip.GetAddressBytes()[0] & 0xFE) == 0xFC; // fe80::/10, fec0::/10, fc00::/7
+}
+
+/// <summary>Routes where a single guess is free for an attacker: they mint credentials or redeem a one-time code/lookup key without any device or admin secret.</summary>
+static bool IsStrictRateLimitedPath(string path) =>
+    path.Equals("/register", StringComparison.OrdinalIgnoreCase)
+    || path.Equals("/self-register", StringComparison.OrdinalIgnoreCase)
+    || path.StartsWith("/activation/", StringComparison.OrdinalIgnoreCase)
+    || path.StartsWith("/onboarding/pickup/", StringComparison.OrdinalIgnoreCase)
+    || path.StartsWith("/download/onboarding/", StringComparison.OrdinalIgnoreCase)
+    || path.StartsWith("/identity-backup/", StringComparison.OrdinalIgnoreCase)
+    || path.Equals("/download/windows/delta", StringComparison.OrdinalIgnoreCase);
+
 /// <summary>A bare file name only — never a path, no traversal (shared by the ops-file upload/download routes).</summary>
 static bool IsSafeFileName(string? name) =>
     !string.IsNullOrWhiteSpace(name) && !name.Contains("..") && !name.Contains('/') && !name.Contains('\\')
@@ -2055,7 +2160,6 @@ static string DownloadPageHtml(bool androidAvailable, string? androidSize, bool 
         </ol>
         {{windowsSection}}
         {{onboardingSection}}
-        <p class="muted">Tato stránka je dostupná jen v domácí síti / přes VPN, ne z veřejného internetu.</p>
         </body>
         </html>
         """;

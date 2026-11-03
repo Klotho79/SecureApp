@@ -69,6 +69,14 @@ public interface IMessageTransport
     /// path when <see cref="ConnectAsync"/> throws <c>RelayUnauthorizedException</c>.
     /// </summary>
     Task SelfRegisterAsync(Uri endpoint, string displayName, CancellationToken ct = default);
+
+    /// <summary>
+    /// Makes sure this device holds a relay recovery token (the credential <see cref="SelfRegisterAsync"/> presents).
+    /// Devices registered before tokens existed fetch one here while their own credentials still work; a no-op
+    /// when a token is already stored or the device is not registered.
+    /// </summary>
+    Task EnsureRecoveryTokenAsync(Uri endpoint, CancellationToken ct = default);
+
     Task SendEnvelopeAsync(MessageEnvelope envelope, CancellationToken ct = default);
 
     /// <summary>

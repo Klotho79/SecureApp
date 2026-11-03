@@ -1,5 +1,13 @@
 [
   {
+    "version": "0.1.13",
+    "code": 119,
+    "date": "3. 11. 2026",
+    "items": [
+      "Příprava na bezpečnější připojení k relay: zařízení si ukládá obnovovací klíč, kterým se samo znovu přihlásí, když o registraci přijde. Nic se vám nemění."
+    ]
+  },
+  {
     "version": "0.1.12",
     "code": 118,
     "date": "2. 11. 2026",

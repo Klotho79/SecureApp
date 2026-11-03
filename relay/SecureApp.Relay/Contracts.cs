@@ -4,7 +4,15 @@ public sealed record CreateInviteRequest(string? DisplayNameHint, int ValidForMi
 public sealed record CreateInviteResponse(string Code, DateTimeOffset ExpiresAtUtc);
 
 public sealed record CreateDeviceRequest(string DisplayName);
-public sealed record DeviceCredentialResponse(Guid DeviceId, string Secret);
+
+/// <summary>RecoveryToken (2026-11-03, public-HTTPS security audit) — a fresh, one-time, high-entropy token minted alongside every device secret, stored by the client and presented to /self-register the NEXT time it needs to recover (see device_recovery_tokens' own schema remarks). Never reused across the two calls — SelfRegisterRequest consumes the old one and this response always carries its replacement.</summary>
+public sealed record DeviceCredentialResponse(Guid DeviceId, string Secret, string RecoveryToken);
+
+/// <summary>/self-register's own request (2026-11-03) — distinct from <see cref="CreateDeviceRequest"/> (still used by /admin/devices, which needs no recovery token: the admin secret is its own credential) because this is the one call a stranger with no prior relationship to this relay could otherwise reach for free.</summary>
+public sealed record SelfRegisterRequest(string DisplayName, string? RecoveryToken);
+
+/// <summary>POST /me/recovery-token — a token for a device that registered before tokens existed.</summary>
+public sealed record RecoveryTokenResponse(string RecoveryToken);
 
 /// <summary>Self-update manifest (2026-09-23) — written by /admin/upload/android, read by the app's own update check via /download/android/version. VersionCode is the Android versionCode (ApplicationVersion in the .csproj) — the actual number compared to decide "is there something newer", VersionName is just the human-readable display string.</summary>
 public sealed record UpdateManifest(int VersionCode, string VersionName, DateTimeOffset ReleasedAtUtc);
@@ -42,11 +50,12 @@ public sealed record RegisterRequest(string InviteCode, string DisplayName);
 // server-side path nothing calls, and it stays available as a manual curl fallback per
 // relay/ops/README.md if this flow is ever unreachable.
 
-public sealed record CreateActivationRequestRequest(string DisplayName, string Email, string KeyFingerprint);
+/// <summary>AppBuildSecret (2026-11-03, public-HTTPS security audit) — a constant compiled into the app, required only when the relay is configured with SECUREAPP_APP_BUILD_SECRET. Replaces "reachable on the VPN/LAN" with "holds a genuine build of this app" as the gate once the relay stops being LAN/VPN-only — the SAME security tier this endpoint always had (anyone who ever gets the install file could call it, a deliberate 2026-09-19 tradeoff, see this file's own remarks below), not a stronger one. Optional/null when the relay isn't configured with the env var, so an existing VPN-only deployment is unaffected.</summary>
+public sealed record CreateActivationRequestRequest(string DisplayName, string Email, string KeyFingerprint, string? AppBuildSecret = null);
 public sealed record CreateActivationRequestResponse(Guid RequestId);
 
-/// <summary>Polled by the still-unregistered device. Once <c>Status</c> is "Approved", <c>DeviceId</c>/<c>Secret</c> are populated — the same credential a successful <c>/register</c> call would have returned, just delivered asynchronously once a human approves rather than synchronously against a pre-shared code.</summary>
-public sealed record ActivationStatusResponse(string Status, Guid? DeviceId, string? Secret);
+/// <summary>Polled by the still-unregistered device. Once <c>Status</c> is "Approved", <c>DeviceId</c>/<c>Secret</c>/<c>RecoveryToken</c> are populated — the same credential a successful <c>/register</c> call would have returned, just delivered asynchronously once a human approves rather than synchronously against a pre-shared code.</summary>
+public sealed record ActivationStatusResponse(string Status, Guid? DeviceId, string? Secret, string? RecoveryToken = null);
 
 /// <summary>One row in the admin's pending-activations list — deliberately carries no secret, only what the admin needs to decide whether to approve.</summary>
 public sealed record ActivationRequestSummary(Guid Id, string DisplayName, string Email, string KeyFingerprint, DateTimeOffset CreatedAtUtc);

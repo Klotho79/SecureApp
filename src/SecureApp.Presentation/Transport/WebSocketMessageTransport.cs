@@ -107,6 +107,7 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
             ?? throw new InvalidOperationException("Relay vrátil prázdnou odpověď na registraci.");
 
         await _vault.StoreSecretAsync(RelayDeviceVaultKeys.DeviceSecret, Encoding.UTF8.GetBytes(credential.Secret), ct);
+        await _vault.StoreSecretAsync(RelayDeviceVaultKeys.RecoveryToken, Encoding.UTF8.GetBytes(credential.RecoveryToken), ct);
 
         using var scope = _scopeFactory.CreateScope();
         var transportSettings = scope.ServiceProvider.GetRequiredService<ITransportSettingsRepository>();
@@ -129,7 +130,7 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
         var requestUri = new Uri(ToHttpUri(endpoint), "activation/request");
         using var response = await _httpClient.PostAsJsonAsync(
             requestUri,
-            new { DisplayName = displayName, Email = email, KeyFingerprint = fingerprint },
+            new { DisplayName = displayName, Email = email, KeyFingerprint = fingerprint, AppBuildSecret },
             HttpJsonOptions,
             ct);
         response.EnsureSuccessStatusCode();
@@ -159,12 +160,13 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
         if (!Enum.TryParse<ActivationRequestStatus>(result.Status, ignoreCase: true, out var status))
             throw new InvalidOperationException($"Relay vrátil neznámý stav aktivace „{result.Status}“.");
 
-        if (status == ActivationRequestStatus.Approved && result is { DeviceId: { } deviceId, Secret: { } secret })
+        if (status == ActivationRequestStatus.Approved && result is { DeviceId: { } deviceId, Secret: { } secret, RecoveryToken: { } recoveryToken })
         {
             // Same tail RegisterAsync already runs — completing it here (rather than making the
             // caller do it) is what lets PollActivationAsync stand in as a drop-in async analog of
             // RegisterAsync: "keep polling until it's not Pending" is the whole contract.
             await _vault.StoreSecretAsync(RelayDeviceVaultKeys.DeviceSecret, Encoding.UTF8.GetBytes(secret), ct);
+            await _vault.StoreSecretAsync(RelayDeviceVaultKeys.RecoveryToken, Encoding.UTF8.GetBytes(recoveryToken), ct);
 
             using var scope = _scopeFactory.CreateScope();
             var transportSettings = scope.ServiceProvider.GetRequiredService<ITransportSettingsRepository>();
@@ -181,10 +183,18 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
         ArgumentNullException.ThrowIfNull(endpoint);
         ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
 
+        // Public-HTTPS security audit (2026-11-03) — the token stored at the LAST successful
+        // registration/self-register (ClearCredentialsAsync deliberately never removes it, only
+        // DeviceSecret). Missing here means this device never actually had a relay credential to
+        // recover in the first place — nothing to send, let the relay's own 401 explain why rather
+        // than guessing client-side.
+        var recoveryTokenBytes = await _vault.RetrieveSecretAsync(RelayDeviceVaultKeys.RecoveryToken, ct);
+        var recoveryToken = recoveryTokenBytes is null ? null : Encoding.UTF8.GetString(recoveryTokenBytes);
+
         var registerUri = new Uri(ToHttpUri(endpoint), "self-register");
         using var response = await _httpClient.PostAsJsonAsync(
             registerUri,
-            new { DisplayName = displayName },
+            new { DisplayName = displayName, RecoveryToken = recoveryToken },
             HttpJsonOptions,
             ct);
         response.EnsureSuccessStatusCode();
@@ -193,12 +203,41 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
             ?? throw new InvalidOperationException("Relay vrátil prázdnou odpověď na self-register.");
 
         await _vault.StoreSecretAsync(RelayDeviceVaultKeys.DeviceSecret, Encoding.UTF8.GetBytes(credential.Secret), ct);
+        await _vault.StoreSecretAsync(RelayDeviceVaultKeys.RecoveryToken, Encoding.UTF8.GetBytes(credential.RecoveryToken), ct);
 
         using var scope = _scopeFactory.CreateScope();
         var transportSettings = scope.ServiceProvider.GetRequiredService<ITransportSettingsRepository>();
         var configuration = await transportSettings.GetAsync(ct) ?? new TransportEndpointConfiguration(endpoint, isAutoConnectEnabled: true);
         configuration.AssignDevice(credential.DeviceId);
         await transportSettings.SaveAsync(configuration, ct);
+    }
+
+    public async Task EnsureRecoveryTokenAsync(Uri endpoint, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+
+        if (await _vault.RetrieveSecretAsync(RelayDeviceVaultKeys.RecoveryToken, ct) is not null)
+            return;
+
+        using var scope = _scopeFactory.CreateScope();
+        var configuration = await scope.ServiceProvider.GetRequiredService<ITransportSettingsRepository>().GetAsync(ct);
+        if (configuration?.AssignedDeviceId is not { } deviceId)
+            return;
+        var secretBytes = await _vault.RetrieveSecretAsync(RelayDeviceVaultKeys.DeviceSecret, ct);
+        if (secretBytes is null)
+            return;
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(ToHttpUri(endpoint), "me/recovery-token"));
+        request.Headers.Add("X-Device-Id", deviceId.ToString());
+        request.Headers.Add("X-Device-Secret", Encoding.UTF8.GetString(secretBytes));
+        using var response = await _httpClient.SendAsync(request, ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            return; // an older relay without the endpoint — try again on a later sweep
+        response.EnsureSuccessStatusCode();
+
+        var result = await response.Content.ReadFromJsonAsync<RecoveryTokenResult>(HttpJsonOptions, ct)
+            ?? throw new InvalidOperationException("Relay vrátil prázdnou odpověď na recovery token.");
+        await _vault.StoreSecretAsync(RelayDeviceVaultKeys.RecoveryToken, Encoding.UTF8.GetBytes(result.RecoveryToken), ct);
     }
 
     /// <summary>
@@ -649,7 +688,18 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
         _httpClient.Dispose();
     }
 
-    private sealed record DeviceCredential(Guid DeviceId, string Secret);
+    private sealed record DeviceCredential(Guid DeviceId, string Secret, string RecoveryToken);
     private sealed record ActivationRequestCreated(Guid RequestId);
-    private sealed record ActivationStatusResult(string Status, Guid? DeviceId, string? Secret);
+    private sealed record RecoveryTokenResult(string RecoveryToken);
+    private sealed record ActivationStatusResult(string Status, Guid? DeviceId, string? Secret, string? RecoveryToken);
+
+    /// <summary>
+    /// Public-HTTPS security audit (2026-11-03) — compiled into every build, sent with /activation/request
+    /// so a relay the operator chose to put on the public internet (SECUREAPP_RELAY_ADMIN_SECRET env var
+    /// SECUREAPP_APP_BUILD_SECRET set to match) can tell "a genuine app build" apart from an arbitrary
+    /// internet request, the same tier of protection "reachable on the VPN/LAN" used to provide — not a
+    /// confidential secret (it ships inside the public APK/zip, anyone can extract it), just a floor. A
+    /// relay that never sets the matching env var ignores this value entirely.
+    /// </summary>
+    private const string AppBuildSecret = "SA-build-7Qk2mZx9Lp4Rw8Vn3Jc6Ht1Fy5Db0Ge";
 }

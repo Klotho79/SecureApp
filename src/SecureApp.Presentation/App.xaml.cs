@@ -413,6 +413,7 @@ public partial class App : Application
 					if (transport.IsConnected && (justReconnected || sweepDue))
 					{
 						await RunStaleSessionSweepAsync(services, transport);
+						await EnsureRecoveryTokenAsync(services, transport);
 						// Session self-healing above stays on the 3-minute cadence (hard requirement); these steps only ask the relay whether
 							// anything changed, so they run every 5-10 min - or all at once right after a reconnect.
 							if (SweepStepDue(nameof(RunPeerIdentityReconciliationAsync), TimeSpan.FromMinutes(10), justReconnected))
@@ -917,6 +918,21 @@ public partial class App : Application
 	/// the trust boundary so no admin approval is required. The next supervisor tick after this
 	/// returns will find valid credentials and connect normally. No UI touched; everything to log.
 	/// </summary>
+	private static async Task EnsureRecoveryTokenAsync(IServiceProvider services, IMessageTransport transport)
+	{
+		try
+		{
+			using var scope = services.CreateScope();
+			var configuration = await scope.ServiceProvider.GetRequiredService<ITransportSettingsRepository>().GetAsync();
+			if (configuration?.EndpointUri is { } endpoint)
+				await transport.EnsureRecoveryTokenAsync(endpoint);
+		}
+		catch (Exception ex)
+		{
+			AppLog.Warning(nameof(EnsureRecoveryTokenAsync), "fetching the relay recovery token failed", ex);
+		}
+	}
+
 	private static async Task SilentReactivateAsync(IServiceProvider services, IMessageTransport transport)
 	{
 		using var scope = services.CreateScope();

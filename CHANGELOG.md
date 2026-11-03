@@ -82,6 +82,16 @@ Tohle je technická historie změn a rozhodnutí — pro mě a pro budoucí Clau
 - **Neověřeno:** že oprava uvedené cesty vyřeší i okamžitý pád služby. Pokud selže znovu, příčina bude v logu zařízení (`setup-failed`).
 - Možná souvislost k ověření: relay posílá `AllowedIPs = 10.8.0.0/24, 192.168.50.8/32` (split tunel); na PC ve stejné LAN jako Pi může /32 na adresu Pi vést provoz do tunelu místo přímo.
 
+## 2026-11-03 — Audit relay před veřejným HTTPS + Release 0.1.13 (119)
+
+- **Motivace:** FortiClient na telefonu zabere jediný VPN slot Androidu → vestavěný tunel s ním kolidovat musí (OS omezení). Řešení: relay přes veřejné `wss://212.111.15.246:443` se self-signed certifikátem připnutým v appce (bez domény/DDNS → žádný záznam v CT logu). Tunel zůstane jen jako admin nástroj. Tohle vydání je jen bezpečnostní příprava; HTTPS samotné (cert na Pi, Kestrel, pinning v appce, port forward 443) NENÍ hotové.
+- **Audit `Program.cs` (70+ endpointů):** většina je za `X-Device-*` / admin secretem (porovnání v konstantním čase). Dvě kritické díry, které kryla jen síťová poloha (LAN/VPN): `/self-register` (nulová autentizace, vytvoří zařízení každému) a `/activation/request` (bez hesla, auto-schválení). Dále: nikde rate limiting; `/identity-backup/{lookupKey}` PUT bez autentizace (přepis cizí zálohy při uhodnutém klíči) — ZATÍM NEŘEŠENO kromě rate limitu.
+- **Recovery token:** `CreateDevice` k každému device secretu vydá jednorázový token (v DB jen SHA-256, tabulka `device_recovery_tokens`); appka ho drží ve vaultu (`transport:relay-recovery-token`, `ClearCredentialsAsync` ho nemaže) a `/self-register` ho předloží. Odpověď vždy nese nový. Zařízení registrovaná před tokenem si ho vyzvednou přes nový `POST /me/recovery-token` (device auth) v dalším sweepu (`EnsureRecoveryTokenAsync`).
+- **Vynucení je přepínač:** `SECUREAPP_REQUIRE_RECOVERY_TOKEN=true` na Pi (výchozí vypnuto → `/self-register` se chová jako dřív, aby se nerozbila self-healing starých zařízení). Zapnout až všechna zařízení token mají a před otevřením portu. Podobně `SECUREAPP_APP_BUILD_SECRET` pro `/activation/request` (konstanta `AppBuildSecret` v `WebSocketMessageTransport`; není tajná, jen laťka).
+- **Rate limit (jen veřejné IP, LAN/VPN beze změny):** 20/min `strict` (register, self-register, activation/*, onboarding/pickup, identity-backup, download/onboarding/{kód}, windows/delta), 30/min `/admin/*`, 1200/min zbytek. Živě neověřeno (z loopbacku se nelimituje).
+- Text „dostupné jen v domácí síti“ z `/download` odstraněn.
+- **Neřešeno / dál:** `/admin/*` z veřejné IP jen rate limit (záměr: admin přes tunel, jenže Správa členů volá `/admin/users` zařízením s rolí Admin); admin secret jinak jen časově konstantní porovnání; žádné zamykání po neúspěších.
+
 ## 2026-11-02 — Release 0.1.12 (118, Android + Windows + relay)
 
 - **Chat: „bez připojení X dní“** místo „⚠ nedostupný — zkuste přepárovat“ (uživatel nevěděl, co to znamená: appka vypnutá, offline, …). Relay má nový `GET /directory/last-seen` (veřejný klíč → čas posledního publikování, i neaktivní; `RelayDatabase.GetDirectoryLastSeen`), appka ho bere v `DirectoryNameResolver.BuildAsync` (cache 5 min, 404 u starého relay = obecný text „déle než 2 dny“). Zobrazuje se v seznamu chatů, u členů skupiny a v tlačítku „převzít vedení“. Signál zůstává „nepublikoval na relay 2+ dny“ — appka vypnutá a offline nerozliší.
