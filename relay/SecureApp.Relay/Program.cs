@@ -623,10 +623,12 @@ app.MapPost("/register", (RegisterRequest body, RelayDatabase db) =>
 // re-registration path when a device's stored credentials are rejected (registration was deleted,
 // or the relay's own DB was reset) — the device recovers on the next supervisor tick with no
 // user-visible error or confirmation step, same as before this existed.
-app.MapPost("/self-register", (SelfRegisterRequest body, RelayDatabase db, ILogger<Program> logger) =>
+app.MapPost("/self-register", (SelfRegisterRequest body, HttpContext http, RelayDatabase db, ILogger<Program> logger) =>
 {
     var tokenValid = !string.IsNullOrWhiteSpace(body.RecoveryToken) && db.TryConsumeRecoveryToken(body.RecoveryToken);
-    if (requireRecoveryToken && !tokenValid)
+    // Enforced only for callers from the public internet: LAN/VPN callers stay trusted by network position,
+    // exactly as before, so devices that have not updated (and have no token yet) keep healing themselves.
+    if (requireRecoveryToken && !tokenValid && !IsTrustedCaller(http))
         return Results.Unauthorized();
 
     var displayName = string.IsNullOrWhiteSpace(body.DisplayName) ? "Unknown" : body.DisplayName;
@@ -638,12 +640,12 @@ app.MapPost("/self-register", (SelfRegisterRequest body, RelayDatabase db, ILogg
 // --- Activation requests (2026-09-06) — see Contracts.cs's own remarks for why this exists
 // alongside (not instead of, at the relay's own storage level) the invite-code endpoints above.
 
-app.MapPost("/activation/request", (CreateActivationRequestRequest body, RelayDatabase db) =>
+app.MapPost("/activation/request", (CreateActivationRequestRequest body, HttpContext http, RelayDatabase db) =>
 {
     // 2026-11-03, public-HTTPS security audit — see CreateActivationRequestRequest's own remarks.
-    // Only enforced when the relay operator actually set SECUREAPP_APP_BUILD_SECRET; an existing
-    // VPN-only deployment that never set it behaves exactly as before.
-    if (!string.IsNullOrEmpty(appBuildSecret))
+    // Only enforced when the relay operator actually set SECUREAPP_APP_BUILD_SECRET, and only for callers
+    // from the public internet; an existing VPN-only deployment behaves exactly as before.
+    if (!string.IsNullOrEmpty(appBuildSecret) && !IsTrustedCaller(http))
     {
         var providedBytes = Encoding.UTF8.GetBytes(body.AppBuildSecret ?? string.Empty);
         var expectedBytes = Encoding.UTF8.GetBytes(appBuildSecret);
@@ -1943,6 +1945,9 @@ app.Map("/ws", async (HttpContext context, RelayDatabase db, ConnectionRegistry 
 });
 
 app.Run();
+
+static bool IsTrustedCaller(HttpContext http) =>
+    http.Connection.RemoteIpAddress is { } ip && IsPrivateOrLoopback(ip);
 
 /// <summary>LAN, loopback and the wg-easy peers — the callers the relay always trusted by network position; the rate limiter leaves them alone.</summary>
 static bool IsPrivateOrLoopback(IPAddress ip)
