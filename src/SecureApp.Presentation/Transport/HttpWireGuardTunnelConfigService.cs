@@ -30,6 +30,10 @@ public sealed class HttpWireGuardTunnelConfigService : IWireGuardTunnelConfigSer
         if (deviceId is null || wsEndpoint is null)
             return null; // appka ještě není registrovaná
 
+        // Zařízení na veřejném wss:// tunel nepotřebuje — null tunel vypne (SyncAsync -> DownAsync) a uvolní VPN slot (FortiClient).
+        if (RelayDefaults.IsPublicEndpoint(wsEndpoint))
+            return null;
+
         var secretBytes = await _vault.RetrieveSecretAsync(RelayDeviceVaultKeys.DeviceSecret, ct);
         if (secretBytes is null)
             return null;
@@ -62,6 +66,10 @@ public sealed class HttpWireGuardTunnelConfigService : IWireGuardTunnelConfigSer
 
     public async Task<string?> GetCachedConfigAsync(CancellationToken ct = default)
     {
+        var configuration = await _transportSettingsRepository.GetAsync(ct);
+        if (RelayDefaults.IsPublicEndpoint(configuration?.EndpointUri))
+            return null; // StartFromCache po restartu telefonu nesmí tunel znovu zvednout
+
         var bytes = await _vault.RetrieveSecretAsync(CacheVaultKey, ct);
         return bytes is null ? null : Encoding.UTF8.GetString(bytes);
     }

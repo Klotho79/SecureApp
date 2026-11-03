@@ -1,5 +1,13 @@
 [
   {
+    "version": "0.1.15",
+    "code": 121,
+    "date": "3. 11. 2026",
+    "items": [
+      "Připojení k relay bez VPN: když je relay dostupný přes internet (šifrovaně, s ověřeným certifikátem), appka se na něj sama přepne a vestavěný tunel vypne — tím se uvolní VPN pro firemní připojení (např. FortiClient). Když přímé připojení nefunguje, appka se sama vrátí na tunel."
+    ]
+  },
+  {
     "version": "0.1.14",
     "code": 120,
     "date": "3. 11. 2026",

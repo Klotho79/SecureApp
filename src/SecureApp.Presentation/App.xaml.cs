@@ -414,6 +414,8 @@ public partial class App : Application
 					{
 						await RunStaleSessionSweepAsync(services, transport);
 						await EnsureRecoveryTokenAsync(services, transport);
+						if (SweepStepDue(nameof(MigrateToPublicEndpointAsync), TimeSpan.FromMinutes(30), justReconnected))
+							await MigrateToPublicEndpointAsync(services, transport);
 						// Session self-healing above stays on the 3-minute cadence (hard requirement); these steps only ask the relay whether
 							// anything changed, so they run every 5-10 min - or all at once right after a reconnect.
 							if (SweepStepDue(nameof(RunPeerIdentityReconciliationAsync), TimeSpan.FromMinutes(10), justReconnected))
@@ -880,6 +882,8 @@ public partial class App : Application
 			// times a day with a full stack trace each, which filled the 512 KB error log in two hours, pushed
 			// every other error out of it and was then uploaded line by line.
 			var failures = Interlocked.Increment(ref _consecutiveConnectFailures);
+			if (failures >= PublicEndpointFallbackFailures && SecureApp.Presentation.Transport.RelayDefaults.IsPublicEndpoint(endpoint))
+				await FallBackToLegacyEndpointAsync(services, transportSettings, configuration);
 			var now = DateTimeOffset.UtcNow;
 			if (failures == 1 || now - _lastConnectFailureLoggedUtc >= _connectFailureLogInterval)
 			{
@@ -887,6 +891,74 @@ public partial class App : Application
 				SecureApp.Presentation.Infrastructure.AppLog.Error("App.TryConnect", $"relay reconnect attempt failed ({failures} in a row)", ex);
 			}
 			return false;
+		}
+	}
+
+	private const string LegacyEndpointPreferenceKey = "relay_legacy_endpoint";
+	private const int PublicEndpointFallbackFailures = 12;
+
+	/// <summary>
+	/// Public wss:// and the embedded tunnel run side by side (2026-11-03, user's decision): a device that can reach the relay's
+	/// public TLS address moves there and drops its tunnel (Android allows one VPN — FortiClient must win). The old endpoint is
+	/// remembered so <see cref="FallBackToLegacyEndpointAsync"/> can undo this if the public address stops working; once every
+	/// device has moved, the tunnel is simply switched off on the relay side.
+	/// Runs from the sweep, so the device is already connected through the old endpoint. Needs a recovery token first —
+	/// from the internet the relay's own self-registration only opens for a token holder.
+	/// </summary>
+	private static async Task MigrateToPublicEndpointAsync(IServiceProvider services, IMessageTransport transport)
+	{
+		try
+		{
+			using var scope = services.CreateScope();
+			var repo = scope.ServiceProvider.GetRequiredService<ITransportSettingsRepository>();
+			var configuration = await repo.GetAsync();
+			if (configuration?.EndpointUri is not { } current || SecureApp.Presentation.Transport.RelayDefaults.IsPublicEndpoint(current))
+				return;
+
+			var vault = services.GetRequiredService<ISecureVaultKeyStore>();
+			if (await vault.RetrieveSecretAsync(SecureApp.Presentation.Transport.RelayDeviceVaultKeys.RecoveryToken) is null)
+				return;
+
+			var publicEndpoint = new Uri(SecureApp.Presentation.Transport.RelayDefaults.PublicEndpoint);
+			using var http = SecureApp.Presentation.Transport.RelayHttp.CreateClient(TimeSpan.FromSeconds(6));
+			using var probe = await http.GetAsync(new Uri(SecureApp.Presentation.Transport.RelayHttp.ToHttpUri(publicEndpoint), "health"));
+			if (!probe.IsSuccessStatusCode) return;
+
+			Microsoft.Maui.Storage.Preferences.Default.Set(LegacyEndpointPreferenceKey, current.ToString());
+			configuration.SetEndpoint(publicEndpoint, configuration.IsAutoConnectEnabled);
+			await repo.SaveAsync(configuration);
+			AppLog.Event("relay.endpoint.migrated-to-public", ("from", current.Host));
+
+			await transport.DisconnectAsync(); // the supervisor reconnects to the new endpoint on its next tick
+			if (services.GetService<IWireGuardTunnelController>() is { } tunnel)
+				await tunnel.SyncAsync(); // public endpoint -> no config -> tunnel goes down
+		}
+		catch (Exception ex)
+		{
+			// Unreachable public address (router port still closed, no hairpin NAT on the home LAN, ...) is the normal case — stay as we are.
+			AppLog.Warning(nameof(MigrateToPublicEndpointAsync), "public relay endpoint not usable yet", ex);
+		}
+	}
+
+	private static async Task FallBackToLegacyEndpointAsync(IServiceProvider services, ITransportSettingsRepository repo, TransportEndpointConfiguration? configuration)
+	{
+		try
+		{
+			var legacy = Microsoft.Maui.Storage.Preferences.Default.Get(LegacyEndpointPreferenceKey, string.Empty);
+			if (configuration is null || !Uri.TryCreate(legacy, UriKind.Absolute, out var legacyEndpoint))
+				return;
+
+			configuration.SetEndpoint(legacyEndpoint, configuration.IsAutoConnectEnabled);
+			await repo.SaveAsync(configuration);
+			Interlocked.Exchange(ref _consecutiveConnectFailures, 0);
+			AppLog.Event("relay.endpoint.fallback-to-legacy", ("to", legacyEndpoint.Host));
+
+			if (services.GetService<IWireGuardTunnelController>() is { } tunnel)
+				await tunnel.SyncAsync(); // legacy endpoint -> the tunnel comes back up
+		}
+		catch (Exception ex)
+		{
+			AppLog.Warning(nameof(FallBackToLegacyEndpointAsync), "falling back to the legacy relay endpoint failed", ex);
 		}
 	}
 

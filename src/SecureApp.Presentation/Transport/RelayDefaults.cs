@@ -11,4 +11,15 @@ namespace SecureApp.Presentation.Transport;
 internal static class RelayDefaults
 {
     public const string DefaultEndpoint = "ws://192.168.50.8:8080";
+
+    /// <summary>
+    /// The relay's public TLS address (static IP, self-signed cert pinned in <see cref="RelayTls"/>). A device that can
+    /// reach it moves its stored endpoint here (<c>App.MigrateToPublicEndpointAsync</c>) and drops the embedded tunnel —
+    /// Android allows one VPN, and a member's company VPN (FortiClient) must not lose to ours.
+    /// </summary>
+    public const string PublicEndpoint = "wss://212.111.15.246";
+
+    /// <summary>True for a TLS endpoint — such a device needs no embedded WireGuard tunnel.</summary>
+    public static bool IsPublicEndpoint(Uri? endpoint) =>
+        endpoint is not null && (endpoint.Scheme == Uri.UriSchemeWss || endpoint.Scheme == Uri.UriSchemeHttps);
 }
