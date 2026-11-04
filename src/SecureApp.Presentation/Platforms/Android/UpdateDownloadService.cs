@@ -187,16 +187,60 @@ public sealed class UpdateDownloadService : Service
     /// session by this process, so only the one confirmation tap needs the screen; the install itself then
     /// runs inside the system. The outcome arrives in <see cref="UpdateInstallReceiver"/>.
     /// </summary>
+    private static readonly object InstallLock = new();
+    private static string? _retriedVersion;
+
+    /// <summary>
+    /// The session this process is currently installing with (0 = none yet, e.g. after the process was restarted).
+    /// <see cref="UpdateInstallReceiver"/> ignores results of any other session: starting a new session abandons the
+    /// previous one, and Android then reports that one as failed ("INSTALL_FAILED_INTERNAL_ERROR: Session destroyed"),
+    /// which used to show a "nenainstalovala" notification although the new session was fine (2026-11-04).
+    /// </summary>
+    internal static int CurrentSessionId;
+
+    /// <summary>
+    /// A generic install failure (Android destroyed the session) is retried once per version from the cached APK, so
+    /// the person doesn't have to start it again by hand. Returns false when it was already retried or no APK is cached.
+    /// </summary>
+    internal static bool TryRetryInstall(Context context, string versionName)
+    {
+        var apk = CachedApkPath(context);
+        lock (InstallLock)
+        {
+            if (!File.Exists(apk) || _retriedVersion == versionName) return false;
+            _retriedVersion = versionName;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2));
+                StartInstallSession(context, apk, versionName);
+            }
+            catch (Exception ex) { Debug.WriteLine($"UpdateDownloadService install retry failed: {ex}"); }
+        });
+        return true;
+    }
+
     public static void StartInstallSession(Context context, string apkPath, string versionName)
     {
         var installer = context.PackageManager!.PackageInstaller;
-        foreach (var stale in installer.MySessions)
-            installer.AbandonSession(stale.SessionId);
+        int sessionId;
+        lock (InstallLock)
+        {
+            // -1 while switching: results of the sessions abandoned just below arrive as "not current" and are ignored.
+            CurrentSessionId = -1;
+            foreach (var stale in installer.MySessions)
+                installer.AbandonSession(stale.SessionId);
 
-        var parameters = new PackageInstaller.SessionParams(PackageInstallMode.FullInstall);
-        if (Build.VERSION.SdkInt >= BuildVersionCodes.S)
-            parameters.SetRequireUserAction((int)PackageInstallUserAction.NotRequired);
-        var sessionId = installer.CreateSession(parameters);
+            var parameters = new PackageInstaller.SessionParams(PackageInstallMode.FullInstall);
+            if (Build.VERSION.SdkInt >= BuildVersionCodes.S)
+                parameters.SetRequireUserAction((int)PackageInstallUserAction.NotRequired);
+            sessionId = installer.CreateSession(parameters);
+            CurrentSessionId = sessionId;
+        }
+
         using var session = installer.OpenSession(sessionId);
 
         var length = new FileInfo(apkPath).Length;
@@ -356,6 +400,12 @@ public sealed class UpdateInstallReceiver : BroadcastReceiver
         if (context is null || intent is null) return;
         var status = (PackageInstallStatus)intent.GetIntExtra(PackageInstaller.ExtraStatus, (int)PackageInstallStatus.Failure);
         var versionName = intent.GetStringExtra(UpdateDownloadService.ExtraVersionName) ?? string.Empty;
+
+        // A result of a session that has since been replaced (see CurrentSessionId) says nothing about the install in progress.
+        var sessionId = intent.GetIntExtra(PackageInstaller.ExtraSessionId, -1);
+        var current = UpdateDownloadService.CurrentSessionId;
+        if (current != 0 && sessionId != current) return;
+
         switch (status)
         {
             case PackageInstallStatus.PendingUserAction:
@@ -373,6 +423,8 @@ public sealed class UpdateInstallReceiver : BroadcastReceiver
                 UpdateDownloadService.CancelInstallNotification(context);
                 break;
             default:
+                // Generic failure (e.g. "Session destroyed"): try once more by itself before bothering the person.
+                if (status == PackageInstallStatus.Failure && UpdateDownloadService.TryRetryInstall(context, versionName)) return;
                 var reason = status switch
                 {
                     PackageInstallStatus.FailureStorage => "V telefonu je málo místa.",
