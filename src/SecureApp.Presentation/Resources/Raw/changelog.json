@@ -1,5 +1,15 @@
 [
   {
+    "version": "0.1.16",
+    "code": 122,
+    "date": "4. 11. 2026",
+    "items": [
+      "Opicentrum → Pozice a Volno: tlačítka A− / A+ zvětší celý rozpis (100–250 %), nastavení se pamatuje v zařízení.",
+      "Nastavení → Admin → Logy: z dlouhých logů se už dá vrátit zpět nahoru. Log zařízení se otevře nahoře nad seznamem, stránka na něj sama doscrolluje a je tam tlačítko Zavřít log.",
+      "Zprávy čekající na doručení: relay teď u zařízení, kterému se nedaří doručit, samo opraví mrtvé spojení, takže se zařízení znovu připojí a zprávy dostane (změna na serveru, už běží)."
+    ]
+  },
+  {
     "version": "0.1.15",
     "code": 121,
     "date": "3. 11. 2026",

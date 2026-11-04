@@ -9,10 +9,10 @@
     Title="Nastavení"
     Shell.NavBarIsVisible="False">
 
-    <ScrollView>
+    <ScrollView x:Name="PageScroll">
         <VerticalStackLayout Padding="16" Spacing="12">
 
-            <Label Text="Nastavení" Style="{StaticResource PageTitle}" />
+            <Label x:Name="PageTitleLabel" Text="Nastavení" Style="{StaticResource PageTitle}" />
 
             <!-- Sub-tabs (2026-09-24) — the page had grown to ~15 stacked cards in one scroll, which
                  the user found cluttered. Grouped into Uživatel / Systém / Admin, one shown at a time
@@ -496,11 +496,8 @@
 
                         <Label Text="Žádné záznamy." FontSize="9.5" TextColor="Gray" IsVisible="{Binding HasNoDiagnosticLogEntries}" />
 
-                        <CollectionView ItemsSource="{Binding DiagnosticLogEntries}" IsVisible="{Binding HasDiagnosticLogEntries}">
-                            <CollectionView.ItemsLayout>
-                                <LinearItemsLayout Orientation="Vertical" ItemSpacing="6" />
-                            </CollectionView.ItemsLayout>
-                            <CollectionView.ItemTemplate>
+                        <VerticalStackLayout Spacing="6" IsVisible="{Binding HasDiagnosticLogEntries}" BindableLayout.ItemsSource="{Binding DiagnosticLogEntries}">
+                            <BindableLayout.ItemTemplate>
                                 <DataTemplate x:DataType="vm:DiagnosticLogItem">
                                     <Border Style="{StaticResource CardBorder}" Margin="0" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
                                         <VerticalStackLayout Spacing="2">
@@ -526,8 +523,8 @@
                                         </VerticalStackLayout>
                                     </Border>
                                 </DataTemplate>
-                            </CollectionView.ItemTemplate>
-                        </CollectionView>
+                            </BindableLayout.ItemTemplate>
+                        </VerticalStackLayout>
                     </VerticalStackLayout>
                 </Border>
                 </VerticalStackLayout>
@@ -660,11 +657,11 @@
                         <controls:DelayedActivityIndicator IsBusy="{Binding IsSearchingDocumentDownloads}" HorizontalOptions="Center" />
                         <Label Text="Žádné záznamy." FontSize="9.5" TextColor="Gray" IsVisible="{Binding HasNoDocumentDownloadResults}" />
 
-                        <CollectionView ItemsSource="{Binding DocumentDownloadResults}" SelectionMode="None">
-                            <CollectionView.ItemsLayout>
-                                <LinearItemsLayout Orientation="Vertical" ItemSpacing="6" />
-                            </CollectionView.ItemsLayout>
-                            <CollectionView.ItemTemplate>
+                        <!-- BindableLayout, not CollectionView (2026-11-04, user: "v nastaveni admin log nemohu se dostat zpet"):
+                             a CollectionView inside this page's ScrollView is a second scroller that swallows the wheel/drag
+                             over a long list, so the page could not be scrolled back up to the tabs. -->
+                        <VerticalStackLayout Spacing="6" BindableLayout.ItemsSource="{Binding DocumentDownloadResults}">
+                            <BindableLayout.ItemTemplate>
                                 <DataTemplate x:DataType="vm:DocumentDownloadLogItem">
                                     <Border Style="{StaticResource CardBorder}" Margin="0" Padding="10,8" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
                                         <Grid ColumnDefinitions="*,Auto">
@@ -676,8 +673,8 @@
                                         </Grid>
                                     </Border>
                                 </DataTemplate>
-                            </CollectionView.ItemTemplate>
-                        </CollectionView>
+                            </BindableLayout.ItemTemplate>
+                        </VerticalStackLayout>
                     </VerticalStackLayout>
                 </Border>
 
@@ -697,11 +694,8 @@
                         <controls:DelayedActivityIndicator IsBusy="{Binding IsSearchingLibraryDocumentAudit}" HorizontalOptions="Center" />
                         <Label Text="Žádné záznamy." FontSize="9.5" TextColor="Gray" IsVisible="{Binding HasNoLibraryDocumentAuditResults}" />
 
-                        <CollectionView ItemsSource="{Binding LibraryDocumentAuditResults}" SelectionMode="None">
-                            <CollectionView.ItemsLayout>
-                                <LinearItemsLayout Orientation="Vertical" ItemSpacing="6" />
-                            </CollectionView.ItemsLayout>
-                            <CollectionView.ItemTemplate>
+                        <VerticalStackLayout Spacing="6" BindableLayout.ItemsSource="{Binding LibraryDocumentAuditResults}">
+                            <BindableLayout.ItemTemplate>
                                 <DataTemplate x:DataType="vm:LibraryDocumentAuditItem">
                                     <Border Style="{StaticResource CardBorder}" Margin="0" Padding="10,8" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
                                         <Grid ColumnDefinitions="*,Auto">
@@ -713,8 +707,8 @@
                                         </Grid>
                                     </Border>
                                 </DataTemplate>
-                            </CollectionView.ItemTemplate>
-                        </CollectionView>
+                            </BindableLayout.ItemTemplate>
+                        </VerticalStackLayout>
                     </VerticalStackLayout>
                 </Border>
                 </VerticalStackLayout>
@@ -738,6 +732,22 @@
                              zařízení") — jednou nahoře nad seznamem zařízení vybraného člena, zdroj je
                              kontakt ARIM. -->
                         <Label Text="{Binding SelectedMemberGroup.Email, StringFormat='✉ {0}'}" IsVisible="{Binding SelectedMemberGroup.HasEmail}" FontSize="10.5" FontAttributes="Bold" />
+
+                        <!-- One device's uploaded app log (2026-09-26) — see Diagnostics.AppLogUploader.
+                             2026-11-04 (user: "nemohu se dostat zpet"): it used to sit BELOW the whole device list, so after
+                             "Log chyb" nothing visible happened and the ✕ was far up inside a very long card. Now it is above
+                             the list, SettingsPage scrolls to it when it opens and back to the tabs when it closes, and a
+                             second "Zavřít" sits under the text. -->
+                        <Border x:Name="DeviceLogCard" Style="{StaticResource CardBorder}" Margin="0" IsVisible="{Binding HasDeviceLog}" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
+                            <VerticalStackLayout Spacing="6">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                    <Label Grid.Column="0" Text="{Binding DeviceLogTitle}" FontAttributes="Bold" FontSize="10" LineBreakMode="WordWrap" VerticalOptions="Center" />
+                                    <Button Grid.Column="1" Text="✕" Style="{StaticResource SecondaryButton}" WidthRequest="40" Padding="0" Command="{Binding CloseDeviceLogCommand}" />
+                                </Grid>
+                                <Label Text="{Binding DeviceLogText}" FontSize="8" FontFamily="monospace" LineBreakMode="WordWrap" />
+                                <Button Text="Zavřít log" Style="{StaticResource SecondaryButton}" Command="{Binding CloseDeviceLogCommand}" />
+                            </VerticalStackLayout>
+                        </Border>
 
                         <CollectionView ItemsSource="{Binding SelectedMemberGroup.Devices}">
                             <CollectionView.ItemsLayout>
@@ -802,16 +812,6 @@
                             </CollectionView.ItemTemplate>
                         </CollectionView>
 
-                        <!-- One device's uploaded app log (2026-09-26) — see Diagnostics.AppLogUploader. -->
-                        <Border Style="{StaticResource CardBorder}" Margin="0" IsVisible="{Binding HasDeviceLog}" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
-                            <VerticalStackLayout Spacing="6">
-                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                                    <Label Grid.Column="0" Text="{Binding DeviceLogTitle}" FontAttributes="Bold" FontSize="10" LineBreakMode="WordWrap" VerticalOptions="Center" />
-                                    <Button Grid.Column="1" Text="✕" Style="{StaticResource SecondaryButton}" WidthRequest="40" Padding="0" Command="{Binding CloseDeviceLogCommand}" />
-                                </Grid>
-                                <Label Text="{Binding DeviceLogText}" FontSize="8" FontFamily="monospace" LineBreakMode="WordWrap" />
-                            </VerticalStackLayout>
-                        </Border>
                     </VerticalStackLayout>
                 </Border>
                 </VerticalStackLayout>

@@ -521,10 +521,15 @@ public sealed partial class SettingsViewModel : ObservableObject
         try
         {
             var lines = await _relayAdminService.GetDeviceAppLogAsync(endpoint, adminSecret, deviceId, kind);
-            DeviceLogTitle = $"Log: {name} — {kindLabel} ({lines.Count} řádků, nejnovější nahoře)";
+            // One Label with thousands of lines makes the page enormous (and hard to scroll back out of), so only the newest are shown.
+            const int maxShownLines = 400;
+            var shownCount = Math.Min(lines.Count, maxShownLines);
+            DeviceLogTitle = lines.Count > maxShownLines
+                ? $"Log: {name} — {kindLabel} (nejnovějších {shownCount} z {lines.Count} řádků, nejnovější nahoře)"
+                : $"Log: {name} — {kindLabel} ({lines.Count} řádků, nejnovější nahoře)";
             DeviceLogText = lines.Count == 0
                 ? "Zatím nic — zařízení log ještě neodeslalo (odesílá ho samo zhruba každé 3 minuty, když je připojené)."
-                : string.Join("\n", lines.Reverse().Select(l => l.Replace('\t', ' ')));
+                : string.Join("\n", lines.Reverse().Take(maxShownLines).Select(l => l.Replace('\t', ' ')));
             HasDeviceLog = true;
         }
         catch (Exception ex)

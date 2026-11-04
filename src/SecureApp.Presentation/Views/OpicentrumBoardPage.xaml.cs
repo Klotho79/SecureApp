@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using SecureApp.Domain.ValueObjects;
+using SecureApp.Presentation.Controls;
 using SecureApp.Presentation.Infrastructure;
 using SecureApp.Presentation.ViewModels;
 using SecureApp.Presentation.Workplace;
@@ -17,6 +18,19 @@ public partial class OpicentrumBoardPage : ContentPage
     {
         InitializeComponent();
         BindingContext = _viewModel = viewModel;
+        ApplyZoomToCorners();
+    }
+
+    private void OnZoomInClicked(object? sender, EventArgs e) => BoardZoom.Change(BoardZoom.Step);
+
+    private void OnZoomOutClicked(object? sender, EventArgs e) => BoardZoom.Change(-BoardZoom.Step);
+
+    // The corner boxes hide whatever scrolls under the pinned name column and header, so they follow the zoom (132 x 22 at 100 %).
+    private void ApplyZoomToCorners()
+    {
+        var zoom = BoardZoom.Value;
+        PositionsCorner.WidthRequest = VolnoCorner.WidthRequest = 132 * zoom;
+        PositionsCorner.HeightRequest = VolnoCorner.HeightRequest = 22 * zoom;
     }
 
     protected override void OnAppearing()
@@ -27,6 +41,8 @@ public partial class OpicentrumBoardPage : ContentPage
         _ttiStopwatch = Stopwatch.StartNew();
         _drawStopwatch = _ttiStopwatch;
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+        BoardZoom.Changed += ApplyZoomToCorners;
+        ApplyZoomToCorners();
         // Relay pushes (2026-10-24): redraw from the freshly stored snapshot while this page is open.
         OpicentrumBoardSync.RosterPushed += OnRosterPushed;
         OpicentrumBoardSync.VolnoPushed += OnVolnoPushed;
@@ -68,6 +84,7 @@ public partial class OpicentrumBoardPage : ContentPage
     {
         base.OnDisappearing();
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        BoardZoom.Changed -= ApplyZoomToCorners;
         OpicentrumBoardSync.RosterPushed -= OnRosterPushed;
         OpicentrumBoardSync.VolnoPushed -= OnVolnoPushed;
     }

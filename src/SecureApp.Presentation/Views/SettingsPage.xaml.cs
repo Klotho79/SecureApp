@@ -28,6 +28,26 @@ public partial class SettingsPage : ContentPage
         // Coming back from Android's battery setting resumes the window without re-firing OnAppearing.
         if (Window is { } window) window.Resumed += OnWindowResumed;
         PrewarmSystemTab();
+        _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+    }
+
+    // A device log opens above the device list and the page follows it; closing it returns to the tabs at the top
+    // (2026-11-04, user: "nemohu se dostat zpet v okna logy").
+    private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(SettingsViewModel.HasDeviceLog)) return;
+        var opened = _viewModel.HasDeviceLog;
+        Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(100), async () =>
+        {
+            try
+            {
+                await PageScroll.ScrollToAsync(opened ? DeviceLogCard : PageTitleLabel, ScrollToPosition.Start, true);
+            }
+            catch
+            {
+                // Cosmetic only — the log is still on the page and the close buttons still work.
+            }
+        });
     }
 
     /// <summary>
@@ -84,6 +104,7 @@ public partial class SettingsPage : ContentPage
     protected override void OnDisappearing()
     {
         base.OnDisappearing();
+        _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
         if (Window is { } window) window.Resumed -= OnWindowResumed;
         _viewModel.StopObservingConnection();
         _viewModel.StopActivationPolling();

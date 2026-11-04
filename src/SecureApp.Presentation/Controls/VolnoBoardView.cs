@@ -85,20 +85,21 @@ public sealed class VolnoBoardView : GraphicsView
         var dayCount = DayHeaders?.Count ?? 0;
         var totalWidth = CellsLeft + dayCount * ColPitch;
         var totalHeight = RowsTop + rowCount * RowPitch;
+        var zoom = BoardZoom.Value;
 
         switch (Layer)
         {
             case VolnoBoardLayer.Body:
-                WidthRequest = totalWidth;
-                HeightRequest = totalHeight;
+                WidthRequest = totalWidth * zoom;
+                HeightRequest = totalHeight * zoom;
                 break;
             case VolnoBoardLayer.Names:
-                WidthRequest = CellsLeft;
-                HeightRequest = totalHeight;
+                WidthRequest = CellsLeft * zoom;
+                HeightRequest = totalHeight * zoom;
                 break;
             case VolnoBoardLayer.Header:
-                WidthRequest = totalWidth;
-                HeightRequest = HeaderHeight;
+                WidthRequest = totalWidth * zoom;
+                HeightRequest = HeaderHeight * zoom;
                 break;
         }
 
@@ -111,8 +112,12 @@ public sealed class VolnoBoardView : GraphicsView
         base.OnHandlerChanged();
         if (Application.Current is not { } app) return;
         app.RequestedThemeChanged -= OnThemeChanged;
+        BoardZoom.Changed -= Refresh;
         if (Handler is not null)
+        {
             app.RequestedThemeChanged += OnThemeChanged;
+            BoardZoom.Changed += Refresh;
+        }
     }
 
     private void OnThemeChanged(object? sender, AppThemeChangedEventArgs e) => Invalidate();
@@ -124,6 +129,7 @@ public sealed class VolnoBoardView : GraphicsView
         public void Draw(ICanvas canvas, RectF dirtyRect)
         {
             var sw = Stopwatch.StartNew();
+            canvas.Scale(BoardZoom.Value, BoardZoom.Value);
             var dark = Application.Current?.RequestedTheme == AppTheme.Dark;
             var pageBackground = dark ? Resource("Gray950", Colors.Black) : Resource("White", Colors.White);
             var cellBackground = dark ? Resource("SurfaceAltDark", Colors.DimGray) : Resource("SurfaceAlt", Colors.LightGray);

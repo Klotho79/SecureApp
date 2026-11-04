@@ -86,20 +86,21 @@ public sealed class PositionsBoardView : GraphicsView
 
         _layout = Layer == PositionsBoardLayer.Header || Rows is null ? null : PositionsLayout.For(Rows);
         var totalHeight = _layout?.Height ?? PositionsLayout.RowsTop;
+        var zoom = BoardZoom.Value;
 
         switch (Layer)
         {
             case PositionsBoardLayer.Body:
-                WidthRequest = totalWidth;
-                HeightRequest = totalHeight;
+                WidthRequest = totalWidth * zoom;
+                HeightRequest = totalHeight * zoom;
                 break;
             case PositionsBoardLayer.Names:
-                WidthRequest = PositionsLayout.CellsLeft;
-                HeightRequest = totalHeight;
+                WidthRequest = PositionsLayout.CellsLeft * zoom;
+                HeightRequest = totalHeight * zoom;
                 break;
             case PositionsBoardLayer.Header:
-                WidthRequest = totalWidth;
-                HeightRequest = PositionsLayout.HeaderHeight;
+                WidthRequest = totalWidth * zoom;
+                HeightRequest = PositionsLayout.HeaderHeight * zoom;
                 break;
         }
 
@@ -113,9 +114,10 @@ public sealed class PositionsBoardView : GraphicsView
 
         // A little slack around the chip: it is only ~20 dp tall.
         const float slack = 3;
+        var zoom = BoardZoom.Value;
         foreach (var chip in _layout.Chips)
         {
-            if (chip.Rect.Inflate(slack, slack).Contains((float)point.X, (float)point.Y))
+            if (chip.Rect.Inflate(slack, slack).Contains((float)point.X / zoom, (float)point.Y / zoom))
             {
                 ChipTapped?.Invoke(this, chip.Person);
                 return;
@@ -128,8 +130,12 @@ public sealed class PositionsBoardView : GraphicsView
         base.OnHandlerChanged();
         if (Application.Current is not { } app) return;
         app.RequestedThemeChanged -= OnThemeChanged;
+        BoardZoom.Changed -= Refresh;
         if (Handler is not null)
+        {
             app.RequestedThemeChanged += OnThemeChanged;
+            BoardZoom.Changed += Refresh;
+        }
     }
 
     private void OnThemeChanged(object? sender, AppThemeChangedEventArgs e) => Invalidate();
@@ -141,6 +147,7 @@ public sealed class PositionsBoardView : GraphicsView
         public void Draw(ICanvas canvas, RectF dirtyRect)
         {
             var sw = Stopwatch.StartNew();
+            canvas.Scale(BoardZoom.Value, BoardZoom.Value);
             var dark = Application.Current?.RequestedTheme == AppTheme.Dark;
             var pageBackground = dark ? BoardCanvas.Resource("Gray950", Colors.Black) : BoardCanvas.Resource("White", Colors.White);
             var cardStroke = dark ? BoardCanvas.Resource("Gray600", Colors.DimGray) : BoardCanvas.Resource("Gray100", Colors.LightGray);

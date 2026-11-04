@@ -1,5 +1,27 @@
 namespace SecureApp.Presentation.Controls;
 
+/// <summary>Zoom of the Pozice and Volno boards (both tabs share one value, remembered per device); the views scale their canvas and size by it.</summary>
+internal static class BoardZoom
+{
+    public const float Min = 1f;
+    public const float Max = 2.5f;
+    public const float Step = 0.25f;
+    private const string PreferenceKey = "opicentrum_board_zoom";
+
+    public static float Value { get; private set; } = Math.Clamp((float)Preferences.Default.Get(PreferenceKey, 1.0), Min, Max);
+
+    public static event Action? Changed;
+
+    public static void Change(float delta)
+    {
+        var next = Math.Clamp(MathF.Round((Value + delta) / Step) * Step, Min, Max);
+        if (next == Value) return;
+        Value = next;
+        Preferences.Default.Set(PreferenceKey, (double)next);
+        Changed?.Invoke();
+    }
+}
+
 /// <summary>Small helpers shared by the canvas-drawn Opicentrum boards (<see cref="VolnoBoardView"/>, <see cref="PositionsBoardView"/>).</summary>
 internal static class BoardCanvas
 {
