@@ -1886,6 +1886,10 @@ app.Map("/ws", async (HttpContext context, RelayDatabase db, ConnectionRegistry 
             db.SupersedeQueuedPairingFrames(recipientId, inviteSender);
 
         db.EnqueueOutbox(recipientId, json);
+
+        // Queued although the recipient is registered as connected = its connection is dead in practice. Drop it (after
+        // queueing, so the frame is there when the app reconnects and the outbox is flushed).
+        registry.RecoverStaleConnection(recipientId, "live delivery");
     }
 
     try
@@ -1896,15 +1900,8 @@ app.Map("/ws", async (HttpContext context, RelayDatabase db, ConnectionRegistry 
         // no per-session lock around the ratchet, so a burst of queued frames for one chat made it decrypt
         // them in parallel, fail, and tear its session down ("auto-healing") — seen live as endless
         // re-pairing after every reconnect. A short gap lets those clients finish one frame before the next.
-        var flushed = 0;
-        foreach (var (frameId, queuedFrameJson) in db.PeekOutbox(deviceId))
-        {
-            if (flushed++ > 0)
-                await Task.Delay(outboxFlushPacing);
-            if (!await registry.TrySendAsync(deviceId, queuedFrameJson))
-                break;
-            db.DeleteOutboxFrame(frameId);
-        }
+        // A failed send here means the connection is dead in practice; the registry then drops it so the app reconnects (see its remarks).
+        await registry.FlushOutboxAsync(deviceId, db, outboxFlushPacing);
 
         while (socket.State == WebSocketState.Open)
         {
