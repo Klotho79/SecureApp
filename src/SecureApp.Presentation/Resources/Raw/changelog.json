@@ -1,5 +1,14 @@
 [
   {
+    "version": "0.1.19",
+    "code": 125,
+    "date": "6. 11. 2026",
+    "items": [
+      "Nástěnka: admin a moderátor mohou upravit nebo smazat příspěvek. V Redakci → Zpráva na nástěnku je pod políčkem seznam posledních příspěvků s tlačítky Upravit a Smazat. Upravený nebo smazaný příspěvek se změní na nástěnce; upozornění, které už někdo dostal, zůstane.",
+      "Rozpis: volné dny (víkend, svátek) už nejsou tmavé, vypadají jako běžný den a jen s textem „Víkend“ nebo název svátku. V měsíčním rozpisu je číslo dne čitelné i ve volném dni a v buňkách mimo aktuální měsíc."
+    ]
+  },
+  {
     "version": "0.1.18",
     "code": 124,
     "date": "6. 11. 2026",

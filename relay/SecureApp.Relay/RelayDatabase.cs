@@ -2441,6 +2441,17 @@ public sealed class RelayDatabase
         return results;
     }
 
+    /// <summary>Replaces a post's (client-encrypted) content in place; the id, author and time stay, so devices that already saw it do not treat it as a new post.</summary>
+    public bool UpdateBoardPost(Guid id, string contentBlob)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE board_posts SET content_blob = @blob WHERE id = @id";
+        command.Parameters.AddWithValue("@blob", contentBlob);
+        command.Parameters.AddWithValue("@id", id.ToString());
+        return command.ExecuteNonQuery() > 0;
+    }
+
     /// <summary>Deletes one post. <paramref name="requesterDeviceId"/> null means the caller authenticated as the relay admin and may delete anyone's; otherwise only the author's own post is removed.</summary>
     public bool DeleteBoardPost(Guid id, Guid? requesterDeviceId)
     {

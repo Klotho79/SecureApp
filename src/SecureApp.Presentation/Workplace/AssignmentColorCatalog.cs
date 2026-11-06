@@ -58,7 +58,9 @@ internal static class AssignmentColorCatalog
     /// catches up to an OS theme flip on the next re-render (page revisit), not live like every other
     /// AppThemeBinding-driven color in this app.
     /// </summary>
-    private static bool IsDarkTheme => AppInfo.Current.RequestedTheme == AppTheme.Dark;
+    // Application.RequestedTheme honours the app's own theme setting (UserAppTheme); AppInfo.RequestedTheme is
+    // the OS theme only, so with OS dark + app light it painted dark cells under black text (unreadable).
+    private static bool IsDarkTheme => (Application.Current?.RequestedTheme ?? AppInfo.Current.RequestedTheme) == AppTheme.Dark;
 
     /// <summary>Matches <c>CardBorder</c>'s own default (White/Gray950) — used by the "Dnes" card, the only one of the three views that doesn't set its own explicit background first.</summary>
     public static Color NoAssignmentCardColor => IsDarkTheme ? Color.FromArgb("#26292C") : Colors.White;

@@ -1496,13 +1496,30 @@ app.MapGet("/board", (HttpRequest request, RelayDatabase db, int? limit) =>
 
 app.MapDelete("/board/{id:guid}", (HttpRequest request, Guid id, RelayDatabase db) =>
 {
-    // Admin-secret holder may delete anyone's; a plain device may delete only its own.
+    // Admin-secret holder, or a device whose role is Admin/Modifier (2026-11-06), may delete anyone's post;
+    // any other device only its own.
     if (IsAdminAuthorized(request, adminSecret))
         return db.DeleteBoardPost(id, null) ? Results.NoContent() : Results.NotFound();
 
     if (!TryGetDeviceAuth(request, db, out var deviceId))
         return Results.Unauthorized();
+    if (IsAdminOrModifier(db, deviceId))
+        return db.DeleteBoardPost(id, null) ? Results.NoContent() : Results.NotFound();
     return db.DeleteBoardPost(id, deviceId) ? Results.NoContent() : Results.NotFound();
+});
+
+// Edit a post (2026-11-06): Admin/Modifier may rewrite any post. The new text is encrypted client-side
+// with the shared community key exactly like a new post, so the relay still never sees plaintext.
+app.MapPut("/board/{id:guid}", (HttpRequest request, Guid id, CreateBoardPostRequest body, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out var deviceId))
+        return Results.Unauthorized();
+    if (!IsAdminOrModifier(db, deviceId))
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+    if (string.IsNullOrWhiteSpace(body.ContentBlob))
+        return Results.BadRequest("Empty post.");
+
+    return db.UpdateBoardPost(id, body.ContentBlob) ? Results.NoContent() : Results.NotFound();
 });
 
 // --- Shared-library-key escrow (2026-09-11) — see the wrapped_library_keys table's own remarks.

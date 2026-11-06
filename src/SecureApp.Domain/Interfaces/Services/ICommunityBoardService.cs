@@ -17,6 +17,9 @@ public interface ICommunityBoardService
     /// <summary>The most recent posts, newest first, decrypted. Best-effort — returns empty on failure rather than throwing.</summary>
     Task<IReadOnlyList<BoardPost>> ListAsync(int limit = 50, CancellationToken ct = default);
 
-    /// <summary>Deletes a post. The relay allows it only for the post's author or an admin-secret holder.</summary>
+    /// <summary>Deletes a post. The relay allows it for the post's author, an Admin/Modifier device, or an admin-secret holder.</summary>
     Task<bool> DeleteAsync(Guid postId, CancellationToken ct = default);
+
+    /// <summary>Rewrites a post's text (re-encrypted with the shared key). Admin/Modifier only; returns false when the post no longer exists.</summary>
+    Task<bool> UpdateAsync(Guid postId, string text, CancellationToken ct = default);
 }

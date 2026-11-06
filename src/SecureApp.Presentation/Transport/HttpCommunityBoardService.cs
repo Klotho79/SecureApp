@@ -52,6 +52,26 @@ public sealed class HttpCommunityBoardService : ICommunityBoardService
         response.EnsureSuccessStatusCode();
     }
 
+    public async Task<bool> UpdateAsync(Guid postId, string text, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            throw new InvalidOperationException("Zpráva na nástěnku nesmí být prázdná.");
+
+        var key = await GetSharedKeyAsync(ct);
+        var payload = await _crypto.EncryptWithKeyAsync(Encoding.UTF8.GetBytes(text), Guid.NewGuid(), key, ct);
+        var blob = Convert.ToBase64String(SharedKeyWire.Combine(payload.Nonce, payload.AuthTag, payload.CipherText));
+
+        using var request = await RelayHttp.CreateAuthorizedRequestAsync(HttpMethod.Put, $"board/{postId}", _transportSettingsRepository, _vault, ct);
+        request.Content = JsonContent.Create(new { ContentBlob = blob }, options: HttpJsonOptions);
+
+        using var response = await _httpClient.SendAsync(request, ct);
+        if (response.StatusCode == HttpStatusCode.Forbidden)
+            throw new InvalidOperationException("Příspěvky na nástěnce smí upravovat jen admin nebo pověřený uživatel (modifier).");
+        if (response.StatusCode == HttpStatusCode.NotFound) return false;
+        response.EnsureSuccessStatusCode();
+        return true;
+    }
+
     public async Task<IReadOnlyList<BoardPost>> ListAsync(int limit = 50, CancellationToken ct = default)
     {
         try

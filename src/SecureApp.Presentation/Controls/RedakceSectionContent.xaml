@@ -18,8 +18,36 @@
                 <VerticalStackLayout Spacing="8" IsVisible="{Binding CanPostToBoard}">
                     <Label Text="Zpráva se objeví všem členům na jejich Nástěnce. Vyžaduje nastavený klíč sdílené knihovny." FontSize="9.5" TextColor="Gray" />
                     <Editor Text="{Binding BoardMessageText}" Placeholder="Co chcete oznámit…" AutoSize="TextChanges" HeightRequest="80" />
-                    <Button Text="Odeslat na nástěnku" Command="{Binding PostToBoardCommand}" />
+                    <Label Text="Upravujete existující příspěvek." IsVisible="{Binding IsEditingBoardPost}" FontSize="9.5" FontAttributes="Bold" TextColor="{AppThemeBinding Light={StaticResource Warn}, Dark={StaticResource WarnDark}}" />
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <Button Grid.Column="0" Text="{Binding BoardSendButtonText}" Command="{Binding PostToBoardCommand}" />
+                        <Button Grid.Column="1" Text="Zrušit úpravu" Style="{StaticResource SecondaryButton}" Command="{Binding CancelBoardEditCommand}" IsVisible="{Binding IsEditingBoardPost}" />
+                    </Grid>
                     <Label Text="{Binding BoardStatusText}" IsVisible="{Binding HasBoardStatus}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" LineBreakMode="WordWrap" />
+
+                    <!-- Existing posts: Admin/Modifier may edit or delete any of them (relay enforces the same). -->
+                    <Label Text="Příspěvky na nástěnce" Style="{StaticResource SectionHeader}" IsVisible="{Binding HasBoardPosts}" />
+                    <VerticalStackLayout Spacing="8" BindableLayout.ItemsSource="{Binding BoardPosts}">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="vm:BoardPostItem">
+                                <Border Style="{StaticResource CardBorder}" Margin="0" Padding="12,10">
+                                    <VerticalStackLayout Spacing="6">
+                                        <Label Text="{Binding Author}" FontSize="10.5" FontAttributes="Bold" />
+                                        <Label Text="{Binding WhenText}" FontSize="9" TextColor="Gray" />
+                                        <Label Text="{Binding Text}" FontSize="10.5" LineBreakMode="WordWrap" />
+                                        <HorizontalStackLayout Spacing="8">
+                                            <Button Text="Upravit" Style="{StaticResource SecondaryButton}" IsEnabled="{Binding IsReadable}"
+                                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:RedakceViewModel}}, Path=EditBoardPostCommand}"
+                                                    CommandParameter="{Binding .}" />
+                                            <Button Text="Smazat" Style="{StaticResource SecondaryButton}"
+                                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:RedakceViewModel}}, Path=DeleteBoardPostCommand}"
+                                                    CommandParameter="{Binding .}" />
+                                        </HorizontalStackLayout>
+                                    </VerticalStackLayout>
+                                </Border>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
                 </VerticalStackLayout>
             </VerticalStackLayout>
 

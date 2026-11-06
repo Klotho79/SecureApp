@@ -145,6 +145,7 @@ public sealed partial class RedakceViewModel : ObservableObject
         // Same role gate POST /board already enforces server-side (see HttpCommunityBoardService's
         // own remarks) — mirrored here, same as it was in SettingsViewModel before this moved.
         CanPostToBoard = role is Role.Admin or Role.Modifier;
+        if (CanPostToBoard) _ = RefreshBoardPostsAsync(); // best-effort, must not delay the page
         CanSeeInProgressDocuments = role is Role.Admin or Role.Modifier;
 
         // Same role gate POST /room-status/options already enforces server-side (see
@@ -206,9 +207,28 @@ public sealed partial class RedakceViewModel : ObservableObject
 
         try
         {
-            await _communityBoardService.PostAsync(text);
-            BoardMessageText = string.Empty;
-            BoardStatusText = "Odesláno na nástěnku.";
+            if (EditingBoardPostId is { } editingId)
+            {
+                if (!await _communityBoardService.UpdateAsync(editingId, text))
+                {
+                    BoardStatusText = "Příspěvek už neexistuje, změna se neuložila.";
+                    EditingBoardPostId = null;
+                    await RefreshBoardPostsAsync();
+                    return;
+                }
+
+                EditingBoardPostId = null;
+                BoardMessageText = string.Empty;
+                BoardStatusText = "Změna uložena.";
+            }
+            else
+            {
+                await _communityBoardService.PostAsync(text);
+                BoardMessageText = string.Empty;
+                BoardStatusText = "Odesláno na nástěnku.";
+            }
+
+            await RefreshBoardPostsAsync();
         }
         catch (Exception ex)
         {

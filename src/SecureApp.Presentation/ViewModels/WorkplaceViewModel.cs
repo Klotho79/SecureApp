@@ -391,6 +391,8 @@ public sealed partial class WorkplaceViewModel : ObservableObject
     {
         var isToday = date == DateOnly.FromDateTime(DateTime.Today);
         var isCurrentMonth = date.Month == _monthAnchor.Month && date.Year == _monthAnchor.Year;
+        // A weekend/holiday is simply a day off: it looks like any plain day (no gray "Volno" tint, no PS code).
+        var isPlainDayOff = assignment is null || (assignment.Type == AssignmentType.DayOff && CzechCalendar.DayKindLabel(date).Length > 0);
         return new MonthDayCell(
             date,
             date.Day.ToString(CultureInfo.InvariantCulture),
@@ -398,7 +400,7 @@ public sealed partial class WorkplaceViewModel : ObservableObject
             isToday,
             assignment is not null,
             assignment?.Type.ToString() ?? string.Empty,
-            assignment is not null ? AssignmentColorCatalog.SoftColor(assignment.Type) : AssignmentColorCatalog.NoAssignmentSurfaceColor,
+            isPlainDayOff ? AssignmentColorCatalog.NoAssignmentSurfaceColor : AssignmentColorCatalog.SoftColor(assignment!.Type),
             !string.IsNullOrEmpty(assignment?.OnCallWorkplaceName),
             assignment?.Id,
             OpenMonthDayCommand);
@@ -416,7 +418,9 @@ public sealed partial class WorkplaceViewModel : ObservableObject
         var dayKind = CzechCalendar.DayKindLabel(date);
 
         var assignment = dayAssignments.Count > 0 ? dayAssignments[0] : null;
-        if (assignment is null)
+        // Weekend/holiday with nothing but a "Volno" (PS/VV/NV) entry is just a plain day off: shown like an empty
+        // day, headline "Víkend" / the holiday's name, no gray tint and no leave code.
+        if (assignment is null || (dayKind.Length > 0 && assignment.Type == AssignmentType.DayOff))
         {
             return new AssignmentDayItem(date, dayLabel, isToday, false, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, noAssignmentColor, noAssignmentColor, null, OpenDayCommand, DayKindText: dayKind);
         }

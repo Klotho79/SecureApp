@@ -182,7 +182,7 @@
                                     <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" />
                                 </DataTrigger>
                                 <DataTrigger TargetType="Border" Binding="{Binding IsCurrentMonth}" Value="False">
-                                    <Setter Property="Opacity" Value="0.35" />
+                                    <Setter Property="Opacity" Value="0.6" />
                                 </DataTrigger>
                             </Border.Triggers>
                             <Grid Padding="2">
