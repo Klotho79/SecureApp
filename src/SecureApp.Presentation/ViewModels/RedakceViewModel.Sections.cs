@@ -39,8 +39,48 @@ public sealed partial class RedakceViewModel
         _ => "Redakce",
     };
 
+    /// <summary>PC layout of the Redakce tab (2026-11-04): menu on the left, the chosen action on the right. Phone/tablet keep the list of cards.</summary>
+    public bool IsDesktopLayout => DeviceInfo.Idiom == DeviceIdiom.Desktop;
+
+    public bool IsPhoneLayout => !IsDesktopLayout;
+
+    public bool HasSection => Section is not null;
+
+    public bool HasNoSection => Section is null;
+
+    public string SectionSubtitle => Section switch
+    {
+        BoardSection => "Napsat oznámení pro všechny členy",
+        RoomStatusSection => "Seznam stavů, které lze sálu přiřadit",
+        RoomNotesSection => "Připravené poznámky ke stavu sálu",
+        MyAssignmentsSection => "Dokumenty, které máte napsat",
+        CmsAssignSection => "Přidělit psaní dokumentů členům",
+        LibraryCategoriesSection => "Přidat, přejmenovat a třídit kategorie",
+        _ => string.Empty,
+    };
+
+    /// <summary>PC menu: show an action in the right-hand pane (the phone opens it in a window instead — <see cref="OpenSectionCommand"/>).</summary>
+    [RelayCommand]
+    private void SelectSection(string section) => Section = section;
+
+    /// <summary>PC: nothing chosen yet after loading → open the first action this role has that fills the pane.</summary>
+    private void SelectDefaultSection()
+    {
+        if (!IsDesktopLayout || Section is not null) return;
+
+        Section = CanPostToBoard ? BoardSection
+            : CanManageRoomStatusOptions ? RoomStatusSection
+            : HasMyAssignments ? MyAssignmentsSection
+            : CanAssignCms ? CmsAssignSection
+            : CanManageLibrary ? LibraryCategoriesSection
+            : null;
+    }
+
     partial void OnSectionChanged(string? value)
     {
+        OnPropertyChanged(nameof(HasSection));
+        OnPropertyChanged(nameof(HasNoSection));
+        OnPropertyChanged(nameof(SectionSubtitle));
         OnPropertyChanged(nameof(IsBoardSection));
         OnPropertyChanged(nameof(IsRoomStatusSection));
         OnPropertyChanged(nameof(IsRoomNotesSection));

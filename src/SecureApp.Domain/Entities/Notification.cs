@@ -69,13 +69,6 @@ public sealed class Notification : Entity
         Touch();
     }
 
-    public void MarkUnread()
-    {
-        if (!IsRead) return;
-        IsRead = false;
-        Touch();
-    }
-
     public void SetManuallyImportant(bool value)
     {
         if (IsManuallyImportant == value) return;

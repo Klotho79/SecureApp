@@ -28,8 +28,6 @@ public sealed class HttpPiccRosterService : IPiccRosterService
     private const string SharedLibraryKeyVaultKey = "library:shared-key";
     private const string PiccRosterFolder = "PICC";
     private const string PiccRosterTag = "picc-roster";
-    private const int NonceLength = 12;
-    private const int AuthTagLength = 16;
     private static readonly JsonSerializerOptions HttpJsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly ITransportSettingsRepository _transportSettingsRepository;
@@ -69,18 +67,17 @@ public sealed class HttpPiccRosterService : IPiccRosterService
             snapshot = PiccRosterParser.Parse(parseStream, DateOnly.FromDateTime(DateTime.Today));
 
         var key = await GetSharedKeyAsync(ct);
-        var (baseUri, deviceId, secret) = await GetAuthAsync(ct);
 
         // 1. The full file, unlisted — see this class's own remarks on why that's the real boundary.
         var payload = await _crypto.EncryptWithKeyAsync(plaintext, Guid.NewGuid(), key, ct);
         var wireBytes = SharedKeyWire.Combine(payload.Nonce, payload.AuthTag, payload.CipherText);
         var contentHash = Convert.ToHexStringLower(SHA256.HashData(wireBytes));
         var fileName = $"picc-roster-{DateTime.UtcNow:yyyyMMdd-HHmmss}.xlsx";
-        var uploadUri = new Uri(baseUri,
-            $"library/files?folderPath={Uri.EscapeDataString(PiccRosterFolder)}&fileName={Uri.EscapeDataString(fileName)}&tags={Uri.EscapeDataString(PiccRosterTag)}&contentHash={contentHash}&listed=false");
-        using (var uploadRequest = new HttpRequestMessage(HttpMethod.Post, uploadUri) { Content = new ByteArrayContent(wireBytes) })
+        var uploadPath =
+            $"library/files?folderPath={Uri.EscapeDataString(PiccRosterFolder)}&fileName={Uri.EscapeDataString(fileName)}&tags={Uri.EscapeDataString(PiccRosterTag)}&contentHash={contentHash}&listed=false";
+        using (var uploadRequest = await CreateRequestAsync(HttpMethod.Post, uploadPath, ct))
         {
-            AddAuth(uploadRequest, deviceId, secret);
+            uploadRequest.Content = new ByteArrayContent(wireBytes);
             using var uploadResponse = await _httpClient.SendAsync(uploadRequest, ct);
             if (uploadResponse.StatusCode == HttpStatusCode.Forbidden)
                 throw new InvalidOperationException("Nemáte oprávnění nahrávat rozpis PICC (chybí příznak „PICC tým“).");
@@ -89,12 +86,8 @@ public sealed class HttpPiccRosterService : IPiccRosterService
                 ?? throw new InvalidOperationException("Relay vrátil prázdnou odpověď při nahrávání rozpisu.");
 
             // 2. Point the relay at it — picc_team/Admin gate enforced server-side (see Program.cs).
-            var pointerUri = new Uri(baseUri, "picc/roster-pointer");
-            using var pointerRequest = new HttpRequestMessage(HttpMethod.Post, pointerUri)
-            {
-                Content = JsonContent.Create(new { LibraryFileId = dto.Id }, options: HttpJsonOptions)
-            };
-            AddAuth(pointerRequest, deviceId, secret);
+            using var pointerRequest = await CreateRequestAsync(HttpMethod.Post, "picc/roster-pointer", ct);
+            pointerRequest.Content = JsonContent.Create(new { LibraryFileId = dto.Id }, options: HttpJsonOptions);
             using var pointerResponse = await _httpClient.SendAsync(pointerRequest, ct);
             if (pointerResponse.StatusCode == HttpStatusCode.Forbidden)
                 throw new InvalidOperationException("Nemáte oprávnění nahrávat rozpis PICC (chybí příznak „PICC tým“).");
@@ -102,7 +95,7 @@ public sealed class HttpPiccRosterService : IPiccRosterService
         }
 
         // 3. Publish just today's doctor name — public, every device learns it from here.
-        await PublishStatusAsync(snapshot.Today?.DoctorName, snapshot.Today?.Date, key, baseUri, deviceId, secret, ct);
+        await PublishStatusAsync(snapshot.Today?.DoctorName, snapshot.Today?.Date, key, ct);
         PiccRosterStore.Save(snapshot.Today?.DoctorName, snapshot.Today?.Date);
 
         return snapshot;
@@ -115,10 +108,7 @@ public sealed class HttpPiccRosterService : IPiccRosterService
             var key = await _vault.RetrieveSecretAsync(SharedLibraryKeyVaultKey, ct);
             if (key is null) return null; // no key set up on this device — nothing to decrypt with
 
-            var (baseUri, deviceId, secret) = await GetAuthAsync(ct);
-            var uri = new Uri(baseUri, "picc/status");
-            using var request = new HttpRequestMessage(HttpMethod.Get, uri);
-            AddAuth(request, deviceId, secret);
+            using var request = await CreateRequestAsync(HttpMethod.Get, "picc/status", ct);
             using var response = await _httpClient.SendAsync(request, ct);
             if (response.StatusCode == HttpStatusCode.NotFound) return null; // nobody has ever published
 
@@ -143,11 +133,7 @@ public sealed class HttpPiccRosterService : IPiccRosterService
 
     public async Task<PiccRosterSnapshot?> GetFullRosterAsync(CancellationToken ct = default)
     {
-        var (baseUri, deviceId, secret) = await GetAuthAsync(ct);
-
-        var pointerUri = new Uri(baseUri, "picc/roster-pointer");
-        using var pointerRequest = new HttpRequestMessage(HttpMethod.Get, pointerUri);
-        AddAuth(pointerRequest, deviceId, secret);
+        using var pointerRequest = await CreateRequestAsync(HttpMethod.Get, "picc/roster-pointer", ct);
         using var pointerResponse = await _httpClient.SendAsync(pointerRequest, ct);
         if (pointerResponse.StatusCode == HttpStatusCode.Forbidden)
             throw new InvalidOperationException("Nemáte oprávnění vidět rozpis PICC (chybí příznak „PICC tým“).");
@@ -158,9 +144,7 @@ public sealed class HttpPiccRosterService : IPiccRosterService
             ?? throw new InvalidOperationException("Relay vrátil prázdnou odpověď pro ukazatel rozpisu PICC.");
 
         var key = await GetSharedKeyAsync(ct);
-        var fileUri = new Uri(baseUri, $"library/files/{pointer.LibraryFileId}");
-        using var fileRequest = new HttpRequestMessage(HttpMethod.Get, fileUri);
-        AddAuth(fileRequest, deviceId, secret);
+        using var fileRequest = await CreateRequestAsync(HttpMethod.Get, $"library/files/{pointer.LibraryFileId}", ct);
         using var fileResponse = await _httpClient.SendAsync(fileRequest, ct);
         fileResponse.EnsureSuccessStatusCode();
 
@@ -182,18 +166,14 @@ public sealed class HttpPiccRosterService : IPiccRosterService
         return PiccRosterParser.Parse(parseStream, DateOnly.FromDateTime(DateTime.Today));
     }
 
-    private async Task PublishStatusAsync(string? doctorName, DateOnly? asOfDate, byte[] key, Uri baseUri, Guid deviceId, string secret, CancellationToken ct)
+    private async Task PublishStatusAsync(string? doctorName, DateOnly? asOfDate, byte[] key, CancellationToken ct)
     {
         var innerJson = JsonSerializer.Serialize(new StatusPayload(doctorName, asOfDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)), HttpJsonOptions);
         var payload = await _crypto.EncryptWithKeyAsync(Encoding.UTF8.GetBytes(innerJson), Guid.NewGuid(), key, ct);
         var blob = Convert.ToBase64String(SharedKeyWire.Combine(payload.Nonce, payload.AuthTag, payload.CipherText));
 
-        var uri = new Uri(baseUri, "picc/status");
-        using var request = new HttpRequestMessage(HttpMethod.Post, uri)
-        {
-            Content = JsonContent.Create(new { ContentBlob = blob }, options: HttpJsonOptions)
-        };
-        AddAuth(request, deviceId, secret);
+        using var request = await CreateRequestAsync(HttpMethod.Post, "picc/status", ct);
+        request.Content = JsonContent.Create(new { ContentBlob = blob }, options: HttpJsonOptions);
         using var response = await _httpClient.SendAsync(request, ct);
         if (response.StatusCode == HttpStatusCode.Forbidden)
             throw new InvalidOperationException("Nemáte oprávnění publikovat stav PICC (chybí příznak „PICC tým“).");
@@ -213,27 +193,10 @@ public sealed class HttpPiccRosterService : IPiccRosterService
         => await _vault.RetrieveSecretAsync(SharedLibraryKeyVaultKey, ct)
             ?? throw new InvalidOperationException("Nemáte klíč sdílené knihovny — nejprve ho v Nastavení vygenerujte nebo importujte.");
 
-    private async Task<(Uri BaseUri, Guid DeviceId, string Secret)> GetAuthAsync(CancellationToken ct)
-    {
-        var configuration = await _transportSettingsRepository.GetAsync(ct);
-        var deviceId = configuration?.AssignedDeviceId
-            ?? throw new InvalidOperationException("Nejprve se zaregistrujte u relay serveru v Nastavení.");
-        var wsEndpoint = configuration?.EndpointUri
-            ?? throw new InvalidOperationException("Není nastavená adresa relay serveru.");
-        var secretBytes = await _vault.RetrieveSecretAsync(RelayDeviceVaultKeys.DeviceSecret, ct)
-            ?? throw new InvalidOperationException("V úložišti chybí tajný klíč zařízení.");
+    private Task<HttpRequestMessage> CreateRequestAsync(HttpMethod method, string path, CancellationToken ct)
+        => RelayHttp.CreateAuthorizedRequestAsync(method, path, _transportSettingsRepository, _vault, ct);
 
-        var baseUri = RelayHttp.ToHttpUri(wsEndpoint);
-        return (baseUri, deviceId, Encoding.UTF8.GetString(secretBytes));
-    }
-
-    private static void AddAuth(HttpRequestMessage request, Guid deviceId, string secret)
-    {
-        request.Headers.Add("X-Device-Id", deviceId.ToString());
-        request.Headers.Add("X-Device-Secret", secret);
-    }
-
-            private sealed record LibraryFileDto(Guid Id, string FolderPath, string FileName, List<string> Tags, long SizeBytes, Guid UploadedByDeviceId, DateTimeOffset UploadedAtUtc);
+    private sealed record LibraryFileDto(Guid Id, string FolderPath, string FileName, List<string> Tags, long SizeBytes, Guid UploadedByDeviceId, DateTimeOffset UploadedAtUtc);
     private sealed record PiccStatusDto(string ContentBlob, DateTimeOffset UpdatedAtUtc);
     private sealed record PiccRosterPointerDto(Guid LibraryFileId, DateTimeOffset UpdatedAtUtc);
     private sealed record StatusPayload(string? DoctorName, string? AsOfDate);

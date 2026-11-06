@@ -23,7 +23,6 @@ public sealed partial class LibrarySubcategoryDetailViewModel : ObservableObject
     private readonly ISharedLibraryService _libraryService;
     private readonly ICurrentUserService _currentUserService;
     private readonly ITransportSettingsRepository _transportSettingsRepository;
-    private readonly IDiagnosticsReporter _diagnosticsReporter;
     private readonly ILibraryTranslationService _libraryTranslationService;
     private readonly RolePreviewService _rolePreviewService;
 
@@ -77,14 +76,12 @@ public sealed partial class LibrarySubcategoryDetailViewModel : ObservableObject
         ISharedLibraryService libraryService,
         ICurrentUserService currentUserService,
         ITransportSettingsRepository transportSettingsRepository,
-        IDiagnosticsReporter diagnosticsReporter,
         ILibraryTranslationService libraryTranslationService,
         RolePreviewService rolePreviewService)
     {
         _libraryService = libraryService ?? throw new ArgumentNullException(nameof(libraryService));
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         _transportSettingsRepository = transportSettingsRepository ?? throw new ArgumentNullException(nameof(transportSettingsRepository));
-        _diagnosticsReporter = diagnosticsReporter ?? throw new ArgumentNullException(nameof(diagnosticsReporter));
         _libraryTranslationService = libraryTranslationService ?? throw new ArgumentNullException(nameof(libraryTranslationService));
         _rolePreviewService = rolePreviewService ?? throw new ArgumentNullException(nameof(rolePreviewService));
     }

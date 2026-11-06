@@ -4,51 +4,136 @@
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
+    xmlns:controls="clr-namespace:SecureApp.Presentation.Controls"
     x:DataType="vm:RedakceViewModel"
     Title="Redakce"
     Shell.NavBarIsVisible="False">
 
     <ContentPage.Resources>
-        <Style x:Key="RedakceMenuButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
-            <Setter Property="HorizontalOptions" Value="Fill" />
-            <Setter Property="MinimumHeightRequest" Value="44" />
-            <Setter Property="FontSize" Value="12" />
+        <!-- Small group label above each block of cards / menu items. -->
+        <Style x:Key="RedakceGroupLabel" TargetType="Label">
+            <Setter Property="FontFamily" Value="PlexSans" />
+            <Setter Property="FontAttributes" Value="Bold" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Margin" Value="4,14,0,0" />
+            <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
         </Style>
     </ContentPage.Resources>
 
     <!-- 2026-10-26 (user: "v redakci budou jen tlačítka otevírající okna… tlačítko s příslušným názvem je
-         přehlednější"): one button per action, each gated by the same permission its card always had; the
-         former inline cards open in RedakceSectionPage, the rest go straight to their existing pages. -->
-    <ScrollView>
-        <VerticalStackLayout Padding="16" Spacing="10">
+         přehlednější"): one entry per action, each gated by the same permission its card always had; the
+         former inline cards open in RedakceSectionPage, the rest go straight to their existing pages.
+         2026-11-04 (user: "tohle asi neni moc pekna verze redakce, udelej hezci design"): the plain outlined
+         buttons became cards (RedakceTile: icon, title, one-line description) grouped under three headings.
+         The same day (user: "na pc by bylo lepsi menu… na tel to posledni menu, teda na pc"): on the PC the page
+         is a left-hand menu plus the chosen action on the right; phone/tablet keep the list of cards.
+         Every IsVisible and Command below is unchanged from the buttons they replace. -->
+    <Grid>
 
-            <Label Text="Redakce" Style="{StaticResource PageTitle}" />
+        <!-- ======================= Phone / tablet: list of cards ======================= -->
+        <ScrollView IsVisible="{Binding IsPhoneLayout}">
+            <VerticalStackLayout Padding="16" Spacing="8">
 
-            <Label Text="Nemáte žádná oprávnění k úpravám." FontSize="9.5" TextColor="Gray" IsVisible="{Binding HasNoEditorialAccess}" HorizontalOptions="Center" Margin="0,20" />
+                <Label Text="Redakce" Style="{StaticResource PageTitle}" />
+                <Label Text="Správa obsahu a nastavení aplikace" FontSize="11" Margin="0,-4,0,4"
+                       TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
 
-            <Button Text="📢 Zpráva na nástěnku" Style="{StaticResource RedakceMenuButton}" IsVisible="{Binding CanPostToBoard}"
-                    Command="{Binding OpenSectionCommand}" CommandParameter="board" />
-            <Button Text="🚦 Možné stavy sálů" Style="{StaticResource RedakceMenuButton}" IsVisible="{Binding CanManageRoomStatusOptions}"
-                    Command="{Binding OpenSectionCommand}" CommandParameter="roomstatus" />
-            <Button Text="🗒 Možné poznámky k sálům" Style="{StaticResource RedakceMenuButton}" IsVisible="{Binding CanManageRoomStatusOptions}"
-                    Command="{Binding OpenSectionCommand}" CommandParameter="roomnotes" />
-            <Button Text="📓 Správa Logbooku" Style="{StaticResource RedakceMenuButton}" IsVisible="{Binding CanManageLogbook}"
-                    Command="{Binding OpenLogbookManageCommand}" />
-            <Button Text="📝 Nový výukový dokument" Style="{StaticResource RedakceMenuButton}" IsVisible="{Binding CanAuthorCms}"
-                    Command="{Binding OpenCmsEditorCommand}" />
-            <Button Text="✏ Moje zadání" Style="{StaticResource RedakceMenuButton}" IsVisible="{Binding HasMyAssignments}"
-                    Command="{Binding OpenSectionCommand}" CommandParameter="myassignments" />
-            <Button Text="👥 Zadání dokumentů" Style="{StaticResource RedakceMenuButton}" IsVisible="{Binding CanAssignCms}"
-                    Command="{Binding OpenSectionCommand}" CommandParameter="cmsassign" />
-            <Button Text="🗃 Rozpracované dokumenty" Style="{StaticResource RedakceMenuButton}" IsVisible="{Binding CanSeeInProgressDocuments}"
-                    Command="{Binding OpenInProgressDocumentsCommand}" />
-            <Button Text="📋 Poznámky ke schválení" Style="{StaticResource RedakceMenuButton}" IsVisible="{Binding CanAssignCms}"
-                    Command="{Binding OpenCmsAnnotationQueueCommand}" />
-            <Button Text="📚 Obsah knihovny (nahrát, koncepty, schvalování)" Style="{StaticResource RedakceMenuButton}" IsVisible="{Binding CanManageLibrary}"
-                    Command="{Binding OpenLibraryManageCommand}" />
-            <Button Text="🗂 Kategorie knihovny" Style="{StaticResource RedakceMenuButton}" IsVisible="{Binding CanManageLibrary}"
-                    Command="{Binding OpenSectionCommand}" CommandParameter="library" />
+                <Label Text="Nemáte žádná oprávnění k úpravám." FontSize="9.5" TextColor="Gray" IsVisible="{Binding HasNoEditorialAccess}" HorizontalOptions="Center" Margin="0,20" />
 
-        </VerticalStackLayout>
-    </ScrollView>
+                <!-- ===== Provoz a sály ===== -->
+                <Label Text="PROVOZ A SÁLY" Style="{StaticResource RedakceGroupLabel}" IsVisible="{Binding ShowOperationsGroup}" />
+                <controls:RedakceTile Icon="📢" Title="Zpráva na nástěnku" Subtitle="Napsat oznámení pro všechny členy" IsVisible="{Binding CanPostToBoard}"
+                                      Command="{Binding OpenSectionCommand}" CommandParameter="board" />
+                <controls:RedakceTile Icon="🚦" Title="Možné stavy sálů" Subtitle="Seznam stavů, které lze sálu přiřadit" IsVisible="{Binding CanManageRoomStatusOptions}"
+                                      Command="{Binding OpenSectionCommand}" CommandParameter="roomstatus" />
+                <controls:RedakceTile Icon="🗒" Title="Možné poznámky k sálům" Subtitle="Připravené poznámky ke stavu sálu" IsVisible="{Binding CanManageRoomStatusOptions}"
+                                      Command="{Binding OpenSectionCommand}" CommandParameter="roomnotes" />
+                <controls:RedakceTile Icon="📓" Title="Správa Logbooku" Subtitle="Check-listy a katalog výkonů" IsVisible="{Binding CanManageLogbook}"
+                                      Command="{Binding OpenLogbookManageCommand}" />
+
+                <!-- ===== Výukové dokumenty ===== -->
+                <Label Text="VÝUKOVÉ DOKUMENTY" Style="{StaticResource RedakceGroupLabel}" IsVisible="{Binding ShowDocumentsGroup}" />
+                <controls:RedakceTile Icon="📝" Title="Nový výukový dokument" Subtitle="Napsat dokument a poslat ke schválení" IsVisible="{Binding CanAuthorCms}"
+                                      Command="{Binding OpenCmsEditorCommand}" />
+                <controls:RedakceTile Icon="✏" Title="Moje zadání" Subtitle="Dokumenty, které máte napsat" IsVisible="{Binding HasMyAssignments}"
+                                      Command="{Binding OpenSectionCommand}" CommandParameter="myassignments" />
+                <controls:RedakceTile Icon="👥" Title="Zadání dokumentů" Subtitle="Přidělit psaní dokumentů členům" IsVisible="{Binding CanAssignCms}"
+                                      Command="{Binding OpenSectionCommand}" CommandParameter="cmsassign" />
+                <controls:RedakceTile Icon="🗃" Title="Rozpracované dokumenty" Subtitle="Přehled dokumentů, které se právě píší" IsVisible="{Binding CanSeeInProgressDocuments}"
+                                      Command="{Binding OpenInProgressDocumentsCommand}" />
+                <controls:RedakceTile Icon="📋" Title="Poznámky ke schválení" Subtitle="Fronta poznámek k dokumentům" IsVisible="{Binding CanAssignCms}"
+                                      Command="{Binding OpenCmsAnnotationQueueCommand}" />
+
+                <!-- ===== Knihovna ===== -->
+                <Label Text="KNIHOVNA" Style="{StaticResource RedakceGroupLabel}" IsVisible="{Binding ShowLibraryGroup}" />
+                <controls:RedakceTile Icon="📚" Title="Obsah knihovny" Subtitle="Nahrát soubory, koncepty a schvalování" IsVisible="{Binding CanManageLibrary}"
+                                      Command="{Binding OpenLibraryManageCommand}" />
+                <controls:RedakceTile Icon="🗂" Title="Kategorie knihovny" Subtitle="Přidat, přejmenovat a třídit kategorie" IsVisible="{Binding CanManageLibrary}"
+                                      Command="{Binding OpenSectionCommand}" CommandParameter="library" />
+
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <!-- ======================= PC: menu on the left, chosen action on the right ======================= -->
+        <Grid IsVisible="{Binding IsDesktopLayout}" ColumnDefinitions="310,Auto,*">
+
+            <Border Grid.Column="0" StrokeThickness="0" StrokeShape="Rectangle" Padding="0"
+                    BackgroundColor="{AppThemeBinding Light=White, Dark={StaticResource SurfaceAltDark}}">
+                <ScrollView>
+                    <VerticalStackLayout Padding="16,24,16,24" Spacing="0">
+                        <Label Text="Redakce" Style="{StaticResource PageTitle}" Margin="12,0,0,0" />
+                        <Label Text="Správa obsahu a nastavení aplikace" FontSize="10.5" Margin="12,2,0,6"
+                               TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
+
+                        <Label Text="Nemáte žádná oprávnění k úpravám." FontSize="9.5" TextColor="Gray" IsVisible="{Binding HasNoEditorialAccess}" HorizontalOptions="Center" Margin="0,20" />
+
+                        <Label Text="PROVOZ A SÁLY" Style="{StaticResource RedakceGroupLabel}" Margin="12,14,0,4" IsVisible="{Binding ShowOperationsGroup}" />
+                        <controls:RedakceMenuItem Icon="📢" Title="Zpráva na nástěnku" IsVisible="{Binding CanPostToBoard}" IsSelected="{Binding IsBoardSection}"
+                                                  Command="{Binding SelectSectionCommand}" CommandParameter="board" />
+                        <controls:RedakceMenuItem Icon="🚦" Title="Možné stavy sálů" IsVisible="{Binding CanManageRoomStatusOptions}" IsSelected="{Binding IsRoomStatusSection}"
+                                                  Command="{Binding SelectSectionCommand}" CommandParameter="roomstatus" />
+                        <controls:RedakceMenuItem Icon="🗒" Title="Možné poznámky k sálům" IsVisible="{Binding CanManageRoomStatusOptions}" IsSelected="{Binding IsRoomNotesSection}"
+                                                  Command="{Binding SelectSectionCommand}" CommandParameter="roomnotes" />
+                        <controls:RedakceMenuItem Icon="📓" Title="Správa Logbooku" OpensWindow="True" IsVisible="{Binding CanManageLogbook}"
+                                                  Command="{Binding OpenLogbookManageCommand}" />
+
+                        <Label Text="VÝUKOVÉ DOKUMENTY" Style="{StaticResource RedakceGroupLabel}" Margin="12,14,0,4" IsVisible="{Binding ShowDocumentsGroup}" />
+                        <controls:RedakceMenuItem Icon="📝" Title="Nový výukový dokument" OpensWindow="True" IsVisible="{Binding CanAuthorCms}"
+                                                  Command="{Binding OpenCmsEditorCommand}" />
+                        <controls:RedakceMenuItem Icon="✏" Title="Moje zadání" IsVisible="{Binding HasMyAssignments}" IsSelected="{Binding IsMyAssignmentsSection}"
+                                                  Command="{Binding SelectSectionCommand}" CommandParameter="myassignments" />
+                        <controls:RedakceMenuItem Icon="👥" Title="Zadání dokumentů" IsVisible="{Binding CanAssignCms}" IsSelected="{Binding IsCmsAssignSection}"
+                                                  Command="{Binding SelectSectionCommand}" CommandParameter="cmsassign" />
+                        <controls:RedakceMenuItem Icon="🗃" Title="Rozpracované dokumenty" OpensWindow="True" IsVisible="{Binding CanSeeInProgressDocuments}"
+                                                  Command="{Binding OpenInProgressDocumentsCommand}" />
+                        <controls:RedakceMenuItem Icon="📋" Title="Poznámky ke schválení" OpensWindow="True" IsVisible="{Binding CanAssignCms}"
+                                                  Command="{Binding OpenCmsAnnotationQueueCommand}" />
+
+                        <Label Text="KNIHOVNA" Style="{StaticResource RedakceGroupLabel}" Margin="12,14,0,4" IsVisible="{Binding ShowLibraryGroup}" />
+                        <controls:RedakceMenuItem Icon="📚" Title="Obsah knihovny" OpensWindow="True" IsVisible="{Binding CanManageLibrary}"
+                                                  Command="{Binding OpenLibraryManageCommand}" />
+                        <controls:RedakceMenuItem Icon="🗂" Title="Kategorie knihovny" IsVisible="{Binding CanManageLibrary}" IsSelected="{Binding IsLibraryCategoriesSection}"
+                                                  Command="{Binding SelectSectionCommand}" CommandParameter="library" />
+
+                        <Label Text="↗ otevře se v samostatném okně" FontSize="10" Margin="12,22,0,0"
+                               TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
+                    </VerticalStackLayout>
+                </ScrollView>
+            </Border>
+
+            <BoxView Grid.Column="1" WidthRequest="1" Color="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource Gray500}}" />
+
+            <ScrollView Grid.Column="2">
+                <VerticalStackLayout Padding="32,28,32,28" Spacing="6" MaximumWidthRequest="860" HorizontalOptions="Start">
+                    <Label Text="{Binding SectionTitle}" Style="{StaticResource PageTitle}" IsVisible="{Binding HasSection}" />
+                    <Label Text="{Binding SectionSubtitle}" FontSize="11" IsVisible="{Binding HasSection}"
+                           TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
+                    <controls:RedakceSectionContent IsVisible="{Binding HasSection}" />
+
+                    <Label Text="Vyberte položku v menu vlevo." FontSize="11" TextColor="Gray" Margin="0,40,0,0"
+                           IsVisible="{Binding HasNoSection}" />
+                </VerticalStackLayout>
+            </ScrollView>
+        </Grid>
+    </Grid>
 </ContentPage>

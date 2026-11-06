@@ -20,8 +20,6 @@ namespace SecureApp.Presentation.Transport;
 public sealed class HttpCommunityBoardService : ICommunityBoardService
 {
     private const string SharedLibraryKeyVaultKey = "library:shared-key";
-    private const int NonceLength = 12;
-    private const int AuthTagLength = 16;
     private static readonly JsonSerializerOptions HttpJsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly ITransportSettingsRepository _transportSettingsRepository;
@@ -45,13 +43,8 @@ public sealed class HttpCommunityBoardService : ICommunityBoardService
         var payload = await _crypto.EncryptWithKeyAsync(Encoding.UTF8.GetBytes(text), Guid.NewGuid(), key, ct);
         var blob = Convert.ToBase64String(SharedKeyWire.Combine(payload.Nonce, payload.AuthTag, payload.CipherText));
 
-        var (baseUri, deviceId, secret) = await GetAuthAsync(ct);
-        var uri = new Uri(baseUri, "board");
-        using var request = new HttpRequestMessage(HttpMethod.Post, uri)
-        {
-            Content = JsonContent.Create(new { ContentBlob = blob }, options: HttpJsonOptions)
-        };
-        AddAuth(request, deviceId, secret);
+        using var request = await RelayHttp.CreateAuthorizedRequestAsync(HttpMethod.Post, "board", _transportSettingsRepository, _vault, ct);
+        request.Content = JsonContent.Create(new { ContentBlob = blob }, options: HttpJsonOptions);
 
         using var response = await _httpClient.SendAsync(request, ct);
         if (response.StatusCode == HttpStatusCode.Forbidden)
@@ -64,10 +57,7 @@ public sealed class HttpCommunityBoardService : ICommunityBoardService
         try
         {
             var key = await _vault.RetrieveSecretAsync(SharedLibraryKeyVaultKey, ct);
-            var (baseUri, deviceId, secret) = await GetAuthAsync(ct);
-            var uri = new Uri(baseUri, $"board?limit={limit}");
-            using var request = new HttpRequestMessage(HttpMethod.Get, uri);
-            AddAuth(request, deviceId, secret);
+            using var request = await RelayHttp.CreateAuthorizedRequestAsync(HttpMethod.Get, $"board?limit={limit}", _transportSettingsRepository, _vault, ct);
 
             using var response = await _httpClient.SendAsync(request, ct);
             response.EnsureSuccessStatusCode();
@@ -99,10 +89,7 @@ public sealed class HttpCommunityBoardService : ICommunityBoardService
 
     public async Task<bool> DeleteAsync(Guid postId, CancellationToken ct = default)
     {
-        var (baseUri, deviceId, secret) = await GetAuthAsync(ct);
-        var uri = new Uri(baseUri, $"board/{postId}");
-        using var request = new HttpRequestMessage(HttpMethod.Delete, uri);
-        AddAuth(request, deviceId, secret);
+        using var request = await RelayHttp.CreateAuthorizedRequestAsync(HttpMethod.Delete, $"board/{postId}", _transportSettingsRepository, _vault, ct);
 
         using var response = await _httpClient.SendAsync(request, ct);
         return response.IsSuccessStatusCode;
@@ -113,10 +100,8 @@ public sealed class HttpCommunityBoardService : ICommunityBoardService
         try
         {
             var wire = Convert.FromBase64String(blob);
-            if (wire.Length < NonceLength + AuthTagLength) return ("⚠ (poškozená zpráva)", false);
-            var nonce = wire[..NonceLength];
-            var tag = wire[NonceLength..(NonceLength + AuthTagLength)];
-            var cipher = wire[(NonceLength + AuthTagLength)..];
+            if (wire.Length < SharedKeyWire.NonceLength + SharedKeyWire.AuthTagLength) return ("⚠ (poškozená zpráva)", false);
+            var (nonce, tag, cipher) = SharedKeyWire.Split(wire, "⚠ (poškozená zpráva)");
             var payload = new EncryptedPayload(Guid.Empty, EncryptionAlgorithm.Aes256Gcm, cipher, nonce, tag);
             var plaintext = await _crypto.DecryptWithKeyAsync(payload, key, ct);
             return (Encoding.UTF8.GetString(plaintext), true);
@@ -133,25 +118,5 @@ public sealed class HttpCommunityBoardService : ICommunityBoardService
         => await _vault.RetrieveSecretAsync(SharedLibraryKeyVaultKey, ct)
             ?? throw new InvalidOperationException("Nemáte klíč sdílené knihovny — nejprve ho v Nastavení vygenerujte nebo importujte.");
 
-    private async Task<(Uri BaseUri, Guid DeviceId, string Secret)> GetAuthAsync(CancellationToken ct)
-    {
-        var configuration = await _transportSettingsRepository.GetAsync(ct);
-        var deviceId = configuration?.AssignedDeviceId
-            ?? throw new InvalidOperationException("Nejprve se zaregistrujte u relay serveru v Nastavení.");
-        var wsEndpoint = configuration?.EndpointUri
-            ?? throw new InvalidOperationException("Není nastavená adresa relay serveru.");
-        var secretBytes = await _vault.RetrieveSecretAsync(RelayDeviceVaultKeys.DeviceSecret, ct)
-            ?? throw new InvalidOperationException("V úložišti chybí tajný klíč zařízení.");
-
-        var baseUri = RelayHttp.ToHttpUri(wsEndpoint);
-        return (baseUri, deviceId, Encoding.UTF8.GetString(secretBytes));
-    }
-
-    private static void AddAuth(HttpRequestMessage request, Guid deviceId, string secret)
-    {
-        request.Headers.Add("X-Device-Id", deviceId.ToString());
-        request.Headers.Add("X-Device-Secret", secret);
-    }
-
-        private sealed record BoardPostDto(Guid Id, Guid AuthorDeviceId, string AuthorDisplayName, string ContentBlob, DateTimeOffset CreatedAtUtc);
+    private sealed record BoardPostDto(Guid Id, Guid AuthorDeviceId, string AuthorDisplayName, string ContentBlob, DateTimeOffset CreatedAtUtc);
 }

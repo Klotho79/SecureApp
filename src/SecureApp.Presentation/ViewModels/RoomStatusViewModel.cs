@@ -207,9 +207,6 @@ public sealed partial class RoomStatusRowItem : ObservableObject
     public bool IsMine { get; }
     public bool CanEdit { get; }
 
-    /// <summary>Converter-free inverse of <see cref="CanEdit"/> for the read-only row layout.</summary>
-    public bool IsReadOnly => !CanEdit;
-
     public ObservableCollection<string> StatusOptions { get; }
 
     /// <summary>2026-10-14, user's own ask: "poslední uzavření sálu, poslední výkon, sál pokračuje do služby atd" — a second, independent curated choice on the same row.</summary>

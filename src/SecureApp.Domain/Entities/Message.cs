@@ -152,10 +152,4 @@ public sealed class Message : Entity
         ReadAtUtc = DateTimeOffset.UtcNow;
         Touch();
     }
-
-    public void MarkFailed()
-    {
-        Status = MessageStatus.Failed;
-        Touch();
-    }
 }

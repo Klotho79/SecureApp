@@ -17,13 +17,15 @@ public partial class GroupChatThreadView : ContentView
 {
     private readonly ISharedLibraryService _libraryService;
 
-    private GroupChatViewModel? _subscribedViewModel;
+    private readonly ChatThreadScroller<GroupMessageItem> _scroller;
 
     public GroupChatThreadView(ISharedLibraryService libraryService)
     {
         InitializeComponent();
         _libraryService = libraryService ?? throw new ArgumentNullException(nameof(libraryService));
-        MessagesView.Scrolled += OnMessagesScrolled;
+        _scroller = new ChatThreadScroller<GroupMessageItem>(
+            MessagesView,
+            () => ViewModel is { HasOlderMessages: true } vm && vm.LoadOlderCommand.CanExecute(null) ? vm.LoadOlderCommand : null);
     }
 
     private GroupChatViewModel? ViewModel => BindingContext as GroupChatViewModel;
@@ -41,46 +43,7 @@ public partial class GroupChatThreadView : ContentView
     protected override void OnBindingContextChanged()
     {
         base.OnBindingContextChanged();
-
-        if (_subscribedViewModel is not null)
-        {
-            _subscribedViewModel.ScrollToBottomRequested -= ScrollToLatest;
-            _subscribedViewModel.ScrollAnchorRequested -= ScrollToAnchor;
-        }
-
-        _subscribedViewModel = ViewModel;
-
-        if (_subscribedViewModel is not null)
-        {
-            _subscribedViewModel.ScrollToBottomRequested += ScrollToLatest;
-            _subscribedViewModel.ScrollAnchorRequested += ScrollToAnchor;
-        }
-    }
-
-    private void ScrollToLatest()
-    {
-        MainThread.BeginInvokeOnMainThread(() =>
-        {
-            var messages = ViewModel?.Messages;
-            if (messages is null || messages.Count == 0) return;
-            try { MessagesView.ScrollTo(messages[^1], position: ScrollToPosition.End, animate: false); }
-            catch { /* layout not ready yet — harmless */ }
-        });
-    }
-
-    private void OnMessagesScrolled(object? sender, ItemsViewScrolledEventArgs e)
-    {
-        if (e.VerticalDelta < 0 && e.FirstVisibleItemIndex <= 2 && ViewModel is { HasOlderMessages: true } vm && vm.LoadOlderCommand.CanExecute(null))
-            vm.LoadOlderCommand.Execute(null);
-    }
-
-    private void ScrollToAnchor(GroupMessageItem anchor)
-    {
-        MainThread.BeginInvokeOnMainThread(() =>
-        {
-            try { MessagesView.ScrollTo(anchor, position: ScrollToPosition.Start, animate: false); }
-            catch { /* layout not ready — harmless */ }
-        });
+        _scroller?.Attach(ViewModel);
     }
 
     private async void OnAttachClicked(object? sender, EventArgs e) =>

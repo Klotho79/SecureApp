@@ -79,6 +79,23 @@ public sealed partial class RedakceViewModel : ObservableObject
     [ObservableProperty]
     public partial bool HasNoEditorialAccess { get; set; }
 
+    // Section headings of the Redakce menu (2026-11-04 redesign) show only when at least one of their actions does.
+    [ObservableProperty]
+    public partial bool ShowOperationsGroup { get; set; }
+
+    [ObservableProperty]
+    public partial bool ShowDocumentsGroup { get; set; }
+
+    [ObservableProperty]
+    public partial bool ShowLibraryGroup { get; set; }
+
+    private void UpdateGroupVisibility()
+    {
+        ShowOperationsGroup = CanPostToBoard || CanManageRoomStatusOptions || CanManageLogbook;
+        ShowDocumentsGroup = CanAuthorCms || HasMyAssignments || CanAssignCms || CanSeeInProgressDocuments;
+        ShowLibraryGroup = CanManageLibrary;
+    }
+
     partial void OnBoardStatusTextChanged(string? value) => HasBoardStatus = !string.IsNullOrEmpty(value);
 
     /// <summary>Raised for the Page (which alone can push a MAUI navigation) to open Logbook/Library management — same MAUI-free-ViewModel split this codebase already established (see NotificationsViewModel.RequestNavigate).</summary>
@@ -119,7 +136,9 @@ public sealed partial class RedakceViewModel : ObservableObject
         if (DeviceInfo.Idiom != DeviceIdiom.Desktop && role != Role.Admin)
         {
             CanPostToBoard = CanSeeInProgressDocuments = CanManageRoomStatusOptions = CanManageLogbook = CanManageLibrary = CanAuthorCms = false;
+            CanAssignCms = HasMyAssignments = false;
             HasNoEditorialAccess = true;
+            UpdateGroupVisibility();
             return;
         }
 
@@ -171,6 +190,8 @@ public sealed partial class RedakceViewModel : ObservableObject
         await LoadCmsAssignmentsAsync(role);
 
         HasNoEditorialAccess = !CanPostToBoard && !CanSeeInProgressDocuments &&!CanManageRoomStatusOptions && !CanManageLogbook && !CanManageLibrary && !CanAuthorCms && !HasMyAssignments;
+        UpdateGroupVisibility();
+        SelectDefaultSection();
     }
 
     [RelayCommand]

@@ -85,23 +85,4 @@ public sealed class Document : Entity
         Touch();
     }
 
-    public void ReplaceContent(EncryptedPayload newContent, FileHash newHash, long newSizeBytes)
-    {
-        EncryptedContent = newContent ?? throw new ArgumentNullException(nameof(newContent));
-        ContentHash = newHash ?? throw new ArgumentNullException(nameof(newHash));
-        OriginalSizeBytes = newSizeBytes;
-        Touch();
-    }
-
-    public void SetTags(IReadOnlyList<string> tags)
-    {
-        Tags = tags ?? Array.Empty<string>();
-        Touch();
-    }
-
-    public void ToggleFavorite(bool isFavorite)
-    {
-        IsFavorite = isFavorite;
-        Touch();
-    }
 }

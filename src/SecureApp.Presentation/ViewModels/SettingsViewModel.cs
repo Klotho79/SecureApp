@@ -24,14 +24,12 @@ namespace SecureApp.Presentation.ViewModels;
 public sealed partial class SettingsViewModel : ObservableObject
 {
     private readonly ICurrentUserService _currentUserService;
-    private readonly IMessagingService _messagingService;
     private readonly ITransportSettingsRepository _transportSettingsRepository;
     private readonly IMessageTransport _messageTransport;
     private readonly ISharedLibraryService _sharedLibraryService;
     private readonly IRelayAdminService _relayAdminService;
     private readonly IContactDirectoryService _contactDirectoryService;
     private readonly ISharedContactService _sharedContactService;
-    private readonly IChatSessionRepository _chatSessionRepository;
     private readonly IDiagnosticsReporter _diagnosticsReporter;
     private readonly IOpicentrumSyncService _opicentrumSyncService;
     private readonly IUpdateService _updateService;
@@ -286,7 +284,6 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     public SettingsViewModel(
         ICurrentUserService currentUserService,
-        IMessagingService messagingService,
         ITransportSettingsRepository transportSettingsRepository,
         IMessageTransport messageTransport,
         ISharedLibraryService sharedLibraryService,
@@ -294,19 +291,16 @@ public sealed partial class SettingsViewModel : ObservableObject
         IContactDirectoryService contactDirectoryService,
         ISharedContactService sharedContactService,
         IDiagnosticsReporter diagnosticsReporter,
-        IChatSessionRepository chatSessionRepository,
         IOpicentrumSyncService opicentrumSyncService,
         IUpdateService updateService,
         IIdentityBackupService identityBackupService,
         ILibraryTranslationService libraryTranslationService,
-        IDevicePolicyService devicePolicyService,
         IPiccRosterService piccRosterService,
         RolePreviewService rolePreviewService,
         INativeAppInstaller? nativeAppInstaller = null,
         INativeUpdateDownloader? nativeUpdateDownloader = null)
     {
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
-        _messagingService = messagingService ?? throw new ArgumentNullException(nameof(messagingService));
         _transportSettingsRepository = transportSettingsRepository ?? throw new ArgumentNullException(nameof(transportSettingsRepository));
         _messageTransport = messageTransport ?? throw new ArgumentNullException(nameof(messageTransport));
         _sharedLibraryService = sharedLibraryService ?? throw new ArgumentNullException(nameof(sharedLibraryService));
@@ -314,12 +308,10 @@ public sealed partial class SettingsViewModel : ObservableObject
         _contactDirectoryService = contactDirectoryService ?? throw new ArgumentNullException(nameof(contactDirectoryService));
         _sharedContactService = sharedContactService ?? throw new ArgumentNullException(nameof(sharedContactService));
         _diagnosticsReporter = diagnosticsReporter ?? throw new ArgumentNullException(nameof(diagnosticsReporter));
-        _chatSessionRepository = chatSessionRepository ?? throw new ArgumentNullException(nameof(chatSessionRepository));
         _opicentrumSyncService = opicentrumSyncService ?? throw new ArgumentNullException(nameof(opicentrumSyncService));
         _updateService = updateService ?? throw new ArgumentNullException(nameof(updateService));
         _identityBackupService = identityBackupService ?? throw new ArgumentNullException(nameof(identityBackupService));
         _libraryTranslationService = libraryTranslationService ?? throw new ArgumentNullException(nameof(libraryTranslationService));
-        _devicePolicyService = devicePolicyService ?? throw new ArgumentNullException(nameof(devicePolicyService));
         _piccRosterService = piccRosterService ?? throw new ArgumentNullException(nameof(piccRosterService));
         _rolePreviewService = rolePreviewService ?? throw new ArgumentNullException(nameof(rolePreviewService));
         _nativeAppInstaller = nativeAppInstaller;

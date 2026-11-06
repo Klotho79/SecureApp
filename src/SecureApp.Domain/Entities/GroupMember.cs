@@ -48,10 +48,4 @@ public sealed class GroupMember : Entity
         RelayDeviceId = relayDeviceId;
         CanInvite = canInvite;
     }
-
-    public void SetCanInvite(bool canInvite)
-    {
-        CanInvite = canInvite;
-        Touch();
-    }
 }

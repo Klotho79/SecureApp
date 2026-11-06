@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentView
+    x:Class="SecureApp.Presentation.Controls.RedakceTile"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:controls="clr-namespace:SecureApp.Presentation.Controls"
+    x:Name="Root">
+
+    <!-- One action of the Redakce menu (2026-11-04, user: "tohle asi neni moc pekna verze redakce, udelej hezci design"):
+         a tappable card — icon tile, title, one-line description, chevron — replacing the plain outlined buttons.
+         Visibility comes from the caller's IsVisible, exactly as the buttons had it. -->
+    <Border x:DataType="controls:RedakceTile" Style="{StaticResource CardBorder}" Margin="0" Padding="12,10" MinimumHeightRequest="64"
+            SemanticProperties.Description="{Binding Title, Source={x:Reference Root}}">
+        <Border.GestureRecognizers>
+            <TapGestureRecognizer Command="{Binding Command, Source={x:Reference Root}}"
+                                  CommandParameter="{Binding CommandParameter, Source={x:Reference Root}}" />
+        </Border.GestureRecognizers>
+        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+            <Border Grid.Column="0" WidthRequest="44" HeightRequest="44" Padding="0" Margin="0" VerticalOptions="Center"
+                    StrokeShape="RoundRectangle 12" Stroke="Transparent"
+                    BackgroundColor="{AppThemeBinding Light={StaticResource AccentSoft}, Dark={StaticResource AccentSoftDark}}">
+                <Label Text="{Binding Icon, Source={x:Reference Root}}" FontSize="22" HorizontalOptions="Center" VerticalOptions="Center" />
+            </Border>
+            <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                <Label Text="{Binding Title, Source={x:Reference Root}}" FontFamily="PlexSans" FontSize="{DynamicResource AppFontSize}" FontAttributes="Bold" LineBreakMode="WordWrap"
+                       TextColor="{AppThemeBinding Light={StaticResource MidnightBlue}, Dark={StaticResource White}}" />
+                <Label Text="{Binding Subtitle, Source={x:Reference Root}}" FontSize="10.5" LineBreakMode="WordWrap"
+                       TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
+            </VerticalStackLayout>
+            <Label Grid.Column="2" Text="›" FontSize="26" VerticalOptions="Center"
+                   TextColor="{AppThemeBinding Light={StaticResource Primary}, Dark={StaticResource PrimaryDark}}" />
+        </Grid>
+    </Border>
+</ContentView>

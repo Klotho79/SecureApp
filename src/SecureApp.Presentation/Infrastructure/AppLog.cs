@@ -81,21 +81,6 @@ public static class AppLog
         return ms;
     }
 
-    /// <summary>Returns the tail of one log ("errors" or "metrics") for the in-app viewer / export, newest last.</summary>
-    public static string ReadRecent(string which, int maxBytes = 64 * 1024)
-    {
-        var name = which.Equals("errors", StringComparison.OrdinalIgnoreCase) ? "errors.log" : "metrics.log";
-        var path = Path.Combine(Dir, name);
-        try
-        {
-            if (!File.Exists(path)) return "";
-            var bytes = File.ReadAllBytes(path);
-            if (bytes.Length <= maxBytes) return Encoding.UTF8.GetString(bytes);
-            return "…\n" + Encoding.UTF8.GetString(bytes, bytes.Length - maxBytes, maxBytes);
-        }
-        catch (Exception ex) { return "(nelze přečíst log: " + ex.Message + ")"; }
-    }
-
     /// <summary>Absolute path of a log file, for export/share.</summary>
     public static string PathOf(string which)
         => Path.Combine(Dir, which.Equals("errors", StringComparison.OrdinalIgnoreCase) ? "errors.log" : "metrics.log");

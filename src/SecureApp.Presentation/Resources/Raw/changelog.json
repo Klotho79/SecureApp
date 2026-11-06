@@ -1,5 +1,14 @@
 [
   {
+    "version": "0.1.18",
+    "code": 124,
+    "date": "6. 11. 2026",
+    "items": [
+      "Redakce má nový vzhled: na telefonu seznam přehledných karet s ikonou a popisem, na PC levé menu a vpravo vybraná akce.",
+      "Úklid kódu: odstraněn nepoužívaný kód a sjednoceno přihlašování k relay u nástěnky a rozpisu PICC. Pro vás by se nic nemělo změnit."
+    ]
+  },
+  {
     "version": "0.1.17",
     "code": 123,
     "date": "4. 11. 2026",

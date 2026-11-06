@@ -13,7 +13,6 @@ namespace SecureApp.Presentation.ViewModels;
 /// </summary>
 public sealed partial class SettingsViewModel
 {
-    private readonly IDevicePolicyService _devicePolicyService;
     private readonly IPiccRosterService _piccRosterService;
 
     [ObservableProperty]

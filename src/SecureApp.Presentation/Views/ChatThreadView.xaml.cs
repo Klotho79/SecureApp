@@ -19,13 +19,16 @@ public partial class ChatThreadView : ContentView
 {
     private readonly ISharedLibraryService _libraryService;
 
-    private ChatViewModel? _subscribedViewModel;
+    private readonly ChatThreadScroller<ChatMessageItem> _scroller;
 
     public ChatThreadView(ISharedLibraryService libraryService)
     {
         InitializeComponent();
         _libraryService = libraryService ?? throw new ArgumentNullException(nameof(libraryService));
-        MessagesView.Scrolled += OnMessagesScrolled;
+        // Scroll-up history paging: see ChatViewModel.LoadOlderAsync.
+        _scroller = new ChatThreadScroller<ChatMessageItem>(
+            MessagesView,
+            () => ViewModel is { HasOlderMessages: true } vm && vm.LoadOlderCommand.CanExecute(null) ? vm.LoadOlderCommand : null);
     }
 
     private ChatViewModel? ViewModel => BindingContext as ChatViewModel;
@@ -33,63 +36,12 @@ public partial class ChatThreadView : ContentView
     /// <summary>
     /// The host (ChatPage, or ChatListPage's detail pane) sets our BindingContext to the ChatViewModel
     /// after construction — and may reuse this view for a different chat — so the scroll subscriptions
-    /// (2026-09-11) are (re)wired here rather than in the constructor. Unsubscribes from a previous VM
-    /// first so switching chats never leaves a dangling handler firing on the wrong view.
+    /// are (re)wired here rather than in the constructor.
     /// </summary>
     protected override void OnBindingContextChanged()
     {
         base.OnBindingContextChanged();
-
-        if (_subscribedViewModel is not null)
-        {
-            _subscribedViewModel.ScrollToBottomRequested -= ScrollToLatest;
-            _subscribedViewModel.ScrollAnchorRequested -= ScrollToAnchor;
-        }
-
-        _subscribedViewModel = ViewModel;
-
-        if (_subscribedViewModel is not null)
-        {
-            _subscribedViewModel.ScrollToBottomRequested += ScrollToLatest;
-            _subscribedViewModel.ScrollAnchorRequested += ScrollToAnchor;
-        }
-    }
-
-    private void ScrollToLatest()
-    {
-        // Always jump to the newest message (the user's ask). Marshaled to the UI thread since the
-        // event can be raised from a background continuation, and guarded — an empty thread has
-        // nothing to scroll to. Not animated: on open it should just be there, not visibly scroll.
-        MainThread.BeginInvokeOnMainThread(() =>
-        {
-            var messages = ViewModel?.Messages;
-            if (messages is null || messages.Count == 0) return;
-            try { MessagesView.ScrollTo(messages[^1], position: ScrollToPosition.End, animate: false); }
-            catch { /* a layout not ready yet is harmless — KeepLastItemInView still covers new items */ }
-        });
-    }
-
-    /// <summary>
-    /// Scroll-up history paging (2026-09-11): load the next older page only on a genuine UPWARD scroll
-    /// that reaches the top. Requiring VerticalDelta &lt; 0 is what stops it from firing during the
-    /// initial layout / the programmatic scroll-to-newest on open — which reported the top momentarily
-    /// and used to auto-prepend history and yank the view (the jump the user hit). See
-    /// ChatViewModel.LoadOlderAsync.
-    /// </summary>
-    private void OnMessagesScrolled(object? sender, ItemsViewScrolledEventArgs e)
-    {
-        if (e.VerticalDelta < 0 && e.FirstVisibleItemIndex <= 2 && ViewModel is { HasOlderMessages: true } vm && vm.LoadOlderCommand.CanExecute(null))
-            vm.LoadOlderCommand.Execute(null);
-    }
-
-    /// <summary>After a page of older history is prepended, re-anchor on the message that was at the top so the view doesn't jump to the oldest message (the bug the user reported).</summary>
-    private void ScrollToAnchor(ChatMessageItem anchor)
-    {
-        MainThread.BeginInvokeOnMainThread(() =>
-        {
-            try { MessagesView.ScrollTo(anchor, position: ScrollToPosition.Start, animate: false); }
-            catch { /* layout not ready — harmless */ }
-        });
+        _scroller?.Attach(ViewModel);
     }
 
     /// <summary>

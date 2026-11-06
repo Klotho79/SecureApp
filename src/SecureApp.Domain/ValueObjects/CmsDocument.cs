@@ -72,23 +72,6 @@ public sealed record CmsMedia(
     string? Sha256 = null,
     IReadOnlyList<CmsMediaVariant>? Variants = null);
 
-public enum CmsEditorGrantEndReason { Approved, Revoked, Reassigned }
-
-/// <summary>
-/// Per-document editing right (CMS_PLAN.md): active while <see cref="EndedAtUtc"/> is null, ends
-/// automatically when the document is approved/published. Independent of the global Role.
-/// </summary>
-public sealed record CmsEditorGrant(
-    Guid DocumentId,
-    Guid UserId,
-    Guid GrantedBy,
-    DateTimeOffset GrantedAtUtc,
-    DateTimeOffset? EndedAtUtc = null,
-    CmsEditorGrantEndReason? EndReason = null)
-{
-    public bool IsActive => EndedAtUtc is null;
-}
-
 /// <summary>Text anchor: block + W3C-style quote selector; offsets are only a hint, the quote is authoritative.</summary>
 public sealed record CmsAnchor(
     string VersionId,
