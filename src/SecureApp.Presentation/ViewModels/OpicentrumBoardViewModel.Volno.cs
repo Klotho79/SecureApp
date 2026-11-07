@@ -22,10 +22,7 @@ public sealed partial class OpicentrumBoardViewModel
     [ObservableProperty]
     public partial bool IsVolnoRefreshing { get; set; }
 
-    /// <summary>Converter-free inverse of <see cref="IsVolnoRefreshing"/>, for the "Obnovit" button's IsEnabled.</summary>
-    public bool CanRefreshVolno => !IsVolnoRefreshing;
-
-    partial void OnIsVolnoRefreshingChanged(bool value) => OnPropertyChanged(nameof(CanRefreshVolno));
+    partial void OnIsVolnoRefreshingChanged(bool value) => NotifyRefreshState();
 
     [ObservableProperty]
     public partial bool HasVolnoData { get; set; }
@@ -34,9 +31,6 @@ public sealed partial class OpicentrumBoardViewModel
     public bool HasNoVolnoData => !HasVolnoData;
 
     partial void OnHasVolnoDataChanged(bool value) => OnPropertyChanged(nameof(HasNoVolnoData));
-
-    [ObservableProperty]
-    public partial string? VolnoLastUpdatedText { get; set; }
 
     [ObservableProperty]
     public partial ObservableCollection<string> VolnoDayHeaders { get; set; } = [];
@@ -132,18 +126,18 @@ public sealed partial class OpicentrumBoardViewModel
 
     private void ApplyVolnoSnapshot(OpicentrumVolnoSnapshot? snapshot)
     {
+        _currentVolnoSnapshot = snapshot;
+        NotifyRefreshState();
         if (snapshot is null || snapshot.People.Count == 0)
         {
             HasVolnoData = false;
             VolnoDayHeaders = [];
             VolnoRows = [];
-            VolnoLastUpdatedText = null;
             return;
         }
 
         var applySw = System.Diagnostics.Stopwatch.StartNew();
         HasVolnoData = true;
-        VolnoLastUpdatedText = FormatRelativeTime(snapshot.UpdatedAtUtc);
 
         var daysInMonth = DateTime.DaysInMonth(snapshot.Year, snapshot.Month);
         var days = Enumerable.Range(1, daysInMonth).Select(d => new DateOnly(snapshot.Year, snapshot.Month, d)).ToList();

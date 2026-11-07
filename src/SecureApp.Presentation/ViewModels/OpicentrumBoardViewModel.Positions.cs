@@ -29,12 +29,9 @@ public sealed partial class OpicentrumBoardViewModel
     [ObservableProperty]
     public partial bool IsPositionsRefreshing { get; set; }
 
-    /// <summary>Converter-free inverse of <see cref="IsPositionsRefreshing"/>, for the "Obnovit" button's IsEnabled.</summary>
-    public bool CanRefreshPositions => !IsPositionsRefreshing;
-
     partial void OnIsPositionsRefreshingChanged(bool value)
     {
-        OnPropertyChanged(nameof(CanRefreshPositions));
+        NotifyRefreshState();
         OnPropertyChanged(nameof(ShowNoPositionsData));
     }
 
@@ -76,9 +73,6 @@ public sealed partial class OpicentrumBoardViewModel
         UpdatePositionsWeekLabel();
         return LoadPositionsAsync();
     }
-
-    [ObservableProperty]
-    public partial string? PositionsLastUpdatedText { get; set; }
 
     [ObservableProperty]
     public partial ObservableCollection<string> PositionsDayHeaders { get; set; } = [];
@@ -198,7 +192,7 @@ public sealed partial class OpicentrumBoardViewModel
                     // for that froze the UI 0.15–0.8 s (apply.assign source=relay in the device metrics),
                     // right after the board had finished appearing. Just move the timestamp.
                     _currentPositionsSnapshot = fromRelay;
-                    PositionsLastUpdatedText = FormatRelativeTime(fromRelay.UpdatedAtUtc);
+                    NotifyRefreshState();
                     AppLog.Event("opicentrum.positions.apply-skipped", ("reason", "same-content"));
                 }
                 else
@@ -270,7 +264,7 @@ public sealed partial class OpicentrumBoardViewModel
         if (_currentPositionsSnapshot is { } current && SameContent(current, pushed))
         {
             _currentPositionsSnapshot = pushed;
-            PositionsLastUpdatedText = FormatRelativeTime(pushed.UpdatedAtUtc);
+            NotifyRefreshState();
             return;
         }
         ApplyPositionsSnapshot(pushed);
@@ -295,18 +289,17 @@ public sealed partial class OpicentrumBoardViewModel
     private void ApplyPositionsSnapshot(OpicentrumRosterBoardSnapshot? snapshot)
     {
         _currentPositionsSnapshot = snapshot;
+        NotifyRefreshState();
         if (snapshot is null || snapshot.Days.Count == 0)
         {
             _positionsAllRows = [];
             HasPositionsData = false;
             PositionsDayHeaders = [];
             PositionsRows = [];
-            PositionsLastUpdatedText = null;
             return;
         }
 
         HasPositionsData = true;
-        PositionsLastUpdatedText = FormatRelativeTime(snapshot.UpdatedAtUtc);
         PositionsDayHeaders = new ObservableCollection<string>(snapshot.Days.Select(d => d.Date.ToString("ddd d.M.", Czech)));
 
         _workplaceIdByName = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);

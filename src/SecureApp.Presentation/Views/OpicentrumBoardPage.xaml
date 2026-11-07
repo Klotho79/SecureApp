@@ -32,6 +32,19 @@
                     </DataTrigger>
                 </Button.Triggers>
             </Button>
+            <!-- One Obnovit for whichever tab is open (2026-11-07): second line = when the board was last updated; green =
+                 a refresh is allowed now, grey = too soon after the last update (OpicentrumBoardViewModel.Refresh.cs). -->
+            <Button Text="{Binding RefreshButtonText}" Style="{StaticResource SubTabButton}" Margin="6,0,0,0" VerticalOptions="Center"
+                    FontSize="10" Padding="8,2" LineBreakMode="WordWrap" IsVisible="{Binding IsAccessGranted}"
+                    Command="{Binding RefreshCurrentCommand}" IsEnabled="{Binding CanRefresh}">
+                <Button.Triggers>
+                    <DataTrigger TargetType="Button" Binding="{Binding CanRefresh}" Value="True">
+                        <Setter Property="BackgroundColor" Value="{StaticResource Success}" />
+                        <Setter Property="BorderColor" Value="{StaticResource Success}" />
+                        <Setter Property="TextColor" Value="{StaticResource White}" />
+                    </DataTrigger>
+                </Button.Triggers>
+            </Button>
         </HorizontalStackLayout>
     </Shell.TitleView>
 
@@ -54,16 +67,12 @@
                         Command="{Binding NextPositionsWeekCommand}" />
             </Grid>
 
-            <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="6">
-                <Label Grid.Column="0" Text="{Binding PositionsLastUpdatedText, StringFormat='Aktualizováno: {0} · červeně = služba'}" FontSize="9" TextColor="Gray" VerticalOptions="Center" />
+            <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+                <Label Grid.Column="0" Text="červeně = služba" FontSize="9" TextColor="Gray" VerticalOptions="Center" />
                 <controls:DelayedActivityIndicator Grid.Column="1" IsBusy="{Binding IsPositionsRefreshing}" />
-                <Button Grid.Column="2" Text="A−" Style="{StaticResource SecondaryButton}" FontSize="12" Padding="0" WidthRequest="40" MinimumHeightRequest="30" Clicked="OnZoomOutClicked" />
-                <Button Grid.Column="3" Text="A+" Style="{StaticResource SecondaryButton}" FontSize="12" Padding="0" WidthRequest="40" MinimumHeightRequest="30" Clicked="OnZoomInClicked" />
                 <!-- Position suggestions' settings (2026-10-25, POZICE_NAVRH_PLAN.md) — Admin on the PC. -->
-                <Button Grid.Column="4" Text="⚙ Profily" Style="{StaticResource SecondaryButton}" FontSize="10" Padding="10,4" MinimumHeightRequest="30"
+                <Button Grid.Column="2" Text="⚙ Profily" Style="{StaticResource SecondaryButton}" FontSize="10" Padding="10,4" MinimumHeightRequest="30"
                         IsVisible="{Binding CanEditStaffing}" Clicked="OnStaffingClicked" />
-                <Button Grid.Column="5" Text="Obnovit" Style="{StaticResource SecondaryButton}" FontSize="10" Padding="10,4" MinimumHeightRequest="30"
-                        Command="{Binding RefreshPositionsCommand}" IsEnabled="{Binding CanRefreshPositions}" />
             </Grid>
 
             <Label Grid.Row="2" Text="{Binding PositionsErrorText}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" IsVisible="{Binding HasPositionsError}" LineBreakMode="WordWrap" />
@@ -78,7 +87,7 @@
                  they stay pinned, and the corner hides whatever scrolls under both. -->
             <Grid x:Name="PositionsBoard" Grid.Row="3" IsClippedToBounds="True" IsVisible="{Binding HasPositionsData}">
                 <ScrollView x:Name="PositionsScroll" Orientation="Both" Scrolled="OnPositionsScrolled">
-                    <controls:PositionsBoardView Layer="Body" Rows="{Binding PositionsRows}" DayHeaders="{Binding PositionsDayHeaders}"
+                    <controls:PositionsBoardView x:Name="PositionsBody" Layer="Body" Rows="{Binding PositionsRows}" DayHeaders="{Binding PositionsDayHeaders}"
                                                  HorizontalOptions="Start" VerticalOptions="Start" ChipTapped="OnPersonChipTapped" Drawn="OnPositionsDrawn" />
                 </ScrollView>
                 <controls:PositionsBoardView x:Name="PositionsNames" Layer="Names" Rows="{Binding PositionsRows}" DayHeaders="{Binding PositionsDayHeaders}"
@@ -91,28 +100,19 @@
         </Grid>
 
         <!-- ============================ VOLNO ============================ -->
-        <Grid RowDefinitions="Auto,Auto,*" RowSpacing="6" IsVisible="{Binding IsVolnoSubTab}">
-            <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="6">
-                <Label Grid.Column="0" Text="{Binding VolnoLastUpdatedText, StringFormat='Aktualizováno: {0}'}" FontSize="9" TextColor="Gray" VerticalOptions="Center" />
-                <controls:DelayedActivityIndicator Grid.Column="1" IsBusy="{Binding IsVolnoRefreshing}" />
-                <Button Grid.Column="2" Text="A−" Style="{StaticResource SecondaryButton}" FontSize="12" Padding="0" WidthRequest="40" MinimumHeightRequest="30" Clicked="OnZoomOutClicked" />
-                <Button Grid.Column="3" Text="A+" Style="{StaticResource SecondaryButton}" FontSize="12" Padding="0" WidthRequest="40" MinimumHeightRequest="30" Clicked="OnZoomInClicked" />
-                <Button Grid.Column="4" Text="Obnovit" Style="{StaticResource SecondaryButton}" FontSize="10" Padding="10,4" MinimumHeightRequest="30"
-                        Command="{Binding RefreshVolnoCommand}" IsEnabled="{Binding CanRefreshVolno}" />
-            </Grid>
+        <Grid RowDefinitions="Auto,*" RowSpacing="6" IsVisible="{Binding IsVolnoSubTab}">
+            <Label Grid.Row="0" Text="{Binding VolnoErrorText}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" IsVisible="{Binding HasVolnoError}" LineBreakMode="WordWrap" />
 
-            <Label Grid.Row="1" Text="{Binding VolnoErrorText}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" IsVisible="{Binding HasVolnoError}" LineBreakMode="WordWrap" />
-
-            <controls:DelayedActivityIndicator Grid.Row="2" IsBusy="{Binding IsVolnoLoading}" HorizontalOptions="Center" VerticalOptions="Center" />
-            <Label Grid.Row="2" Text="Zatím žádná data — stiskněte Obnovit." FontSize="10" TextColor="Gray" HorizontalOptions="Center" VerticalOptions="Center" IsVisible="{Binding HasNoVolnoData}" />
+            <controls:DelayedActivityIndicator Grid.Row="1" IsBusy="{Binding IsVolnoLoading}" HorizontalOptions="Center" VerticalOptions="Center" />
+            <Label Grid.Row="1" Text="Zatím žádná data — stiskněte Obnovit." FontSize="10" TextColor="Gray" HorizontalOptions="Center" VerticalOptions="Center" IsVisible="{Binding HasNoVolnoData}" />
 
             <!-- Read-only this round — see OpicentrumBoardViewModel.Volno.cs's own remarks. -->
             <!-- 2026-10-24: drawn on canvases (VolnoBoardView) instead of ~1 740 Labels. The body scrolls
                  natively inside the ScrollView; the names/header overlays are translated by OnVolnoScrolled
                  so they stay pinned, and the corner hides whatever scrolls under both. -->
-            <Grid x:Name="VolnoBoard" Grid.Row="2" IsClippedToBounds="True" IsVisible="{Binding HasVolnoData}">
+            <Grid x:Name="VolnoBoard" Grid.Row="1" IsClippedToBounds="True" IsVisible="{Binding HasVolnoData}">
                 <ScrollView x:Name="VolnoScroll" Orientation="Both" Scrolled="OnVolnoScrolled">
-                    <controls:VolnoBoardView Layer="Body" Rows="{Binding VolnoRows}" DayHeaders="{Binding VolnoDayHeaders}"
+                    <controls:VolnoBoardView x:Name="VolnoBody" Layer="Body" Rows="{Binding VolnoRows}" DayHeaders="{Binding VolnoDayHeaders}"
                                              HorizontalOptions="Start" VerticalOptions="Start" />
                 </ScrollView>
                 <controls:VolnoBoardView x:Name="VolnoNames" Layer="Names" Rows="{Binding VolnoRows}" DayHeaders="{Binding VolnoDayHeaders}"

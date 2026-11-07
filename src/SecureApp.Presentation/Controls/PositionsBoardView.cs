@@ -82,9 +82,11 @@ public sealed class PositionsBoardView : GraphicsView
     private void Refresh()
     {
         var dayCount = DayHeaders?.Count ?? 0;
-        var totalWidth = PositionsLayout.CellsLeft + dayCount * (PositionsLayout.ColWidth + PositionsLayout.Gap);
 
-        _layout = Layer == PositionsBoardLayer.Header || Rows is null ? null : PositionsLayout.For(Rows);
+        // All three layers need the layout now: the name column's width follows the longest workplace name.
+        _layout = Rows is null ? null : PositionsLayout.For(Rows);
+        var cellsLeft = _layout?.CellsLeft ?? PositionsLayout.DefaultNameWidth + PositionsLayout.Gap;
+        var totalWidth = cellsLeft + dayCount * (PositionsLayout.ColWidth + PositionsLayout.Gap);
         var totalHeight = _layout?.Height ?? PositionsLayout.RowsTop;
         var zoom = BoardZoom.Value;
 
@@ -95,7 +97,7 @@ public sealed class PositionsBoardView : GraphicsView
                 HeightRequest = totalHeight * zoom;
                 break;
             case PositionsBoardLayer.Names:
-                WidthRequest = PositionsLayout.CellsLeft * zoom;
+                WidthRequest = cellsLeft * zoom;
                 HeightRequest = totalHeight * zoom;
                 break;
             case PositionsBoardLayer.Header:
@@ -163,7 +165,7 @@ public sealed class PositionsBoardView : GraphicsView
                     DrawNames(canvas, layout, rows, pageBackground, text);
                     break;
                 case PositionsBoardLayer.Header when owner.DayHeaders is { } days:
-                    DrawHeader(canvas, days, pageBackground, text);
+                    DrawHeader(canvas, days, owner._layout?.CellsLeft ?? PositionsLayout.DefaultNameWidth + PositionsLayout.Gap, pageBackground, text);
                     break;
             }
 
@@ -204,28 +206,31 @@ public sealed class PositionsBoardView : GraphicsView
         private static void DrawNames(ICanvas canvas, PositionsLayout layout, IReadOnlyList<OpicentrumRosterRowItem> rows, Color pageBackground, Color text)
         {
             canvas.FillColor = pageBackground;
-            canvas.FillRectangle(0, 0, PositionsLayout.CellsLeft, layout.Height);
+            canvas.FillRectangle(0, 0, layout.CellsLeft, layout.Height);
 
             canvas.Font = Font.DefaultBold;
             canvas.FontSize = PositionsLayout.NameFont;
             canvas.FontColor = text;
+            // A long workplace name ("Anest. ambulance") wraps onto several lines instead of forcing a wide name column.
             for (var r = 0; r < rows.Count; r++)
             {
-                var name = BoardCanvas.Fit(rows[r].WorkplaceName, PositionsLayout.NameWidth - 4, s => canvas.GetStringSize(s, Font.DefaultBold, PositionsLayout.NameFont).Width);
-                canvas.DrawString(name, 0, layout.RowTops[r], PositionsLayout.NameWidth, layout.RowHeights[r], HorizontalAlignment.Left, VerticalAlignment.Center);
+                var lines = layout.NameLines[r];
+                var top = layout.RowTops[r] + (layout.RowHeights[r] - lines.Length * layout.NameLineHeight) / 2;
+                for (var i = 0; i < lines.Length; i++)
+                    canvas.DrawString(lines[i], 0, top + i * layout.NameLineHeight, layout.NameWidth, layout.NameLineHeight, HorizontalAlignment.Left, VerticalAlignment.Center);
             }
         }
 
-        private static void DrawHeader(ICanvas canvas, IReadOnlyList<string> days, Color pageBackground, Color text)
+        private static void DrawHeader(ICanvas canvas, IReadOnlyList<string> days, float cellsLeft, Color pageBackground, Color text)
         {
             canvas.FillColor = pageBackground;
-            canvas.FillRectangle(0, 0, PositionsLayout.CellsLeft + days.Count * (PositionsLayout.ColWidth + PositionsLayout.Gap), PositionsLayout.HeaderHeight);
+            canvas.FillRectangle(0, 0, cellsLeft + days.Count * (PositionsLayout.ColWidth + PositionsLayout.Gap), PositionsLayout.HeaderHeight);
 
             canvas.Font = Font.DefaultBold;
             canvas.FontSize = PositionsLayout.NameFont;
             canvas.FontColor = text;
             for (var d = 0; d < days.Count; d++)
-                canvas.DrawString(days[d], PositionsLayout.CellsLeft + d * (PositionsLayout.ColWidth + PositionsLayout.Gap), 0, PositionsLayout.ColWidth, PositionsLayout.HeaderHeight,
+                canvas.DrawString(days[d], cellsLeft + d * (PositionsLayout.ColWidth + PositionsLayout.Gap), 0, PositionsLayout.ColWidth, PositionsLayout.HeaderHeight,
                     HorizontalAlignment.Center, VerticalAlignment.Center);
         }
     }
@@ -239,12 +244,22 @@ public sealed class PositionsBoardView : GraphicsView
 /// </summary>
 internal sealed class PositionsLayout
 {
-    public const float NameWidth = 130;
+    /// <summary>Width of the name column when there is nothing to measure yet; the real one follows the workplace names (see <see cref="NameWidth"/>).</summary>
+    public const float DefaultNameWidth = 84;
+    private const float MinNameWidth = 44;
+    private const float MaxNameWidth = 130;
+    private const int NameMaxLines = 2;
     public const float ColWidth = 140;
     public const float Gap = 2;
     public const float HeaderHeight = 20;
-    public const float CellsLeft = NameWidth + Gap;
     public const float RowsTop = HeaderHeight + Gap;
+
+    /// <summary>
+    /// Dynamic name column (2026-11-07, user: "sirka by mela byt dynamicka"): the narrowest width at which every
+    /// workplace name fits on <see cref="NameMaxLines"/> lines, between <see cref="MinNameWidth"/> and <see cref="MaxNameWidth"/>.
+    /// </summary>
+    public required float NameWidth { get; init; }
+    public float CellsLeft => NameWidth + Gap;
 
     public const float CellPadding = 4;
     public const float CellStroke = 1;
@@ -261,6 +276,9 @@ internal sealed class PositionsLayout
 
     public required float[] RowTops { get; init; }
     public required float[] RowHeights { get; init; }
+    /// <summary>The workplace name of each row, word-wrapped to <see cref="NameWidth"/>.</summary>
+    public required string[][] NameLines { get; init; }
+    public required float NameLineHeight { get; init; }
     public required List<RectF> Cells { get; init; }
     public required List<Chip> Chips { get; init; }
     public required float Height { get; init; }
@@ -281,6 +299,12 @@ internal sealed class PositionsLayout
         var lineHeight = chipHeight + ChipMargin;
         var cellInset = CellPadding + CellStroke;
         var inner = ColWidth - 2 * cellInset;
+
+        var nameLineHeight = sizes.GetStringSize("Ag", Font.DefaultBold, NameFont).Height + 1;
+        float NameWidthOf(string s) => sizes.GetStringSize(s, Font.DefaultBold, NameFont).Width;
+        var nameLines = new string[rows.Count][];
+        var nameWidth = ComputeNameWidth(rows, NameWidthOf);
+        var cellsLeft = nameWidth + Gap;
 
         var rowTops = new float[rows.Count];
         var rowHeights = new float[rows.Count];
@@ -311,12 +335,16 @@ internal sealed class PositionsLayout
                 tallest = Math.Max(tallest, 2 * cellInset + lines * lineHeight);
             }
 
+            // The name column may need more height than the cells.
+            nameLines[r] = WrapName(rows[r].WorkplaceName, nameWidth - 4, NameWidthOf);
+            tallest = Math.Max(tallest, nameLines[r].Length * nameLineHeight + 4);
+
             // Second pass: absolute rectangles.
             rowTops[r] = y;
             rowHeights[r] = tallest;
             for (var c = 0; c < placed.Length; c++)
             {
-                var cellX = CellsLeft + c * (ColWidth + Gap);
+                var cellX = cellsLeft + c * (ColWidth + Gap);
                 cells.Add(new RectF(cellX, y, ColWidth, tallest));
                 foreach (var (x, cy, w, text, person) in placed[c])
                     chips.Add(new Chip(new RectF(cellX + cellInset + x, y + cellInset + cy, w, chipHeight), text, person));
@@ -325,6 +353,39 @@ internal sealed class PositionsLayout
         }
 
         AppLog.Metric("opicentrum.positions.layout", sw.Elapsed.TotalMilliseconds, "ms", ("rows", rows.Count), ("chips", chips.Count));
-        return new PositionsLayout { RowTops = rowTops, RowHeights = rowHeights, Cells = cells, Chips = chips, Height = y };
+        return new PositionsLayout { RowTops = rowTops, RowHeights = rowHeights, NameWidth = nameWidth, NameLines = nameLines, NameLineHeight = nameLineHeight, Cells = cells, Chips = chips, Height = y };
+    }
+
+    private static float ComputeNameWidth(IReadOnlyList<OpicentrumRosterRowItem> rows, Func<string, float> width)
+    {
+        var needed = MinNameWidth;
+        foreach (var row in rows)
+        {
+            var name = row.WorkplaceName;
+            var widestWord = name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(width).DefaultIfEmpty(0).Max();
+            var full = width(name);
+            var w = Math.Min(widestWord, full);
+            // Grow from the widest single word until the name needs no more than NameMaxLines lines.
+            while (w < full && w + 4 < MaxNameWidth && WrapName(name, w, width).Length > NameMaxLines)
+                w += 2;
+            needed = Math.Max(needed, w + 4);
+        }
+        return Math.Min(needed, MaxNameWidth);
+    }
+
+    /// <summary>Greedy word wrap; a single word wider than the column is cut with an ellipsis.</summary>
+    private static string[] WrapName(string name, float maxWidth, Func<string, float> width)
+    {
+        var lines = new List<string>();
+        var current = string.Empty;
+        foreach (var word in name.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var candidate = current.Length == 0 ? word : current + " " + word;
+            if (width(candidate) <= maxWidth) { current = candidate; continue; }
+            if (current.Length > 0) lines.Add(current);
+            current = BoardCanvas.Fit(word, maxWidth, width);
+        }
+        if (current.Length > 0) lines.Add(current);
+        return lines.Count == 0 ? [string.Empty] : [.. lines];
     }
 }

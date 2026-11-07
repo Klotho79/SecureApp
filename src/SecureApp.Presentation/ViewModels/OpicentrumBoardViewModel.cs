@@ -45,6 +45,7 @@ public sealed partial class OpicentrumBoardViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(IsPositionsSubTab));
         OnPropertyChanged(nameof(IsVolnoSubTab));
+        NotifyRefreshState();
     }
 
     [RelayCommand]

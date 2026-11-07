@@ -1,5 +1,15 @@
 [
   {
+    "version": "0.1.20",
+    "code": 126,
+    "date": "7. 11. 2026",
+    "items": [
+      "Opicentrum → Pozice a Volno: rozpis se zvětšuje gestem dvěma prsty (100–250 %), tlačítka A− / A+ jsou pryč.",
+      "Opicentrum → Pozice: sloupec s názvy pracovišť má dynamickou šířku podle nejdelšího názvu, dlouhé názvy (např. Anest. ambulance) se zalomí na víc řádků.",
+      "Opicentrum: tlačítko Obnovit je teď nahoře vedle záložek Pozice a Volno, ukazuje kdy se rozpis naposledy aktualizoval a je zelené, když se dá obnovit. Dřív než 5 minut po poslední aktualizaci to nejde, aby se zbytečně nezatěžoval Opicentrum."
+    ]
+  },
+  {
     "version": "0.1.19",
     "code": 125,
     "date": "6. 11. 2026",

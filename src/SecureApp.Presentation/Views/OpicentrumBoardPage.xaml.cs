@@ -19,17 +19,17 @@ public partial class OpicentrumBoardPage : ContentPage
         InitializeComponent();
         BindingContext = _viewModel = viewModel;
         ApplyZoomToCorners();
+        _ = new BoardPinchZoom(PositionsBody, PositionsScroll);
+        _ = new BoardPinchZoom(VolnoBody, VolnoScroll);
     }
-
-    private void OnZoomInClicked(object? sender, EventArgs e) => BoardZoom.Change(BoardZoom.Step);
-
-    private void OnZoomOutClicked(object? sender, EventArgs e) => BoardZoom.Change(-BoardZoom.Step);
 
     // The corner boxes hide whatever scrolls under the pinned name column and header, so they follow the zoom (132 x 22 at 100 %).
     private void ApplyZoomToCorners()
     {
         var zoom = BoardZoom.Value;
-        PositionsCorner.WidthRequest = VolnoCorner.WidthRequest = 132 * zoom;
+        var positionsCellsLeft = _viewModel.PositionsRows is { Count: > 0 } rows ? PositionsLayout.For(rows).CellsLeft : PositionsLayout.DefaultNameWidth + PositionsLayout.Gap;
+        PositionsCorner.WidthRequest = positionsCellsLeft * zoom;
+        VolnoCorner.WidthRequest = 132 * zoom;
         PositionsCorner.HeightRequest = VolnoCorner.HeightRequest = 22 * zoom;
     }
 
@@ -47,7 +47,19 @@ public partial class OpicentrumBoardPage : ContentPage
         OpicentrumBoardSync.RosterPushed += OnRosterPushed;
         OpicentrumBoardSync.VolnoPushed += OnVolnoPushed;
         _viewModel.LoadCommand.Execute(null);
+
+        // Keeps the Obnovit button's "před N min" text and its allowed/blocked colour current while the page is open.
+        _refreshTimer ??= Dispatcher.CreateTimer();
+        _refreshTimer.Interval = TimeSpan.FromSeconds(15);
+        _refreshTimer.Tick -= OnRefreshTimerTick;
+        _refreshTimer.Tick += OnRefreshTimerTick;
+        _refreshTimer.Start();
+        _viewModel.NotifyRefreshState();
     }
+
+    private IDispatcherTimer? _refreshTimer;
+
+    private void OnRefreshTimerTick(object? sender, EventArgs e) => _viewModel.NotifyRefreshState();
 
     private async void OnStaffingClicked(object? sender, EventArgs e)
         => await ShellNavigation.GoToAsync(nameof(OpicentrumStaffingPage));
@@ -83,6 +95,7 @@ public partial class OpicentrumBoardPage : ContentPage
     protected override void OnDisappearing()
     {
         base.OnDisappearing();
+        _refreshTimer?.Stop();
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
         BoardZoom.Changed -= ApplyZoomToCorners;
         OpicentrumBoardSync.RosterPushed -= OnRosterPushed;
@@ -91,6 +104,9 @@ public partial class OpicentrumBoardPage : ContentPage
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        // The name column's width follows the workplace names, so the corner box that hides what scrolls under it follows too.
+        if (e.PropertyName == nameof(OpicentrumBoardViewModel.PositionsRows)) ApplyZoomToCorners();
+
         if (e.PropertyName != nameof(OpicentrumBoardViewModel.IsPositionsLoading) || _viewModel.IsPositionsLoading || _ttiStopwatch is null) return;
 
         AppLog.Metric("tti.opicentrum_board_page", _ttiStopwatch.Elapsed.TotalMilliseconds);
