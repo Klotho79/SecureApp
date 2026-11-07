@@ -277,13 +277,15 @@ public sealed class WebSocketMessageTransport : IMessageTransport, IAsyncDisposa
         var socket = new ClientWebSocket();
         socket.Options.KeepAliveInterval = KeepAliveInterval;
         socket.Options.KeepAliveTimeout = KeepAliveTimeout;
-        socket.Options.RemoteCertificateValidationCallback = RelayTls.ValidateWebSocket;
+        var invoker = RelayTls.WebSocketInvoker; // Windows: connects through a handler that pins TLS 1.2 + the relay certificate
+        if (invoker is null)
+            socket.Options.RemoteCertificateValidationCallback = RelayTls.ValidateWebSocket;
         try
         {
             using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             connectCts.CancelAfter(ConnectTimeout);
 
-            await socket.ConnectAsync(new Uri(endpoint, "ws"), connectCts.Token);
+            await socket.ConnectAsync(new Uri(endpoint, "ws"), invoker, connectCts.Token);
 
             await SendFrameAsync(socket, new WireFrame { Type = "auth", DeviceId = deviceId, Secret = secret }, connectCts.Token);
             var authResult = await ReceiveFrameAsync(socket, connectCts.Token);

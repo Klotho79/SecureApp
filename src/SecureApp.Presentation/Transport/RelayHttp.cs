@@ -15,10 +15,25 @@ internal static class RelayHttp
     /// <summary>An HttpClient for relay calls: system trust as usual, plus the relay's pinned self-signed certificate (see <see cref="RelayTls"/>). Plain http:// endpoints are unaffected.</summary>
     public static HttpClient CreateClient(TimeSpan? timeout = null)
     {
-        var client = new HttpClient(new HttpClientHandler { ServerCertificateCustomValidationCallback = RelayTls.Validate });
+        var handler = new HttpClientHandler { ServerCertificateCustomValidationCallback = RelayTls.Validate };
+        if (OperatingSystem.IsWindows())
+            handler.SslProtocols = RelayTls.WindowsProtocols;
+        var client = new HttpClient(handler);
         if (timeout is { } value)
             client.Timeout = value;
         return client;
+    }
+
+    /// <summary>The exception's message followed by every inner exception's, so "The SSL connection could not be established, see inner exception" shows its actual cause.</summary>
+    public static string DescribeException(Exception ex)
+    {
+        var parts = new List<string>();
+        for (var e = ex; e is not null; e = e.InnerException!)
+        {
+            if (!parts.Contains(e.Message)) parts.Add(e.Message);
+            if (e.InnerException is null) break;
+        }
+        return string.Join(" → ", parts);
     }
 
     /// <summary>The Settings UI stores one ws:// address used for both the WebSocket connection and every HTTP call, so HTTP callers need the same ws->http / wss->https rewrite.</summary>

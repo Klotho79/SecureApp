@@ -17,6 +17,24 @@ internal static class RelayTls
     /// <summary>Base64 SHA-256 of the relay certificate's SubjectPublicKeyInfo (valid until 2036; the key is kept if the certificate is renewed).</summary>
     public const string PinnedPublicKeySha256Base64 = "BY8RYKuMt518JgZmGPWa8bOiFg81X7ThtZWwq9oP5kU=";
 
+    /// <summary>
+    /// TLS 1.2 only on Windows (2026-11-07): a work PC could complete a TLS 1.2 handshake with the relay but not TLS 1.3
+    /// ("no common algorithm" — 1.3 unavailable or disabled by policy on that machine), while the app's default negotiation
+    /// failed with "The SSL connection could not be established". The relay accepts 1.2, and the key is pinned either way.
+    /// </summary>
+    public const System.Security.Authentication.SslProtocols WindowsProtocols = System.Security.Authentication.SslProtocols.Tls12;
+
+    private static readonly Lazy<HttpMessageInvoker> WindowsWebSocketInvoker = new(() =>
+    {
+        var handler = new SocketsHttpHandler();
+        handler.SslOptions.EnabledSslProtocols = WindowsProtocols;
+        handler.SslOptions.RemoteCertificateValidationCallback = ValidateWebSocket;
+        return new HttpMessageInvoker(handler);
+    });
+
+    /// <summary>The invoker a WebSocket connects through on Windows (pins TLS 1.2 and the relay certificate); null elsewhere, where the socket's own options do that.</summary>
+    public static HttpMessageInvoker? WebSocketInvoker => OperatingSystem.IsWindows() ? WindowsWebSocketInvoker.Value : null;
+
     public static bool Validate(HttpRequestMessage? request, X509Certificate2? certificate, X509Chain? chain, SslPolicyErrors errors)
         => errors == SslPolicyErrors.None || IsPinned(certificate);
 

@@ -1,5 +1,14 @@
 [
   {
+    "version": "0.1.21",
+    "code": 127,
+    "date": "7. 11. 2026",
+    "items": [
+      "Windows: spojení s relay používá TLS 1.2. Oprava pro počítače, kde nešlo zabezpečené spojení navázat (kontrola aktualizace končila chybou „SSL spojení nelze navázat“).",
+      "Kontrola aktualizace při chybě ukáže i skutečnou příčinu, ne jen obecnou hlášku."
+    ]
+  },
+  {
     "version": "0.1.20",
     "code": 126,
     "date": "7. 11. 2026",

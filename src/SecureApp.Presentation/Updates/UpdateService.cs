@@ -54,7 +54,7 @@ public sealed class UpdateService : IUpdateService
         }
         catch (Exception ex)
         {
-            return new UpdateCheckResult(false, null, null, $"Kontrola aktualizace se nezdařila: {ex.Message}");
+            return new UpdateCheckResult(false, null, null, $"Kontrola aktualizace se nezdařila: {SecureApp.Presentation.Transport.RelayHttp.DescribeException(ex)}");
         }
     }
 
