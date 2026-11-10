@@ -12,7 +12,7 @@
     <Grid RowDefinitions="Auto,*,Auto" Padding="12,8,12,8" RowSpacing="8">
 
         <VerticalStackLayout Grid.RowSpan="3" VerticalOptions="Center" Padding="24" IsVisible="{Binding IsAccessDenied}">
-            <Label Text="Domácí AI je dostupná jen pro Admina na telefonu." HorizontalTextAlignment="Center" FontSize="12" TextColor="Gray" />
+            <Label Text="Domácí AI je dostupná jen na telefonu Admina." HorizontalTextAlignment="Center" FontSize="12" TextColor="Gray" />
         </VerticalStackLayout>
 
         <!-- Connection + model -->

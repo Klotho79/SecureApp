@@ -50,11 +50,17 @@ public sealed partial class SettingsViewModel
     {
         OnPropertyChanged(nameof(CanConfigureLocalAiTranslation));
         OnPropertyChanged(nameof(CanUseHomeAi));
+        OnPropertyChanged(nameof(ShowAdminAiSubTab));
+        OnPropertyChanged(nameof(AdminAiTabText));
     }
 
-    /// <summary>The private home-AI chat (2026-11-10): Admin on a phone only — the user's own assistant, not a community feature.</summary>
-    public bool CanUseHomeAi =>
-        IsAdminEffective && Microsoft.Maui.Devices.DeviceInfo.Current.Platform == Microsoft.Maui.Devices.DevicePlatform.Android;
+    /// <summary>The private home-AI chat (2026-11-10): Admin on the user's own Galaxy S23+ only — not a community feature (see HomeAiAccess).</summary>
+    public bool CanUseHomeAi => IsAdminEffective && SecureApp.Presentation.HomeAi.HomeAiAccess.IsAllowedDevice;
+
+    /// <summary>The Admin "AI" sub-tab holds both cards, so it shows for either (0.1.22 bug: it was tied to the Windows-only translation card, which hid the home-AI card on the phone).</summary>
+    public bool ShowAdminAiSubTab => CanConfigureLocalAiTranslation || CanUseHomeAi;
+
+    public string AdminAiTabText => CanUseHomeAi ? "Domácí AI" : "AI překlad";
 
     [RelayCommand]
     private Task OpenHomeAiAsync() => SecureApp.Presentation.Infrastructure.ShellNavigation.GoToAsync(nameof(Views.HomeAiPage));

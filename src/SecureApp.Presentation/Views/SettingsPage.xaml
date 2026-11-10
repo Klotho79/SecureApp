@@ -593,7 +593,7 @@
                             </DataTrigger>
                         </Button.Triggers>
                     </Button>
-                    <Button Text="AI překlad" Style="{StaticResource SubTabButton}" IsVisible="{Binding CanConfigureLocalAiTranslation}" Command="{Binding SelectAdminSubTabCommand}" CommandParameter="4">
+                    <Button Text="{Binding AdminAiTabText}" Style="{StaticResource SubTabButton}" IsVisible="{Binding ShowAdminAiSubTab}" Command="{Binding SelectAdminSubTabCommand}" CommandParameter="4">
                         <Button.Triggers>
                             <DataTrigger TargetType="Button" Binding="{Binding IsAdminAiSubTab}" Value="True">
                                 <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />

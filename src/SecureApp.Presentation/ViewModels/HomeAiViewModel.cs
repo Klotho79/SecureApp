@@ -95,10 +95,10 @@ public sealed partial class HomeAiViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsGenerating { get; set; }
 
-    /// <summary>Admin only and only on a phone: this is the user's private assistant, not a feature for the whole community.</summary>
+    /// <summary>Admin on the user's own Galaxy S23+ only: this is the private assistant of one person, not a feature for the community (see <see cref="HomeAiAccess"/>).</summary>
     public bool IsAccessGranted =>
         _rolePreviewService.Resolve(_currentUserService.Current.Role) == Role.Admin
-        && Microsoft.Maui.Devices.DeviceInfo.Current.Platform == Microsoft.Maui.Devices.DevicePlatform.Android;
+        && HomeAiAccess.IsAllowedDevice;
 
     public bool IsAccessDenied => !IsAccessGranted;
 

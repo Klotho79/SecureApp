@@ -1,5 +1,13 @@
 [
   {
+    "version": "0.1.23",
+    "code": 129,
+    "date": "10. 11. 2026",
+    "items": [
+      "Oprava: sekce Domácí AI (Nastavení → Admin → Domácí AI) byla ve verzi 0.1.22 skrytá, teď je vidět. Je dostupná jen Adminovi na jeho vlastním telefonu."
+    ]
+  },
+  {
     "version": "0.1.22",
     "code": 128,
     "date": "10. 11. 2026",
