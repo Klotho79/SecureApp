@@ -338,6 +338,10 @@ public static class MauiProgram
 		// Position-suggestion settings (2026-10-25, POZICE_NAVRH_PLAN.md) — from the Pozice board, Admin on the PC.
 		builder.Services.AddTransient<OpicentrumStaffingViewModel>();
 		builder.Services.AddTransient<OpicentrumStaffingPage>();
+		// Private chat with the admin's own LM Studio at home (2026-11-10) — Admin + Android only, see HomeAiViewModel.
+		builder.Services.AddSingleton<SecureApp.Presentation.HomeAi.HomeAiClient>();
+		builder.Services.AddTransient<HomeAiViewModel>();
+		builder.Services.AddTransient<HomeAiPage>();
 
 		// Redakce (2026-10-13) — consolidated edit/post tab, its own standalone tab like Nástěnka above.
 		builder.Services.AddTransient<RedakceViewModel>();

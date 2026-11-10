@@ -52,6 +52,16 @@ public class MainActivity : MauiAppCompatActivity
         ApplyWindowSoftInputMode();
     }
 
+    /// <summary>Lets the Opicentrum boards see a two-finger pinch before their scroll view takes the touches (see <see cref="Platforms.Android.BoardPinchHook"/>); a no-op everywhere else.</summary>
+    public override bool DispatchTouchEvent(MotionEvent? e)
+    {
+        if (e is not null && Platforms.Android.BoardPinchHook.Instance.Dispatch(e, BaseDispatchTouchEvent))
+            return true;
+        return base.DispatchTouchEvent(e);
+    }
+
+    private bool BaseDispatchTouchEvent(MotionEvent e) => base.DispatchTouchEvent(e);
+
     protected override void OnActivityResult(int requestCode, Result resultCode, Intent? data)
     {
         base.OnActivityResult(requestCode, resultCode, data);

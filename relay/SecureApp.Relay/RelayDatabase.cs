@@ -2990,6 +2990,32 @@ public sealed class RelayDatabase
             ("@by", updatedByDeviceId.ToString()), ("@now", Format(DateTimeOffset.UtcNow)));
     }
 
+    /// <summary>The "device" recorded as the updater of the automatic midnight reset (<see cref="ResetStaleRoomStatuses"/>); shown as "Automaticky".</summary>
+    public static readonly Guid RoomStatusResetActor = Guid.Empty;
+
+    /// <summary>
+    /// Midnight reset (2026-11-10, user's ask: "stavy sálu by se měly o půlnoci vyresetovat na volno"): every sál
+    /// whose status was last set before <paramref name="cutoffUtc"/> (the start of the current local day) and is
+    /// not already plain "Volno" with no note goes back to <paramref name="freeText"/> with the note cleared.
+    /// Defined by age rather than by a one-off timer tick, so a relay restart around midnight still catches up.
+    /// Returns how many rows changed.
+    /// </summary>
+    public int ResetStaleRoomStatuses(DateTimeOffset cutoffUtc, string freeText)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE room_status
+            SET status_text = @free, note_text = '', updated_by_device_id = @by, updated_at_utc = @now
+            WHERE updated_at_utc < @cutoff AND (status_text <> @free OR note_text <> '')
+            """;
+        command.Parameters.AddWithValue("@free", freeText);
+        command.Parameters.AddWithValue("@by", RoomStatusResetActor.ToString());
+        command.Parameters.AddWithValue("@now", Format(DateTimeOffset.UtcNow));
+        command.Parameters.AddWithValue("@cutoff", Format(cutoffUtc));
+        return command.ExecuteNonQuery();
+    }
+
     /// <summary>The updater's name is resolved against the CURRENT directory, same reasoning as <see cref="GetBoardPosts"/>'s own author lookup.</summary>
     public IReadOnlyList<(Guid WorkplaceId, string WorkplaceName, string StatusText, string UpdatedByDisplayName, DateTimeOffset UpdatedAtUtc, string NoteText)> GetRoomStatuses()
     {
@@ -2997,7 +3023,8 @@ public sealed class RelayDatabase
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT r.workplace_id, r.workplace_name, r.status_text, r.note_text, r.updated_at_utc,
-                   COALESCE(e.display_name, d.display_name, 'Neznámý') AS updated_by_name
+                   CASE WHEN r.updated_by_device_id = '00000000-0000-0000-0000-000000000000' THEN 'Automaticky o půlnoci'
+                        ELSE COALESCE(e.display_name, d.display_name, 'Neznámý') END AS updated_by_name
             FROM room_status r
             LEFT JOIN directory_entries e ON e.device_id = r.updated_by_device_id
             LEFT JOIN devices           d ON d.id        = r.updated_by_device_id

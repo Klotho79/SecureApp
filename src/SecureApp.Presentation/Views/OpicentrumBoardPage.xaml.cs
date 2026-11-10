@@ -19,9 +19,12 @@ public partial class OpicentrumBoardPage : ContentPage
         InitializeComponent();
         BindingContext = _viewModel = viewModel;
         ApplyZoomToCorners();
-        _ = new BoardPinchZoom(PositionsBody, PositionsScroll);
-        _ = new BoardPinchZoom(VolnoBody, VolnoScroll);
+        _positionsPinch = new BoardPinchZoom(PositionsBody, PositionsScroll);
+        _volnoPinch = new BoardPinchZoom(VolnoBody, VolnoScroll);
     }
+
+    private readonly BoardPinchZoom _positionsPinch;
+    private readonly BoardPinchZoom _volnoPinch;
 
     // The corner boxes hide whatever scrolls under the pinned name column and header, so they follow the zoom (132 x 22 at 100 %).
     private void ApplyZoomToCorners()
@@ -55,6 +58,11 @@ public partial class OpicentrumBoardPage : ContentPage
         _refreshTimer.Tick += OnRefreshTimerTick;
         _refreshTimer.Start();
         _viewModel.NotifyRefreshState();
+#if ANDROID
+        // Pinch zoom on Android is read at the activity level while this page is on screen (BoardPinchHook).
+        SecureApp.Presentation.Platforms.Android.BoardPinchHook.Instance.Register(_positionsPinch, PositionsBoard);
+        SecureApp.Presentation.Platforms.Android.BoardPinchHook.Instance.Register(_volnoPinch, VolnoBoard);
+#endif
     }
 
     private IDispatcherTimer? _refreshTimer;
@@ -95,6 +103,9 @@ public partial class OpicentrumBoardPage : ContentPage
     protected override void OnDisappearing()
     {
         base.OnDisappearing();
+#if ANDROID
+        SecureApp.Presentation.Platforms.Android.BoardPinchHook.Instance.Clear();
+#endif
         _refreshTimer?.Stop();
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
         BoardZoom.Changed -= ApplyZoomToCorners;

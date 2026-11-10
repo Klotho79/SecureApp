@@ -46,7 +46,18 @@ public sealed partial class SettingsViewModel
     public bool CanConfigureLocalAiTranslation =>
         IsAdminEffective && Microsoft.Maui.Devices.DeviceInfo.Current.Platform == Microsoft.Maui.Devices.DevicePlatform.WinUI;
 
-    partial void OnIsAdminEffectiveChanged(bool value) => OnPropertyChanged(nameof(CanConfigureLocalAiTranslation));
+    partial void OnIsAdminEffectiveChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanConfigureLocalAiTranslation));
+        OnPropertyChanged(nameof(CanUseHomeAi));
+    }
+
+    /// <summary>The private home-AI chat (2026-11-10): Admin on a phone only — the user's own assistant, not a community feature.</summary>
+    public bool CanUseHomeAi =>
+        IsAdminEffective && Microsoft.Maui.Devices.DeviceInfo.Current.Platform == Microsoft.Maui.Devices.DevicePlatform.Android;
+
+    [RelayCommand]
+    private Task OpenHomeAiAsync() => SecureApp.Presentation.Infrastructure.ShellNavigation.GoToAsync(nameof(Views.HomeAiPage));
 
     partial void OnLocalAiTranslationStatusTextChanged(string? value) => HasLocalAiTranslationStatus = !string.IsNullOrEmpty(value);
 

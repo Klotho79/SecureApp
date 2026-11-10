@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="SecureApp.Presentation.Views.HomeAiPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:vm="clr-namespace:SecureApp.Presentation.ViewModels"
+    x:DataType="vm:HomeAiViewModel"
+    Title="Domácí AI">
+
+    <!-- Private chat with the user's own LM Studio at home (2026-11-10). Admin + Android only; the conversation is
+         kept in memory only — nothing is stored or logged, and it never leaves the home network / WireGuard tunnel. -->
+    <Grid RowDefinitions="Auto,*,Auto" Padding="12,8,12,8" RowSpacing="8">
+
+        <VerticalStackLayout Grid.RowSpan="3" VerticalOptions="Center" Padding="24" IsVisible="{Binding IsAccessDenied}">
+            <Label Text="Domácí AI je dostupná jen pro Admina na telefonu." HorizontalTextAlignment="Center" FontSize="12" TextColor="Gray" />
+        </VerticalStackLayout>
+
+        <!-- Connection + model -->
+        <VerticalStackLayout Grid.Row="0" Spacing="6" IsVisible="{Binding IsAccessGranted}">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                <Entry Grid.Column="0" Text="{Binding BaseUrlText}" Placeholder="http://192.168.50.8:11234" Keyboard="Url" FontSize="12" />
+                <Button Grid.Column="1" Text="Připojit" Style="{StaticResource SecondaryButton}" Command="{Binding ConnectCommand}" IsEnabled="{Binding CanConnect}" Padding="12,4" MinimumHeightRequest="36" />
+            </Grid>
+            <Entry Text="{Binding TokenText}" Placeholder="API token (jen pokud ho LM Studio vyžaduje)" IsPassword="True" FontSize="11" />
+            <Picker Title="Model" ItemsSource="{Binding Models}" ItemDisplayBinding="{Binding Label}" SelectedItem="{Binding SelectedModel}" FontSize="12" />
+            <Grid ColumnDefinitions="*,*,*" ColumnSpacing="6">
+                <Button Grid.Column="0" Text="Načíst" Style="{StaticResource SecondaryButton}" Command="{Binding LoadModelCommand}" IsEnabled="{Binding CanLoad}" FontSize="11" Padding="4,2" MinimumHeightRequest="34" />
+                <Button Grid.Column="1" Text="Uvolnit" Style="{StaticResource SecondaryButton}" Command="{Binding UnloadModelCommand}" IsEnabled="{Binding CanUnload}" FontSize="11" Padding="4,2" MinimumHeightRequest="34" />
+                <Button Grid.Column="2" Text="Nový rozhovor" Style="{StaticResource SecondaryButton}" Command="{Binding NewChatCommand}" FontSize="11" Padding="4,2" MinimumHeightRequest="34" />
+            </Grid>
+            <HorizontalStackLayout Spacing="8">
+                <Switch IsToggled="{Binding UseDecompose}" VerticalOptions="Center" />
+                <Label Text="Rozložit problém na kroky (pro malé modely)" FontSize="11" VerticalOptions="Center" />
+            </HorizontalStackLayout>
+            <Label Text="{Binding StatusText}" FontSize="9.5" TextColor="Gray" LineBreakMode="WordWrap" />
+        </VerticalStackLayout>
+
+        <!-- Conversation -->
+        <CollectionView x:Name="MessagesView" Grid.Row="1" ItemsSource="{Binding Messages}" SelectionMode="None" IsVisible="{Binding IsAccessGranted}">
+            <CollectionView.ItemsLayout>
+                <LinearItemsLayout Orientation="Vertical" ItemSpacing="6" />
+            </CollectionView.ItemsLayout>
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="vm:HomeAiMessage">
+                    <Border Padding="10,8" StrokeShape="RoundRectangle 12" Stroke="Transparent" Margin="0,0,24,0"
+                            BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
+                        <Border.Triggers>
+                            <DataTrigger TargetType="Border" Binding="{Binding IsUser}" Value="True">
+                                <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource AccentSoft}, Dark={StaticResource AccentSoftDark}}" />
+                                <Setter Property="Margin" Value="24,0,0,0" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Border" Binding="{Binding IsError}" Value="True">
+                                <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource DangerSoft}, Dark={StaticResource DangerSoftDark}}" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Border" Binding="{Binding IsStep}" Value="True">
+                                <Setter Property="BackgroundColor" Value="Transparent" />
+                                <Setter Property="Stroke" Value="Gray" />
+                                <Setter Property="Margin" Value="0" />
+                            </DataTrigger>
+                        </Border.Triggers>
+                        <Label Text="{Binding Text}" FontSize="12" LineBreakMode="WordWrap">
+                            <Label.Triggers>
+                                <DataTrigger TargetType="Label" Binding="{Binding IsStep}" Value="True">
+                                    <Setter Property="FontSize" Value="10" />
+                                    <Setter Property="TextColor" Value="Gray" />
+                                </DataTrigger>
+                            </Label.Triggers>
+                        </Label>
+                    </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+
+        <!-- Input -->
+        <Grid Grid.Row="2" ColumnDefinitions="*,Auto" ColumnSpacing="6" IsVisible="{Binding IsAccessGranted}">
+            <Editor Grid.Column="0" Text="{Binding PromptText}" Placeholder="Napište zprávu…" AutoSize="TextChanges" MaximumHeightRequest="140" FontSize="13" />
+            <Button Grid.Column="1" Text="Odeslat" Command="{Binding SendCommand}" IsEnabled="{Binding CanSend}" VerticalOptions="End" Padding="14,6" />
+            <Button Grid.Column="1" Text="Stop" Command="{Binding StopCommand}" IsVisible="{Binding CanStop}" VerticalOptions="End" Padding="14,6" BackgroundColor="{StaticResource Danger}" TextColor="White" />
+        </Grid>
+    </Grid>
+</ContentPage>

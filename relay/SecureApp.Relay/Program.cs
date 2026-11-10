@@ -103,6 +103,8 @@ builder.Services.AddSingleton<ConnectionRegistry>();
 // Only does anything once wg-easy is actually configured (same tolerance as /admin/wireguard/clients
 // itself) — see WireGuardOnboardingSweepService's own remarks.
 builder.Services.AddHostedService(sp => new WireGuardOnboardingSweepService(sp.GetRequiredService<RelayDatabase>(), wgEasyUrl, wgEasyPassword));
+// Every sál goes back to "Volno" after local midnight (user's ask 2026-11-10) — see the service's own remarks.
+builder.Services.AddHostedService<RoomStatusMidnightResetService>();
 
 // Rate limiting (2026-11-03, public-HTTPS security audit) — until now nothing here limited how often a
 // caller could try an admin secret, an invite/pickup code or an identity-backup lookup key, because only

@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.1.22",
+    "code": 128,
+    "date": "10. 11. 2026",
+    "items": [
+      "Widget: o víkendech a svátcích se v kalendáři ani v seznamu dnů už nezobrazuje volno (PS/VV/NV), den vypadá jako běžný víkend nebo svátek.",
+      "Knihovna: přepínání kategorií je okamžité, vybraná dlaždice se zvýrazní hned a načítání běží na pozadí, takže appka nezamrzá a netočí se kolečko.",
+      "Opicentrum → Pozice a Volno: zvětšování gestem dvou prstů na Androidu opravené. Na PC se zvětšuje podržením Ctrl a kolečkem myši.",
+      "Stav sálů: o půlnoci se všechny sály samy vrátí na „Volno“ a poznámky se smažou.",
+      "Admin na telefonu: nová sekce Domácí AI (soukromý chat s modelem z LM Studia na domácím PC, s načtením a uvolněním modelu a rozkladem těžkého problému na kroky)."
+    ]
+  },
+  {
     "version": "0.1.21",
     "code": 127,
     "date": "7. 11. 2026",

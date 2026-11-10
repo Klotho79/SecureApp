@@ -249,42 +249,104 @@ public sealed partial class LibraryViewModel : ObservableObject
 
     private void RecomputeCanManageLibrary() => CanManageLibrary = CanModifyContent || IsDocumentReviewer;
 
+    /// <summary>Entry point for the search box, pull-to-refresh, page appearing and uploads: the full reload (spinner on, categories + review state refreshed too).</summary>
     [RelayCommand]
-    private async Task SearchAsync()
+    private Task SearchAsync() => LoadAsync(showSpinner: true, refreshExtras: true);
+
+    /// <summary>Newest load wins: a slower, older answer (rapid category switching) must never overwrite a newer one.</summary>
+    private int _searchVersion;
+
+    /// <summary>How many spinner-showing loads are in flight; <see cref="IsLoading"/> is simply "more than zero", so a superseded load can't switch the spinner off under a newer one.</summary>
+    private int _spinnerLoads;
+
+    /// <summary>
+    /// Fetch + mapping run on a worker thread (2026-11-08, user's report: switching the library menu spun for ~2 s
+    /// and froze the whole app) — only the final property assignments happen back on the UI thread. A plain
+    /// category switch calls this silently (<paramref name="showSpinner"/> false, no extras) and only while a text
+    /// search is active, because the file list is not even visible otherwise.
+    /// </summary>
+    private async Task LoadAsync(bool showSpinner, bool refreshExtras)
     {
-        IsLoading = true;
+        var version = Interlocked.Increment(ref _searchVersion);
+        if (showSpinner)
+        {
+            Interlocked.Increment(ref _spinnerLoads);
+            IsLoading = true;
+        }
+
         StatusErrorMessage = null;
         CanModifyContent = RoleAccessPolicy.IsAllowed(_rolePreviewService.Resolve(_currentUserService.Current.Role), RbacAction.UploadLibraryFile);
         CanTranslateDocuments = ComputeCanTranslateDocuments();
+        var canTranslate = CanTranslateDocuments;
+        var query = string.IsNullOrWhiteSpace(SearchQuery) ? null : SearchQuery;
+        var folder = string.IsNullOrWhiteSpace(FolderFilter) ? null : FolderFilter;
+        var loadedOk = false;
         try
         {
-            // Search-latency telemetry (2026-10-01, the AIM-spec-derived requirement adapted to this
-            // app's existing AppLog metrics pipeline rather than a new logging system — see AppLog's
-            // own remarks). Target per the spec was <30ms for a LOCAL indexed query; this one is a
-            // network round trip to the relay, so the number is expected to run much higher — logged
-            // for visibility/trending, not held to that local-query target.
-            var sw = System.Diagnostics.Stopwatch.StartNew();
-            var query = string.IsNullOrWhiteSpace(SearchQuery) ? null : SearchQuery;
-            var folder = string.IsNullOrWhiteSpace(FolderFilter) ? null : FolderFilter;
-            var results = await _libraryService.SearchAsync(query, folder);
-            Infrastructure.AppLog.Metric("search_latency.library", sw.Elapsed.TotalMilliseconds, "ms", ("resultCount", results.Count));
+            var loaded = await Task.Run(async () =>
+            {
+                // Search-latency telemetry (2026-10-01, the AIM-spec-derived requirement adapted to this
+                // app's existing AppLog metrics pipeline rather than a new logging system — see AppLog's
+                // own remarks). Target per the spec was <30ms for a LOCAL indexed query; this one is a
+                // network round trip to the relay, so the number is expected to run much higher — logged
+                // for visibility/trending, not held to that local-query target.
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                var results = await _libraryService.SearchAsync(query, folder);
+                Infrastructure.AppLog.Metric("search_latency.library", sw.Elapsed.TotalMilliseconds, "ms", ("resultCount", results.Count));
 
-            var myDeviceId = (await _transportSettingsRepository.GetAsync())?.AssignedDeviceId;
-            Results = new ObservableCollection<LibraryFileItem>(results.Select(r => ToItem(r, myDeviceId, CanTranslateDocuments)));
+                var myDeviceId = (await _transportSettingsRepository.GetAsync())?.AssignedDeviceId;
+                var items = results.Select(r => ToItem(r, myDeviceId, canTranslate)).ToList();
+
+                // With no query and no folder filter the search above already IS the unfiltered fetch the
+                // category row needs — reuse it instead of asking the relay for the same list twice.
+                List<string>? categoryNames = null;
+                if (refreshExtras)
+                {
+                    var all = query is null && folder is null ? results : await _libraryService.SearchAsync();
+                    categoryNames = BuildCategoryNames(all);
+                }
+
+                return (items, categoryNames);
+            });
+
+            if (version != _searchVersion)
+            {
+                return; // a newer load has been started meanwhile — its answer is the one to show
+            }
+
+            Results = new ObservableCollection<LibraryFileItem>(loaded.items);
             IsEmpty = Results.Count == 0;
+            if (loaded.categoryNames is { } names)
+            {
+                ApplyCategories(names);
+            }
 
-            // With no query and no folder filter the search above already IS the unfiltered fetch the
-            // category row needs — reuse it instead of asking the relay for the same list twice.
-            await RefreshCategoriesAsync(query is null && folder is null ? results : null);
-            await RefreshReviewWorkflowStateAsync();
+            loadedOk = true;
         }
         catch (Exception ex)
         {
-            StatusErrorMessage = $"Nepodařilo se prohledat knihovnu: {ex.Message}";
+            if (version == _searchVersion)
+            {
+                StatusErrorMessage = $"Nepodařilo se prohledat knihovnu: {ex.Message}";
+            }
         }
         finally
         {
-            IsLoading = false;
+            if (showSpinner && Interlocked.Decrement(ref _spinnerLoads) == 0)
+            {
+                IsLoading = false;
+            }
+        }
+
+        if (loadedOk && refreshExtras)
+        {
+            // After the spinner is off: the drafts/reviewer state is an extra, not part of "the list is loading".
+            if (IsTopCategorySelected && SelectedCategory is { } current)
+            {
+                _ = RefreshSubcategoriesAsync(current);
+            }
+
+            await RefreshReviewWorkflowStateAsync();
         }
     }
 
@@ -303,11 +365,15 @@ public sealed partial class LibraryViewModel : ObservableObject
         CanModifyContent = RoleAccessPolicy.IsAllowed(_rolePreviewService.Resolve(_currentUserService.Current.Role), RbacAction.UploadLibraryFile);
         try
         {
-            var policy = await _devicePolicyService.GetMyPolicyAsync();
-            IsDocumentReviewer = policy.IsDocumentReviewer;
-
-            var mine = await _libraryReviewService.GetMyDocumentsAsync();
-            MyDocuments = new ObservableCollection<LibraryDocumentDraftItem>(mine.Select(ToDraftItem));
+            // Network + mapping on a worker thread, assignments back on the UI thread (see LoadAsync).
+            var (isReviewer, drafts) = await Task.Run(async () =>
+            {
+                var policy = await _devicePolicyService.GetMyPolicyAsync();
+                var mine = await _libraryReviewService.GetMyDocumentsAsync();
+                return (policy.IsDocumentReviewer, mine.Select(ToDraftItem).ToList());
+            });
+            IsDocumentReviewer = isReviewer;
+            MyDocuments = new ObservableCollection<LibraryDocumentDraftItem>(drafts);
             HasMyDocuments = MyDocuments.Count > 0;
         }
         catch
@@ -345,9 +411,8 @@ public sealed partial class LibraryViewModel : ObservableObject
     /// chip row needs to keep showing every category that exists regardless of which one is
     /// currently selected, not just whichever one the active filter happens to match.
     /// </summary>
-    private async Task RefreshCategoriesAsync(IReadOnlyList<SharedLibraryFileSummary>? unfilteredFiles = null)
+    private static List<string> BuildCategoryNames(IReadOnlyList<SharedLibraryFileSummary> all)
     {
-        var all = unfilteredFiles ?? await _libraryService.SearchAsync();
         // Only the segment before the first '/' — a sub-category file's FolderPath is
         // "{Top}/{Sub}" (2026-10-02), and without this split that whole two-segment string would
         // show up as its own ad-hoc top-level chip instead of folding into its real parent.
@@ -369,6 +434,11 @@ public sealed partial class LibraryViewModel : ObservableObject
 
         var names = new List<string> { "Vše" };
         names.AddRange(distinctFolders);
+        return names;
+    }
+
+    private void ApplyCategories(List<string> names)
+    {
         Categories = new ObservableCollection<string>(names);
 
         // Keep the active tile in sync with whatever FolderFilter already is (e.g. after a plain
@@ -377,6 +447,12 @@ public sealed partial class LibraryViewModel : ObservableObject
         SelectedCategory = string.IsNullOrEmpty(FolderFilter)
             ? "Vše"
             : names.FirstOrDefault(n => string.Equals(n, FolderFilter, StringComparison.OrdinalIgnoreCase)) ?? FolderFilter;
+
+        // Skip rebuilding the tile row when nothing changed but the selection (already highlighted in place).
+        if (CategoryChips.Select(c => c.Name).SequenceEqual(names))
+        {
+            return;
+        }
 
         CategoryChips = new ObservableCollection<CategoryChipItem>(
             names.Select(n => new CategoryChipItem(n, IconForCategory(n), string.Equals(n, SelectedCategory, StringComparison.OrdinalIgnoreCase))));
@@ -415,7 +491,17 @@ public sealed partial class LibraryViewModel : ObservableObject
         // not community-created library content — shown only under "Nástroje", never fetched from
         // the relay, never mixed into the real Subcategories grid below.
         ShowNastrojeTools = value == "Nástroje";
-        _ = RefreshSubcategoriesAsync();
+
+        // 2026-11-08 (user's report: the tapped tile only lit up after ~2 s and a spinner froze the app):
+        // everything visible changes right here, synchronously — the tile highlights in place, the
+        // sub-category grid shows what was loaded last time (or empty) — and the network refresh below
+        // runs on a worker thread and only swaps the grid when something actually changed.
+        foreach (var chip in CategoryChips)
+        {
+            chip.IsSelected = string.Equals(chip.Name, value, StringComparison.OrdinalIgnoreCase);
+        }
+
+        ShowSubcategories(value);
 
         var target = value == "Vše" ? string.Empty : value;
         if (string.Equals(target, FolderFilter, StringComparison.OrdinalIgnoreCase))
@@ -424,29 +510,82 @@ public sealed partial class LibraryViewModel : ObservableObject
         }
 
         FolderFilter = target;
-        _ = SearchAsync();
+
+        // The sub-category grid is the default content; the file list is only on screen while searching
+        // text, so a plain tab switch has no file search to run at all (it used to run four requests).
+        if (IsSearching)
+        {
+            _ = LoadAsync(showSpinner: false, refreshExtras: false);
+        }
     }
 
-    /// <summary>Best-effort, same posture as <see cref="RefreshReviewWorkflowStateAsync"/> — a failure here must never block browsing. Clears the grid for "Vše" (sub-categories only make sense under a real top category).</summary>
-    private async Task RefreshSubcategoriesAsync()
+    /// <summary>Sub-categories already fetched per top category — shown instantly on the next switch, then quietly re-checked.</summary>
+    private readonly Dictionary<string, List<SubcategoryItem>> _subcategoryCache = new(StringComparer.OrdinalIgnoreCase);
+
+    private CancellationTokenSource? _subcategoriesCts;
+
+    private void ShowSubcategories(string category)
     {
-        if (!IsTopCategorySelected || SelectedCategory is null)
+        _subcategoriesCts?.Cancel();
+
+        if (category == "Vše")
         {
             Subcategories = [];
             HasSubcategories = false;
             return;
         }
 
+        if (_subcategoryCache.TryGetValue(category, out var cached))
+        {
+            Subcategories = new ObservableCollection<SubcategoryItem>(cached);
+            HasSubcategories = cached.Count > 0;
+        }
+        else
+        {
+            Subcategories = [];
+            HasSubcategories = false;
+        }
+
+        _ = RefreshSubcategoriesAsync(category);
+    }
+
+    /// <summary>Best-effort, same posture as <see cref="RefreshReviewWorkflowStateAsync"/> — a failure here must never block browsing. Runs on a worker thread; a newer call (another tile tapped) cancels this one.</summary>
+    private async Task RefreshSubcategoriesAsync(string category)
+    {
+        _subcategoriesCts?.Cancel();
+        var cts = _subcategoriesCts = new CancellationTokenSource();
+
         try
         {
-            var myDeviceId = (await _transportSettingsRepository.GetAsync())?.AssignedDeviceId;
-            var items = await _libraryService.ListSubcategoriesAsync(SelectedCategory);
-            Subcategories = new ObservableCollection<SubcategoryItem>(items.Select(s => ToSubcategoryItem(s, myDeviceId)));
-            HasSubcategories = Subcategories.Count > 0;
+            var items = await Task.Run(async () =>
+            {
+                var myDeviceId = (await _transportSettingsRepository.GetAsync(cts.Token))?.AssignedDeviceId;
+                var summaries = await _libraryService.ListSubcategoriesAsync(category, cts.Token);
+                return summaries.Select(s => ToSubcategoryItem(s, myDeviceId)).ToList();
+            }, cts.Token);
+
+            if (cts.IsCancellationRequested)
+            {
+                return;
+            }
+
+            // Unchanged since last time: leave the grid alone (no re-render, no flicker).
+            if (_subcategoryCache.TryGetValue(category, out var old) && old.SequenceEqual(items))
+            {
+                return;
+            }
+
+            _subcategoryCache[category] = items;
+            Subcategories = new ObservableCollection<SubcategoryItem>(items);
+            HasSubcategories = items.Count > 0;
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer tap — nothing to do.
         }
         catch (Exception ex)
         {
-            _ = _diagnosticsReporter.ReportAsync(DiagnosticLogLevel.Warning, $"Nepodařilo se načíst podkategorie pro '{SelectedCategory}'.", nameof(LibraryViewModel), ex);
+            _ = _diagnosticsReporter.ReportAsync(DiagnosticLogLevel.Warning, $"Nepodařilo se načíst podkategorie pro '{category}'.", nameof(LibraryViewModel), ex);
         }
     }
 
@@ -513,7 +652,23 @@ public sealed record LibraryFileItem(Guid Id, string FileName, string? FolderPat
 public sealed record LibraryTagItem(string Label);
 
 /// <summary>One tile in the category row (2026-10-02 redesign). Deliberately plain data — no MAUI <c>Color</c>/<c>FontAttributes</c> here, matching this file's own "free of any MAUI type" rule; the selected/unselected visual difference is a XAML DataTrigger on <see cref="IsSelected"/> instead.</summary>
-public sealed record CategoryChipItem(string Name, string Icon, bool IsSelected);
+/// <summary>Observable (2026-11-08) so a tap can flip the highlight in place, instantly, instead of rebuilding the whole row after the network round trips.</summary>
+public sealed partial class CategoryChipItem : ObservableObject
+{
+    public CategoryChipItem(string name, string icon, bool isSelected)
+    {
+        Name = name;
+        Icon = icon;
+        IsSelected = isSelected;
+    }
+
+    public string Name { get; }
+
+    public string Icon { get; }
+
+    [ObservableProperty]
+    public partial bool IsSelected { get; set; }
+}
 
 /// <summary>One row in "Moje koncepty" (2026-10-01) — <see cref="CanSubmit"/> gates the "Odeslat ke schválení" button, true only for Draft/Rejected (a PendingReview or already-Published document has nothing to (re)submit).</summary>
 public sealed record LibraryDocumentDraftItem(Guid Id, string Title, string StatusText, bool CanSubmit);

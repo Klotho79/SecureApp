@@ -42,11 +42,73 @@ internal sealed class BoardPinchZoom
     {
         _body = body;
         _scroll = scroll;
-        var pinch = new PinchGestureRecognizer();
-        pinch.PinchUpdated += OnPinchUpdated;
-        body.GestureRecognizers.Add(pinch);
+        // Android never delivers MAUI's pinch inside a native ScrollView (it takes over the touches), so there the
+        // platform BoardPinchHook feeds BeginNative/ScaleNative/EndNative below instead.
+        if (!OperatingSystem.IsAndroid())
+        {
+            var pinch = new PinchGestureRecognizer();
+            pinch.PinchUpdated += OnPinchUpdated;
+            body.GestureRecognizers.Add(pinch);
+        }
+
         body.SizeChanged += OnBodySizeChanged;
+#if WINDOWS
+        // A PC without a touch screen: Ctrl + mouse wheel zooms (the plain wheel keeps scrolling).
+        scroll.HandlerChanged += (_, _) => TryAttachWheel();
+        TryAttachWheel();
+#endif
     }
+
+#if WINDOWS
+    private bool _wheelAttached;
+
+    private void TryAttachWheel()
+    {
+        if (_wheelAttached || _scroll.Handler?.PlatformView is not Microsoft.UI.Xaml.UIElement element)
+            return;
+
+        _wheelAttached = true;
+        element.AddHandler(Microsoft.UI.Xaml.UIElement.PointerWheelChangedEvent, new Microsoft.UI.Xaml.Input.PointerEventHandler(OnWheel), true);
+    }
+
+    private void OnWheel(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        var ctrl = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(global::Windows.System.VirtualKey.Control)
+            .HasFlag(global::Windows.UI.Core.CoreVirtualKeyStates.Down);
+        if (!ctrl)
+            return;
+
+        var point = e.GetCurrentPoint((Microsoft.UI.Xaml.UIElement)sender);
+        var notches = point.Properties.MouseWheelDelta / 120.0;
+        BeginNative(point.Position.X, point.Position.Y);
+        ScaleNative(Math.Pow(1.1, notches), point.Position.X, point.Position.Y);
+        EndNative();
+        e.Handled = true;
+    }
+#endif
+
+    /// <summary>A pinch starts with the fingers' midpoint at (<paramref name="viewX"/>, <paramref name="viewY"/>) in the visible board area (dp).</summary>
+    public void BeginNative(double viewX, double viewY)
+    {
+        var zoom = BoardZoom.Value;
+        _viewX = viewX;
+        _viewY = viewY;
+        _focalX = (viewX + _scroll.ScrollX) / zoom;
+        _focalY = (viewY + _scroll.ScrollY) / zoom;
+    }
+
+    /// <summary>Applies one step of the pinch (<paramref name="factor"/> is relative to the previous step) and keeps the board point under the fingers.</summary>
+    public void ScaleNative(double factor, double viewX, double viewY)
+    {
+        var before = BoardZoom.Value;
+        BoardZoom.Set((float)(before * factor));
+        _viewX = viewX;
+        _viewY = viewY;
+        if (BoardZoom.Value != before)
+            _pendingScroll = (Math.Max(0, _focalX * BoardZoom.Value - _viewX), Math.Max(0, _focalY * BoardZoom.Value - _viewY));
+    }
+
+    public void EndNative() => BoardZoom.Save();
 
     private void OnPinchUpdated(object? sender, PinchGestureUpdatedEventArgs e)
     {

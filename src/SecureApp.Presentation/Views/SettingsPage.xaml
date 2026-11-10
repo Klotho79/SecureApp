@@ -847,6 +847,15 @@
                         <Label Text="{Binding LocalAiTranslationStatusText}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" IsVisible="{Binding HasLocalAiTranslationStatus}" LineBreakMode="WordWrap" />
                     </VerticalStackLayout>
                 </Border>
+
+                <!-- Private home-AI chat (2026-11-10) — Admin on a phone only. -->
+                <Border Style="{StaticResource CardBorder}" IsVisible="{Binding CanUseHomeAi}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Admin: Domácí AI (soukromý chat)" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Label Text="Chat s modelem v LM Studiu na domácím PC — pro soukromé věci. Dotazy jdou jen po domácí síti / WireGuardu přímo na váš PC, nikam jinam; rozhovor se nikam neukládá a po zavření appky zmizí. Umí načíst a uvolnit model a rozložit těžký problém na kroky, aby ho zvládl i malý model." FontSize="9.5" TextColor="Gray" LineBreakMode="WordWrap" />
+                        <Button Text="Otevřít Domácí AI" Style="{StaticResource SecondaryButton}" Command="{Binding OpenHomeAiCommand}" />
+                    </VerticalStackLayout>
+                </Border>
                 </VerticalStackLayout>
 
                 <VerticalStackLayout Spacing="12" IsVisible="{Binding IsAdminNewMemberSubTab}">

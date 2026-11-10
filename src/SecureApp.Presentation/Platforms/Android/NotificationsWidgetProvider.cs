@@ -464,6 +464,11 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
     /// <summary>Ordinary work days stay unfilled so the special days stand out. Priority: the day's own entry (duty, leave, trip …), then a public holiday, then the weekend grey.</summary>
     private static int? CalendarFill(WorkAssignment? assignment, DateOnly date)
     {
+        // A weekend/holiday is simply a day off: a leave entry (PS/VV/NV) there is dropped, so the cell keeps its
+        // plain weekend/holiday colour — same rule as the in-app calendar.
+        if (IsLeaveOnNonWorkingDay(assignment, date))
+            assignment = null;
+
         if (assignment is not null)
         {
             var isDuty = assignment.Type == AssignmentType.OnCall || !string.IsNullOrEmpty(assignment.OnCallWorkplaceName);
@@ -483,6 +488,12 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
         if (CzechCalendar.HolidayName(date) is not null) return HolidayFill;
         return CzechCalendar.IsWeekend(date) ? WeekendFill : null;
     }
+
+    /// <summary>True for a plain "Volno" entry (PS/VV/NV leave code) on a weekend or public holiday — meaningless there, so the widget treats the day as having no entry. A real duty on such a day is kept.</summary>
+    private static bool IsLeaveOnNonWorkingDay(WorkAssignment? assignment, DateOnly date)
+        => assignment is { Type: AssignmentType.DayOff }
+           && string.IsNullOrEmpty(assignment.OnCallWorkplaceName)
+           && CzechCalendar.DayKindLabel(date).Length > 0;
 
     private static int CalendarRank(WorkAssignment assignment)
     {
@@ -513,6 +524,10 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
         // "Víkend" / a holiday's name (2026-09-26, same rule as the in-app Rozpis — see
         // AssignmentDayItem.DisplayTypeLabel): "Bez záznamu" only for an ordinary day with nothing yet.
         var dayKind = CzechCalendar.DayKindLabel(date);
+
+        // Weekend/holiday with only a leave code (PS/VV/NV): shown as the plain "Víkend" / holiday name, no code.
+        if (IsLeaveOnNonWorkingDay(assignment, date))
+            assignment = null;
 
         if (assignment is null)
         {

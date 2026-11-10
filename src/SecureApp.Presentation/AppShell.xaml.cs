@@ -148,6 +148,8 @@ public partial class AppShell : Shell
 		Routing.RegisterRoute(nameof(OpicentrumBoardPage), typeof(OpicentrumBoardPage));
 		// Doctors'/workplaces' settings for the position suggestions (2026-10-25) — from the Pozice board.
 		Routing.RegisterRoute(nameof(OpicentrumStaffingPage), typeof(OpicentrumStaffingPage));
+		// Admin's private home-AI chat (2026-11-10) — opened from Settings → Admin → AI.
+		Routing.RegisterRoute(nameof(HomeAiPage), typeof(HomeAiPage));
 
 		// Smart Search (2026-09-20, Phase 4 — see NOTIFICATION_HUB_SPEC.md) — reached via the 🔍
 		// button on NotificationsPage; global, not tied to any one tab, so a plain pushed route
