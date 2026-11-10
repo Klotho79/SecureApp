@@ -1,5 +1,15 @@
 [
   {
+    "version": "0.1.28",
+    "code": 134,
+    "date": "10. 11. 2026",
+    "items": [
+      "Domácí AI: skilly – pojmenované sady pokynů pro AI (shrnutí dokumentu, rozbor tabulky, oprava textu, překlad, rozbor smlouvy). Vybíráte je v chatu, vlastní si můžete přidat, upravit nebo smazat.",
+      "Domácí AI: nastavení, modely a načítání jsou schované pod tlačítkem „Nastavení“, chat má víc místa.",
+      "Domácí AI: odeslání s přílohou i bez textu, klepnutím na bublinu se odpověď zkopíruje, tlačítka „Znovu“ a „Kopírovat odpověď“, nápověda v prázdném chatu a lepší výchozí pokyny pro model."
+    ]
+  },
+  {
     "version": "0.1.27",
     "code": 133,
     "date": "10. 11. 2026",

@@ -9,8 +9,11 @@ namespace SecureApp.Presentation.HomeAi;
 internal static class HomeAiSettings
 {
     public const string DefaultSystemPrompt =
-        "Jsi soukromý, věcný poradce. Odpovídej česky, srozumitelně a konkrétně. Když si nejsi jistý, řekni to. " +
-        "Nevymýšlej si fakta. U zdravotních, právních a finančních otázek uveď, kdy je dobré obrátit se na odborníka.";
+        "Jsi soukromý, věcný poradce. Odpovídej česky, pokud uživatel nepíše jinak. " +
+        "Nejdřív dej přímou odpověď na otázku v jedné až dvou větách, potom podrobnosti: krátké odstavce nebo odrážky, bez zbytečných úvodních a závěrečných frází. " +
+        "Pracuj s tím, co uživatel napsal nebo přiložil; čísla, jména a data z dokumentu přebírej přesně a neměň je. " +
+        "Když ti k odpovědi něco chybí, zeptej se, nebo řekni, co chybí. Když si nejsi jistý, řekni to; nevymýšlej si fakta. " +
+        "U zdravotních, právních a finančních otázek uveď, kdy je dobré obrátit se na odborníka.";
 
     public static string ModelKey
     {

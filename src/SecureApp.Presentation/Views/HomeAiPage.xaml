@@ -17,22 +17,35 @@
 
         <!-- Connection + model -->
         <VerticalStackLayout Grid.Row="0" Spacing="6" IsVisible="{Binding IsAccessGranted}">
+            <!-- Always visible: skill, the settings toggle and one status line. Everything else is folded away so the chat gets the room. -->
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
-                <Label Grid.Column="0" Text="Domácí AI běží na vašem PC doma; telefon se k ní dostane přes relay odkudkoli." FontSize="10" TextColor="Gray" VerticalOptions="Center" LineBreakMode="WordWrap" />
-                <Button Grid.Column="1" Text="Obnovit" Style="{StaticResource SecondaryButton}" Command="{Binding ConnectCommand}" IsEnabled="{Binding CanConnect}" Padding="12,4" MinimumHeightRequest="36" />
+                <Picker Grid.Column="0" Title="Skill" ItemsSource="{Binding SkillChoices}" SelectedItem="{Binding SelectedSkill}" FontSize="12" VerticalOptions="Center" />
+                <Button Grid.Column="1" Text="{Binding SettingsButtonText}" Style="{StaticResource SecondaryButton}" Command="{Binding ToggleSettingsCommand}" Padding="12,4" MinimumHeightRequest="36" />
             </Grid>
-            <Picker Title="Model" ItemsSource="{Binding Models}" ItemDisplayBinding="{Binding Label}" SelectedItem="{Binding SelectedModel}" FontSize="12" />
-            <Grid ColumnDefinitions="*,*,*" ColumnSpacing="6">
-                <Button Grid.Column="0" Text="Načíst" Style="{StaticResource SecondaryButton}" Command="{Binding LoadModelCommand}" IsEnabled="{Binding CanLoad}" FontSize="11" Padding="4,2" MinimumHeightRequest="34" />
-                <Button Grid.Column="1" Text="Vypnout AI" Style="{StaticResource SecondaryButton}" Command="{Binding UnloadAllCommand}" IsEnabled="{Binding CanUnload}" FontSize="11" Padding="4,2" MinimumHeightRequest="34" />
-                <Button Grid.Column="2" Text="Nový rozhovor" Style="{StaticResource SecondaryButton}" Command="{Binding NewChatCommand}" FontSize="11" Padding="4,2" MinimumHeightRequest="34" />
-            </Grid>
-            <Picker Title="Automaticky vypnout AI" ItemsSource="{Binding AutoOffChoices}" SelectedIndex="{Binding SelectedAutoOffIndex}" FontSize="12" />
-            <HorizontalStackLayout Spacing="8">
-                <Switch IsToggled="{Binding UseDecompose}" VerticalOptions="Center" />
-                <Label Text="Rozložit problém na kroky (pro malé modely)" FontSize="11" VerticalOptions="Center" />
-            </HorizontalStackLayout>
-            <Label Text="{Binding StatusText}" FontSize="9.5" TextColor="Gray" LineBreakMode="WordWrap" />
+            <Label Text="{Binding StatusText}" FontSize="9.5" TextColor="Gray" LineBreakMode="TailTruncation" MaxLines="2" />
+
+            <VerticalStackLayout Spacing="6" IsVisible="{Binding IsSettingsOpen}">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                    <Label Grid.Column="0" Text="Domácí AI běží na vašem PC doma; telefon se k ní dostane přes relay odkudkoli." FontSize="10" TextColor="Gray" VerticalOptions="Center" LineBreakMode="WordWrap" />
+                    <Button Grid.Column="1" Text="Obnovit" Style="{StaticResource SecondaryButton}" Command="{Binding ConnectCommand}" IsEnabled="{Binding CanConnect}" Padding="12,4" MinimumHeightRequest="36" />
+                </Grid>
+                <Picker Title="Model" ItemsSource="{Binding Models}" ItemDisplayBinding="{Binding Label}" SelectedItem="{Binding SelectedModel}" FontSize="12" />
+                <Grid ColumnDefinitions="*,*,*" ColumnSpacing="6">
+                    <Button Grid.Column="0" Text="Načíst" Style="{StaticResource SecondaryButton}" Command="{Binding LoadModelCommand}" IsEnabled="{Binding CanLoad}" FontSize="11" Padding="4,2" MinimumHeightRequest="34" />
+                    <Button Grid.Column="1" Text="Vypnout AI" Style="{StaticResource SecondaryButton}" Command="{Binding UnloadAllCommand}" IsEnabled="{Binding CanUnload}" FontSize="11" Padding="4,2" MinimumHeightRequest="34" />
+                    <Button Grid.Column="2" Text="Nový rozhovor" Style="{StaticResource SecondaryButton}" Command="{Binding NewChatCommand}" FontSize="11" Padding="4,2" MinimumHeightRequest="34" />
+                </Grid>
+                <Grid ColumnDefinitions="*,*,*" ColumnSpacing="6">
+                    <Button Grid.Column="0" Text="Nový skill" Style="{StaticResource SecondaryButton}" Command="{Binding NewSkillCommand}" FontSize="11" Padding="4,2" MinimumHeightRequest="34" />
+                    <Button Grid.Column="1" Text="Upravit skill" Style="{StaticResource SecondaryButton}" Command="{Binding EditSkillCommand}" IsEnabled="{Binding CanEditSkill}" FontSize="11" Padding="4,2" MinimumHeightRequest="34" />
+                    <Button Grid.Column="2" Text="Výchozí skilly" Style="{StaticResource SecondaryButton}" Command="{Binding RestoreDefaultSkillsCommand}" FontSize="11" Padding="4,2" MinimumHeightRequest="34" />
+                </Grid>
+                <Picker Title="Automaticky vypnout AI" ItemsSource="{Binding AutoOffChoices}" SelectedIndex="{Binding SelectedAutoOffIndex}" FontSize="12" />
+                <HorizontalStackLayout Spacing="8">
+                    <Switch IsToggled="{Binding UseDecompose}" VerticalOptions="Center" />
+                    <Label Text="Rozložit problém na kroky (pro malé modely)" FontSize="11" VerticalOptions="Center" />
+                </HorizontalStackLayout>
+            </VerticalStackLayout>
         </VerticalStackLayout>
 
         <!-- Conversation -->
@@ -58,6 +71,9 @@
                                 <Setter Property="Margin" Value="0" />
                             </DataTrigger>
                         </Border.Triggers>
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:HomeAiViewModel}}, Path=CopyMessageCommand}" CommandParameter="{Binding .}" />
+                        </Border.GestureRecognizers>
                         <Label Text="{Binding Text}" FontSize="12" LineBreakMode="WordWrap">
                             <Label.Triggers>
                                 <DataTrigger TargetType="Label" Binding="{Binding IsStep}" Value="True">
@@ -71,8 +87,17 @@
             </CollectionView.ItemTemplate>
         </CollectionView>
 
+        <!-- Empty chat: what to do next (follows the chosen skill) -->
+        <VerticalStackLayout Grid.Row="1" VerticalOptions="Center" Padding="24,0" IsVisible="{Binding ShowHint}" InputTransparent="True">
+            <Label Text="{Binding HintText}" FontSize="12" TextColor="Gray" HorizontalTextAlignment="Center" LineBreakMode="WordWrap" />
+        </VerticalStackLayout>
+
         <!-- Input (+ attached file) -->
         <VerticalStackLayout Grid.Row="2" Spacing="4" IsVisible="{Binding IsAccessGranted}">
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="6" IsVisible="{Binding HasAnswer}">
+                <Button Grid.Column="0" Text="↻ Znovu" Style="{StaticResource SecondaryButton}" Command="{Binding RegenerateCommand}" FontSize="11" Padding="4,2" MinimumHeightRequest="32" />
+                <Button Grid.Column="1" Text="Kopírovat odpověď" Style="{StaticResource SecondaryButton}" Command="{Binding CopyLastAnswerCommand}" FontSize="11" Padding="4,2" MinimumHeightRequest="32" />
+            </Grid>
             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6" IsVisible="{Binding HasAttachment}">
                 <Label Grid.Column="0" Text="📎" VerticalOptions="Center" />
                 <Label Grid.Column="1" VerticalOptions="Center" FontSize="11" LineBreakMode="MiddleTruncation">
@@ -87,10 +112,32 @@
             </Grid>
             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
                 <Button Grid.Column="0" Text="📎" Command="{Binding AttachFileCommand}" IsEnabled="{Binding CanAttach}" Style="{StaticResource SecondaryButton}" VerticalOptions="End" Padding="12,6" />
-                <Editor Grid.Column="1" Text="{Binding PromptText}" Placeholder="Napište zprávu…" AutoSize="TextChanges" MaximumHeightRequest="140" FontSize="13" />
+                <Editor Grid.Column="1" Text="{Binding PromptText}" Placeholder="Napište zprávu… (s přílohou může zůstat prázdné)" AutoSize="TextChanges" MaximumHeightRequest="140" FontSize="13" />
                 <Button Grid.Column="2" Text="Odeslat" Command="{Binding SendCommand}" IsEnabled="{Binding CanSend}" VerticalOptions="End" Padding="14,6" />
                 <Button Grid.Column="2" Text="Stop" Command="{Binding StopCommand}" IsVisible="{Binding CanStop}" VerticalOptions="End" Padding="14,6" BackgroundColor="{StaticResource Danger}" TextColor="White" />
             </Grid>
         </VerticalStackLayout>
+
+        <!-- Skill editor (covers the whole page while open) -->
+        <Grid Grid.RowSpan="3" Padding="16,12" IsVisible="{Binding IsEditingSkill}"
+              BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray950}}">
+            <ScrollView>
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Skill" FontSize="16" FontAttributes="Bold" />
+                    <Label Text="Skill je pojmenovaná sada pokynů pro AI. Vyberete ho v chatu a AI se jím řídí u každé zprávy." FontSize="10" TextColor="Gray" LineBreakMode="WordWrap" />
+                    <Entry Text="{Binding EditSkillName}" Placeholder="Název (např. Shrnutí dokumentu)" FontSize="13" />
+                    <Editor Text="{Binding EditSkillInstructions}" Placeholder="Pokyny pro AI: co má dělat, jak má odpovídat, co nemá…" AutoSize="TextChanges" MinimumHeightRequest="140" FontSize="12" />
+                    <HorizontalStackLayout Spacing="8">
+                        <Switch IsToggled="{Binding EditSkillDecompose}" VerticalOptions="Center" />
+                        <Label Text="Vždy rozložit úlohu na kroky (pro malé modely a složité úlohy)" FontSize="11" VerticalOptions="Center" LineBreakMode="WordWrap" />
+                    </HorizontalStackLayout>
+                    <Grid ColumnDefinitions="*,*,*" ColumnSpacing="6">
+                        <Button Grid.Column="0" Text="Uložit" Command="{Binding SaveSkillCommand}" Padding="4,2" />
+                        <Button Grid.Column="1" Text="Zrušit" Style="{StaticResource SecondaryButton}" Command="{Binding CancelSkillEditCommand}" Padding="4,2" />
+                        <Button Grid.Column="2" Text="Smazat" Command="{Binding DeleteSkillCommand}" Padding="4,2" BackgroundColor="{StaticResource Danger}" TextColor="White" />
+                    </Grid>
+                </VerticalStackLayout>
+            </ScrollView>
+        </Grid>
     </Grid>
 </ContentPage>

@@ -66,9 +66,84 @@ public sealed partial class HomeAiViewModel : ObservableObject
         UseDecompose = HomeAiSettings.Decompose;
         SelectedAutoOffIndex = Math.Max(0, Array.IndexOf(AutoOffMinutesChoices, HomeAiSettings.AutoOffMinutes));
         StatusText = "Nepřipojeno.";
+
+        ReloadSkills(HomeAiSkillStore.SelectedId);
+
+        Messages.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(ShowHint));
+            OnPropertyChanged(nameof(HasAnswer));
+        };
+    }
+
+    private string? _lastPrompt;
+
+    /// <summary>Tap on a bubble: its text goes to the clipboard.</summary>
+    [RelayCommand]
+    private async Task CopyMessageAsync(HomeAiMessage? message)
+    {
+        if (message is null || string.IsNullOrEmpty(message.Text))
+            return;
+
+        await Clipboard.Default.SetTextAsync(message.Text);
+        StatusText = "Zkopírováno do schránky.";
+    }
+
+    [RelayCommand]
+    private async Task CopyLastAnswerAsync()
+        => await CopyMessageAsync(Messages.LastOrDefault(m => m.IsAssistant));
+
+    /// <summary>Asks the same question again (a different wording of the answer, or after changing the skill / model).</summary>
+    [RelayCommand]
+    private async Task RegenerateAsync()
+    {
+        if (IsGenerating || string.IsNullOrEmpty(_lastPrompt))
+            return;
+
+        var lastUser = Messages.LastOrDefault(m => m.IsUser);
+        if (lastUser is not null)
+        {
+            var index = Messages.IndexOf(lastUser);
+            while (Messages.Count > index)
+                Messages.RemoveAt(Messages.Count - 1);
+        }
+
+        PromptText = _lastPrompt;
+        await SendAsync();
     }
 
     public ObservableCollection<HomeAiModel> Models { get; } = [];
+
+    /// <summary>"(bez skillu)" first, then the user's skills.</summary>
+    public ObservableCollection<HomeAiSkill> SkillChoices { get; } = [];
+
+    [ObservableProperty]
+    public partial HomeAiSkill? SelectedSkill { get; set; }
+
+    /// <summary>The model / skill / auto-off controls are folded away by default so the conversation gets the room.</summary>
+    [ObservableProperty]
+    public partial bool IsSettingsOpen { get; set; }
+
+    public string SettingsButtonText => IsSettingsOpen ? "Skrýt ▲" : "⚙ Nastavení";
+
+    partial void OnIsSettingsOpenChanged(bool value) => OnPropertyChanged(nameof(SettingsButtonText));
+
+    [RelayCommand]
+    private void ToggleSettings() => IsSettingsOpen = !IsSettingsOpen;
+
+    [ObservableProperty]
+    public partial bool IsEditingSkill { get; set; }
+
+    [ObservableProperty]
+    public partial string EditSkillName { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string EditSkillInstructions { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial bool EditSkillDecompose { get; set; }
+
+    private string? _editingSkillId; // null = a new skill
 
     public ObservableCollection<HomeAiMessage> Messages { get; } = [];
 
@@ -113,7 +188,28 @@ public sealed partial class HomeAiViewModel : ObservableObject
 
     public bool IsAccessDenied => !IsAccessGranted;
 
-    public bool CanSend => !IsGenerating && !IsBusy && SelectedModel is not null && !string.IsNullOrWhiteSpace(PromptText);
+    /// <summary>A message can go out with an empty text box when a file is attached: the skill (or "shrň dokument") then is the task.</summary>
+    public bool CanSend => !IsGenerating && !IsBusy && SelectedModel is not null && (!string.IsNullOrWhiteSpace(PromptText) || HasAttachment);
+
+    /// <summary>The last bubble is a finished answer: the copy / regenerate buttons show.</summary>
+    public bool HasAnswer => !IsGenerating && Messages.Count > 0 && Messages[^1].IsAssistant;
+
+    /// <summary>Empty conversation: a short hint on what to do next is shown instead of a blank list.</summary>
+    public bool ShowHint => Messages.Count == 0;
+
+    public string HintText
+    {
+        get
+        {
+            var skill = SelectedSkill is { IsNone: false } s ? s : null;
+            if (skill is { Hint.Length: > 0 })
+                return $"Skill „{skill.Name}“: {skill.Hint}";
+            if (skill is not null)
+                return $"Skill „{skill.Name}“ je zapnutý. Napište zprávu nebo přiložte soubor (📎).";
+            return "Napište zprávu, nebo přiložte soubor (📎) a zeptejte se na něj. Skill (nahoře) AI nastaví na konkrétní úlohu, třeba shrnutí nebo rozbor tabulky. " +
+                   "Klepnutím na odpověď ji zkopírujete.";
+        }
+    }
 
     public bool CanLoad => !IsGenerating && !IsBusy && SelectedModel is { IsLoaded: false };
 
@@ -141,17 +237,132 @@ public sealed partial class HomeAiViewModel : ObservableObject
 
     partial void OnUseDecomposeChanged(bool value) => HomeAiSettings.Decompose = value;
 
+    partial void OnSelectedSkillChanged(HomeAiSkill? value)
+    {
+        HomeAiSkillStore.SelectedId = value?.Id ?? string.Empty;
+        OnPropertyChanged(nameof(CanEditSkill));
+        OnPropertyChanged(nameof(HintText));
+    }
+
+    public bool CanEditSkill => SelectedSkill is { IsNone: false };
+
+    private void ReloadSkills(string selectId)
+    {
+        SkillChoices.Clear();
+        SkillChoices.Add(HomeAiSkill.None);
+        foreach (var skill in HomeAiSkillStore.Load())
+            SkillChoices.Add(skill);
+        SelectedSkill = SkillChoices.FirstOrDefault(s => s.Id == selectId) ?? HomeAiSkill.None;
+    }
+
+    private void PersistSkills() => HomeAiSkillStore.Save(SkillChoices);
+
+    [RelayCommand]
+    private void NewSkill()
+    {
+        _editingSkillId = null;
+        EditSkillName = string.Empty;
+        EditSkillInstructions = string.Empty;
+        EditSkillDecompose = false;
+        IsEditingSkill = true;
+    }
+
+    [RelayCommand]
+    private void EditSkill()
+    {
+        if (SelectedSkill is not { IsNone: false } skill)
+            return;
+
+        _editingSkillId = skill.Id;
+        EditSkillName = skill.Name;
+        EditSkillInstructions = skill.Instructions;
+        EditSkillDecompose = skill.Decompose;
+        IsEditingSkill = true;
+    }
+
+    [RelayCommand]
+    private void SaveSkill()
+    {
+        var name = EditSkillName.Trim();
+        if (name.Length == 0)
+        {
+            StatusText = "Skill potřebuje název.";
+            return;
+        }
+
+        HomeAiSkill skill;
+        if (_editingSkillId is null)
+        {
+            skill = new HomeAiSkill();
+            SkillChoices.Add(skill);
+        }
+        else
+        {
+            skill = SkillChoices.First(s => s.Id == _editingSkillId);
+        }
+
+        skill.Name = name;
+        skill.Instructions = EditSkillInstructions.Trim();
+        skill.Decompose = EditSkillDecompose;
+        PersistSkills();
+        ReloadSkills(skill.Id); // rebuilds the picker so a renamed skill shows its new name
+        IsEditingSkill = false;
+        StatusText = $"Skill „{name}“ uložen.";
+    }
+
+    [RelayCommand]
+    private void DeleteSkill()
+    {
+        if (_editingSkillId is { } id)
+        {
+            var skill = SkillChoices.FirstOrDefault(s => s.Id == id);
+            if (skill is not null)
+                SkillChoices.Remove(skill);
+            PersistSkills();
+            ReloadSkills(string.Empty);
+            StatusText = "Skill smazán.";
+        }
+
+        IsEditingSkill = false;
+    }
+
+    [RelayCommand]
+    private void CancelSkillEdit() => IsEditingSkill = false;
+
+    /// <summary>Puts back the starter skills that are missing (the user's own and edited ones stay as they are).</summary>
+    [RelayCommand]
+    private void RestoreDefaultSkills()
+    {
+        var existing = SkillChoices.Select(s => s.Id).ToHashSet();
+        var added = 0;
+        foreach (var skill in HomeAiSkillStore.Defaults().Where(d => !existing.Contains(d.Id)))
+        {
+            SkillChoices.Add(skill);
+            added++;
+        }
+
+        PersistSkills();
+        ReloadSkills(SelectedSkill?.Id ?? string.Empty);
+        IsEditingSkill = false;
+        StatusText = added > 0 ? $"Obnoveno výchozích skillů: {added}." : "Všechny výchozí skilly už v seznamu jsou.";
+    }
+
     partial void OnSelectedAutoOffIndexChanged(int value)
     {
         if (value >= 0 && value < AutoOffMinutesChoices.Length)
             HomeAiSettings.AutoOffMinutes = AutoOffMinutesChoices[value];
     }
 
-    partial void OnAttachmentNameChanged(string? value) => OnPropertyChanged(nameof(HasAttachment));
+    partial void OnAttachmentNameChanged(string? value)
+    {
+        OnPropertyChanged(nameof(HasAttachment));
+        NotifyButtons();
+    }
 
     private void NotifyButtons()
     {
         OnPropertyChanged(nameof(CanSend));
+        OnPropertyChanged(nameof(HasAnswer));
         OnPropertyChanged(nameof(CanLoad));
         OnPropertyChanged(nameof(CanUnload));
         OnPropertyChanged(nameof(CanStop));
@@ -205,6 +416,7 @@ public sealed partial class HomeAiViewModel : ObservableObject
             Models.Clear();
             SelectedModel = null;
             StatusText = ex.Message;
+            IsSettingsOpen = true; // not connected: show the controls (Obnovit) instead of an empty chat
         }
         finally
         {
@@ -325,9 +537,18 @@ public sealed partial class HomeAiViewModel : ObservableObject
     private async Task SendAsync()
     {
         var text = PromptText.Trim();
+        if (text.Length == 0 && _attachedText is not null)
+        {
+            // Empty box + attached file: the chosen skill (or a plain summary) is the task.
+            text = SelectedSkill is { IsNone: false }
+                ? "Proveď úlohu podle pokynů skillu s přiloženým dokumentem."
+                : "Shrň přiložený dokument: o čem je, nejdůležitější body a případné termíny, částky a úkoly.";
+        }
+
         if (text.Length == 0 || SelectedModel is not { } selected || IsGenerating)
             return;
 
+        _lastPrompt = text;
         var attachedText = _attachedText;
         var attachedName = AttachmentName ?? "příloha";
 
@@ -344,10 +565,16 @@ public sealed partial class HomeAiViewModel : ObservableObject
             var endpoint = Endpoint();
             var systemPrompt = string.IsNullOrWhiteSpace(HomeAiSettings.SystemPrompt) ? HomeAiSettings.DefaultSystemPrompt : HomeAiSettings.SystemPrompt;
 
+            // A chosen skill adds its instructions to the system prompt (and can force the step-by-step mode).
+            var skill = SelectedSkill is { IsNone: false } chosen ? chosen : null;
+            if (skill is not null && skill.Instructions.Length > 0)
+                systemPrompt += $"\n\nAktivní skill „{skill.Name}“. Řiď se těmito pokyny:\n{skill.Instructions}";
+            var decompose = UseDecompose || skill is { Decompose: true };
+
             // No explicit load: the first request loads the model on demand and carries the idle TTL, so with the
             // auto-off set the server unloads it again by itself (a model loaded by hand with "Načíst" stays instead).
             StatusText = selected.IsLoaded
-                ? (UseDecompose ? "Rozkládám problém…" : "Odpovídám…")
+                ? (decompose ? "Rozkládám problém…" : "Odpovídám…")
                 : $"Načítám {selected.DisplayName} a odpovídám… (poprvé to chvíli trvá)";
 
             if (attachedText is not null && !DocumentReader.FitsInOnePrompt(attachedText, selected.UsableContext))
@@ -358,7 +585,7 @@ public sealed partial class HomeAiViewModel : ObservableObject
             else
             {
                 var content = attachedText is null ? text : $"Dokument „{attachedName}“:\n<<<\n{attachedText}\n>>>\n\n{text}";
-                if (UseDecompose)
+                if (decompose)
                     answer = await ConsumeAsync(_decomposer.SolveAsync(endpoint, selected.Key, systemPrompt, content, ct));
                 else
                     answer = await RunPlainAsync(endpoint, selected.Key, systemPrompt, content, ct);
