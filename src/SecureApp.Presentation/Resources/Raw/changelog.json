@@ -1,5 +1,13 @@
 [
   {
+    "version": "0.1.27",
+    "code": 133,
+    "date": "10. 11. 2026",
+    "items": [
+      "Domácí AI: Excel (.xls, .xlsx) se čte srozumitelněji – model dostane názvy sloupců, očíslované řádky a přesně spočítané součty, průměry, minima a maxima číselných sloupců. U dlouhých tabulek se záhlaví opakuje v každém úseku."
+    ]
+  },
+  {
     "version": "0.1.26",
     "code": 132,
     "date": "10. 11. 2026",

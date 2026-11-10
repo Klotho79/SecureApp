@@ -108,6 +108,7 @@ public sealed class DocumentReader(HomeAiClient client)
     {
         var result = new List<string>();
         var start = 0;
+        var header = string.Empty; // spreadsheet sheet header, repeated at the top of every later piece of that sheet
         while (start < text.Length)
         {
             var length = Math.Min(size, text.Length - start);
@@ -120,11 +121,45 @@ public sealed class DocumentReader(HomeAiClient client)
                 if (cut >= size / 2) length = cut + 1;
             }
 
-            result.Add(text.Substring(start, length).Trim());
+            var piece = text.Substring(start, length).Trim();
+            if (piece.Length > 0)
+            {
+                result.Add(header.Length > 0 && !piece.StartsWith("## List:", StringComparison.Ordinal) ? header + "\n" + piece : piece);
+                header = TrackSheetHeader(piece, header);
+            }
+
             start += length;
         }
 
-        return result.Where(c => c.Length > 0).ToList();
+        return result;
+    }
+
+    /// <summary>The "## List / Sloupce / Souhrn" lines of the sheet the piece ends in (see DocumentTextExtractor), or the previous header when the piece starts none.</summary>
+    private static string TrackSheetHeader(string piece, string current)
+    {
+        var lines = new List<string>();
+        var collecting = false;
+        var found = false;
+        foreach (var line in piece.Split('\n'))
+        {
+            if (line.StartsWith("## List:", StringComparison.Ordinal))
+            {
+                lines.Clear();
+                lines.Add(line);
+                collecting = true;
+                found = true;
+            }
+            else if (collecting && (line.StartsWith("Sloupce:", StringComparison.Ordinal) || line.StartsWith("Souhrn čísel", StringComparison.Ordinal)))
+            {
+                lines.Add(line.Length > 900 ? line[..900] + "…" : line);
+            }
+            else
+            {
+                collecting = false;
+            }
+        }
+
+        return found ? string.Join("\n", lines) : current;
     }
 
     private static IEnumerable<List<string>> Group(List<string> notes, int maxChars)
