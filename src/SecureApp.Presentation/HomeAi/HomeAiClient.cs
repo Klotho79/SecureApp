@@ -6,13 +6,20 @@ using System.Text.Json;
 
 namespace SecureApp.Presentation.HomeAi;
 
-/// <summary>Address (and optional API token) of the home LM Studio server. Never leaves the home network / the WireGuard tunnel.</summary>
-public sealed record HomeAiEndpoint(string BaseUrl, string? Token);
+/// <summary>
+/// Address (and optional API token) of the home LM Studio server. Never leaves the home network / the WireGuard tunnel.
+/// <paramref name="TtlSeconds"/>: when set, every chat request carries LM Studio's idle <c>ttl</c>, so a model that the
+/// chat itself had to load is unloaded again after that many idle seconds (a model loaded by hand stays until switched off).
+/// </summary>
+public sealed record HomeAiEndpoint(string BaseUrl, string? Token, int? TtlSeconds = null);
 
-/// <summary>One downloaded model on the home server, with whatever instances of it are currently loaded in memory.</summary>
-public sealed record HomeAiModel(string Key, string DisplayName, string ParamsText, long SizeBytes, int MaxContext, bool IsVision, IReadOnlyList<string> LoadedInstanceIds)
+/// <summary>One downloaded model on the home server, with whatever instances of it are currently loaded in memory (<paramref name="LoadedContext"/> = context length of the loaded instance, tokens).</summary>
+public sealed record HomeAiModel(string Key, string DisplayName, string ParamsText, long SizeBytes, int MaxContext, bool IsVision, IReadOnlyList<string> LoadedInstanceIds, int LoadedContext = 0)
 {
     public bool IsLoaded => LoadedInstanceIds.Count > 0;
+
+    /// <summary>The context (tokens) a prompt can really use: the loaded instance's, else a conservative guess for a model that will be loaded on demand.</summary>
+    public int UsableContext => LoadedContext > 0 ? LoadedContext : Math.Clamp(MaxContext, 4096, 8192);
 
     public string Label
     {
@@ -92,11 +99,17 @@ public sealed class HomeAiClient
                     continue;
 
                 var loaded = new List<string>();
+                var loadedContext = 0;
                 if (m.TryGetProperty("loaded_instances", out var instances) && instances.ValueKind == JsonValueKind.Array)
                 {
                     foreach (var instance in instances.EnumerateArray())
+                    {
                         if (GetString(instance, "id") is { Length: > 0 } id)
                             loaded.Add(id);
+                        if (loadedContext == 0 && instance.ValueKind == JsonValueKind.Object && instance.TryGetProperty("config", out var config)
+                            && config.ValueKind == JsonValueKind.Object && config.TryGetProperty("context_length", out var cl) && cl.TryGetInt32(out var contextLength))
+                            loadedContext = contextLength;
+                    }
                 }
 
                 var vision = m.TryGetProperty("capabilities", out var caps) && caps.ValueKind == JsonValueKind.Object
@@ -109,7 +122,8 @@ public sealed class HomeAiClient
                     m.TryGetProperty("size_bytes", out var size) && size.TryGetInt64(out var sizeBytes) ? sizeBytes : 0,
                     m.TryGetProperty("max_context_length", out var ctx) && ctx.TryGetInt32(out var maxContext) ? maxContext : 0,
                     vision,
-                    loaded));
+                    loaded,
+                    loadedContext));
             }
 
             return result.OrderByDescending(x => x.IsLoaded).ThenBy(x => x.DisplayName, StringComparer.OrdinalIgnoreCase).ToList();
@@ -150,6 +164,8 @@ public sealed class HomeAiClient
         };
         if (maxTokens is { } limit)
             payload["max_tokens"] = limit;
+        if (endpoint.TtlSeconds is { } ttl and > 0)
+            payload["ttl"] = ttl;
 
         using var request = Request(HttpMethod.Post, endpoint, "v1/chat/completions", JsonSerializer.Serialize(payload));
         using var response = await SendAsync(request, ct, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);

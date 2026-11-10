@@ -29,6 +29,13 @@ internal static class HomeAiSettings
         set => Preferences.Default.Set("homeai_model", value);
     }
 
+    /// <summary>Minutes of idleness after which a model loaded by the chat is unloaded by the server (0 = never). Default 10.</summary>
+    public static int AutoOffMinutes
+    {
+        get => Preferences.Default.Get("homeai_autooff_min", 10);
+        set => Preferences.Default.Set("homeai_autooff_min", value);
+    }
+
     public static bool Decompose
     {
         get => Preferences.Default.Get("homeai_decompose", false);

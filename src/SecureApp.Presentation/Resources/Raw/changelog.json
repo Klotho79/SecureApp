@@ -1,5 +1,15 @@
 [
   {
+    "version": "0.1.24",
+    "code": 130,
+    "date": "10. 11. 2026",
+    "items": [
+      "Widget: po aktualizaci appky zůstával prázdný, dokud se nezměnila data. Teď se překreslí po startu appky a při každém jejím otevření.",
+      "Domácí AI (jen Admin na vlastním telefonu): přílohy – text, PDF s textem, Word a Excel (.xls, .xlsx); dlouhý dokument se čte po částech, aby ho zvládl i malý model.",
+      "Domácí AI: tlačítko Vypnout AI uvolní model z paměti PC a nově se dá nastavit automatické vypnutí po nečinnosti."
+    ]
+  },
+  {
     "version": "0.1.23",
     "code": 129,
     "date": "10. 11. 2026",

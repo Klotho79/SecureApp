@@ -52,7 +52,7 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
     }
 
     /// <summary>Fire-and-forget, best-effort: a widget refresh failing must never affect the actual notification write that triggered it.</summary>
-    private static void RequestUpdateAllWidgets()
+    internal static void RequestUpdateAllWidgets()
     {
         try
         {
@@ -196,9 +196,21 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
     {
         try
         {
-            var services = IPlatformApplication.Current?.Services;
-            var notificationRepository = services?.GetService<INotificationRepository>();
-            var workAssignmentRepository = services?.GetService<IWorkAssignmentRepository>();
+            // 2026-11-10, user's report "wiget je prázdný" after an update: Android fires the widget update as soon as
+            // the new package is installed, before this app process has built its services — the old code simply
+            // returned and the widget stayed blank until some data changed. Wait (bounded: a broadcast may only run
+            // ~10 s) for the app to come up; MainActivity.OnResume redraws the widgets anyway when the app opens.
+            INotificationRepository? notificationRepository = null;
+            IWorkAssignmentRepository? workAssignmentRepository = null;
+            for (var attempt = 0; attempt < 16; attempt++)
+            {
+                var services = IPlatformApplication.Current?.Services;
+                notificationRepository = services?.GetService<INotificationRepository>();
+                workAssignmentRepository = services?.GetService<IWorkAssignmentRepository>();
+                if (notificationRepository is not null && workAssignmentRepository is not null) break;
+                await Task.Delay(500);
+            }
+
             if (notificationRepository is null || workAssignmentRepository is null) return;
 
             // System notifications (sync results, relay events, ...) excluded — same rule
@@ -258,10 +270,11 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
             foreach (var id in widgetIds)
                 manager.UpdateAppWidget(id, views);
         }
-        catch
+        catch (Exception ex)
         {
             // Best-effort — see class remarks; a stale/blank widget is far better than crashing the
-            // whole app process the widget shares with.
+            // whole app process the widget shares with. Logged (2026-11-10) so a blank widget can be diagnosed from the relay log.
+            try { SecureApp.Presentation.Infrastructure.AppLog.Warning("Widget", "Aktualizace widgetu selhala.", ex); } catch { }
         }
         finally
         {

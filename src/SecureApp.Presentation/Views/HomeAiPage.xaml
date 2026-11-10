@@ -25,9 +25,10 @@
             <Picker Title="Model" ItemsSource="{Binding Models}" ItemDisplayBinding="{Binding Label}" SelectedItem="{Binding SelectedModel}" FontSize="12" />
             <Grid ColumnDefinitions="*,*,*" ColumnSpacing="6">
                 <Button Grid.Column="0" Text="Načíst" Style="{StaticResource SecondaryButton}" Command="{Binding LoadModelCommand}" IsEnabled="{Binding CanLoad}" FontSize="11" Padding="4,2" MinimumHeightRequest="34" />
-                <Button Grid.Column="1" Text="Uvolnit" Style="{StaticResource SecondaryButton}" Command="{Binding UnloadModelCommand}" IsEnabled="{Binding CanUnload}" FontSize="11" Padding="4,2" MinimumHeightRequest="34" />
+                <Button Grid.Column="1" Text="Vypnout AI" Style="{StaticResource SecondaryButton}" Command="{Binding UnloadAllCommand}" IsEnabled="{Binding CanUnload}" FontSize="11" Padding="4,2" MinimumHeightRequest="34" />
                 <Button Grid.Column="2" Text="Nový rozhovor" Style="{StaticResource SecondaryButton}" Command="{Binding NewChatCommand}" FontSize="11" Padding="4,2" MinimumHeightRequest="34" />
             </Grid>
+            <Picker Title="Automaticky vypnout AI" ItemsSource="{Binding AutoOffChoices}" SelectedIndex="{Binding SelectedAutoOffIndex}" FontSize="12" />
             <HorizontalStackLayout Spacing="8">
                 <Switch IsToggled="{Binding UseDecompose}" VerticalOptions="Center" />
                 <Label Text="Rozložit problém na kroky (pro malé modely)" FontSize="11" VerticalOptions="Center" />
@@ -71,11 +72,26 @@
             </CollectionView.ItemTemplate>
         </CollectionView>
 
-        <!-- Input -->
-        <Grid Grid.Row="2" ColumnDefinitions="*,Auto" ColumnSpacing="6" IsVisible="{Binding IsAccessGranted}">
-            <Editor Grid.Column="0" Text="{Binding PromptText}" Placeholder="Napište zprávu…" AutoSize="TextChanges" MaximumHeightRequest="140" FontSize="13" />
-            <Button Grid.Column="1" Text="Odeslat" Command="{Binding SendCommand}" IsEnabled="{Binding CanSend}" VerticalOptions="End" Padding="14,6" />
-            <Button Grid.Column="1" Text="Stop" Command="{Binding StopCommand}" IsVisible="{Binding CanStop}" VerticalOptions="End" Padding="14,6" BackgroundColor="{StaticResource Danger}" TextColor="White" />
-        </Grid>
+        <!-- Input (+ attached file) -->
+        <VerticalStackLayout Grid.Row="2" Spacing="4" IsVisible="{Binding IsAccessGranted}">
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6" IsVisible="{Binding HasAttachment}">
+                <Label Grid.Column="0" Text="📎" VerticalOptions="Center" />
+                <Label Grid.Column="1" VerticalOptions="Center" FontSize="11" LineBreakMode="MiddleTruncation">
+                    <Label.FormattedText>
+                        <FormattedString>
+                            <Span Text="{Binding AttachmentName}" FontAttributes="Bold" />
+                            <Span Text="{Binding AttachmentInfo, StringFormat=' · {0}'}" TextColor="Gray" />
+                        </FormattedString>
+                    </Label.FormattedText>
+                </Label>
+                <Button Grid.Column="2" Text="✕" Command="{Binding RemoveAttachmentCommand}" Style="{StaticResource SecondaryButton}" Padding="10,0" MinimumHeightRequest="30" />
+            </Grid>
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
+                <Button Grid.Column="0" Text="📎" Command="{Binding AttachFileCommand}" IsEnabled="{Binding CanAttach}" Style="{StaticResource SecondaryButton}" VerticalOptions="End" Padding="12,6" />
+                <Editor Grid.Column="1" Text="{Binding PromptText}" Placeholder="Napište zprávu…" AutoSize="TextChanges" MaximumHeightRequest="140" FontSize="13" />
+                <Button Grid.Column="2" Text="Odeslat" Command="{Binding SendCommand}" IsEnabled="{Binding CanSend}" VerticalOptions="End" Padding="14,6" />
+                <Button Grid.Column="2" Text="Stop" Command="{Binding StopCommand}" IsVisible="{Binding CanStop}" VerticalOptions="End" Padding="14,6" BackgroundColor="{StaticResource Danger}" TextColor="White" />
+            </Grid>
+        </VerticalStackLayout>
     </Grid>
 </ContentPage>

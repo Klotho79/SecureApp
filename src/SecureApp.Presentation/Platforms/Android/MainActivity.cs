@@ -50,6 +50,9 @@ public class MainActivity : MauiAppCompatActivity
     {
         base.OnResume();
         ApplyWindowSoftInputMode();
+        // Redraw the home-screen widgets whenever the app opens: after an update (the system's own update ran before this
+        // process existed) and after midnight (the "today" row) the widget would otherwise stay blank/stale until data changed.
+        Platforms.Android.NotificationsWidgetProvider.RequestUpdateAllWidgets();
     }
 
     /// <summary>Lets the Opicentrum boards see a two-finger pinch before their scroll view takes the touches (see <see cref="Platforms.Android.BoardPinchHook"/>); a no-op everywhere else.</summary>
