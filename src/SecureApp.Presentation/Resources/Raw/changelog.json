@@ -1,5 +1,13 @@
 [
   {
+    "version": "0.1.26",
+    "code": 132,
+    "date": "10. 11. 2026",
+    "items": [
+      "Oprava instalačního balíčku: verze 0.1.25 byla chybně sestavená a Google ji při instalaci hlásil jako škodlivou. Verze 0.1.26 je stejný program, sestavený čistě, bez tohoto varování."
+    ]
+  },
+  {
     "version": "0.1.25",
     "code": 131,
     "date": "10. 11. 2026",
