@@ -1,27 +1,16 @@
 namespace SecureApp.Presentation.HomeAi;
 
-/// <summary>Per-device settings of the home-AI chat (address, last model, options). The API token is NOT here — it lives in the secure vault.</summary>
+/// <summary>
+/// Per-device settings of the home-AI chat (last model, options). The LM Studio on the home PC is reached through the
+/// relay's /homeai/ proxy (see relay HomeAiProxy.cs): the PC keeps an outbound reverse SSH tunnel to the Pi (scheduled
+/// task "SecureApp HomeAI Tunnel"), a container on the Pi (homeai-forward) offers it on the LAN, and the relay forwards
+/// to that — so the phone needs no direct route to the PC and works on mobile data as well as at home.
+/// </summary>
 internal static class HomeAiSettings
 {
-    /// <summary>
-    /// Not the PC itself (its firewall blocks inbound and LM Studio listens on loopback only): the PC keeps an outbound
-    /// reverse SSH tunnel to the Pi (scheduled task "SecureApp HomeAI Tunnel"), and a small container on the Pi
-    /// (homeai-forward) offers it at the Pi's address — reachable at home and over the WireGuard tunnel, and the Pi's
-    /// address is already allowed for cleartext in network_security_config.xml.
-    /// </summary>
-    public const string DefaultBaseUrl = "http://192.168.50.8:11234";
-
-    public const string TokenVaultKey = "homeai:api-token";
-
     public const string DefaultSystemPrompt =
         "Jsi soukromý, věcný poradce. Odpovídej česky, srozumitelně a konkrétně. Když si nejsi jistý, řekni to. " +
         "Nevymýšlej si fakta. U zdravotních, právních a finančních otázek uveď, kdy je dobré obrátit se na odborníka.";
-
-    public static string BaseUrl
-    {
-        get => Preferences.Default.Get("homeai_base_url", DefaultBaseUrl);
-        set => Preferences.Default.Set("homeai_base_url", value);
-    }
 
     public static string ModelKey
     {

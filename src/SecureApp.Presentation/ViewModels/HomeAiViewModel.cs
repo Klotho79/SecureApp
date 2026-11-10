@@ -49,23 +49,20 @@ public sealed partial class HomeAiViewModel : ObservableObject
     private readonly HomeAiClient _client;
     private readonly ProblemDecomposer _decomposer;
     private readonly DocumentReader _documentReader;
-    private readonly ISecureVaultKeyStore _vault;
     private readonly ICurrentUserService _currentUserService;
     private readonly RolePreviewService _rolePreviewService;
     private CancellationTokenSource? _generationCts;
     private string? _attachedText;
     private readonly Stopwatch _scrollThrottle = Stopwatch.StartNew();
 
-    public HomeAiViewModel(HomeAiClient client, ISecureVaultKeyStore vault, ICurrentUserService currentUserService, RolePreviewService rolePreviewService)
+    public HomeAiViewModel(HomeAiClient client, ICurrentUserService currentUserService, RolePreviewService rolePreviewService)
     {
         _client = client;
         _decomposer = new ProblemDecomposer(client);
         _documentReader = new DocumentReader(client);
-        _vault = vault;
         _currentUserService = currentUserService;
         _rolePreviewService = rolePreviewService;
 
-        BaseUrlText = HomeAiSettings.BaseUrl;
         UseDecompose = HomeAiSettings.Decompose;
         SelectedAutoOffIndex = Math.Max(0, Array.IndexOf(AutoOffMinutesChoices, HomeAiSettings.AutoOffMinutes));
         StatusText = "Nepřipojeno.";
@@ -79,12 +76,6 @@ public sealed partial class HomeAiViewModel : ObservableObject
 
     /// <summary>Raised when the list should scroll to its last bubble (throttled while an answer streams).</summary>
     public event Action? ScrollRequested;
-
-    [ObservableProperty]
-    public partial string BaseUrlText { get; set; }
-
-    [ObservableProperty]
-    public partial string TokenText { get; set; } = string.Empty;
 
     [ObservableProperty]
     public partial string StatusText { get; set; }
@@ -168,7 +159,7 @@ public sealed partial class HomeAiViewModel : ObservableObject
         OnPropertyChanged(nameof(CanAttach));
     }
 
-    /// <summary>Called when the page opens: fills in the saved token and tries the saved address.</summary>
+    /// <summary>Called when the page opens: asks the home server (through the relay) which models it has.</summary>
     public async Task InitializeAsync()
     {
         OnPropertyChanged(nameof(IsAccessGranted));
@@ -176,27 +167,19 @@ public sealed partial class HomeAiViewModel : ObservableObject
         if (!IsAccessGranted)
             return;
 
-        if (string.IsNullOrEmpty(TokenText) && await _vault.RetrieveSecretAsync(HomeAiSettings.TokenVaultKey) is { Length: > 0 } token)
-            TokenText = Encoding.UTF8.GetString(token);
-
         if (Models.Count == 0)
             await RefreshModelsAsync();
     }
 
-    /// <summary>The server address + token, plus the idle auto-off the chat requests ask the server for.</summary>
+    /// <summary>The idle auto-off the chat requests ask the server for.</summary>
     private HomeAiEndpoint Endpoint()
     {
         var minutes = AutoOffMinutesChoices[Math.Clamp(SelectedAutoOffIndex, 0, AutoOffMinutesChoices.Length - 1)];
-        return new(BaseUrlText.Trim(), string.IsNullOrWhiteSpace(TokenText) ? null : TokenText.Trim(), minutes > 0 ? minutes * 60 : null);
+        return new(minutes > 0 ? minutes * 60 : null);
     }
 
     [RelayCommand]
-    private async Task ConnectAsync()
-    {
-        HomeAiSettings.BaseUrl = BaseUrlText.Trim();
-        await _vault.StoreSecretAsync(HomeAiSettings.TokenVaultKey, Encoding.UTF8.GetBytes(TokenText.Trim()));
-        await RefreshModelsAsync();
-    }
+    private async Task ConnectAsync() => await RefreshModelsAsync();
 
     private async Task RefreshModelsAsync(string? keepKey = null)
     {

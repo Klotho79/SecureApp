@@ -1,5 +1,13 @@
 [
   {
+    "version": "0.1.25",
+    "code": 131,
+    "date": "10. 11. 2026",
+    "items": [
+      "Domácí AI (jen Admin na vlastním telefonu): oprava „server neodpovídá“ – spojení s domácím PC teď vede přes relay, takže funguje odkudkoli (i na mobilních datech), nejen doma. Zmizelo pole s adresou serveru."
+    ]
+  },
+  {
     "version": "0.1.24",
     "code": 130,
     "date": "10. 11. 2026",

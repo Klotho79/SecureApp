@@ -18,10 +18,9 @@
         <!-- Connection + model -->
         <VerticalStackLayout Grid.Row="0" Spacing="6" IsVisible="{Binding IsAccessGranted}">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
-                <Entry Grid.Column="0" Text="{Binding BaseUrlText}" Placeholder="http://192.168.50.8:11234" Keyboard="Url" FontSize="12" />
-                <Button Grid.Column="1" Text="Připojit" Style="{StaticResource SecondaryButton}" Command="{Binding ConnectCommand}" IsEnabled="{Binding CanConnect}" Padding="12,4" MinimumHeightRequest="36" />
+                <Label Grid.Column="0" Text="Domácí AI běží na vašem PC doma; telefon se k ní dostane přes relay odkudkoli." FontSize="10" TextColor="Gray" VerticalOptions="Center" LineBreakMode="WordWrap" />
+                <Button Grid.Column="1" Text="Obnovit" Style="{StaticResource SecondaryButton}" Command="{Binding ConnectCommand}" IsEnabled="{Binding CanConnect}" Padding="12,4" MinimumHeightRequest="36" />
             </Grid>
-            <Entry Text="{Binding TokenText}" Placeholder="API token (jen pokud ho LM Studio vyžaduje)" IsPassword="True" FontSize="11" />
             <Picker Title="Model" ItemsSource="{Binding Models}" ItemDisplayBinding="{Binding Label}" SelectedItem="{Binding SelectedModel}" FontSize="12" />
             <Grid ColumnDefinitions="*,*,*" ColumnSpacing="6">
                 <Button Grid.Column="0" Text="Načíst" Style="{StaticResource SecondaryButton}" Command="{Binding LoadModelCommand}" IsEnabled="{Binding CanLoad}" FontSize="11" Padding="4,2" MinimumHeightRequest="34" />

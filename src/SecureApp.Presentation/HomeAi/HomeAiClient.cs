@@ -1,17 +1,18 @@
 using System.Net;
-using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using SecureApp.Domain.Interfaces.Repositories;
+using SecureApp.Domain.Interfaces.Services;
 
 namespace SecureApp.Presentation.HomeAi;
 
 /// <summary>
-/// Address (and optional API token) of the home LM Studio server. Never leaves the home network / the WireGuard tunnel.
+/// Settings of one call to the home LM Studio (reached through the relay, see <see cref="HomeAiClient"/>).
 /// <paramref name="TtlSeconds"/>: when set, every chat request carries LM Studio's idle <c>ttl</c>, so a model that the
 /// chat itself had to load is unloaded again after that many idle seconds (a model loaded by hand stays until switched off).
 /// </summary>
-public sealed record HomeAiEndpoint(string BaseUrl, string? Token, int? TtlSeconds = null);
+public sealed record HomeAiEndpoint(int? TtlSeconds = null);
 
 /// <summary>One downloaded model on the home server, with whatever instances of it are currently loaded in memory (<paramref name="LoadedContext"/> = context length of the loaded instance, tokens).</summary>
 public sealed record HomeAiModel(string Key, string DisplayName, string ParamsText, long SizeBytes, int MaxContext, bool IsVision, IReadOnlyList<string> LoadedInstanceIds, int LoadedContext = 0)
@@ -46,16 +47,29 @@ public sealed class HomeAiException(string message) : Exception(message);
 /// </summary>
 public sealed class HomeAiClient
 {
-    private readonly HttpClient _http = new() { Timeout = Timeout.InfiniteTimeSpan };
+    private readonly HttpClient _http = SecureApp.Presentation.Transport.RelayHttp.CreateClient(Timeout.InfiniteTimeSpan);
+    private readonly ITransportSettingsRepository _transportSettingsRepository;
+    private readonly ISecureVaultKeyStore _vault;
 
-    private static Uri Url(HomeAiEndpoint endpoint, string path)
-        => new(new Uri(endpoint.BaseUrl.Trim().TrimEnd('/') + "/"), path.TrimStart('/'));
-
-    private static HttpRequestMessage Request(HttpMethod method, HomeAiEndpoint endpoint, string path, string? json = null)
+    public HomeAiClient(ITransportSettingsRepository transportSettingsRepository, ISecureVaultKeyStore vault)
     {
-        var request = new HttpRequestMessage(method, Url(endpoint, path));
-        if (!string.IsNullOrWhiteSpace(endpoint.Token))
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", endpoint.Token.Trim());
+        _transportSettingsRepository = transportSettingsRepository;
+        _vault = vault;
+    }
+
+    /// <summary>A request to the relay's /homeai/ proxy: the relay's own address (pinned HTTPS from anywhere, LAN/tunnel at home) plus this device's login.</summary>
+    private async Task<HttpRequestMessage> RequestAsync(HttpMethod method, string path, string? json, CancellationToken ct)
+    {
+        HttpRequestMessage request;
+        try
+        {
+            request = await SecureApp.Presentation.Transport.RelayHttp.CreateAuthorizedRequestAsync(method, "homeai/" + path.TrimStart('/'), _transportSettingsRepository, _vault, ct).ConfigureAwait(false);
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new HomeAiException(ex.Message); // relay address / device login not set up
+        }
+
         if (json is not null)
             request.Content = new StringContent(json, Encoding.UTF8, "application/json");
         return request;
@@ -69,16 +83,16 @@ public sealed class HomeAiClient
         HttpResponseMessage response;
         try
         {
-            using var request = Request(HttpMethod.Get, endpoint, "api/v1/models");
+            using var request = await RequestAsync(HttpMethod.Get, "api/v1/models", null, timeout.Token).ConfigureAwait(false);
             response = await _http.SendAsync(request, timeout.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            throw new HomeAiException("Server neodpovídá. Zkontrolujte, že je domácí PC zapnuté a přihlášené (tunel se spouští po přihlášení), že běží LM Studio a že jste doma nebo přes WireGuard.");
+            throw new HomeAiException("Relay neodpovídá. Zkontrolujte připojení telefonu k internetu.");
         }
         catch (HttpRequestException ex)
         {
-            throw new HomeAiException($"Nelze se připojit k {endpoint.BaseUrl}: {ex.Message}");
+            throw new HomeAiException($"Nelze se připojit k relay: {RelayHttpMessage(ex)}");
         }
 
         using (response)
@@ -133,7 +147,7 @@ public sealed class HomeAiClient
     /// <summary>Loads a model into GPU/RAM; returns when it is ready (a big model can take a minute).</summary>
     public async Task LoadModelAsync(HomeAiEndpoint endpoint, string modelKey, CancellationToken ct = default)
     {
-        using var request = Request(HttpMethod.Post, endpoint, "api/v1/models/load", JsonSerializer.Serialize(new { model = modelKey }));
+        using var request = await RequestAsync(HttpMethod.Post, "api/v1/models/load", JsonSerializer.Serialize(new { model = modelKey }), ct).ConfigureAwait(false);
         using var response = await SendAsync(request, ct).ConfigureAwait(false);
         await EnsureSuccessAsync(response).ConfigureAwait(false);
     }
@@ -141,7 +155,7 @@ public sealed class HomeAiClient
     /// <summary>Frees a loaded model instance from memory.</summary>
     public async Task UnloadModelAsync(HomeAiEndpoint endpoint, string instanceId, CancellationToken ct = default)
     {
-        using var request = Request(HttpMethod.Post, endpoint, "api/v1/models/unload", JsonSerializer.Serialize(new { instance_id = instanceId }));
+        using var request = await RequestAsync(HttpMethod.Post, "api/v1/models/unload", JsonSerializer.Serialize(new { instance_id = instanceId }), ct).ConfigureAwait(false);
         using var response = await SendAsync(request, ct).ConfigureAwait(false);
         await EnsureSuccessAsync(response).ConfigureAwait(false);
     }
@@ -167,7 +181,7 @@ public sealed class HomeAiClient
         if (endpoint.TtlSeconds is { } ttl and > 0)
             payload["ttl"] = ttl;
 
-        using var request = Request(HttpMethod.Post, endpoint, "v1/chat/completions", JsonSerializer.Serialize(payload));
+        using var request = await RequestAsync(HttpMethod.Post, "v1/chat/completions", JsonSerializer.Serialize(payload), ct).ConfigureAwait(false);
         using var response = await SendAsync(request, ct, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
         await EnsureSuccessAsync(response).ConfigureAwait(false);
 
@@ -221,17 +235,19 @@ public sealed class HomeAiClient
         }
         catch (HttpRequestException ex)
         {
-            throw new HomeAiException($"Spojení se serverem selhalo: {ex.Message}");
+            throw new HomeAiException($"Spojení s relay selhalo: {RelayHttpMessage(ex)}");
         }
     }
+
+    private static string RelayHttpMessage(HttpRequestException ex) => SecureApp.Presentation.Transport.RelayHttp.DescribeException(ex);
 
     private static async Task EnsureSuccessAsync(HttpResponseMessage response)
     {
         if (response.IsSuccessStatusCode)
             return;
 
-        if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
-            throw new HomeAiException("Server vyžaduje API token (nebo je špatný). Zadejte ho níže.");
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+            throw new HomeAiException("Relay vás nepřihlásilo (zařízení není zaregistrované).");
 
         var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
         throw new HomeAiException($"Server odpověděl {(int)response.StatusCode}: {ExtractError(body)}");

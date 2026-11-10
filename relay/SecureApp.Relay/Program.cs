@@ -150,6 +150,9 @@ app.UseWebSockets();
 
 app.MapGet("/health", () => Results.Ok());
 
+// Admin's private "Domácí AI" (2026-11-10): the phone reaches the LM Studio on the home PC through here — see HomeAiProxy.
+app.MapHomeAiProxy(builder.Configuration["SECUREAPP_HOMEAI_UPSTREAM"] ?? "http://192.168.50.8:11234");
+
 // A new member is walked through this in person, out loud, while their WireGuard tunnel is being
 // handed over — so the address has to be short enough to dictate and type without a QR code in the
 // loop. Bare "192.168.50.8:8080" is about as short as this gets; without this redirect it returns
