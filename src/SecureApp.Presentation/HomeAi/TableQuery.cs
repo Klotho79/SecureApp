@@ -24,8 +24,13 @@ internal sealed class TableQueryRunner(HomeAiClient client)
     private const string FormatHelp =
         "Formát odpovědi (jediný JSON objekt, nic jiného):\n" +
         "{\"query\":true,\"sheet\":\"název listu\",\"filters\":[{\"column\":\"název sloupce\",\"op\":\"=\",\"value\":\"hodnota\"}]," +
-        "\"group_by\":[\"sloupec\"],\"count\":true,\"sum\":[\"sloupec\"],\"avg\":[],\"min\":[],\"max\":[],\"count_distinct\":[]}\n" +
-        "Operátory: =, !=, contains, startswith, >, >=, <, <=, between (value je [\"od\",\"do\"]), in (value je [\"a\",\"b\"]), empty, not_empty.\n" +
+        "\"group_by\":[\"sloupec\"],\"count\":true,\"sum\":[\"sloupec\"],\"avg\":[],\"min\":[],\"max\":[],\"count_distinct\":[],\"list\":[\"sloupec\"]}\n" +
+        "Operátory: =, !=, contains, startswith, >, >=, <, <=, between, in (value je [\"a\",\"b\"]), empty, not_empty.\n" +
+        "between: value je [\"od\",\"do\"], nebo více úseků najednou (stačí kterýkoli) [[\"od\",\"do\"],[\"od\",\"do\"]]; " +
+        "časy piš HH:MM, úsek přes půlnoc zapiš normálně [\"22:00\",\"06:00\"]; data piš RRRR-MM-DD. " +
+        "Různé filtry platí všechny zároveň. Procenta program spočítá sám (stačí count). " +
+        "Když otázka mluví o začátku (začíná, začal, začátek), vyber sloupec se slovem založení, zahájení, začátek nebo příjem, ne zápis, nález ani uzavření. " +
+        "list = sloupce, jejichž hodnoty se mají u vybraných řádků vypsat (když se ptá „jaké / vypiš / dej časy, jména…“).\n" +
         "Pravidla: názvy sloupců piš přesně ze seznamu; kódy diagnóz hledej operátorem startswith (C50 najde i C50.1), " +
         "více kódů najednou startswith se seznamem [\"C50\",\"C18\"]; " +
         "když se ptá „kolik bodů / korun / kusů / celkem“ a takový číselný sloupec existuje, dej ho do sum (count jen počítá řádky); " +
@@ -36,6 +41,8 @@ internal sealed class TableQueryRunner(HomeAiClient client)
         "{\"query\":true,\"filters\":[{\"column\":\"Hlavní diagnóza\",\"op\":\"startswith\",\"value\":\"C50\"}],\"count\":true,\"sum\":[\"Počet\"]}\n" +
         "Otázka: Kolik bodů mají výkony s diagnózou C50 nebo C18 v lednu 2026?\n" +
         "{\"query\":true,\"filters\":[{\"column\":\"Hlavní diagnóza\",\"op\":\"startswith\",\"value\":[\"C50\",\"C18\"]},{\"column\":\"Datum\",\"op\":\"between\",\"value\":[\"2026-01-01\",\"2026-01-31\"]}],\"count\":true,\"sum\":[\"Body\"]}\n" +
+        "Otázka: Kolik procent záznamů lékaře Novák začalo mezi 6:00 a 8:00 nebo po 22:00 a vypiš jejich časy\n" +
+        "{\"query\":true,\"filters\":[{\"column\":\"Lékař\",\"op\":\"contains\",\"value\":\"Novák\"},{\"column\":\"Čas začátku\",\"op\":\"between\",\"value\":[[\"06:00\",\"08:00\"],[\"22:00\",\"23:59\"]]}],\"count\":true,\"list\":[\"Čas začátku\"]}\n" +
         "Otázka: Součet počtů podle diagnóz\n" +
         "{\"query\":true,\"group_by\":[\"Hlavní diagnóza\"],\"count\":true,\"sum\":[\"Počet\"]}\n" +
         "Otázka: Shrň tabulku\n{\"query\":false}";
@@ -155,7 +162,15 @@ internal sealed class TableQueryRunner(HomeAiClient client)
                 {
                     ["column"] = Column(),
                     ["op"] = new { type = "string", @enum = Operators },
-                    ["value"] = new { anyOf = new object[] { new { type = "string" }, new { type = "array", items = new { type = "string" } } } },
+                    ["value"] = new
+                    {
+                        anyOf = new object[]
+                        {
+                            new { type = "string" },
+                            new { type = "array", items = new { type = "string" } },
+                            new { type = "array", items = new { type = "array", items = new { type = "string" } } }, // several ranges
+                        },
+                    },
                 },
                 ["required"] = new[] { "column", "op" },
                 ["additionalProperties"] = false,
@@ -163,7 +178,7 @@ internal sealed class TableQueryRunner(HomeAiClient client)
         };
         properties["group_by"] = ColumnList(2);
         properties["count"] = new { type = "boolean" };
-        foreach (var aggregate in new[] { "sum", "avg", "min", "max", "count_distinct" })
+        foreach (var aggregate in new[] { "sum", "avg", "min", "max", "count_distinct", "list" })
             properties[aggregate] = ColumnList();
 
         return new
@@ -213,6 +228,11 @@ internal sealed class TableQueryRunner(HomeAiClient client)
                     var dates = values.Cast<DateTime>().ToList();
                     text.Append(" (datum od ").Append(dates.Min().ToString("d. M. yyyy", CultureInfo.InvariantCulture)).Append(" do ").Append(dates.Max().ToString("d. M. yyyy", CultureInfo.InvariantCulture)).AppendLine(")");
                 }
+                else if (values.All(v => v is TimeSpan))
+                {
+                    var times = values.Cast<TimeSpan>().ToList();
+                    text.Append(" (čas HH:MM, od ").Append(DocumentTextExtractor.CellText(times.Min())).Append(" do ").Append(DocumentTextExtractor.CellText(times.Max())).AppendLine(")");
+                }
                 else if (numbers.Count >= values.Count * 0.8)
                 {
                     text.Append(" (číslo, ").Append(TableQueryEngine.Num(numbers.Min())).Append(" až ").Append(TableQueryEngine.Num(numbers.Max())).AppendLine(")");
@@ -233,7 +253,7 @@ internal sealed class TableQueryRunner(HomeAiClient client)
 
 internal static class TableQueryEngine
 {
-    private sealed record Filter(int Column, string Op, string[] Values);
+    private sealed record Filter(int Column, string Op, string[] Values, List<(string Lo, string Hi)> Ranges);
 
     public static TableQueryOutcome Execute(IReadOnlyList<SpreadsheetTable> tables, JsonElement q)
     {
@@ -245,9 +265,14 @@ internal static class TableQueryEngine
             {
                 var column = Column(table, Str(f, "column"));
                 var op = NormalizeOp(Str(f, "op"));
-                filters.Add(new Filter(column, op, Values(f)));
+                var ranges = op == "between" ? Ranges(f) : [];
+                if (op == "between" && ranges.Count == 0)
+                    throw new TableQueryException("between potřebuje dvě hodnoty [\"od\",\"do\"] nebo seznam úseků [[\"od\",\"do\"],[\"od\",\"do\"]]");
+                filters.Add(new Filter(column, op, Values(f), ranges));
             }
         }
+
+        var listed = Names(q, "list").Select(n => Column(table, n)).Distinct().Take(6).ToList();
 
         var groupBy = Names(q, "group_by").Select(n => Column(table, n)).Take(2).ToList();
         var sums = Names(q, "sum").Select(n => Column(table, n)).ToList();
@@ -263,16 +288,17 @@ internal static class TableQueryEngine
         var description = new StringBuilder("list „").Append(table.Name).Append('“');
         description.Append(filters.Count == 0
             ? ", všechny řádky"
-            : ", " + string.Join(" a ", filters.Select(f => $"{table.Columns[f.Column]} {OpText(f.Op)} {string.Join(f.Op is "in" or "not_in" or "startswith" ? " / " : " … ", f.Values)}".Trim())));
+            : ", " + string.Join(" a ", filters.Select(f => $"{table.Columns[f.Column]} {OpText(f.Op)} {FilterValueText(f)}".Trim())));
         if (groupBy.Count > 0)
             description.Append(", po skupinách podle ").Append(string.Join(" a ", groupBy.Select(g => table.Columns[g])));
 
         var result = new StringBuilder();
-        result.Append("Vyhovuje ").Append(selected.Count).Append(" z ").Append(table.Rows.Count).AppendLine(" řádků.");
+        result.Append("Vyhovuje ").Append(selected.Count).Append(" z ").Append(table.Rows.Count).Append(" řádků (")
+            .Append(Percent(selected.Count, table.Rows.Count)).AppendLine(" % všech řádků).");
 
         if (groupBy.Count == 0)
         {
-            result.AppendLine(Aggregate(selected, table, count, sums, avgs, mins, maxs, distincts, "Celkem"));
+            result.AppendLine(Aggregate(selected, table, count, sums, avgs, mins, maxs, distincts, "Celkem", null));
         }
         else
         {
@@ -283,12 +309,21 @@ internal static class TableQueryEngine
                 .ToList();
             result.Append("Skupin: ").Append(groups.Count).AppendLine(".");
             foreach (var group in groups.Take(80))
-                result.AppendLine(Aggregate(group.Rows, table, count, sums, avgs, mins, maxs, distincts, group.Key));
+                result.AppendLine(Aggregate(group.Rows, table, count, sums, avgs, mins, maxs, distincts, group.Key, selected.Count));
             if (groups.Count > 80)
                 result.Append("… dalších skupin: ").Append(groups.Count - 80).AppendLine(" (neuvedeno).");
         }
 
-        if (groupBy.Count == 0 && selected.Count > 0 && selected.Count <= 40)
+        if (listed.Count > 0)
+        {
+            // The values the user asked to see (times, names…) of the selected rows.
+            result.Append("Vybrané řádky (").Append(string.Join(" | ", listed.Select(c => table.Columns[c]))).AppendLine("):");
+            foreach (var row in selected.Take(60))
+                result.Append('Ř').Append(row.Number).Append(": ").AppendLine(string.Join(" | ", listed.Select(c => KeyText(row.Values, c))));
+            if (selected.Count > 60)
+                result.Append("… a dalších ").Append(selected.Count - 60).AppendLine(" řádků (neuvedeno).");
+        }
+        else if (groupBy.Count == 0 && selected.Count > 0 && selected.Count <= 40)
             result.Append("Řádky: ").Append(string.Join(", ", selected.Select(r => "Ř" + r.Number))).AppendLine();
         else if (groupBy.Count == 0 && selected.Count > 40)
             result.Append("Řádky: první ").Append(40).Append(" z ").Append(selected.Count).Append(": ").Append(string.Join(", ", selected.Take(40).Select(r => "Ř" + r.Number))).AppendLine();
@@ -296,11 +331,20 @@ internal static class TableQueryEngine
         return new TableQueryOutcome(description.ToString(), result.ToString().TrimEnd());
     }
 
-    private static string Aggregate(List<(int Number, object?[] Values)> rows, SpreadsheetTable table, bool count, List<int> sums, List<int> avgs, List<int> mins, List<int> maxs, List<int> distincts, string label)
+    private static string Percent(int part, int whole) => whole == 0 ? "0" : (100.0 * part / whole).ToString("0.#", CultureInfo.InvariantCulture);
+
+    private static string FilterValueText(Filter f) => f.Op switch
+    {
+        "between" => string.Join(" nebo ", f.Ranges.Select(r => $"{r.Lo}–{r.Hi}")),
+        "in" or "not_in" or "startswith" => string.Join(" / ", f.Values),
+        _ => string.Join(" … ", f.Values),
+    };
+
+    private static string Aggregate(List<(int Number, object?[] Values)> rows, SpreadsheetTable table, bool count, List<int> sums, List<int> avgs, List<int> mins, List<int> maxs, List<int> distincts, string label, int? ofSelected)
     {
         var parts = new List<string>();
         if (count)
-            parts.Add($"počet řádků {rows.Count}");
+            parts.Add(ofSelected is { } total ? $"počet řádků {rows.Count} ({Percent(rows.Count, total)} % z vybraných)" : $"počet řádků {rows.Count}");
         foreach (var c in sums)
             parts.Add($"součet {table.Columns[c]} = {Num(Numbers(rows, c).Sum())}");
         foreach (var c in avgs)
@@ -402,6 +446,26 @@ internal static class TableQueryEngine
         };
     }
 
+    /// <summary>One range ["od","do"] or several [["14:30","17:00"],["21:00","07:00"]] (any of them matches).</summary>
+    private static List<(string Lo, string Hi)> Ranges(JsonElement filter)
+    {
+        var ranges = new List<(string, string)>();
+        if (!filter.TryGetProperty("value", out var value) || value.ValueKind != JsonValueKind.Array)
+            return ranges;
+        var items = value.EnumerateArray().ToList();
+        if (items.Count > 0 && items.All(i => i.ValueKind == JsonValueKind.Array))
+        {
+            foreach (var pair in items.Select(i => i.EnumerateArray().Select(ScalarText).ToList()).Where(p => p.Count >= 2))
+                ranges.Add((pair[0], pair[1]));
+        }
+        else if (items.Count >= 2)
+        {
+            ranges.Add((ScalarText(items[0]), ScalarText(items[1])));
+        }
+
+        return ranges;
+    }
+
     private static string ScalarText(JsonElement value) => value.ValueKind switch
     {
         JsonValueKind.String => value.GetString() ?? string.Empty,
@@ -447,7 +511,7 @@ internal static class TableQueryEngine
 
     private static bool Matches(object?[] row, Filter filter)
     {
-        var cell = Cell(row, filter.Column);
+        var cell = DocumentTextExtractor.Typed(Cell(row, filter.Column)); // text "14.05.2026" / "08:48" / "30" compares as date / time / number
         var text = DocumentTextExtractor.CellText(cell);
         var values = filter.Values;
 
@@ -458,6 +522,9 @@ internal static class TableQueryEngine
             case "not_empty":
                 return text.Length > 0;
         }
+
+        if (filter.Op == "between")
+            return filter.Ranges.Any(r => InRange(cell, Norm(text), r.Lo, r.Hi));
 
         if (values.Length == 0)
             throw new TableQueryException("filtr nemá hodnotu");
@@ -479,10 +546,6 @@ internal static class TableQueryEngine
                 return !norm.Contains(Norm(values[0]));
             case "startswith":
                 return values.Any(v => norm.StartsWith(Norm(v), StringComparison.Ordinal));
-            case "between":
-                if (values.Length < 2)
-                    throw new TableQueryException("between potřebuje dvě hodnoty");
-                return Compare(cell, norm, values[0]) is { } lo && lo >= 0 && Compare(cell, norm, values[1]) is { } hi && hi <= 0;
             default: // > >= < <=
                 var cmp = Compare(cell, norm, values[0]);
                 return cmp is not null && filter.Op switch { ">" => cmp > 0, ">=" => cmp >= 0, "<" => cmp < 0, _ => cmp <= 0 };
@@ -493,20 +556,62 @@ internal static class TableQueryEngine
     {
         if (ToNumber(cell) is { } number && ToNumber(value) is { } wanted)
             return Math.Abs(number - wanted) < 1e-9;
+        if (TimeOf(cell, value) is { } time && ToTime(value) is { } wantedTime)
+            return time == wantedTime;
         if (cell is DateTime date && ToDate(value) is { } wantedDate)
             return date.Date == wantedDate.Date;
         var wantedText = Norm(value);
-        // Hierarchical codes: "C50" also means C50.1, C50.9 (the model asks for "C50 nebo C18" with = / in, not startswith).
-        return normText == wantedText || (wantedText.Length > 0 && normText.StartsWith(wantedText + ".", StringComparison.Ordinal));
+        // Codes: "C50" also means C50.1, and "I64" means "I64 - Cévní mozková příhoda…" (the model asks with = / in, not startswith).
+        return normText == wantedText
+            || (wantedText.Length > 0 && normText.Length > wantedText.Length && normText.StartsWith(wantedText, StringComparison.Ordinal)
+                && normText[wantedText.Length] is '.' or ' ');
     }
 
     private static int? Compare(object? cell, string normText, string value)
     {
         if (ToNumber(cell) is { } number && ToNumber(value) is { } wanted)
             return number.CompareTo(wanted);
+        if (TimeOf(cell, value) is { } time && ToTime(value) is { } wantedTime)
+            return time.CompareTo(wantedTime);
         if (cell is DateTime date && ToDate(value) is { } wantedDate)
             return date.Date.CompareTo(wantedDate.Date);
         return normText.Length == 0 ? null : string.CompareOrdinal(normText, Norm(value));
+    }
+
+    /// <summary>A range; for times one that crosses midnight (21:00–07:00) means "from 21:00 or until 07:00".</summary>
+    private static bool InRange(object? cell, string normText, string lo, string hi)
+    {
+        var fromLo = Compare(cell, normText, lo);
+        var toHi = Compare(cell, normText, hi);
+        if (fromLo is null || toHi is null)
+            return false;
+        if (TimeOf(cell, lo) is not null && ToTime(lo) is { } a && ToTime(hi) is { } b && a > b)
+            return fromLo >= 0 || toHi <= 0;
+        return fromLo >= 0 && toHi <= 0;
+    }
+
+    /// <summary>The time of day of a cell, when the value compared with it is a time ("14:30"): a time cell, or the time part of a date-and-time cell.</summary>
+    private static TimeSpan? TimeOf(object? cell, string value)
+    {
+        if (ToTime(value) is null)
+            return null;
+        return cell switch
+        {
+            TimeSpan t => t,
+            DateTime d => d.TimeOfDay,
+            _ => null,
+        };
+    }
+
+    /// <summary>"14:30", "7:00", "07:00:00", "24:00" (= end of the day).</summary>
+    private static TimeSpan? ToTime(string value)
+    {
+        var v = value.Trim();
+        if (!System.Text.RegularExpressions.Regex.IsMatch(v, @"^\d{1,2}:\d{2}(:\d{2})?$"))
+            return null;
+        if (v is "24:00" or "24:00:00")
+            return new TimeSpan(23, 59, 59);
+        return TimeSpan.TryParse(v, CultureInfo.InvariantCulture, out var t) && t < TimeSpan.FromDays(1) ? t : null;
     }
 
     internal static double? ToNumber(object? value)

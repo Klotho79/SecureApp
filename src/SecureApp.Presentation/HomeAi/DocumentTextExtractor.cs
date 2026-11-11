@@ -15,7 +15,7 @@ internal sealed record SpreadsheetTable(string Name, string[] Columns, List<(int
 /// Pulls plain text out of a file the user attaches to the home-AI chat (2026-11-10): text-like files, PDF with a text layer
 /// (no OCR) and Word .docx. Runs on the phone; the text is kept in memory only and goes nowhere but the home server.
 /// </summary>
-internal static class DocumentTextExtractor
+internal static partial class DocumentTextExtractor
 {
     public const long MaxFileBytes = 25L * 1024 * 1024;
     public const int MaxChars = 300_000;
@@ -108,7 +108,7 @@ internal static class DocumentTextExtractor
                 var any = false;
                 for (var i = 0; i < values.Length; i++)
                 {
-                    values[i] = reader.GetValue(i);
+                    values[i] = Typed(reader.GetValue(i));
                     if (!any && CellText(values[i]).Length > 0)
                         any = true;
                 }
@@ -204,6 +204,7 @@ internal static class DocumentTextExtractor
     {
         static bool Priority(string name) =>
             name.Contains("diagn", StringComparison.OrdinalIgnoreCase)
+            || Regex.IsMatch(name, @"\bdg\b", RegexOptions.IgnoreCase) // "Hlavní Dg"
             || name.Contains("výkon", StringComparison.OrdinalIgnoreCase)
             || name.Contains("vykon", StringComparison.OrdinalIgnoreCase);
 
@@ -259,9 +260,47 @@ internal static class DocumentTextExtractor
         return letters;
     }
 
+    private static readonly string[] DateFormats =
+    [
+        "d.M.yyyy", "d. M. yyyy", "d.M.yyyy H:mm", "d. M. yyyy H:mm", "d.M.yyyy H:mm:ss", "d. M. yyyy H:mm:ss",
+        "yyyy-MM-dd", "yyyy-MM-dd HH:mm", "yyyy-MM-dd HH:mm:ss", "yyyy-MM-ddTHH:mm:ss",
+    ];
+
+    /// <summary>
+    /// Exports from hospital systems store everything as text ("14.05.2026", "08:48", "30"; KCC.xlsx, 2026-11-11), so a text cell
+    /// that is clearly a date, a time or a number becomes one; otherwise date ranges, times and sums cannot work. Codes with a
+    /// leading zero (09543) stay text. Excel time-only cells come as a date in 1899 and become a time of day.
+    /// </summary>
+    internal static object? Typed(object? value)
+    {
+        if (value is DateTime { Year: <= 1900 } timeOnly)
+            return timeOnly.TimeOfDay;
+        if (value is not string s)
+            return value;
+
+        var t = s.Trim();
+        if (t.Length is 0 or > 25)
+            return value;
+        if (TimeText().IsMatch(t) && TimeSpan.TryParse(t, System.Globalization.CultureInfo.InvariantCulture, out var time) && time < TimeSpan.FromDays(1))
+            return time;
+        if (char.IsDigit(t[0]) && (t.Contains('.') || t.Contains('-'))
+            && DateTime.TryParseExact(t, DateFormats, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var date))
+            return date;
+        if (NumberText().IsMatch(t) && double.TryParse(t.Replace(',', '.'), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var number))
+            return number;
+        return value;
+    }
+
+    [GeneratedRegex(@"^\d{1,2}:\d{2}(:\d{2})?$")]
+    private static partial Regex TimeText();
+
+    [GeneratedRegex(@"^-?(0|[1-9]\d{0,11})([.,]\d+)?$")]
+    private static partial Regex NumberText();
+
     internal static string CellText(object? value) => value switch
     {
         null => string.Empty,
+        TimeSpan time => time.ToString(time.Seconds == 0 ? @"hh\:mm" : @"hh\:mm\:ss", System.Globalization.CultureInfo.InvariantCulture),
         DateTime date => date.TimeOfDay == TimeSpan.Zero ? date.ToString("d. M. yyyy", System.Globalization.CultureInfo.InvariantCulture) : date.ToString("d. M. yyyy H:mm", System.Globalization.CultureInfo.InvariantCulture),
         double number => number.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture),
         bool flag => flag ? "ano" : "ne",
