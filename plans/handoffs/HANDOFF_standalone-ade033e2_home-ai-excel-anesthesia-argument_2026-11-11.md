@@ -367,3 +367,8 @@ dotnet bin\Release\net10.0\qt-kcc.dll --bottleneck <KCC_1.xlsx> <saly_seznam.xls
 # Next action
 # Ask the user: (1) staffing count after 15:30 and 14:30-15:30, (2) whether to rewrite the Artifact page + one-page director text with the 1.4.–3.11. numbers; release 0.1.30 only after "Vydej".
 ```
+
+## Session Closed
+**Closed at:** 2026-11-11 23:05
+**Commit:** e900ac8 (0.1.30 source changes + this handoff; NOT released)
+**Session status:** Handed off to next session
