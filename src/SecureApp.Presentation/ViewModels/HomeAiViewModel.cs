@@ -53,6 +53,8 @@ public sealed partial class HomeAiViewModel : ObservableObject
     private readonly RolePreviewService _rolePreviewService;
     private CancellationTokenSource? _generationCts;
     private string? _attachedText;
+    private IReadOnlyList<SpreadsheetTable> _attachedTables = [];
+    private readonly TableQueryRunner _tableRunner;
     private readonly Stopwatch _scrollThrottle = Stopwatch.StartNew();
 
     public HomeAiViewModel(HomeAiClient client, ICurrentUserService currentUserService, RolePreviewService rolePreviewService)
@@ -60,6 +62,8 @@ public sealed partial class HomeAiViewModel : ObservableObject
         _client = client;
         _decomposer = new ProblemDecomposer(client);
         _documentReader = new DocumentReader(client);
+        _tableRunner = new TableQueryRunner(client);
+        UseTableQuery = HomeAiSettings.TableQuery;
         _currentUserService = currentUserService;
         _rolePreviewService = rolePreviewService;
 
@@ -236,6 +240,11 @@ public sealed partial class HomeAiViewModel : ObservableObject
     }
 
     partial void OnUseDecomposeChanged(bool value) => HomeAiSettings.Decompose = value;
+
+    [ObservableProperty]
+    public partial bool UseTableQuery { get; set; }
+
+    partial void OnUseTableQueryChanged(bool value) => HomeAiSettings.TableQuery = value;
 
     partial void OnSelectedSkillChanged(HomeAiSkill? value)
     {
@@ -509,10 +518,14 @@ public sealed partial class HomeAiViewModel : ObservableObject
         StatusText = $"Čtu {picked.FileName}…";
         try
         {
-            var (text, truncated) = await DocumentTextExtractor.ExtractAsync(picked);
+            var extracted = await DocumentTextExtractor.ExtractAsync(picked);
+            var text = extracted.Text;
             _attachedText = text;
+            _attachedTables = extracted.Tables;
             AttachmentName = picked.FileName;
-            AttachmentInfo = $"{text.Length:N0} znaků" + (truncated ? " (zkráceno)" : string.Empty);
+            AttachmentInfo = extracted.Tables.Count > 0
+                ? $"{extracted.Tables.Sum(t => t.Rows.Count):N0} řádků v {extracted.Tables.Count} listech"
+                : $"{text.Length:N0} znaků" + (extracted.Truncated ? " (zkráceno)" : string.Empty);
             StatusText = $"Příloha načtená: {picked.FileName}. Napište, co s ní má AI udělat.";
         }
         catch (Exception ex)
@@ -529,6 +542,7 @@ public sealed partial class HomeAiViewModel : ObservableObject
     private void RemoveAttachment()
     {
         _attachedText = null;
+        _attachedTables = [];
         AttachmentName = null;
         AttachmentInfo = null;
     }
@@ -577,7 +591,22 @@ public sealed partial class HomeAiViewModel : ObservableObject
                 ? (decompose ? "Rozkládám problém…" : "Odpovídám…")
                 : $"Načítám {selected.DisplayName} a odpovídám… (poprvé to chvíli trvá)";
 
-            if (attachedText is not null && !DocumentReader.FitsInOnePrompt(attachedText, selected.UsableContext))
+            // An attached Excel: the model only writes a small query (which rows, count / sum by what), the program calculates it
+            // exactly and the model words the answer from the result. Questions that are no calculation fall through to the text path.
+            TableQueryOutcome? tableOutcome = null;
+            if (attachedText is not null && _attachedTables.Count > 0 && UseTableQuery)
+            {
+                StatusText = "Převádím otázku na výběr z tabulky…";
+                tableOutcome = await _tableRunner.PrepareAsync(endpoint, selected.Key, text, _attachedTables,
+                    note => Messages.Add(new HomeAiMessage(HomeAiMessageKind.Step, note)), ct);
+            }
+
+            if (tableOutcome is not null)
+            {
+                StatusText = "Počítám v tabulce a skládám odpověď…";
+                answer = await ConsumeAsync(_tableRunner.AnswerAsync(endpoint, selected.Key, systemPrompt, text, tableOutcome, ct));
+            }
+            else if (attachedText is not null && !DocumentReader.FitsInOnePrompt(attachedText, selected.UsableContext))
             {
                 // Longer than the model's context: read it in pieces and answer from the notes.
                 answer = await ConsumeAsync(_documentReader.AnswerAsync(endpoint, selected.Key, systemPrompt, text, attachedName, attachedText, selected.UsableContext, ct));
@@ -588,8 +617,13 @@ public sealed partial class HomeAiViewModel : ObservableObject
                 if (decompose)
                     answer = await ConsumeAsync(_decomposer.SolveAsync(endpoint, selected.Key, systemPrompt, content, ct));
                 else
-                    answer = await RunPlainAsync(endpoint, selected.Key, systemPrompt, content, ct);
+                    answer = await RunPlainAsync(endpoint, selected.Key, systemPrompt, content, attachedText is null ? 0.5 : 0.2, ct);
             }
+
+            // Answers about a document: numbers the model wrote that are in none of the sources get flagged.
+            if (attachedText is not null && answer is { Text.Length: > 0 }
+                && AnswerNumberCheck.Check(answer.Text, [attachedText, tableOutcome?.ResultText, text]) is { } numberCheck)
+                Messages.Add(new HomeAiMessage(HomeAiMessageKind.Step, numberCheck));
 
             StatusText = "Hotovo.";
         }
@@ -616,7 +650,7 @@ public sealed partial class HomeAiViewModel : ObservableObject
     }
 
     /// <summary>A normal chat: the last messages of the conversation plus this turn (with the attached document, if any) go to the model.</summary>
-    private async Task<HomeAiMessage> RunPlainAsync(HomeAiEndpoint endpoint, string model, string systemPrompt, string currentUserContent, CancellationToken ct)
+    private async Task<HomeAiMessage> RunPlainAsync(HomeAiEndpoint endpoint, string model, string systemPrompt, string currentUserContent, double temperature, CancellationToken ct)
     {
         var history = new List<HomeAiChatMessage> { new("system", systemPrompt) };
         history.AddRange(Messages
@@ -628,7 +662,7 @@ public sealed partial class HomeAiViewModel : ObservableObject
 
         var answer = new HomeAiMessage(HomeAiMessageKind.Assistant, string.Empty);
         Messages.Add(answer);
-        await foreach (var piece in _client.StreamChatAsync(endpoint, model, history, 0.5, null, ct))
+        await foreach (var piece in _client.StreamChatAsync(endpoint, model, history, temperature, null, ct))
         {
             answer.Text += piece;
             ThrottledScroll();
@@ -648,6 +682,9 @@ public sealed partial class HomeAiViewModel : ObservableObject
                 case PlanReady plan:
                     Messages.Add(new HomeAiMessage(HomeAiMessageKind.Step,
                         "Plán:\n" + string.Join("\n", plan.Questions.Select((q, i) => $"{i + 1}. {q}"))));
+                    break;
+                case NoteStep noteStep:
+                    Messages.Add(new HomeAiMessage(HomeAiMessageKind.Step, noteStep.Text));
                     break;
                 case StepStarted started:
                     StatusText = $"Krok {started.Index}/{started.Total}…";

@@ -34,6 +34,13 @@ internal static class HomeAiSettings
         set => Preferences.Default.Set("homeai_decompose", value);
     }
 
+    /// <summary>An attached Excel is queried and calculated by the program (the model only writes the query); default on.</summary>
+    public static bool TableQuery
+    {
+        get => Preferences.Default.Get("homeai_table_query", true);
+        set => Preferences.Default.Set("homeai_table_query", value);
+    }
+
     public static string SystemPrompt
     {
         get => Preferences.Default.Get("homeai_system_prompt", DefaultSystemPrompt);

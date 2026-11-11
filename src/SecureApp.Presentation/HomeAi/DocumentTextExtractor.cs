@@ -5,6 +5,12 @@ using Microsoft.Maui.Storage;
 
 namespace SecureApp.Presentation.HomeAi;
 
+/// <summary>The text of an attached file, whether it had to be cut, and (Excel only) the sheets as tables for exact calculations.</summary>
+internal sealed record ExtractedDocument(string Text, bool Truncated, IReadOnlyList<SpreadsheetTable> Tables);
+
+/// <summary>One sheet: column names and its non-empty data rows (with their row numbers in the file).</summary>
+internal sealed record SpreadsheetTable(string Name, string[] Columns, List<(int Number, object?[] Values)> Rows);
+
 /// <summary>
 /// Pulls plain text out of a file the user attaches to the home-AI chat (2026-11-10): text-like files, PDF with a text layer
 /// (no OCR) and Word .docx. Runs on the phone; the text is kept in memory only and goes nowhere but the home server.
@@ -19,7 +25,7 @@ internal static class DocumentTextExtractor
         ".txt", ".md", ".csv", ".tsv", ".json", ".xml", ".log", ".html", ".htm", ".yaml", ".yml", ".ini", ".cfg", ".sql", ".cs", ".py", ".js", ".ts",
     };
 
-    public static async Task<(string Text, bool Truncated)> ExtractAsync(FileResult file, CancellationToken ct = default)
+    public static async Task<ExtractedDocument> ExtractAsync(FileResult file, CancellationToken ct = default)
     {
         var extension = Path.GetExtension(file.FileName);
         await using var source = await file.OpenReadAsync();
@@ -29,11 +35,12 @@ internal static class DocumentTextExtractor
             throw new InvalidOperationException("Soubor je příliš velký (nejvíc 25 MB).");
 
         buffer.Position = 0;
+        var tables = new List<SpreadsheetTable>();
         var raw = await Task.Run(() => extension.ToLowerInvariant() switch
         {
             ".pdf" => ExtractPdf(buffer),
             ".docx" => ExtractDocx(buffer),
-            ".xls" or ".xlsx" => ExtractSpreadsheet(buffer),
+            ".xls" or ".xlsx" => ExtractSpreadsheet(buffer, tables),
             _ when TextExtensions.Contains(extension) => ReadText(buffer),
             _ => throw new InvalidOperationException($"Typ souboru „{extension}“ zatím neumím přečíst. Podporuji text (.txt, .md, .csv, .json …), PDF s textem, Word (.docx) a Excel (.xls, .xlsx)."),
         }, ct);
@@ -42,7 +49,7 @@ internal static class DocumentTextExtractor
         if (text.Length == 0)
             throw new InvalidOperationException("V souboru jsem nenašel žádný text (u naskenovaného PDF bez textové vrstvy ho nepřečtu).");
 
-        return text.Length > MaxChars ? (text[..MaxChars], true) : (text, false);
+        return text.Length > MaxChars ? new(text[..MaxChars], true, tables) : new(text, false, tables);
     }
 
     private static string ReadText(Stream stream)
@@ -84,7 +91,7 @@ internal static class DocumentTextExtractor
     /// empty cells kept so each value stays under its column. DocumentReader repeats the first three lines in every piece.
     /// The old .xls format needs code-page encodings registered first.
     /// </summary>
-    private static string ExtractSpreadsheet(Stream stream)
+    private static string ExtractSpreadsheet(Stream stream, List<SpreadsheetTable> tables)
     {
         System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
 
@@ -112,21 +119,22 @@ internal static class DocumentTextExtractor
                     break;
             }
 
-            AppendSheet(text, reader.Name, rows);
-            if (text.Length > MaxChars * 2)
-                break; // enough: the caller truncates to MaxChars anyway
+            // Past the text limit the sheet is still read into a table (the exact calculations see all rows), just not written out.
+            var table = AppendSheet(text.Length > MaxChars * 2 ? new StringBuilder() : text, reader.Name, rows);
+            if (table is not null)
+                tables.Add(table);
         }
         while (reader.NextResult());
 
         return text.ToString();
     }
 
-    private static void AppendSheet(StringBuilder text, string sheetName, List<(int Number, object?[] Values)> rows)
+    private static SpreadsheetTable? AppendSheet(StringBuilder text, string sheetName, List<(int Number, object?[] Values)> rows)
     {
         if (rows.Count == 0)
         {
             text.Append("## List: ").Append(sheetName).AppendLine(" (prázdný)").AppendLine();
-            return;
+            return null;
         }
 
         var columns = rows.Max(r => r.Values.Length);
@@ -144,28 +152,35 @@ internal static class DocumentTextExtractor
         text.Append("Sloupce: ").AppendLine(string.Join(" | ", names.Select((n, c) => hasHeader && n != ColumnLetter(c) ? $"{ColumnLetter(c)}={n}" : n)));
 
         var summary = new List<string>();
-        for (var c = 0; c < columns && summary.Count < 12; c++)
+        var numeric = new bool[columns];
+        var filledCount = new int[columns];
+        for (var c = 0; c < columns; c++)
         {
             var numbers = new List<double>();
-            var filled = 0;
             foreach (var (_, values) in data)
             {
                 if (c >= values.Length || CellText(values[c]).Length == 0)
                     continue;
-                filled++;
+                filledCount[c]++;
                 if (values[c] is double d)
                     numbers.Add(d);
             }
 
-            if (numbers.Count >= 3 && numbers.Count >= filled * 0.6)
+            if (numbers.Count >= 3 && numbers.Count >= filledCount[c] * 0.6)
             {
-                var sum = numbers.Sum();
-                summary.Add($"{names[c]}: počet {numbers.Count}, součet {Num(sum)}, průměr {Num(sum / numbers.Count)}, min {Num(numbers.Min())}, max {Num(numbers.Max())}");
+                numeric[c] = true;
+                if (summary.Count < 12)
+                {
+                    var sum = numbers.Sum();
+                    summary.Add($"{names[c]}: počet {numbers.Count}, součet {Num(sum)}, průměr {Num(sum / numbers.Count)}, min {Num(numbers.Min())}, max {Num(numbers.Max())}");
+                }
             }
         }
 
         if (summary.Count > 0)
             text.Append("Souhrn čísel (přesně spočítáno programem, použij tato čísla místo vlastního počítání): ").AppendLine(string.Join("; ", summary));
+
+        AppendFrequencies(text, data, names, numeric, filledCount);
 
         foreach (var (rowNumber, values) in data)
         {
@@ -177,7 +192,62 @@ internal static class DocumentTextExtractor
         }
 
         text.AppendLine();
+        return new SpreadsheetTable(sheetName, names, data);
     }
+
+    /// <summary>
+    /// Exact counts for text columns with few distinct values ("Četnosti …": how many rows per diagnosis / procedure / department…)
+    /// and, for a count column (name contains "poč"), its sum per value of a diagnosis / procedure column ("Součet … podle …").
+    /// A model cannot tally hundreds of rows reliably, so the program does it.
+    /// </summary>
+    private static void AppendFrequencies(StringBuilder text, List<(int Number, object?[] Values)> data, string[] names, bool[] numeric, int[] filledCount)
+    {
+        static bool Priority(string name) =>
+            name.Contains("diagn", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("výkon", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("vykon", StringComparison.OrdinalIgnoreCase);
+
+        var categorical = new List<int>();
+        for (var c = 0; c < names.Length; c++)
+        {
+            if (numeric[c] || filledCount[c] < 3)
+                continue;
+            var distinct = data.Where(r => c < r.Values.Length).Select(r => CellText(r.Values[c])).Where(v => v.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+            var limit = Priority(names[c]) ? 150 : 40;
+            if (distinct >= 2 && distinct <= limit && distinct <= filledCount[c] * 0.7)
+                categorical.Add(c);
+        }
+
+        // Diagnosis / procedure columns first, then the rest; at most 8 columns.
+        foreach (var c in categorical.OrderByDescending(c => Priority(names[c])).Take(8))
+        {
+            var groups = data.Where(r => c < r.Values.Length && CellText(r.Values[c]).Length > 0)
+                .GroupBy(r => CellText(r.Values[c]), StringComparer.OrdinalIgnoreCase)
+                .OrderByDescending(g => g.Count()).ThenBy(g => g.Key, StringComparer.CurrentCultureIgnoreCase).ToList();
+            var line = string.Join("; ", groups.Select(g => $"{g.Key} ({g.Count()})"));
+            text.Append("Četnosti „").Append(names[c]).Append("“ (").Append(groups.Count).Append(" různých hodnot; přesně spočítáno): ")
+                .AppendLine(Shorten(line, Priority(names[c]) ? 2500 : 700));
+        }
+
+        var counts = Enumerable.Range(0, names.Length).Where(c => numeric[c] && (names[c].Contains("poč", StringComparison.OrdinalIgnoreCase) || names[c].Contains("poc", StringComparison.OrdinalIgnoreCase))).Take(2).ToList();
+        var by = categorical.Where(c => Priority(names[c])).Take(2).ToList();
+        foreach (var n in counts)
+        {
+            foreach (var g in by)
+            {
+                var sums = data.Where(r => g < r.Values.Length && n < r.Values.Length && CellText(r.Values[g]).Length > 0 && r.Values[n] is double)
+                    .GroupBy(r => CellText(r.Values[g]), StringComparer.OrdinalIgnoreCase)
+                    .Select(x => (Key: x.Key, Sum: x.Sum(r => (double)r.Values[n]!)))
+                    .OrderByDescending(x => x.Sum).ThenBy(x => x.Key, StringComparer.CurrentCultureIgnoreCase).ToList();
+                if (sums.Count == 0)
+                    continue;
+                text.Append("Součet „").Append(names[n]).Append("“ podle „").Append(names[g]).Append("“ (přesně spočítáno): ")
+                    .AppendLine(Shorten(string.Join("; ", sums.Select(x => $"{x.Key} = {Num(x.Sum)}")), 2500));
+            }
+        }
+    }
+
+    private static string Shorten(string value, int max) => value.Length <= max ? value : value[..max] + " … (zkráceno)";
 
     private static string Num(double value) => value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
 
@@ -189,7 +259,7 @@ internal static class DocumentTextExtractor
         return letters;
     }
 
-    private static string CellText(object? value) => value switch
+    internal static string CellText(object? value) => value switch
     {
         null => string.Empty,
         DateTime date => date.TimeOfDay == TimeSpan.Zero ? date.ToString("d. M. yyyy", System.Globalization.CultureInfo.InvariantCulture) : date.ToString("d. M. yyyy H:mm", System.Globalization.CultureInfo.InvariantCulture),

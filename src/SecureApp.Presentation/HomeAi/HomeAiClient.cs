@@ -35,7 +35,11 @@ public sealed record HomeAiModel(string Key, string DisplayName, string ParamsTe
 
 public sealed record HomeAiChatMessage(string Role, string Content);
 
-public sealed class HomeAiException(string message) : Exception(message);
+public sealed class HomeAiException(string message, int? statusCode = null) : Exception(message)
+{
+    /// <summary>The HTTP status the server answered with, when the failure was an error response.</summary>
+    public int? StatusCode => statusCode;
+}
 
 /// <summary>
 /// Talks to LM Studio (0.4+) on the user's own PC — chosen over Ollama because that is where the larger models live
@@ -167,7 +171,8 @@ public sealed class HomeAiClient
         IReadOnlyList<HomeAiChatMessage> messages,
         double temperature,
         int? maxTokens,
-        [EnumeratorCancellation] CancellationToken ct = default)
+        [EnumeratorCancellation] CancellationToken ct = default,
+        object? responseFormat = null)
     {
         var payload = new Dictionary<string, object?>
         {
@@ -178,6 +183,8 @@ public sealed class HomeAiClient
         };
         if (maxTokens is { } limit)
             payload["max_tokens"] = limit;
+        if (responseFormat is not null)
+            payload["response_format"] = responseFormat; // LM Studio constrains the output to this JSON schema (grammar), so it cannot be malformed
         if (endpoint.TtlSeconds is { } ttl and > 0)
             payload["ttl"] = ttl;
 
@@ -219,10 +226,10 @@ public sealed class HomeAiClient
     }
 
     /// <summary>The whole answer at once (used for the short planning step).</summary>
-    public async Task<string> CompleteAsync(HomeAiEndpoint endpoint, string model, IReadOnlyList<HomeAiChatMessage> messages, double temperature, int? maxTokens, CancellationToken ct = default)
+    public async Task<string> CompleteAsync(HomeAiEndpoint endpoint, string model, IReadOnlyList<HomeAiChatMessage> messages, double temperature, int? maxTokens, CancellationToken ct = default, object? responseFormat = null)
     {
         var text = new StringBuilder();
-        await foreach (var piece in StreamChatAsync(endpoint, model, messages, temperature, maxTokens, ct).ConfigureAwait(false))
+        await foreach (var piece in StreamChatAsync(endpoint, model, messages, temperature, maxTokens, ct, responseFormat).ConfigureAwait(false))
             text.Append(piece);
         return text.ToString();
     }
@@ -250,7 +257,7 @@ public sealed class HomeAiClient
             throw new HomeAiException("Relay vás nepřihlásilo (zařízení není zaregistrované).");
 
         var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-        throw new HomeAiException($"Server odpověděl {(int)response.StatusCode}: {ExtractError(body)}");
+        throw new HomeAiException($"Server odpověděl {(int)response.StatusCode}: {ExtractError(body)}", (int)response.StatusCode);
     }
 
     private static string ExtractError(string body)

@@ -149,9 +149,10 @@ public sealed class DocumentReader(HomeAiClient client)
                 collecting = true;
                 found = true;
             }
-            else if (collecting && (line.StartsWith("Sloupce:", StringComparison.Ordinal) || line.StartsWith("Souhrn čísel", StringComparison.Ordinal)))
+            else if (collecting && (line.StartsWith("Sloupce:", StringComparison.Ordinal) || line.StartsWith("Souhrn čísel", StringComparison.Ordinal)
+                                    || line.StartsWith("Četnosti „", StringComparison.Ordinal) || line.StartsWith("Součet „", StringComparison.Ordinal)))
             {
-                lines.Add(line.Length > 900 ? line[..900] + "…" : line);
+                lines.Add(line.Length > 1200 ? line[..1200] + "…" : line);
             }
             else
             {
@@ -159,7 +160,11 @@ public sealed class DocumentReader(HomeAiClient client)
             }
         }
 
-        return found ? string.Join("\n", lines) : current;
+        if (!found)
+            return current;
+
+        var header = string.Join("\n", lines);
+        return header.Length > 3500 ? header[..3500] : header;
     }
 
     private static IEnumerable<List<string>> Group(List<string> notes, int maxChars)

@@ -90,6 +90,17 @@ internal static class HomeAiSkillStore
         },
         new()
         {
+            Id = "default-kcc",
+            Name = "KCC",
+            Hint = "přiložte .xlsx s výkony a zeptejte se, třeba „kolik výkonů je u každé hlavní diagnózy?“ nebo „shrň počty podle diagnóz“.",
+            Instructions = "Pracuješ s výkazem z Excelu. Každý řádek tabulky (Ř…) je jeden výkon. Nejdůležitější jsou sloupec „Hlavní diagnóza“ a sloupce s počty. " +
+                           "Podle řádku „Sloupce:“ zjisti, který sloupec je který. Řádky „Četnosti“, „Součet … podle …“ a „Souhrn čísel“ jsou přesně spočítané programem: " +
+                           "čísla z nich přepiš a nikdy je nepočítej ani neodhaduj sám. Počet řádků (výkonů) je v záhlaví listu. " +
+                           "Odpověz stručně přehlednou tabulkou nebo odrážkami: hlavní diagnóza, počet výkonů a případně součet počtů, seřazeno od největšího. " +
+                           "Když chce uživatel konkrétní řádky, vypiš čísla řádků (Ř…) a hodnoty ze sloupců. Když odpověď z přiložených údajů nejde určit, napiš to.",
+        },
+        new()
+        {
             Id = "default-fix-text",
             Name = "Oprav text",
             Hint = "vložte nebo napište text a odešlete. Vrátí opravenou verzi a seznam změn.",

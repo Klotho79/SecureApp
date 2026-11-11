@@ -45,6 +45,10 @@
                     <Switch IsToggled="{Binding UseDecompose}" VerticalOptions="Center" />
                     <Label Text="Rozložit problém na kroky (pro malé modely)" FontSize="11" VerticalOptions="Center" />
                 </HorizontalStackLayout>
+                <HorizontalStackLayout Spacing="8">
+                    <Switch IsToggled="{Binding UseTableQuery}" VerticalOptions="Center" />
+                    <Label Text="Excel: výběr řádků a počítání provádí program (model jen sestaví dotaz)" FontSize="11" VerticalOptions="Center" LineBreakMode="WordWrap" />
+                </HorizontalStackLayout>
             </VerticalStackLayout>
         </VerticalStackLayout>
 

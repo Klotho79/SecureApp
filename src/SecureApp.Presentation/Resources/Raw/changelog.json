@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.1.29",
+    "code": 135,
+    "date": "11. 11. 2026",
+    "items": [
+      "Domácí AI: přesné počítání v Excelu – model jen převede otázku na výběr řádků (filtry, seskupení), počty, součty, průměry, minima a maxima spočítá program nad skutečnou tabulkou. Co se vybralo a co vyšlo, ukáže šedá poznámka. Lze vypnout v Nastavení.",
+      "Domácí AI: nový skill KCC pro výkazy (řádek = výkon, důležitá hlavní diagnóza a počty) a přesně spočítané četnosti hodnot a součty počtů podle hlavní diagnózy.",
+      "Domácí AI: kontrola čísel – po odpovědi k příloze aplikace ověří, že všechna čísla v odpovědi jsou v podkladech, a čísla, která tam nenajde, označí ⚠.",
+      "Domácí AI: přesnější odpovědi k dokumentům (střízlivější nastavení modelu, kódy diagnóz jako C50 najdou i C50.1, dotaz na tabulku má pevně daný tvar)."
+    ]
+  },
+  {
     "version": "0.1.28",
     "code": 134,
     "date": "10. 11. 2026",
