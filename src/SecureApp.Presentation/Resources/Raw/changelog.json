@@ -1,5 +1,14 @@
 [
   {
+    "version": "0.1.30",
+    "code": 136,
+    "date": "13. 11. 2026",
+    "items": [
+      "Opicentrum → Pozice: sloupec se sály se při zvětšování rozšiřuje jen do max. 1/5 šířky displeje, dál se už jen zvyšují řádky.",
+      "Opicentrum → Pozice: u sloužícího se název služby zalomí pod jméno, řádky jsou přehlednější."
+    ]
+  },
+  {
     "version": "0.1.29",
     "code": 135,
     "date": "11. 11. 2026",

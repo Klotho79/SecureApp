@@ -21,17 +21,30 @@ public partial class OpicentrumBoardPage : ContentPage
         ApplyZoomToCorners();
         _positionsPinch = new BoardPinchZoom(PositionsBody, PositionsScroll);
         _volnoPinch = new BoardPinchZoom(VolnoBody, VolnoScroll);
+        PositionsBoard.SizeChanged += (_, _) => UpdateNamesWidthCap();
+        UpdateNamesWidthCap();
     }
 
     private readonly BoardPinchZoom _positionsPinch;
     private readonly BoardPinchZoom _volnoPinch;
+
+    // The room-name column may widen up to 1/5 of the board's visible width; past that, pinch-zoom only makes
+    // the rows taller, not the column wider (2026-11-12, user: "sloupec se saly... max do 1/5 sirky displeje").
+    private void UpdateNamesWidthCap()
+    {
+        var maxWidth = PositionsBoard.Width > 0 ? (float)(PositionsBoard.Width / 5.0) : float.PositiveInfinity;
+        PositionsBody.MaxNamesWidth = maxWidth;
+        PositionsNames.MaxNamesWidth = maxWidth;
+        PositionsHeader.MaxNamesWidth = maxWidth;
+        ApplyZoomToCorners();
+    }
 
     // The corner boxes hide whatever scrolls under the pinned name column and header, so they follow the zoom (132 x 22 at 100 %).
     private void ApplyZoomToCorners()
     {
         var zoom = BoardZoom.Value;
         var positionsCellsLeft = _viewModel.PositionsRows is { Count: > 0 } rows ? PositionsLayout.For(rows).CellsLeft : PositionsLayout.DefaultNameWidth + PositionsLayout.Gap;
-        PositionsCorner.WidthRequest = positionsCellsLeft * zoom;
+        PositionsCorner.WidthRequest = PositionsBoardView.CappedNamesWidth(positionsCellsLeft, zoom, PositionsNames.MaxNamesWidth);
         VolnoCorner.WidthRequest = 132 * zoom;
         PositionsCorner.HeightRequest = VolnoCorner.HeightRequest = 22 * zoom;
     }
