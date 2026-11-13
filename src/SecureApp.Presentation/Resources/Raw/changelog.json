@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.1.32",
+    "code": 138,
+    "date": "13. 11. 2026",
+    "items": [
+      "Opicentrum → Volno: sloupec se jmény zabírá i při zvětšení nejvýš 1/5 šířky displeje, jména se zalomí do více řádků a řádek se zvýší.",
+      "Opicentrum: horní lišta se na telefonu vejde celá, tlačítko Obnovit už není mimo displej.",
+      "Opicentrum: dlouhé slovo v úzkém sloupci se rozdělí tak, aby na dalším řádku zůstala aspoň 3 písmena.",
+      "Diagnostika: u chyby v úloze na pozadí se zaznamená i místo, kde vznikla."
+    ]
+  },
+  {
     "version": "0.1.31",
     "code": 137,
     "date": "13. 11. 2026",

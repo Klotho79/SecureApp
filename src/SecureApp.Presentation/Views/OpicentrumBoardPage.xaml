@@ -9,12 +9,16 @@
     Title="Opicentrum">
 
     <!-- Sub-tabs in the title bar next to "Opicentrum" (2026-10-25, user's ask: saves the row they used to take) —
-         same Button+DataTrigger convention as SettingsViewModel's SystemSubTab. -->
+         same Button+DataTrigger convention as SettingsViewModel's SystemSubTab. On a phone the back arrow leaves too
+         little room for all of it (2026-11-13, user: Obnovit was cut off), so there the buttons are tighter and get their
+         width first; the title takes what is left and is shortened rather than pushing Obnovit off the screen. -->
     <Shell.TitleView>
-        <HorizontalStackLayout Spacing="6" VerticalOptions="Center">
-            <Label Text="Opicentrum" FontSize="16" FontAttributes="Bold" VerticalOptions="Center" Margin="0,0,6,0"
+        <Grid ColumnDefinitions="{OnIdiom Phone='*,Auto,Auto,Auto', Default='Auto,Auto,Auto,Auto'}" ColumnSpacing="6" VerticalOptions="Center">
+            <Label Grid.Column="0" Text="Opicentrum" FontSize="{OnIdiom Phone=14, Default=16}" FontAttributes="Bold" VerticalOptions="Center"
+                   Margin="{OnIdiom Phone='0', Default='0,0,6,0'}" LineBreakMode="TailTruncation"
                    TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource SecondaryDarkText}}" />
-            <Button Text="Pozice" Style="{StaticResource SubTabButton}" Margin="0" VerticalOptions="Center" IsVisible="{Binding IsAccessGranted}"
+            <Button Grid.Column="1" Text="Pozice" Style="{StaticResource SubTabButton}" Margin="0" Padding="{OnIdiom Phone='8,4', Default='10,6'}"
+                    VerticalOptions="Center" IsVisible="{Binding IsAccessGranted}"
                     Command="{Binding SelectSubTabCommand}" CommandParameter="0">
                 <Button.Triggers>
                     <DataTrigger TargetType="Button" Binding="{Binding IsPositionsSubTab}" Value="True">
@@ -23,7 +27,8 @@
                     </DataTrigger>
                 </Button.Triggers>
             </Button>
-            <Button Text="Volno" Style="{StaticResource SubTabButton}" Margin="0" VerticalOptions="Center" IsVisible="{Binding IsAccessGranted}"
+            <Button Grid.Column="2" Text="Volno" Style="{StaticResource SubTabButton}" Margin="0" Padding="{OnIdiom Phone='8,4', Default='10,6'}"
+                    VerticalOptions="Center" IsVisible="{Binding IsAccessGranted}"
                     Command="{Binding SelectSubTabCommand}" CommandParameter="1">
                 <Button.Triggers>
                     <DataTrigger TargetType="Button" Binding="{Binding IsVolnoSubTab}" Value="True">
@@ -34,8 +39,8 @@
             </Button>
             <!-- One Obnovit for whichever tab is open (2026-11-07): second line = when the board was last updated; green =
                  a refresh is allowed now, grey = too soon after the last update (OpicentrumBoardViewModel.Refresh.cs). -->
-            <Button Text="{Binding RefreshButtonText}" Style="{StaticResource SubTabButton}" Margin="6,0,0,0" VerticalOptions="Center"
-                    FontSize="10" Padding="8,2" LineBreakMode="WordWrap" IsVisible="{Binding IsAccessGranted}"
+            <Button Grid.Column="3" Text="{Binding RefreshButtonText}" Style="{StaticResource SubTabButton}" Margin="0" VerticalOptions="Center"
+                    FontSize="10" Padding="{OnIdiom Phone='6,2', Default='8,2'}" LineBreakMode="WordWrap" IsVisible="{Binding IsAccessGranted}"
                     Command="{Binding RefreshCurrentCommand}" IsEnabled="{Binding CanRefresh}">
                 <Button.Triggers>
                     <DataTrigger TargetType="Button" Binding="{Binding CanRefresh}" Value="True">
@@ -45,7 +50,7 @@
                     </DataTrigger>
                 </Button.Triggers>
             </Button>
-        </HorizontalStackLayout>
+        </Grid>
     </Shell.TitleView>
 
     <Grid Padding="16,12,16,0">

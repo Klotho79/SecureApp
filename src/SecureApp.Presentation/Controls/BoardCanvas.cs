@@ -158,13 +158,28 @@ internal static class BoardCanvas
     public static Color Resource(string key, Color fallback) =>
         Application.Current?.Resources.TryGetValue(key, out var value) == true && value is Color color ? color : fallback;
 
-    /// <summary>Single line that fits <paramref name="maxWidth"/>, cut with an ellipsis like a Label's TailTruncation.</summary>
-    public static string Fit(string text, float maxWidth, Func<string, float> measureWidth)
+    /// <summary>Greedy word wrap; a single word wider than the space (e.g. a capped name column at high zoom) is split with a hyphen, not cut off.</summary>
+    public static string[] WrapText(string text, float maxWidth, Func<string, float> measureWidth)
     {
-        if (measureWidth(text) <= maxWidth) return text;
-        var length = text.Length;
-        while (length > 1 && measureWidth(text[..length] + "…") > maxWidth)
-            length--;
-        return text[..length] + "…";
+        var lines = new List<string>();
+        var current = string.Empty;
+        foreach (var word in text.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var candidate = current.Length == 0 ? word : current + " " + word;
+            if (measureWidth(candidate) <= maxWidth) { current = candidate; continue; }
+            if (current.Length > 0) lines.Add(current);
+            current = word;
+            while (current.Length > 1 && measureWidth(current) > maxWidth)
+            {
+                var take = current.Length - 1;
+                while (take > 1 && measureWidth(current[..take] + "-") > maxWidth) take--;
+                // Never leave just a letter or two for the next line ("Baláži-k" reads worse than "Balá-žik").
+                if (current.Length >= 5 && current.Length - take < 3) take = current.Length - 3;
+                lines.Add(current[..take] + "-");
+                current = current[take..];
+            }
+        }
+        if (current.Length > 0) lines.Add(current);
+        return lines.Count == 0 ? [string.Empty] : [.. lines];
     }
 }

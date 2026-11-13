@@ -322,7 +322,9 @@ public partial class App : Application
 
 	private static void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
 	{
-		ReportFireAndForget(DiagnosticLogLevel.Error, "Nepozorovaná výjimka v úloze na pozadí.", nameof(OnUnobservedTaskException), e.Exception);
+		// The AggregateException rethrown by the finalizer has no stack trace of its own; only the inner one says which task failed.
+		var failure = e.Exception.Flatten().InnerExceptions is [var single] ? single : e.Exception;
+		ReportFireAndForget(DiagnosticLogLevel.Error, "Nepozorovaná výjimka v úloze na pozadí.", nameof(OnUnobservedTaskException), failure);
 		e.SetObserved(); // Prevents this from also crashing the process on runtimes that still enforce that.
 	}
 

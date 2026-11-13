@@ -354,7 +354,7 @@ internal sealed class PositionsLayout
             var y = RowsTop;
             for (var r = 0; r < rowCount; r++)
             {
-                nameLines[r] = WrapText(Names[r], nameWidth - 4, NameWidthOf);
+                nameLines[r] = BoardCanvas.WrapText(Names[r], nameWidth - 4, NameWidthOf);
                 var tallest = Math.Max(CellsHeight[r], nameLines[r].Length * NameLineHeight + 4);
                 rowTops[r] = y;
                 rowHeights[r] = tallest;
@@ -413,9 +413,9 @@ internal sealed class PositionsLayout
                 var items = new List<(float W, string[] Lines, OpicentrumRosterPersonChip Person)>();
                 foreach (var person in rows[r].Cells[c].People)
                 {
-                    var nameLines = WrapText(person.PersonName, textMax, Width);
+                    var nameLines = BoardCanvas.WrapText(person.PersonName, textMax, Width);
                     if (person.DutyPosition is { Length: > 0 } slot)
-                        items.Add((inner - ChipMargin, [.. nameLines, .. WrapText(slot, textMax, Width)], person));
+                        items.Add((inner - ChipMargin, [.. nameLines, .. BoardCanvas.WrapText(slot, textMax, Width)], person));
                     else
                         items.Add((nameLines.Length == 1 ? Width(nameLines[0]) + 2 * ChipPadX : inner - ChipMargin, nameLines, person));
                 }
@@ -480,33 +480,10 @@ internal sealed class PositionsLayout
             var full = width(name);
             var w = Math.Min(widestWord, full);
             // Grow from the widest single word until the name needs no more than NameMaxLines lines.
-            while (w < full && w + 4 < MaxNameWidth && WrapText(name, w, width).Length > NameMaxLines)
+            while (w < full && w + 4 < MaxNameWidth && BoardCanvas.WrapText(name, w, width).Length > NameMaxLines)
                 w += 2;
             needed = Math.Max(needed, w + 4);
         }
         return Math.Min(needed, MaxNameWidth);
-    }
-
-    /// <summary>Greedy word wrap; a single word wider than the space (e.g. a capped name column at high zoom) is split with a hyphen, not cut off.</summary>
-    private static string[] WrapText(string name, float maxWidth, Func<string, float> width)
-    {
-        var lines = new List<string>();
-        var current = string.Empty;
-        foreach (var word in name.Split(' ', StringSplitOptions.RemoveEmptyEntries))
-        {
-            var candidate = current.Length == 0 ? word : current + " " + word;
-            if (width(candidate) <= maxWidth) { current = candidate; continue; }
-            if (current.Length > 0) lines.Add(current);
-            current = word;
-            while (current.Length > 1 && width(current) > maxWidth)
-            {
-                var take = current.Length - 1;
-                while (take > 1 && width(current[..take] + "-") > maxWidth) take--;
-                lines.Add(current[..take] + "-");
-                current = current[take..];
-            }
-        }
-        if (current.Length > 0) lines.Add(current);
-        return lines.Count == 0 ? [string.Empty] : [.. lines];
     }
 }

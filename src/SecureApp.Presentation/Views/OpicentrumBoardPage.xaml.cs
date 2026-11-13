@@ -21,33 +21,37 @@ public partial class OpicentrumBoardPage : ContentPage
         ApplyZoomToCorners();
         _positionsPinch = new BoardPinchZoom(PositionsBody, PositionsScroll);
         _volnoPinch = new BoardPinchZoom(VolnoBody, VolnoScroll);
-        PositionsBoard.SizeChanged += (_, _) => UpdateNamesWidthCap();
-        UpdateNamesWidthCap();
+        PositionsBoard.SizeChanged += (_, _) => UpdateNamesWidthCaps();
+        VolnoBoard.SizeChanged += (_, _) => UpdateNamesWidthCaps();
+        UpdateNamesWidthCaps();
     }
 
     private readonly BoardPinchZoom _positionsPinch;
     private readonly BoardPinchZoom _volnoPinch;
 
-    // The room-name column may widen up to 1/5 of the board's visible width; past that, zooming wraps the room
+    // The name column of either board may widen up to 1/5 of the board's visible width; past that, zooming wraps the
     // names onto more lines (taller rows) instead of widening the column (user: "max do 1/5 sirky displeje").
-    private void UpdateNamesWidthCap()
+    private void UpdateNamesWidthCaps()
     {
-        var maxWidth = PositionsBoard.Width > 0 ? (float)(PositionsBoard.Width / 5.0) : float.PositiveInfinity;
-        PositionsBody.MaxNamesWidth = maxWidth;
-        PositionsNames.MaxNamesWidth = maxWidth;
-        PositionsHeader.MaxNamesWidth = maxWidth;
+        var positionsMax = PositionsBoard.Width > 0 ? (float)(PositionsBoard.Width / 5.0) : float.PositiveInfinity;
+        PositionsBody.MaxNamesWidth = PositionsNames.MaxNamesWidth = PositionsHeader.MaxNamesWidth = positionsMax;
+        var volnoMax = VolnoBoard.Width > 0 ? (float)(VolnoBoard.Width / 5.0) : float.PositiveInfinity;
+        VolnoBody.MaxNamesWidth = VolnoNames.MaxNamesWidth = VolnoHeader.MaxNamesWidth = volnoMax;
         ApplyZoomToCorners();
     }
 
-    // The corner boxes hide whatever scrolls under the pinned name column and header, so they follow the zoom (132 x 22 at 100 %).
+    // The corner boxes hide whatever scrolls under the pinned name column and header, so they follow its width and the zoom.
     private void ApplyZoomToCorners()
     {
         var zoom = BoardZoom.Value;
         var positionsCellsLeft = _viewModel.PositionsRows is { Count: > 0 } rows
             ? PositionsLayout.For(rows, PositionsBoardView.NameWidthCap(PositionsNames.MaxNamesWidth, zoom)).CellsLeft
             : PositionsLayout.DefaultNameWidth + PositionsLayout.Gap;
+        var volnoCellsLeft = _viewModel.VolnoRows is { Count: > 0 } volnoRows
+            ? VolnoLayout.For(volnoRows, VolnoBoardView.NameWidthCap(VolnoNames.MaxNamesWidth, zoom)).CellsLeft
+            : VolnoBoardView.NameWidth + VolnoBoardView.Gap;
         PositionsCorner.WidthRequest = positionsCellsLeft * zoom;
-        VolnoCorner.WidthRequest = 132 * zoom;
+        VolnoCorner.WidthRequest = volnoCellsLeft * zoom;
         PositionsCorner.HeightRequest = VolnoCorner.HeightRequest = 22 * zoom;
     }
 
@@ -130,8 +134,8 @@ public partial class OpicentrumBoardPage : ContentPage
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        // The name column's width follows the workplace names, so the corner box that hides what scrolls under it follows too.
-        if (e.PropertyName == nameof(OpicentrumBoardViewModel.PositionsRows)) ApplyZoomToCorners();
+        // The name columns' widths follow the names, so the corner boxes that hide what scrolls under them follow too.
+        if (e.PropertyName is nameof(OpicentrumBoardViewModel.PositionsRows) or nameof(OpicentrumBoardViewModel.VolnoRows)) ApplyZoomToCorners();
 
         if (e.PropertyName != nameof(OpicentrumBoardViewModel.IsPositionsLoading) || _viewModel.IsPositionsLoading || _ttiStopwatch is null) return;
 
