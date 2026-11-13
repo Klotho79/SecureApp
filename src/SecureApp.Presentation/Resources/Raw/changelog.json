@@ -1,5 +1,14 @@
 [
   {
+    "version": "0.1.31",
+    "code": 137,
+    "date": "13. 11. 2026",
+    "items": [
+      "Opicentrum → Pozice: přehlednější na mobilu – sloupec se sály zabírá i při zvětšení nejvýš 1/5 šířky displeje, názvy sálů se zalomí do více řádků a řádky se zvýší (místo zúženého písma ve verzi 0.1.30).",
+      "Opicentrum → Pozice: jména se vejdou do políček a nepřetékají; dlouhé jméno nebo služba se zalomí na další řádek a buňka se zvýší."
+    ]
+  },
+  {
     "version": "0.1.30",
     "code": 136,
     "date": "13. 11. 2026",

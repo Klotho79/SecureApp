@@ -64,8 +64,8 @@ public sealed class PositionsBoardView : GraphicsView
     }
 
     /// <summary>
-    /// Largest pixel width the pinned room-name column may take (2026-11-12, user: "sloupec se saly... max do 1/5
-    /// sirky displeje"); past it, further pinch-zoom only makes the rows taller, not the column wider.
+    /// Largest on-screen width the pinned room-name column may take (user: "sloupec se saly... max do 1/5 sirky
+    /// displeje"); past it, zooming wraps the room names onto more lines instead of widening the column.
     /// <see cref="float.PositiveInfinity"/> (the default) means no cap.
     /// </summary>
     public float MaxNamesWidth
@@ -74,8 +74,8 @@ public sealed class PositionsBoardView : GraphicsView
         set => SetValue(MaxNamesWidthProperty, value);
     }
 
-    /// <summary>The room-name column's actual on-screen width: zoomed normally, but capped at <paramref name="maxNamesWidth"/>.</summary>
-    internal static float CappedNamesWidth(float cellsLeft, float zoom, float maxNamesWidth) => Math.Min(cellsLeft * zoom, maxNamesWidth);
+    /// <summary>The name column's width cap in board units at <paramref name="zoom"/>, for <see cref="PositionsLayout.For"/>.</summary>
+    internal static float NameWidthCap(float maxNamesWidth, float zoom) => maxNamesWidth / zoom - PositionsLayout.Gap;
 
     /// <summary>Raised on the body layer when a person chip is tapped.</summary>
     public event EventHandler<OpicentrumRosterPersonChip>? ChipTapped;
@@ -100,27 +100,25 @@ public sealed class PositionsBoardView : GraphicsView
     {
         var dayCount = DayHeaders?.Count ?? 0;
 
-        // All three layers need the layout now: the name column's width follows the longest workplace name.
-        _layout = Rows is null ? null : PositionsLayout.For(Rows);
+        // All three layers need the layout: the name column's width follows the workplace names and the zoom cap.
+        var zoom = BoardZoom.Value;
+        _layout = Rows is null ? null : PositionsLayout.For(Rows, NameWidthCap(MaxNamesWidth, zoom));
         var cellsLeft = _layout?.CellsLeft ?? PositionsLayout.DefaultNameWidth + PositionsLayout.Gap;
         var totalWidth = cellsLeft + dayCount * (PositionsLayout.ColWidth + PositionsLayout.Gap);
         var totalHeight = _layout?.Height ?? PositionsLayout.RowsTop;
-        var zoom = BoardZoom.Value;
-        var namesPixels = CappedNamesWidth(cellsLeft, zoom, MaxNamesWidth);
-        var saved = cellsLeft * zoom - namesPixels; // >= 0: how much narrower the capped name column is than plain zoom
 
         switch (Layer)
         {
             case PositionsBoardLayer.Body:
-                WidthRequest = totalWidth * zoom - saved;
+                WidthRequest = totalWidth * zoom;
                 HeightRequest = totalHeight * zoom;
                 break;
             case PositionsBoardLayer.Names:
-                WidthRequest = namesPixels;
+                WidthRequest = cellsLeft * zoom;
                 HeightRequest = totalHeight * zoom;
                 break;
             case PositionsBoardLayer.Header:
-                WidthRequest = totalWidth * zoom - saved;
+                WidthRequest = totalWidth * zoom;
                 HeightRequest = PositionsLayout.HeaderHeight * zoom;
                 break;
         }
@@ -175,27 +173,17 @@ public sealed class PositionsBoardView : GraphicsView
             var chipBackground = dark ? BoardCanvas.Resource("SurfaceAltDark", Colors.DimGray) : BoardCanvas.Resource("SurfaceAlt", Colors.LightGray);
             var text = dark ? Colors.White : Colors.Black;
 
+            canvas.Scale(zoom, zoom);
             switch (owner.Layer)
             {
                 case PositionsBoardLayer.Body when owner._layout is { } layout:
-                    // Day columns keep the plain zoom; shifted left by however much the name column was capped,
-                    // so they start right after it instead of leaving a gap (see MaxNamesWidth's remarks).
-                    canvas.Scale(zoom, zoom);
-                    canvas.Translate(TranslateX(layout.CellsLeft, zoom), 0);
                     DrawBody(canvas, layout, pageBackground, cardStroke, chipBackground, text);
                     break;
                 case PositionsBoardLayer.Names when owner._layout is { } layout && owner.Rows is { } rows:
-                    // Past the cap, the column's width stops growing with zoom (scaleX saturates) while its rows
-                    // still get taller (scaleY keeps following zoom) — "roztahovat jen do vysky".
-                    var namesScaleX = CappedNamesWidth(layout.CellsLeft, zoom, owner.MaxNamesWidth) / layout.CellsLeft;
-                    canvas.Scale(namesScaleX, zoom);
                     DrawNames(canvas, layout, rows, pageBackground, text);
                     break;
                 case PositionsBoardLayer.Header when owner.DayHeaders is { } days:
-                    var cellsLeft = owner._layout?.CellsLeft ?? PositionsLayout.DefaultNameWidth + PositionsLayout.Gap;
-                    canvas.Scale(zoom, zoom);
-                    canvas.Translate(TranslateX(cellsLeft, zoom), 0);
-                    DrawHeader(canvas, days, cellsLeft, pageBackground, text);
+                    DrawHeader(canvas, days, owner._layout?.CellsLeft ?? PositionsLayout.DefaultNameWidth + PositionsLayout.Gap, pageBackground, text);
                     break;
             }
 
@@ -206,11 +194,6 @@ public sealed class PositionsBoardView : GraphicsView
                 owner.Drawn?.Invoke(owner, EventArgs.Empty);
             }
         }
-
-        /// <summary>Logical-unit shift (applied after the zoom Scale, so it lands in already-scaled pixels) that moves
-        /// the day columns left to start right after the capped name column instead of the plain-zoom one.</summary>
-        private float TranslateX(float cellsLeft, float zoom) =>
-            (CappedNamesWidth(cellsLeft, zoom, owner.MaxNamesWidth) - cellsLeft * zoom) / zoom;
 
         private static void DrawBody(ICanvas canvas, PositionsLayout layout, Color pageBackground, Color cardStroke, Color chipBackground, Color text)
         {
@@ -235,10 +218,10 @@ public sealed class PositionsBoardView : GraphicsView
                 canvas.FillColor = onDuty ? DutyChipBackground : chipBackground;
                 canvas.FontColor = onDuty ? Colors.White : text;
                 canvas.FillRoundedRectangle(chip.Rect, PositionsLayout.ChipRadius);
-                var lineHeight = chip.Rect.Height / chip.Lines.Length;
+                var lineHeight = (chip.Rect.Height - 2 * PositionsLayout.ChipPadY) / chip.Lines.Length;
                 for (var i = 0; i < chip.Lines.Length; i++)
-                    canvas.DrawString(chip.Lines[i], chip.Rect.X + PositionsLayout.ChipPadX, chip.Rect.Y + i * lineHeight, chip.Rect.Width - 2 * PositionsLayout.ChipPadX, lineHeight,
-                        HorizontalAlignment.Left, VerticalAlignment.Center);
+                    canvas.DrawString(chip.Lines[i], chip.Rect.X + PositionsLayout.ChipPadX, chip.Rect.Y + PositionsLayout.ChipPadY + i * lineHeight,
+                        chip.Rect.Width - 2 * PositionsLayout.ChipPadX, lineHeight, HorizontalAlignment.Left, VerticalAlignment.Center);
             }
         }
 
@@ -276,10 +259,10 @@ public sealed class PositionsBoardView : GraphicsView
 }
 
 /// <summary>
-/// Where everything on the position board sits, computed once per data set (a new rows collection means a
-/// new layout; the three layers of the board share it). Reproduces what the view-based board got from
-/// MAUI: a card per cell, person chips wrapped left to right like the FlexLayout did, every cell of a row
-/// as tall as the row's tallest one.
+/// Where everything on the position board sits (the three layers of the board share it). Reproduces what the
+/// view-based board got from MAUI: a card per cell, person chips wrapped left to right like the FlexLayout did,
+/// every cell of a row as tall as the row's tallest one. The chips inside the cells are placed once per data
+/// set; only the name column (and so the row heights) is redone for each name-column width, see <see cref="For"/>.
 /// </summary>
 internal sealed class PositionsLayout
 {
@@ -287,6 +270,7 @@ internal sealed class PositionsLayout
     public const float DefaultNameWidth = 84;
     private const float MinNameWidth = 44;
     private const float MaxNameWidth = 130;
+    private const float MinCappedNameWidth = 24;
     private const int NameMaxLines = 2;
     public const float ColWidth = 140;
     public const float Gap = 2;
@@ -311,7 +295,7 @@ internal sealed class PositionsLayout
     public const float NameFont = 10;
     private const float MinRowHeight = 18;
 
-    /// <summary><see cref="Lines"/> is one line for a plain name chip, two (name, then duty slot) for an on-duty one.</summary>
+    /// <summary><see cref="Lines"/>: the person's name (wrapped when long), then for someone on duty the duty slot.</summary>
     public sealed record Chip(RectF Rect, string[] Lines, OpicentrumRosterPersonChip Person);
 
     public required float[] RowTops { get; init; }
@@ -323,59 +307,120 @@ internal sealed class PositionsLayout
     public required List<Chip> Chips { get; init; }
     public required float Height { get; init; }
 
-    private static readonly ConditionalWeakTable<object, PositionsLayout> Cache = new();
+    private const float CellInset = CellPadding + CellStroke;
 
-    public static PositionsLayout For(IReadOnlyList<OpicentrumRosterRowItem> rows) =>
-        Cache.GetValue(rows, _ => Build(rows));
+    private static readonly ConditionalWeakTable<object, Content> Cache = new();
 
-    private static PositionsLayout Build(IReadOnlyList<OpicentrumRosterRowItem> rows)
+    /// <summary>
+    /// The layout of <paramref name="rows"/> with the name column at most <paramref name="maxNameWidth"/> board units
+    /// wide. Uncapped it is the natural width (<see cref="ComputeNameWidth"/>); a narrower cap — the page keeps the
+    /// column within 1/5 of the screen however far it is zoomed (2026-11-13, user: "levy sloupec se saly max do 1/5
+    /// sirky displeje a pak uz jen do vysky") — wraps the workplace names onto more lines, so the rows grow taller instead.
+    /// </summary>
+    public static PositionsLayout For(IReadOnlyList<OpicentrumRosterRowItem> rows, float maxNameWidth = float.PositiveInfinity)
+    {
+        var content = Cache.GetValue(rows, _ => BuildContent(rows));
+        var nameWidth = maxNameWidth >= content.NaturalNameWidth ? content.NaturalNameWidth : MathF.Max(MinCappedNameWidth, MathF.Floor(maxNameWidth));
+        return content.LayoutFor(nameWidth);
+    }
+
+    /// <summary>What does not depend on the name column's width: the chips placed inside each cell and each row's tallest cell.</summary>
+    private sealed class Content
+    {
+        public required string[] Names { get; init; }
+        public required float NaturalNameWidth { get; init; }
+        public required float NameLineHeight { get; init; }
+        public required Func<string, float> NameWidthOf { get; init; }
+        /// <summary>Per row, per cell: the chips relative to the cell's content origin.</summary>
+        public required List<(float X, float Y, float W, float H, string[] Lines, OpicentrumRosterPersonChip Person)>[][] Placed { get; init; }
+        /// <summary>Per row: the tallest cell, insets included.</summary>
+        public required float[] CellsHeight { get; init; }
+
+        private readonly Dictionary<float, PositionsLayout> _layouts = [];
+
+        public PositionsLayout LayoutFor(float nameWidth)
+        {
+            if (_layouts.TryGetValue(nameWidth, out var cached)) return cached;
+            if (_layouts.Count > 64) _layouts.Clear(); // a pinch passes through many widths
+
+            var rowCount = Names.Length;
+            var cellsLeft = nameWidth + Gap;
+            var nameLines = new string[rowCount][];
+            var rowTops = new float[rowCount];
+            var rowHeights = new float[rowCount];
+            var cells = new List<RectF>();
+            var chips = new List<Chip>();
+
+            var y = RowsTop;
+            for (var r = 0; r < rowCount; r++)
+            {
+                nameLines[r] = WrapText(Names[r], nameWidth - 4, NameWidthOf);
+                var tallest = Math.Max(CellsHeight[r], nameLines[r].Length * NameLineHeight + 4);
+                rowTops[r] = y;
+                rowHeights[r] = tallest;
+                for (var c = 0; c < Placed[r].Length; c++)
+                {
+                    var cellX = cellsLeft + c * (ColWidth + Gap);
+                    cells.Add(new RectF(cellX, y, ColWidth, tallest));
+                    foreach (var (x, cy, w, h, lines, person) in Placed[r][c])
+                        chips.Add(new Chip(new RectF(cellX + CellInset + x, y + CellInset + cy, w, h), lines, person));
+                }
+                y += tallest + Gap;
+            }
+
+            var layout = new PositionsLayout { RowTops = rowTops, RowHeights = rowHeights, NameWidth = nameWidth, NameLines = nameLines, NameLineHeight = NameLineHeight, Cells = cells, Chips = chips, Height = y };
+            _layouts[nameWidth] = layout;
+            return layout;
+        }
+    }
+
+    private static Content BuildContent(IReadOnlyList<OpicentrumRosterRowItem> rows)
     {
         var sw = Stopwatch.StartNew();
         var sizes = new PlatformStringSizeService();
-        float Width(string s) => sizes.GetStringSize(s, Font.Default, ChipFont).Width;
+        // Slack: the measured width is a little short of what DrawString lays out (Windows measures the ink bounds), so a
+        // name measured to fit its chip exactly wrapped inside it and spilled out ("Eva / Nečasová" over the chip's edge).
+        float Width(string s) => sizes.GetStringSize(s, Font.Default, ChipFont).Width * 1.06f + 2;
 
         var textHeight = sizes.GetStringSize("Ag", Font.Default, ChipFont).Height;
-        var cellInset = CellPadding + CellStroke;
-        var inner = ColWidth - 2 * cellInset;
+        var inner = ColWidth - 2 * CellInset;
+        var textMax = inner - 2 * ChipPadX - ChipMargin;
 
         var nameLineHeight = sizes.GetStringSize("Ag", Font.DefaultBold, NameFont).Height + 1;
-        float NameWidthOf(string s) => sizes.GetStringSize(s, Font.DefaultBold, NameFont).Width;
-        var nameLines = new string[rows.Count][];
-        var nameWidth = ComputeNameWidth(rows, NameWidthOf);
-        var cellsLeft = nameWidth + Gap;
+        // Memoized: the name column is re-wrapped for every zoom step of a pinch.
+        var nameWidths = new Dictionary<string, float>();
+        float NameWidthOf(string s)
+        {
+            if (!nameWidths.TryGetValue(s, out var w)) nameWidths[s] = w = sizes.GetStringSize(s, Font.DefaultBold, NameFont).Width;
+            return w;
+        }
 
-        var rowTops = new float[rows.Count];
-        var rowHeights = new float[rows.Count];
-        var cells = new List<RectF>();
-        var chips = new List<Chip>();
+        var placedRows = new List<(float X, float Y, float W, float H, string[] Lines, OpicentrumRosterPersonChip Person)>[rows.Count][];
+        var cellsHeight = new float[rows.Count];
+        var chipCount = 0;
 
-        var y = RowsTop;
         for (var r = 0; r < rows.Count; r++)
         {
-            // First pass: wrap each cell's chips relative to the cell's content origin and find the tallest cell.
-            // A person on duty gets a two-line chip (name, then the duty slot on its own line, kvůli přehlednosti —
-            // 2026-11-12) which takes the cell's whole width; plain name chips stay one line and flow side by side.
-            var placed = new List<(float X, float Y, float W, string[] Lines, OpicentrumRosterPersonChip Person)>[rows[r].Cells.Count];
+            // Wrap each cell's chips relative to the cell's content origin and find the tallest cell.
+            // A person on duty gets a full-width chip with the duty slot on its own line under the name (kvůli
+            // přehlednosti — 2026-11-12); plain name chips flow side by side. Text that does not fit the cell's width
+            // wraps inside its chip, which grows taller rather than cutting the text off (2026-11-13, user: "do vysky se
+            // muze zvetsovat aby se texty do bunek vesly").
+            var placed = new List<(float X, float Y, float W, float H, string[] Lines, OpicentrumRosterPersonChip Person)>[rows[r].Cells.Count];
             var tallest = MinRowHeight;
             for (var c = 0; c < rows[r].Cells.Count; c++)
             {
                 var items = new List<(float W, string[] Lines, OpicentrumRosterPersonChip Person)>();
                 foreach (var person in rows[r].Cells[c].People)
                 {
+                    var nameLines = WrapText(person.PersonName, textMax, Width);
                     if (person.DutyPosition is { Length: > 0 } slot)
-                    {
-                        var nameLine = BoardCanvas.Fit(person.PersonName, inner - 2 * ChipPadX - ChipMargin, Width);
-                        var slotLine = BoardCanvas.Fit(slot, inner - 2 * ChipPadX - ChipMargin, Width);
-                        items.Add((inner - ChipMargin, [nameLine, slotLine], person));
-                    }
+                        items.Add((inner - ChipMargin, [.. nameLines, .. WrapText(slot, textMax, Width)], person));
                     else
-                    {
-                        var text = BoardCanvas.Fit(person.PersonName, inner - 2 * ChipPadX - ChipMargin, Width);
-                        items.Add((Math.Min(Width(text) + 2 * ChipPadX, inner - ChipMargin), [text], person));
-                    }
+                        items.Add((nameLines.Length == 1 ? Width(nameLines[0]) + 2 * ChipPadX : inner - ChipMargin, nameLines, person));
                 }
 
-                // Flex-wrap left to right; a line's height follows its tallest chip (a duty chip's two lines).
+                // Flex-wrap left to right; a line's height follows its tallest chip.
                 var lineOf = new int[items.Count];
                 float x = 0;
                 var lineCount = 0;
@@ -400,33 +445,29 @@ internal sealed class PositionsLayout
                 for (var i = 0; i < items.Count; i++)
                 {
                     if (lineOf[i] != curLine) { curLine = lineOf[i]; x = 0; }
-                    placed[c].Add((x, lineTops[curLine], items[i].W, items[i].Lines, items[i].Person));
+                    placed[c].Add((x, lineTops[curLine], items[i].W, items[i].Lines.Length * textHeight + 2 * ChipPadY, items[i].Lines, items[i].Person));
                     x += items[i].W + ChipMargin;
                 }
+                chipCount += items.Count;
 
                 var cellHeight = lineCount == 0 ? 0 : lineTops[^1] + lineHeights[^1];
-                tallest = Math.Max(tallest, 2 * cellInset + cellHeight);
+                tallest = Math.Max(tallest, 2 * CellInset + cellHeight);
             }
 
-            // The name column may need more height than the cells.
-            nameLines[r] = WrapName(rows[r].WorkplaceName, nameWidth - 4, NameWidthOf);
-            tallest = Math.Max(tallest, nameLines[r].Length * nameLineHeight + 4);
-
-            // Second pass: absolute rectangles.
-            rowTops[r] = y;
-            rowHeights[r] = tallest;
-            for (var c = 0; c < placed.Length; c++)
-            {
-                var cellX = cellsLeft + c * (ColWidth + Gap);
-                cells.Add(new RectF(cellX, y, ColWidth, tallest));
-                foreach (var (x, cy, w, lines, person) in placed[c])
-                    chips.Add(new Chip(new RectF(cellX + cellInset + x, y + cellInset + cy, w, lines.Length * textHeight + 2 * ChipPadY), lines, person));
-            }
-            y += tallest + Gap;
+            placedRows[r] = placed;
+            cellsHeight[r] = tallest;
         }
 
-        AppLog.Metric("opicentrum.positions.layout", sw.Elapsed.TotalMilliseconds, "ms", ("rows", rows.Count), ("chips", chips.Count));
-        return new PositionsLayout { RowTops = rowTops, RowHeights = rowHeights, NameWidth = nameWidth, NameLines = nameLines, NameLineHeight = nameLineHeight, Cells = cells, Chips = chips, Height = y };
+        AppLog.Metric("opicentrum.positions.layout", sw.Elapsed.TotalMilliseconds, "ms", ("rows", rows.Count), ("chips", chipCount));
+        return new Content
+        {
+            Names = [.. rows.Select(row => row.WorkplaceName)],
+            NaturalNameWidth = ComputeNameWidth(rows, NameWidthOf),
+            NameLineHeight = nameLineHeight,
+            NameWidthOf = NameWidthOf,
+            Placed = placedRows,
+            CellsHeight = cellsHeight,
+        };
     }
 
     private static float ComputeNameWidth(IReadOnlyList<OpicentrumRosterRowItem> rows, Func<string, float> width)
@@ -439,15 +480,15 @@ internal sealed class PositionsLayout
             var full = width(name);
             var w = Math.Min(widestWord, full);
             // Grow from the widest single word until the name needs no more than NameMaxLines lines.
-            while (w < full && w + 4 < MaxNameWidth && WrapName(name, w, width).Length > NameMaxLines)
+            while (w < full && w + 4 < MaxNameWidth && WrapText(name, w, width).Length > NameMaxLines)
                 w += 2;
             needed = Math.Max(needed, w + 4);
         }
         return Math.Min(needed, MaxNameWidth);
     }
 
-    /// <summary>Greedy word wrap; a single word wider than the column is cut with an ellipsis.</summary>
-    private static string[] WrapName(string name, float maxWidth, Func<string, float> width)
+    /// <summary>Greedy word wrap; a single word wider than the space (e.g. a capped name column at high zoom) is split with a hyphen, not cut off.</summary>
+    private static string[] WrapText(string name, float maxWidth, Func<string, float> width)
     {
         var lines = new List<string>();
         var current = string.Empty;
@@ -456,7 +497,14 @@ internal sealed class PositionsLayout
             var candidate = current.Length == 0 ? word : current + " " + word;
             if (width(candidate) <= maxWidth) { current = candidate; continue; }
             if (current.Length > 0) lines.Add(current);
-            current = BoardCanvas.Fit(word, maxWidth, width);
+            current = word;
+            while (current.Length > 1 && width(current) > maxWidth)
+            {
+                var take = current.Length - 1;
+                while (take > 1 && width(current[..take] + "-") > maxWidth) take--;
+                lines.Add(current[..take] + "-");
+                current = current[take..];
+            }
         }
         if (current.Length > 0) lines.Add(current);
         return lines.Count == 0 ? [string.Empty] : [.. lines];
