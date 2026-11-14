@@ -207,34 +207,7 @@ public sealed partial class LibraryViewModel
     [RelayCommand]
     private async Task TranslateAsync(LibraryFileItem? item)
     {
-        if (item is null || !item.CanTranslate || IsTranslating) return;
-
-        var targetLanguage = await (Shell.Current?.CurrentPage?.DisplayPromptAsync(
-            "Přeložit dokument", "Cílový jazyk:", initialValue: "čeština") ?? Task.FromResult<string?>(null));
-        if (string.IsNullOrWhiteSpace(targetLanguage)) return;
-
-        IsTranslating = true;
-        TranslationProgress = 0;
-        TranslationStatusText = "Spouštím překlad…";
-        StatusErrorMessage = null;
-        try
-        {
-            var progress = new Progress<double>(p => TranslationProgress = p);
-            var status = new Progress<string>(s => TranslationStatusText = s);
-            var created = await _libraryTranslationService.TranslateAndSubmitAsync(
-                item.Id, System.IO.Path.GetFileNameWithoutExtension(item.FileName),
-                item.FolderPath ?? string.Empty, targetLanguage.Trim(), progress, status);
-            TranslationStatusText = $"Hotovo — koncept '{created.Title}' odeslán ke schválení.";
+        if (await Translation.LibraryTranslationRunner.RunAsync(this, _libraryTranslationService, item, item?.FolderPath ?? string.Empty))
             await RefreshReviewWorkflowStateAsync();
-        }
-        catch (Exception ex)
-        {
-            StatusErrorMessage = $"Překlad '{item.FileName}' se nezdařil: {ex.Message}";
-            TranslationStatusText = null;
-        }
-        finally
-        {
-            IsTranslating = false;
-        }
     }
 }

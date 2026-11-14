@@ -131,9 +131,6 @@ public sealed partial class RedakceViewModel
     private void OpenLibraryManage() => RequestNavigate?.Invoke(nameof(Views.LibraryManagePage));
 
     [RelayCommand]
-    private void SelectLibraryTopCategory(string? category) => SelectedLibraryTopCategory = category;
-
-    [RelayCommand]
     private async Task AddLibrarySubcategoryAsync()
     {
         if (SelectedLibraryTopCategory is null)

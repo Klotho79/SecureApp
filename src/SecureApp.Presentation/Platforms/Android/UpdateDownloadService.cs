@@ -24,8 +24,6 @@ public sealed class UpdateDownloadService : Service
     public const string ExtraUrl = "url";
     public const string ExtraVersionCode = "versionCode";
     public const string ExtraVersionName = "versionName";
-    public const string ExtraLocalPath = "localPath";
-    public const string ActionInstall = "com.companyname.secureapp.presentation.ACTION_INSTALL_UPDATE";
 
     private const string ChannelId = "secureapp.updates";
     private const int ProgressNotificationId = 4801;

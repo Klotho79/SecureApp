@@ -716,7 +716,10 @@ public partial class App : Application
 			var prefs = Microsoft.Maui.Storage.Preferences.Default;
 			if (!JobDue(LastBackgroundUpdateCheckPreferenceKey, _backgroundUpdateCheckInterval)) return;
 
-			if (!Microsoft.Maui.Networking.Connectivity.Current.ConnectionProfiles.Contains(Microsoft.Maui.Networking.ConnectionProfile.WiFi))
+			// Wi-Fi or a cable, never mobile data. 2026-11-14: Ethernet used to be excluded, so a wired PC never checked at all,
+			// and the user's home PC stayed on 0.1.12 for two weeks.
+			var profiles = Microsoft.Maui.Networking.Connectivity.Current.ConnectionProfiles;
+			if (!profiles.Contains(Microsoft.Maui.Networking.ConnectionProfile.WiFi) && !profiles.Contains(Microsoft.Maui.Networking.ConnectionProfile.Ethernet))
 				return;
 
 			var updateService = services.GetService<IUpdateService>();

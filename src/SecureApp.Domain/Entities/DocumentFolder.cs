@@ -30,13 +30,4 @@ public sealed class DocumentFolder : Entity
         Name = newName;
         Touch();
     }
-
-    public void MoveTo(Guid? newParentFolderId)
-    {
-        if (newParentFolderId == Id)
-            throw new InvalidOperationException("A folder cannot be its own parent.");
-
-        ParentFolderId = newParentFolderId;
-        Touch();
-    }
 }

@@ -18,7 +18,7 @@ namespace SecureApp.Presentation.ViewModels;
 /// sub-category specifically — unlike <see cref="LibraryManagePage"/>, which is the general-purpose
 /// (uncategorized) upload entry point.
 /// </summary>
-public sealed partial class LibrarySubcategoryDetailViewModel : ObservableObject, IQueryAttributable
+public sealed partial class LibrarySubcategoryDetailViewModel : ObservableObject, IQueryAttributable, Translation.ILibraryTranslationHost
 {
     private readonly ISharedLibraryService _libraryService;
     private readonly ICurrentUserService _currentUserService;
@@ -191,37 +191,8 @@ public sealed partial class LibrarySubcategoryDetailViewModel : ObservableObject
 
     /// <summary>Admin-only, Windows-only local-AI PDF translation (2026-10-05) — see <see cref="Translation.ILibraryTranslationService"/>'s own remarks for the full pipeline.</summary>
     [RelayCommand]
-    private async Task TranslateAsync(LibraryFileItem? item)
-    {
-        if (item is null || !item.CanTranslate || IsTranslating) return;
-
-        var targetLanguage = await (Shell.Current?.CurrentPage?.DisplayPromptAsync(
-            "Přeložit dokument", "Cílový jazyk:", initialValue: "čeština") ?? Task.FromResult<string?>(null));
-        if (string.IsNullOrWhiteSpace(targetLanguage)) return;
-
-        IsTranslating = true;
-        TranslationProgress = 0;
-        TranslationStatusText = "Spouštím překlad…";
-        StatusErrorMessage = null;
-        try
-        {
-            var progress = new Progress<double>(p => TranslationProgress = p);
-            var status = new Progress<string>(s => TranslationStatusText = s);
-            var created = await _libraryTranslationService.TranslateAndSubmitAsync(
-                item.Id, System.IO.Path.GetFileNameWithoutExtension(item.FileName),
-                $"{_parentCategory}/{SubcategoryName}", targetLanguage.Trim(), progress, status);
-            TranslationStatusText = $"Hotovo — koncept '{created.Title}' odeslán ke schválení.";
-        }
-        catch (Exception ex)
-        {
-            StatusErrorMessage = $"Překlad '{item.FileName}' se nezdařil: {ex.Message}";
-            TranslationStatusText = null;
-        }
-        finally
-        {
-            IsTranslating = false;
-        }
-    }
+    private Task TranslateAsync(LibraryFileItem? item)
+        => Translation.LibraryTranslationRunner.RunAsync(this, _libraryTranslationService, item, $"{_parentCategory}/{SubcategoryName}");
 
     [RelayCommand]
     private async Task DeleteFileAsync(LibraryFileItem? item)

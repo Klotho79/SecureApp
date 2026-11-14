@@ -8,7 +8,7 @@ namespace SecureApp.Presentation.Notifications;
 /// <summary>
 /// Turns SecureApp's own existing events into Notification Hub rows (NOTIFICATION_HUB_SPEC.md) —
 /// called from <c>App.xaml.cs</c>'s already-centralized, always-on event handlers
-/// (<c>OnEnvelopeReceived</c>/<c>OnGroupInviteReceived</c>/<c>OnPairingInviteReceived</c>), the same
+/// (<c>OnEnvelopeReceived</c> and the background sweeps), the same
 /// places that already persist the underlying event regardless of which screen (if any) is open —
 /// so a Notification is created the same way a message is: unconditionally, not just while the
 /// Notification Hub page happens to be on screen. Best-effort by design (same policy as every other
@@ -67,54 +67,9 @@ public static class NotificationPublisher
         return TryAddAsync(notificationRepository, notification, nativeNotificationService, ct);
     }
 
-    /// <summary>A brand new 1:1 pairing/resync completing (spec §25 — "who I need to contact" territory) — informational, not urgent, so <see cref="NotificationPriority.Informational"/> rather than Normal.</summary>
-    public static Task PublishPairingCompletedAsync(
-        INotificationRepository notificationRepository,
-        string peerDisplayName,
-        Guid chatSessionId,
-        INativeNotificationService? nativeNotificationService = null,
-        CancellationToken ct = default)
-    {
-        var notification = new Notification(
-            title: "Nové spojení",
-            body: $"Jste nyní spárováni s {peerDisplayName}.",
-            category: NotificationCategory.Chat,
-            priority: NotificationPriority.Informational,
-            relatedChatSessionId: chatSessionId);
-        return TryAddAsync(notificationRepository, notification, nativeNotificationService, ct);
-    }
-
-    public static Task PublishGroupInviteAsync(
-        INotificationRepository notificationRepository,
-        string groupName,
-        Guid groupChatId,
-        INativeNotificationService? nativeNotificationService = null,
-        CancellationToken ct = default)
-    {
-        var notification = new Notification(
-            title: "Přidání do skupiny",
-            body: $"Byli jste přidáni do skupiny „{groupName}“.",
-            category: NotificationCategory.Group,
-            priority: NotificationPriority.Normal,
-            relatedGroupChatId: groupChatId);
-        return TryAddAsync(notificationRepository, notification, nativeNotificationService, ct);
-    }
-
-    public static Task PublishLibraryFileAddedAsync(
-        INotificationRepository notificationRepository,
-        string fileName,
-        Guid libraryFileId,
-        INativeNotificationService? nativeNotificationService = null,
-        CancellationToken ct = default)
-    {
-        var notification = new Notification(
-            title: "Nový soubor ve sdílené knihovně",
-            body: fileName,
-            category: NotificationCategory.Library,
-            priority: NotificationPriority.Normal,
-            relatedLibraryFileId: libraryFileId);
-        return TryAddAsync(notificationRepository, notification, nativeNotificationService, ct);
-    }
+    // 2026-11-14: the never-called PublishPairingCompletedAsync / PublishGroupInviteAsync / PublishLibraryFileAddedAsync were
+    // removed. Pairing and group membership now heal silently (the user must not notice them), and no event announces a new
+    // library file. If one of them is wanted again, it is in git history before 0.1.34.
 
     /// <summary>A genuine system-level problem (e.g. an auto-heal failure — see <c>App.xaml.cs</c>'s own diagnostics-reporter call sites) surfaced into the same feed the user already checks for everything else, instead of only living in the separate Settings diagnostics log. <see cref="NotificationPriority.Important"/> — system errors belong in the IMPORTANT section, not buried among ordinary chat traffic.
     /// <para>2026-10-17, user's own ask ("systemove zpravy a logy nema jit nikomu krom admina"): gated

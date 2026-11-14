@@ -1,5 +1,14 @@
 [
   {
+    "version": "0.1.34",
+    "code": 140,
+    "date": "14. 11. 2026",
+    "items": [
+      "PC: automatická kontrola aktualizací funguje i při připojení kabelem (dřív jen přes Wi-Fi, takže se PC samo neaktualizovalo).",
+      "Úklid kódu: odstraněn nepoužívaný kód, překlad dokumentu v knihovně sjednocen do jedné funkce."
+    ]
+  },
+  {
     "version": "0.1.33",
     "code": 139,
     "date": "14. 11. 2026",

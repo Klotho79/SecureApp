@@ -18,7 +18,7 @@ namespace SecureApp.Presentation.ViewModels;
 /// Domain interfaces + CommunityToolkit.Mvvm); <c>LibraryViewModel.Actions.cs</c> holds the
 /// FilePicker-based upload and Shell navigation to the document viewer.
 /// </summary>
-public sealed partial class LibraryViewModel : ObservableObject
+public sealed partial class LibraryViewModel : ObservableObject, Translation.ILibraryTranslationHost
 {
     private readonly ISharedLibraryService _libraryService;
     private readonly ICurrentUserService _currentUserService;
