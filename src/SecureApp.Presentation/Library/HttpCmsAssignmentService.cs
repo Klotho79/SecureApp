@@ -9,26 +9,15 @@ using SecureApp.Presentation.Transport;
 namespace SecureApp.Presentation.Library;
 
 /// <inheritdoc cref="ICmsAssignmentService"/>
-/// <remarks>Endpoint and device-auth plumbing is shared via <see cref="RelayHttp"/>.</remarks>
-public sealed class HttpCmsAssignmentService : ICmsAssignmentService
+/// <remarks>Endpoint and device auth come from <see cref="RelayServiceBase"/>.</remarks>
+public sealed class HttpCmsAssignmentService(ITransportSettingsRepository transportSettingsRepository, ISecureVaultKeyStore vault)
+    : RelayServiceBase(vault, transportSettingsRepository, TimeSpan.FromSeconds(30)), ICmsAssignmentService
 {
-    private static readonly JsonSerializerOptions HttpJsonOptions = new(JsonSerializerDefaults.Web);
-
-    private readonly ITransportSettingsRepository _transportSettingsRepository;
-    private readonly ISecureVaultKeyStore _vault;
-    private readonly HttpClient _httpClient = SecureApp.Presentation.Transport.RelayHttp.CreateClient(TimeSpan.FromSeconds(30));
-
-    public HttpCmsAssignmentService(ITransportSettingsRepository transportSettingsRepository, ISecureVaultKeyStore vault)
-    {
-        _transportSettingsRepository = transportSettingsRepository ?? throw new ArgumentNullException(nameof(transportSettingsRepository));
-        _vault = vault ?? throw new ArgumentNullException(nameof(vault));
-    }
-
     public async Task<CmsAssignment> AssignAsync(Guid? documentId, Guid editorDeviceId, string title, string folderPath, CancellationToken ct = default)
     {
-        using var request = await CreateAsync(HttpMethod.Post, "cms/editors", ct);
-        request.Content = JsonContent.Create(new { DocumentId = documentId, EditorDeviceId = editorDeviceId, Title = title, FolderPath = folderPath }, options: HttpJsonOptions);
-        using var response = await _httpClient.SendAsync(request, ct);
+        using var request = await CreateRequestAsync(HttpMethod.Post, "cms/editors",
+            new { DocumentId = documentId, EditorDeviceId = editorDeviceId, Title = title, FolderPath = folderPath }, ct);
+        using var response = await Http.SendAsync(request, ct);
         EnsureAllowed(response);
         response.EnsureSuccessStatusCode();
         var dto = await response.Content.ReadFromJsonAsync<GrantDto>(HttpJsonOptions, ct)
@@ -38,8 +27,8 @@ public sealed class HttpCmsAssignmentService : ICmsAssignmentService
 
     public async Task RevokeAsync(Guid documentId, Guid editorDeviceId, CancellationToken ct = default)
     {
-        using var request = await CreateAsync(HttpMethod.Delete, $"cms/editors/{documentId}/{editorDeviceId}", ct);
-        using var response = await _httpClient.SendAsync(request, ct);
+        using var request = await CreateRequestAsync(HttpMethod.Delete, $"cms/editors/{documentId}/{editorDeviceId}", null, ct);
+        using var response = await Http.SendAsync(request, ct);
         EnsureAllowed(response);
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return; // already gone
         response.EnsureSuccessStatusCode();
@@ -47,8 +36,8 @@ public sealed class HttpCmsAssignmentService : ICmsAssignmentService
 
     public async Task<IReadOnlyList<CmsMember>> ListMembersAsync(CancellationToken ct = default)
     {
-        using var request = await CreateAsync(HttpMethod.Get, "cms/members", ct);
-        using var response = await _httpClient.SendAsync(request, ct);
+        using var request = await CreateRequestAsync(HttpMethod.Get, "cms/members", null, ct);
+        using var response = await Http.SendAsync(request, ct);
         EnsureAllowed(response);
         response.EnsureSuccessStatusCode();
         var dtos = await response.Content.ReadFromJsonAsync<List<MemberDto>>(HttpJsonOptions, ct) ?? [];
@@ -61,8 +50,8 @@ public sealed class HttpCmsAssignmentService : ICmsAssignmentService
 
     private async Task<IReadOnlyList<CmsAssignment>> ListAsync(string path, CancellationToken ct)
     {
-        using var request = await CreateAsync(HttpMethod.Get, path, ct);
-        using var response = await _httpClient.SendAsync(request, ct);
+        using var request = await CreateRequestAsync(HttpMethod.Get, path, null, ct);
+        using var response = await Http.SendAsync(request, ct);
         EnsureAllowed(response);
         response.EnsureSuccessStatusCode();
         var dtos = await response.Content.ReadFromJsonAsync<List<GrantDto>>(HttpJsonOptions, ct) ?? [];
@@ -77,8 +66,6 @@ public sealed class HttpCmsAssignmentService : ICmsAssignmentService
 
     private static CmsAssignment ToModel(GrantDto g) =>
         new(g.DocumentId, g.EditorDeviceId, g.EditorDisplayName, g.Title, g.FolderPath, g.GrantedAtUtc, g.DocumentStatus);
-
-    private Task<HttpRequestMessage> CreateAsync(HttpMethod method, string path, CancellationToken ct) => RelayHttp.CreateAuthorizedRequestAsync(method, path, _transportSettingsRepository, _vault, ct);
 
     private sealed record MemberDto(Guid DeviceId, string DisplayName, string? Email);
 

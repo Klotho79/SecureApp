@@ -554,23 +554,19 @@ public sealed partial class ChatViewModel : ChatThreadViewModelBase<ChatMessageI
     {
         try
         {
-            var message = await _messagingService.ReceiveMessageAsync(envelope); // idempotent — safe alongside the app-wide handler
-            var plaintext = await _messagingService.DecryptMessageAsync(message.Id);
-            if (MessageDeletionSync.TryParseDeleteCommand(plaintext, out var correlationId))
+            var (kind, correlationId, _) = await LiveSystemPayload.ReceiveAsync(_messagingService, _messageRepository, envelope);
+            if (kind == LiveSystemPayloadKind.Delete)
             {
-                await _messageRepository.DeleteByCorrelationAsync(correlationId);
-                var doomed = Messages.Where(m => m.CorrelationId == correlationId).ToList();
-                foreach (var item in doomed)
-                    Messages.Remove(item);
-                if (doomed.Count > 0) _ = UpdateCacheAsync();
+                if (LiveSystemPayload.RemoveByCorrelation(Messages, m => m.CorrelationId, correlationId))
+                    _ = UpdateCacheAsync();
             }
-            else if (DeliveryAckSync.TryParseAck(plaintext, out var ackCorrelationId))
+            else if (kind == LiveSystemPayloadKind.DeliveryAck)
             {
                 // The peer's app acknowledged one of our messages (2026-09-14) — upgrade the visible
                 // bubble to Delivered (✓✓) live. The app-wide handler persists it to the DB; here we
                 // just refresh what's on screen. Idempotent.
-                await _messageRepository.MarkDeliveredByCorrelationAsync(ackCorrelationId);
-                foreach (var item in Messages.Where(m => m.IsOutbound && m.CorrelationId == ackCorrelationId && m.Status < MessageStatus.Delivered).ToList())
+                await _messageRepository.MarkDeliveredByCorrelationAsync(correlationId);
+                foreach (var item in Messages.Where(m => m.IsOutbound && m.CorrelationId == correlationId && m.Status < MessageStatus.Delivered).ToList())
                     ReplaceItem(item.Id, i => i with { Status = MessageStatus.Delivered });
             }
         }

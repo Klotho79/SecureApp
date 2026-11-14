@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading.RateLimiting;
 using SecureApp.Domain.Policies;
 using SecureApp.Relay;
+using WireFrame = SecureApp.Domain.ValueObjects.WireFrame;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -1443,7 +1444,7 @@ void MapOpicentrumBoard(
         // 2026-10-24: tell every other connected Admin/Modifier device the snapshot changed, so their
         // local copy is refreshed in the background and opening the board never waits on a round trip.
         // Fire-and-forget: a failed/missed notification only means that device re-fetches on its next open.
-        var frameJson = RelayProtocol.Serialize(new RelayFrame { Type = "board-changed", Board = board });
+        var frameJson = RelayProtocol.Serialize(new WireFrame { Type = "board-changed", Board = board });
         _ = Task.Run(async () =>
         {
             foreach (var id in registry.ConnectedDeviceIds())
@@ -1883,16 +1884,16 @@ app.Map("/ws", async (HttpContext context, RelayDatabase db, ConnectionRegistry 
     {
         if (socket.State == WebSocketState.Open)
         {
-            await RelayProtocol.SendFrameAsync(socket, new RelayFrame { Type = "authResult", Success = false }, ct);
+            await RelayProtocol.SendFrameAsync(socket, new WireFrame { Type = "authResult", Success = false }, ct);
             await socket.CloseAsync(WebSocketCloseStatus.PolicyViolation, "Authentication failed", CancellationToken.None);
         }
         return;
     }
 
-    await RelayProtocol.SendFrameAsync(socket, new RelayFrame { Type = "authResult", Success = true }, ct);
+    await RelayProtocol.SendFrameAsync(socket, new WireFrame { Type = "authResult", Success = true }, ct);
     registry.Add(deviceId, socket);
 
-    async Task DeliverOrQueueAsync(Guid recipientId, RelayFrame deliverFrame)
+    async Task DeliverOrQueueAsync(Guid recipientId, WireFrame deliverFrame)
     {
         var json = RelayProtocol.Serialize(deliverFrame);
         if (await registry.TrySendAsync(recipientId, json))
@@ -1932,13 +1933,13 @@ app.Map("/ws", async (HttpContext context, RelayDatabase db, ConnectionRegistry 
                 break;
 
             // Live delivery when the recipient is connected, otherwise (or if the live send fails)
-            // the outbox — never dropped. No ACK protocol in this pass, see RelayFrame's remarks.
+            // the outbox — never dropped. No ACK protocol in this pass, see WireFrame's remarks.
             if (frame is { Type: "send", RecipientDeviceId: { } recipientId, Envelope: not null })
-                await DeliverOrQueueAsync(recipientId, new RelayFrame { Type = "deliver", SenderDeviceId = deviceId, Envelope = frame.Envelope });
+                await DeliverOrQueueAsync(recipientId, new WireFrame { Type = "deliver", SenderDeviceId = deviceId, Envelope = frame.Envelope });
             else if (frame is { Type: "pairing", RecipientDeviceId: { } pairingRecipientId, PairingInviteBlob: not null })
-                await DeliverOrQueueAsync(pairingRecipientId, new RelayFrame { Type = "pairing-deliver", SenderDeviceId = deviceId, PairingInviteBlob = frame.PairingInviteBlob });
+                await DeliverOrQueueAsync(pairingRecipientId, new WireFrame { Type = "pairing-deliver", SenderDeviceId = deviceId, PairingInviteBlob = frame.PairingInviteBlob });
             else if (frame is { Type: "group-invite", RecipientDeviceId: { } groupInviteRecipientId, GroupInviteBlob: not null })
-                await DeliverOrQueueAsync(groupInviteRecipientId, new RelayFrame { Type = "group-invite-deliver", SenderDeviceId = deviceId, GroupInviteBlob = frame.GroupInviteBlob });
+                await DeliverOrQueueAsync(groupInviteRecipientId, new WireFrame { Type = "group-invite-deliver", SenderDeviceId = deviceId, GroupInviteBlob = frame.GroupInviteBlob });
         }
     }
     finally

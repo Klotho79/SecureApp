@@ -1,6 +1,3 @@
-using System.Net.Http.Json;
-using System.Text;
-using System.Text.Json;
 using SecureApp.Domain.Enums;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
@@ -11,9 +8,7 @@ namespace SecureApp.Presentation.Diagnostics;
 
 /// <inheritdoc cref="IDiagnosticsReporter"/>
 /// <remarks>
-/// Lives in Presentation (not Data), same reasoning as <see cref="Library.HttpContactDirectoryService"/>
-/// — needs <c>HttpClient</c> + relay endpoint/device-identity configuration. The device-auth header
-/// helper and ws-&gt;http rewrite are shared via <see cref="RelayHttp"/>.
+/// Endpoint, device auth and sending come from <see cref="RelayServiceBase"/>.
 ///
 /// <see cref="ReportAsync"/> swallows every failure of its own (no relay configured yet, not
 /// connected, network error, anything) — it is called from catch blocks and a global
@@ -21,63 +16,21 @@ namespace SecureApp.Presentation.Diagnostics;
 /// NEW exception. <see cref="GetRecentAsync"/> is the opposite: it's called from an explicit
 /// "show me the log" user action, so it lets a real failure surface normally.
 /// </remarks>
-public sealed class HttpDiagnosticsReporter : IDiagnosticsReporter
+public sealed class HttpDiagnosticsReporter(ISecureVaultKeyStore vault, ITransportSettingsRepository transportSettingsRepository)
+    : RelayServiceBase(vault, transportSettingsRepository), IDiagnosticsReporter
 {
-    private static readonly JsonSerializerOptions HttpJsonOptions = new(JsonSerializerDefaults.Web);
-
-    private readonly ISecureVaultKeyStore _vault;
-    private readonly ITransportSettingsRepository _transportSettingsRepository;
-    private readonly HttpClient _httpClient = SecureApp.Presentation.Transport.RelayHttp.CreateClient();
-
-    public HttpDiagnosticsReporter(ISecureVaultKeyStore vault, ITransportSettingsRepository transportSettingsRepository)
-    {
-        _vault = vault ?? throw new ArgumentNullException(nameof(vault));
-        _transportSettingsRepository = transportSettingsRepository ?? throw new ArgumentNullException(nameof(transportSettingsRepository));
-    }
-
-    public async Task ReportAsync(DiagnosticLogLevel level, string message, string? context = null, Exception? exception = null, CancellationToken ct = default)
-    {
-        try
-        {
-            var endpoint = await GetHttpEndpointAsync(ct);
-            var uri = new Uri(endpoint, "diagnostics/logs");
-
-            using var request = new HttpRequestMessage(HttpMethod.Post, uri)
-            {
-                Content = JsonContent.Create(
-                    new { Level = level.ToString(), Message = message, Context = context, ExceptionDetails = exception?.ToString() },
-                    options: HttpJsonOptions)
-            };
-            await AddDeviceAuthAsync(request, ct);
-            using var response = await _httpClient.SendAsync(request, ct);
-            // Deliberately no EnsureSuccessStatusCode() — a failed report (401 before this device
-            // has registered, network error, relay down) must never surface as a NEW exception from
-            // what is itself already error-handling code.
-        }
-        catch
-        {
-            // Best-effort by design — see this class's own remarks above.
-        }
-    }
+    public Task ReportAsync(DiagnosticLogLevel level, string message, string? context = null, Exception? exception = null, CancellationToken ct = default)
+        // Best-effort: a failed report (401 before this device has registered, network error, relay down) must never
+        // surface as a NEW exception from what is itself already error-handling code.
+        => TrySendAsync(HttpMethod.Post, "diagnostics/logs",
+            new { Level = level.ToString(), Message = message, Context = context, ExceptionDetails = exception?.ToString() }, ct);
 
     public async Task<IReadOnlyList<DiagnosticLogEntry>> GetRecentAsync(int limit = 100, CancellationToken ct = default)
     {
-        var endpoint = await GetHttpEndpointAsync(ct);
-        var uri = new Uri(endpoint, $"diagnostics/logs?limit={limit}");
-
-        using var request = new HttpRequestMessage(HttpMethod.Get, uri);
-        await AddDeviceAuthAsync(request, ct);
-        using var response = await _httpClient.SendAsync(request, ct);
-        response.EnsureSuccessStatusCode();
-
-        var dtos = await response.Content.ReadFromJsonAsync<List<DiagnosticLogEntryDto>>(HttpJsonOptions, ct) ?? [];
+        var dtos = await GetJsonAsync<List<DiagnosticLogEntryDto>>($"diagnostics/logs?limit={limit}", ct) ?? [];
         return dtos.Select(d => new DiagnosticLogEntry(
             d.Id, d.DeviceDisplayName, Enum.Parse<DiagnosticLogLevel>(d.Level), d.Message, d.Context, d.ExceptionDetails, d.CreatedAtUtc)).ToList();
     }
-
-    private Task<Uri> GetHttpEndpointAsync(CancellationToken ct) => RelayHttp.GetHttpEndpointAsync(_transportSettingsRepository, ct);
-
-    private Task AddDeviceAuthAsync(HttpRequestMessage request, CancellationToken ct) => RelayHttp.AddDeviceAuthAsync(request, _transportSettingsRepository, _vault, ct);
 
     private sealed record DiagnosticLogEntryDto(Guid Id, string DeviceDisplayName, string Level, string Message, string? Context, string? ExceptionDetails, DateTimeOffset CreatedAtUtc);
 }

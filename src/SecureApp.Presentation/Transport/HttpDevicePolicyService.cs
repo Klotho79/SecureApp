@@ -1,6 +1,4 @@
 using System.Net.Http.Json;
-using System.Text;
-using System.Text.Json;
 using SecureApp.Domain.Enums;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
@@ -9,41 +7,16 @@ using SecureApp.Domain.ValueObjects;
 namespace SecureApp.Presentation.Transport;
 
 /// <inheritdoc cref="IDevicePolicyService"/>
-public sealed class HttpDevicePolicyService : IDevicePolicyService
+/// <remarks>Endpoint and device auth come from <see cref="RelayServiceBase"/>; a device that is not registered yet simply has no policy.</remarks>
+public sealed class HttpDevicePolicyService(ITransportSettingsRepository transportSettingsRepository, ISecureVaultKeyStore vault)
+    : RelayServiceBase(vault, transportSettingsRepository, TimeSpan.FromSeconds(20)), IDevicePolicyService
 {
-    private static readonly JsonSerializerOptions HttpJsonOptions = new(JsonSerializerDefaults.Web);
-
-    private readonly ITransportSettingsRepository _transportSettingsRepository;
-    private readonly ISecureVaultKeyStore _vault;
-    private readonly HttpClient _httpClient = RelayHttp.CreateClient(TimeSpan.FromSeconds(20));
-
-    public HttpDevicePolicyService(ITransportSettingsRepository transportSettingsRepository, ISecureVaultKeyStore vault)
-    {
-        _transportSettingsRepository = transportSettingsRepository ?? throw new ArgumentNullException(nameof(transportSettingsRepository));
-        _vault = vault ?? throw new ArgumentNullException(nameof(vault));
-    }
-
     public async Task<DevicePolicy> GetMyPolicyAsync(CancellationToken ct = default)
     {
-        var configuration = await _transportSettingsRepository.GetAsync(ct);
-        var deviceId = configuration?.AssignedDeviceId;
-        var wsEndpoint = configuration?.EndpointUri;
-        if (deviceId is null || wsEndpoint is null)
+        if (!await IsRegisteredAsync(ct))
             return DevicePolicy.Unmanaged; // not registered yet — nothing to apply
 
-        var secretBytes = await _vault.RetrieveSecretAsync(RelayDeviceVaultKeys.DeviceSecret, ct);
-        if (secretBytes is null)
-            return DevicePolicy.Unmanaged;
-
-        var uri = new Uri(ToHttpUri(wsEndpoint), "me/policy");
-        using var request = new HttpRequestMessage(HttpMethod.Get, uri);
-        request.Headers.Add("X-Device-Id", deviceId.Value.ToString());
-        request.Headers.Add("X-Device-Secret", Encoding.UTF8.GetString(secretBytes));
-
-        using var response = await _httpClient.SendAsync(request, ct);
-        response.EnsureSuccessStatusCode();
-
-        var dto = await response.Content.ReadFromJsonAsync<PolicyDto>(HttpJsonOptions, ct);
+        var dto = await GetJsonAsync<PolicyDto>("me/policy", ct);
         if (dto is null)
             return DevicePolicy.Unmanaged;
 
@@ -53,27 +26,19 @@ public sealed class HttpDevicePolicyService : IDevicePolicyService
 
     public async Task<bool> PublishMyEmailAsync(string email, CancellationToken ct = default)
     {
-        var configuration = await _transportSettingsRepository.GetAsync(ct);
-        var deviceId = configuration?.AssignedDeviceId;
-        var wsEndpoint = configuration?.EndpointUri;
-        if (deviceId is null || wsEndpoint is null) return false;
-
-        var secretBytes = await _vault.RetrieveSecretAsync(RelayDeviceVaultKeys.DeviceSecret, ct);
-        if (secretBytes is null) return false;
-
-        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(ToHttpUri(wsEndpoint), "me/email"))
-        {
-            Content = JsonContent.Create(new { Email = email }, options: HttpJsonOptions),
-        };
-        request.Headers.Add("X-Device-Id", deviceId.Value.ToString());
-        request.Headers.Add("X-Device-Secret", Encoding.UTF8.GetString(secretBytes));
-
-        using var response = await _httpClient.SendAsync(request, ct);
-        response.EnsureSuccessStatusCode();
+        if (!await IsRegisteredAsync(ct)) return false;
+        await SendOrThrowAsync(HttpMethod.Post, "me/email", new { Email = email }, ct);
         return true;
     }
 
-    private static Uri ToHttpUri(Uri wsEndpoint) => RelayHttp.ToHttpUri(wsEndpoint);
+    /// <summary>True once the device has a relay address, an assigned id and its secret — before that, the policy calls quietly do nothing.</summary>
+    private async Task<bool> IsRegisteredAsync(CancellationToken ct)
+    {
+        var configuration = await TransportSettings.GetAsync(ct);
+        return configuration?.AssignedDeviceId is not null
+               && configuration.EndpointUri is not null
+               && await Vault.RetrieveSecretAsync(RelayDeviceVaultKeys.DeviceSecret, ct) is not null;
+    }
 
     private sealed record PolicyDto(int? Role, List<string>? HiddenTabs, bool DocumentReviewer = false, bool PiccTeam = false);
 }

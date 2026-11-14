@@ -1,14 +1,15 @@
 using System.Net.WebSockets;
 using System.Text.Json;
+using WireFrame = SecureApp.Domain.ValueObjects.WireFrame;
 
 namespace SecureApp.Relay;
 
-/// <summary>WebSocket message framing for <see cref="RelayFrame"/> — one WebSocket message per JSON frame, accumulating multi-part receives.</summary>
+/// <summary>WebSocket message framing for <see cref="WireFrame"/> — one WebSocket message per JSON frame, accumulating multi-part receives.</summary>
 public static class RelayProtocol
 {
     private static readonly JsonSerializerOptions JsonOptions = new();
 
-    public static async Task<RelayFrame?> ReceiveFrameAsync(WebSocket socket, CancellationToken ct)
+    public static async Task<WireFrame?> ReceiveFrameAsync(WebSocket socket, CancellationToken ct)
     {
         using var buffer = new MemoryStream();
         var segment = new byte[8192];
@@ -43,7 +44,7 @@ public static class RelayProtocol
         buffer.Position = 0;
         try
         {
-            return await JsonSerializer.DeserializeAsync<RelayFrame>(buffer, JsonOptions, ct);
+            return await JsonSerializer.DeserializeAsync<WireFrame>(buffer, JsonOptions, ct);
         }
         catch (JsonException)
         {
@@ -51,11 +52,11 @@ public static class RelayProtocol
         }
     }
 
-    public static Task SendFrameAsync(WebSocket socket, RelayFrame frame, CancellationToken ct)
+    public static Task SendFrameAsync(WebSocket socket, WireFrame frame, CancellationToken ct)
     {
         var json = JsonSerializer.SerializeToUtf8Bytes(frame, JsonOptions);
         return socket.SendAsync(json, WebSocketMessageType.Text, endOfMessage: true, ct);
     }
 
-    public static string Serialize(RelayFrame frame) => JsonSerializer.Serialize(frame, JsonOptions);
+    public static string Serialize(WireFrame frame) => JsonSerializer.Serialize(frame, JsonOptions);
 }

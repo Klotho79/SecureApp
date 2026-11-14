@@ -17,36 +17,22 @@ namespace SecureApp.Presentation.Transport;
 /// on-wire blob is <c>Nonce(12)+AuthTag(16)+CipherText</c> base64'd, matching
 /// <c>HttpSharedLibraryService</c>'s own format.
 /// </remarks>
-public sealed class HttpCommunityBoardService : ICommunityBoardService
+public sealed class HttpCommunityBoardService : RelayServiceBase, ICommunityBoardService
 {
     private const string SharedLibraryKeyVaultKey = "library:shared-key";
-    private static readonly JsonSerializerOptions HttpJsonOptions = new(JsonSerializerDefaults.Web);
 
-    private readonly ITransportSettingsRepository _transportSettingsRepository;
-    private readonly ISecureVaultKeyStore _vault;
     private readonly ICryptoService _crypto;
-    private readonly HttpClient _httpClient = RelayHttp.CreateClient(TimeSpan.FromSeconds(30));
 
     public HttpCommunityBoardService(ITransportSettingsRepository transportSettingsRepository, ISecureVaultKeyStore vault, ICryptoService crypto)
+        : base(vault, transportSettingsRepository, TimeSpan.FromSeconds(30))
     {
-        _transportSettingsRepository = transportSettingsRepository ?? throw new ArgumentNullException(nameof(transportSettingsRepository));
-        _vault = vault ?? throw new ArgumentNullException(nameof(vault));
         _crypto = crypto ?? throw new ArgumentNullException(nameof(crypto));
     }
 
     public async Task PostAsync(string text, CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(text))
-            throw new InvalidOperationException("Zpráva na nástěnku nesmí být prázdná.");
-
-        var key = await GetSharedKeyAsync(ct);
-        var payload = await _crypto.EncryptWithKeyAsync(Encoding.UTF8.GetBytes(text), Guid.NewGuid(), key, ct);
-        var blob = Convert.ToBase64String(SharedKeyWire.Combine(payload.Nonce, payload.AuthTag, payload.CipherText));
-
-        using var request = await RelayHttp.CreateAuthorizedRequestAsync(HttpMethod.Post, "board", _transportSettingsRepository, _vault, ct);
-        request.Content = JsonContent.Create(new { ContentBlob = blob }, options: HttpJsonOptions);
-
-        using var response = await _httpClient.SendAsync(request, ct);
+        using var request = await CreateRequestAsync(HttpMethod.Post, "board", new { ContentBlob = await EncryptAsync(text, ct) }, ct);
+        using var response = await Http.SendAsync(request, ct);
         if (response.StatusCode == HttpStatusCode.Forbidden)
             throw new InvalidOperationException("Na nástěnku smí psát jen admin nebo pověřený uživatel (modifier).");
         response.EnsureSuccessStatusCode();
@@ -54,17 +40,8 @@ public sealed class HttpCommunityBoardService : ICommunityBoardService
 
     public async Task<bool> UpdateAsync(Guid postId, string text, CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(text))
-            throw new InvalidOperationException("Zpráva na nástěnku nesmí být prázdná.");
-
-        var key = await GetSharedKeyAsync(ct);
-        var payload = await _crypto.EncryptWithKeyAsync(Encoding.UTF8.GetBytes(text), Guid.NewGuid(), key, ct);
-        var blob = Convert.ToBase64String(SharedKeyWire.Combine(payload.Nonce, payload.AuthTag, payload.CipherText));
-
-        using var request = await RelayHttp.CreateAuthorizedRequestAsync(HttpMethod.Put, $"board/{postId}", _transportSettingsRepository, _vault, ct);
-        request.Content = JsonContent.Create(new { ContentBlob = blob }, options: HttpJsonOptions);
-
-        using var response = await _httpClient.SendAsync(request, ct);
+        using var request = await CreateRequestAsync(HttpMethod.Put, $"board/{postId}", new { ContentBlob = await EncryptAsync(text, ct) }, ct);
+        using var response = await Http.SendAsync(request, ct);
         if (response.StatusCode == HttpStatusCode.Forbidden)
             throw new InvalidOperationException("Příspěvky na nástěnce smí upravovat jen admin nebo pověřený uživatel (modifier).");
         if (response.StatusCode == HttpStatusCode.NotFound) return false;
@@ -76,12 +53,8 @@ public sealed class HttpCommunityBoardService : ICommunityBoardService
     {
         try
         {
-            var key = await _vault.RetrieveSecretAsync(SharedLibraryKeyVaultKey, ct);
-            using var request = await RelayHttp.CreateAuthorizedRequestAsync(HttpMethod.Get, $"board?limit={limit}", _transportSettingsRepository, _vault, ct);
-
-            using var response = await _httpClient.SendAsync(request, ct);
-            response.EnsureSuccessStatusCode();
-            var dtos = await response.Content.ReadFromJsonAsync<List<BoardPostDto>>(HttpJsonOptions, ct) ?? [];
+            var key = await Vault.RetrieveSecretAsync(SharedLibraryKeyVaultKey, ct);
+            var dtos = await GetJsonAsync<List<BoardPostDto>>($"board?limit={limit}", ct) ?? [];
 
             var result = new List<BoardPost>(dtos.Count);
             foreach (var d in dtos)
@@ -109,10 +82,20 @@ public sealed class HttpCommunityBoardService : ICommunityBoardService
 
     public async Task<bool> DeleteAsync(Guid postId, CancellationToken ct = default)
     {
-        using var request = await RelayHttp.CreateAuthorizedRequestAsync(HttpMethod.Delete, $"board/{postId}", _transportSettingsRepository, _vault, ct);
-
-        using var response = await _httpClient.SendAsync(request, ct);
+        using var request = await CreateRequestAsync(HttpMethod.Delete, $"board/{postId}", null, ct);
+        using var response = await Http.SendAsync(request, ct);
         return response.IsSuccessStatusCode;
+    }
+
+    /// <summary>The post text encrypted with the shared community key, as the base64 wire blob. Rejects an empty text.</summary>
+    private async Task<string> EncryptAsync(string text, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            throw new InvalidOperationException("Zpráva na nástěnku nesmí být prázdná.");
+
+        var key = await GetSharedKeyAsync(ct);
+        var payload = await _crypto.EncryptWithKeyAsync(Encoding.UTF8.GetBytes(text), Guid.NewGuid(), key, ct);
+        return Convert.ToBase64String(SharedKeyWire.Combine(payload.Nonce, payload.AuthTag, payload.CipherText));
     }
 
     private async Task<(string Text, bool IsReadable)> TryDecryptAsync(string blob, byte[] key, CancellationToken ct)
@@ -135,7 +118,7 @@ public sealed class HttpCommunityBoardService : ICommunityBoardService
     }
 
     private async Task<byte[]> GetSharedKeyAsync(CancellationToken ct)
-        => await _vault.RetrieveSecretAsync(SharedLibraryKeyVaultKey, ct)
+        => await Vault.RetrieveSecretAsync(SharedLibraryKeyVaultKey, ct)
             ?? throw new InvalidOperationException("Nemáte klíč sdílené knihovny — nejprve ho v Nastavení vygenerujte nebo importujte.");
 
     private sealed record BoardPostDto(Guid Id, Guid AuthorDeviceId, string AuthorDisplayName, string ContentBlob, DateTimeOffset CreatedAtUtc);

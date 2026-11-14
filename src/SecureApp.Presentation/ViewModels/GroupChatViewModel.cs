@@ -1201,22 +1201,19 @@ public sealed partial class GroupChatViewModel : ChatThreadViewModelBase<GroupMe
     {
         try
         {
-            var message = await _messagingService.ReceiveMessageAsync(envelope); // idempotent
-            var plaintext = await _messagingService.DecryptMessageAsync(message.Id);
-            if (MessageDeletionSync.TryParseDeleteCommand(plaintext, out var correlationId))
+            var (kind, correlationId, message) = await LiveSystemPayload.ReceiveAsync(_messagingService, _messageRepository, envelope);
+            if (kind == LiveSystemPayloadKind.Delete)
             {
-                await _messageRepository.DeleteByCorrelationAsync(correlationId);
-                var doomed = Messages.Where(m => m.CorrelationId == correlationId).ToList();
-                foreach (var item in doomed)
-                    Messages.Remove(item);
-                if (doomed.Count > 0) _ = UpdateCacheAsync();
+                if (LiveSystemPayload.RemoveByCorrelation(Messages, m => m.CorrelationId, correlationId))
+                    _ = UpdateCacheAsync();
             }
-            else if (DeliveryAckSync.TryParseAck(plaintext, out var ackCorrelationId))
+            else if (kind == LiveSystemPayloadKind.DeliveryAck)
             {
                 // A member's app acknowledged one of our group messages (2026-09-14). Mark that member's
                 // leg Delivered (the ack arrived on their session), then recompute the aggregate across
                 // all legs — the visible bubble shows ✓✓ only once EVERY member has acked. The app-wide
                 // handler persists the same; here we refresh what's on screen.
+                var ackCorrelationId = correlationId;
                 await _messageRepository.MarkDeliveredForSessionAsync(message.ChatSessionId, ackCorrelationId);
                 var aggregate = await _messageRepository.GetOutboundAggregateStatusAsync(ackCorrelationId);
                 if (aggregate is { } status)

@@ -8,59 +8,31 @@ using Font = Microsoft.Maui.Graphics.Font;
 
 namespace SecureApp.Presentation.Controls;
 
-/// <summary>Which part of the leave board a <see cref="VolnoBoardView"/> instance draws — see its remarks.</summary>
-public enum VolnoBoardLayer
-{
-    /// <summary>The day cells (scrolls natively inside the page's ScrollView).</summary>
-    Body,
-    /// <summary>The person-name column, kept pinned on the left by translating it vertically with the scroll.</summary>
-    Names,
-    /// <summary>The day-number header, kept pinned on top by translating it horizontally with the scroll.</summary>
-    Header,
-}
-
 /// <summary>
 /// The "Volno" leave board drawn on a canvas (2026-10-24, user: "rozpis a volno se otevira strasne
 /// dlouho"). It used to be ~58 people x ~30 days = ~1 740 <c>Label</c>s (each with an AppThemeBinding),
 /// built on the UI thread when the tab opened; one canvas draws the same grid in a few milliseconds.
 /// It is read-only, so no hit-testing is needed.
 ///
-/// Three instances share one grid geometry (<see cref="VolnoLayout"/>): <see cref="VolnoBoardLayer.Body"/> sits
-/// inside the page's ScrollView (native scrolling stays smooth), while the <see cref="VolnoBoardLayer.Names"/> and
-/// <see cref="VolnoBoardLayer.Header"/> overlays are translated by the page's code-behind on every
+/// Three instances share one grid geometry (<see cref="VolnoLayout"/>): <see cref="BoardLayer.Body"/> sits
+/// inside the page's ScrollView (native scrolling stays smooth), while the <see cref="BoardLayer.Names"/> and
+/// <see cref="BoardLayer.Header"/> overlays are translated by the page's code-behind on every
 /// scroll so the names and day numbers stay visible — the same sticky behaviour the label version had.
-/// Colours are the app's own tokens (SurfaceAlt/Gray950/White), re-read on every draw so a theme
-/// switch only needs an invalidate.
+/// Sizing, zoom, the name cap, the name column and the header are shared with the Pozice board in <see cref="BoardLayerView"/>.
 /// </summary>
-public sealed class VolnoBoardView : GraphicsView
+public sealed class VolnoBoardView : BoardLayerView
 {
-    /// <summary>The name column's width when nothing caps it (see <see cref="MaxNamesWidth"/>).</summary>
+    /// <summary>The name column's width when nothing caps it (see <see cref="BoardLayerView.MaxNamesWidth"/>).</summary>
     public const float NameWidth = 130;
     public const float CellWidth = 30;
     public const float CellHeight = 24;
     public const float HeaderHeight = 20;
-    public const float Gap = 2;
 
     internal const float ColPitch = CellWidth + Gap;
     internal const float RowsTop = HeaderHeight + Gap;
 
-    public static readonly BindableProperty LayerProperty = BindableProperty.Create(
-        nameof(Layer), typeof(VolnoBoardLayer), typeof(VolnoBoardView), VolnoBoardLayer.Body, propertyChanged: OnDataChanged);
-
     public static readonly BindableProperty RowsProperty = BindableProperty.Create(
         nameof(Rows), typeof(IReadOnlyList<OpicentrumVolnoRowItem>), typeof(VolnoBoardView), null, propertyChanged: OnDataChanged);
-
-    public static readonly BindableProperty DayHeadersProperty = BindableProperty.Create(
-        nameof(DayHeaders), typeof(IReadOnlyList<string>), typeof(VolnoBoardView), null, propertyChanged: OnDataChanged);
-
-    public static readonly BindableProperty MaxNamesWidthProperty = BindableProperty.Create(
-        nameof(MaxNamesWidth), typeof(float), typeof(VolnoBoardView), float.PositiveInfinity, propertyChanged: OnDataChanged);
-
-    public VolnoBoardLayer Layer
-    {
-        get => (VolnoBoardLayer)GetValue(LayerProperty);
-        set => SetValue(LayerProperty, value);
-    }
 
     public IReadOnlyList<OpicentrumVolnoRowItem>? Rows
     {
@@ -68,81 +40,18 @@ public sealed class VolnoBoardView : GraphicsView
         set => SetValue(RowsProperty, value);
     }
 
-    public IReadOnlyList<string>? DayHeaders
-    {
-        get => (IReadOnlyList<string>?)GetValue(DayHeadersProperty);
-        set => SetValue(DayHeadersProperty, value);
-    }
-
-    /// <summary>
-    /// Largest on-screen width the pinned name column may take (2026-11-13, user: same 1/5-of-the-display cap as the
-    /// Pozice board); past it, zooming wraps the names onto more lines instead of widening the column.
-    /// <see cref="float.PositiveInfinity"/> (the default) means no cap.
-    /// </summary>
-    public float MaxNamesWidth
-    {
-        get => (float)GetValue(MaxNamesWidthProperty);
-        set => SetValue(MaxNamesWidthProperty, value);
-    }
-
-    /// <summary>The name column's width cap in board units at <paramref name="zoom"/>, for <see cref="VolnoLayout.For"/>.</summary>
-    internal static float NameWidthCap(float maxNamesWidth, float zoom) => maxNamesWidth / zoom - Gap;
-
     private VolnoLayout? _layout;
-    private bool _drawLogged;
 
     public VolnoBoardView()
     {
         Drawable = new BoardDrawable(this);
     }
 
-    private static void OnDataChanged(BindableObject bindable, object oldValue, object newValue) => ((VolnoBoardView)bindable).Refresh();
-
-    private void Refresh()
+    protected override (float CellsLeft, float ColumnPitch, float Height, float HeaderHeight) RebuildLayout(float zoom)
     {
-        var dayCount = DayHeaders?.Count ?? 0;
-        var zoom = BoardZoom.Value;
         _layout = Rows is null ? null : VolnoLayout.For(Rows, NameWidthCap(MaxNamesWidth, zoom));
-        var cellsLeft = _layout?.CellsLeft ?? NameWidth + Gap;
-        var totalWidth = cellsLeft + dayCount * ColPitch;
-        var totalHeight = _layout?.Height ?? RowsTop;
-
-        switch (Layer)
-        {
-            case VolnoBoardLayer.Body:
-                WidthRequest = totalWidth * zoom;
-                HeightRequest = totalHeight * zoom;
-                break;
-            case VolnoBoardLayer.Names:
-                WidthRequest = cellsLeft * zoom;
-                HeightRequest = totalHeight * zoom;
-                break;
-            case VolnoBoardLayer.Header:
-                WidthRequest = totalWidth * zoom;
-                HeightRequest = HeaderHeight * zoom;
-                break;
-        }
-
-        _drawLogged = false;
-        Invalidate();
+        return (_layout?.CellsLeft ?? NameWidth + Gap, ColPitch, _layout?.Height ?? RowsTop, HeaderHeight);
     }
-
-    protected override void OnHandlerChanged()
-    {
-        base.OnHandlerChanged();
-        if (Application.Current is not { } app) return;
-        app.RequestedThemeChanged -= OnThemeChanged;
-        BoardZoom.Changed -= Refresh;
-        if (Handler is not null)
-        {
-            app.RequestedThemeChanged += OnThemeChanged;
-            BoardZoom.Changed += Refresh;
-        }
-    }
-
-    private void OnThemeChanged(object? sender, AppThemeChangedEventArgs e) => Invalidate();
-
-    private static Color Resource(string key, Color fallback) => BoardCanvas.Resource(key, fallback);
 
     private sealed class BoardDrawable(VolnoBoardView owner) : IDrawable
     {
@@ -150,30 +59,28 @@ public sealed class VolnoBoardView : GraphicsView
         {
             var sw = Stopwatch.StartNew();
             canvas.Scale(BoardZoom.Value, BoardZoom.Value);
-            var dark = Application.Current?.RequestedTheme == AppTheme.Dark;
-            var pageBackground = dark ? Resource("Gray950", Colors.Black) : Resource("White", Colors.White);
-            var cellBackground = dark ? Resource("SurfaceAltDark", Colors.DimGray) : Resource("SurfaceAlt", Colors.LightGray);
-            var text = dark ? Colors.White : Colors.Black;
+            var (dark, pageBackground, text) = ThemeColors();
+            var cellBackground = dark ? BoardCanvas.Resource("SurfaceAltDark", Colors.DimGray) : BoardCanvas.Resource("SurfaceAlt", Colors.LightGray);
 
             var rows = owner.Rows;
             var days = owner.DayHeaders;
             var layout = owner._layout;
             switch (owner.Layer)
             {
-                case VolnoBoardLayer.Body when rows is not null && layout is not null:
+                case BoardLayer.Body when rows is not null && layout is not null:
                     DrawBody(canvas, rows, layout, cellBackground, text);
                     break;
-                case VolnoBoardLayer.Names when layout is not null:
-                    DrawNames(canvas, layout, pageBackground, text);
+                case BoardLayer.Names when layout is not null:
+                    DrawNameColumn(canvas, layout, Font.Default, VolnoLayout.NameFont, pageBackground, text);
                     break;
-                case VolnoBoardLayer.Header when days is not null:
-                    DrawHeader(canvas, days, layout?.CellsLeft ?? NameWidth + Gap, pageBackground, text);
+                case BoardLayer.Header when days is not null:
+                    DrawDayHeader(canvas, days, layout?.CellsLeft ?? NameWidth + Gap, CellWidth, HeaderHeight, 9, pageBackground, text);
                     break;
             }
 
-            if (!owner._drawLogged && owner.Layer == VolnoBoardLayer.Body && rows is { Count: > 0 })
+            if (!owner.DrawLogged && owner.Layer == BoardLayer.Body && rows is { Count: > 0 })
             {
-                owner._drawLogged = true;
+                owner.DrawLogged = true;
                 AppLog.Metric("opicentrum.volno.draw", sw.Elapsed.TotalMilliseconds, "ms", ("rows", rows.Count));
             }
         }
@@ -200,34 +107,6 @@ public sealed class VolnoBoardView : GraphicsView
             }
         }
 
-        private static void DrawNames(ICanvas canvas, VolnoLayout layout, Color pageBackground, Color text)
-        {
-            canvas.FillColor = pageBackground;
-            canvas.FillRectangle(0, 0, layout.CellsLeft, layout.Height);
-
-            canvas.Font = Font.Default;
-            canvas.FontSize = VolnoLayout.NameFont;
-            canvas.FontColor = text;
-            for (var r = 0; r < layout.NameLines.Length; r++)
-            {
-                var lines = layout.NameLines[r];
-                var top = layout.RowTops[r] + (layout.RowHeights[r] - lines.Length * layout.NameLineHeight) / 2;
-                for (var i = 0; i < lines.Length; i++)
-                    canvas.DrawString(lines[i], 0, top + i * layout.NameLineHeight, layout.NameWidth, layout.NameLineHeight, HorizontalAlignment.Left, VerticalAlignment.Center);
-            }
-        }
-
-        private static void DrawHeader(ICanvas canvas, IReadOnlyList<string> days, float cellsLeft, Color pageBackground, Color text)
-        {
-            canvas.FillColor = pageBackground;
-            canvas.FillRectangle(0, 0, cellsLeft + days.Count * ColPitch, HeaderHeight);
-
-            canvas.Font = Font.DefaultBold;
-            canvas.FontSize = 9;
-            canvas.FontColor = text;
-            for (var d = 0; d < days.Count; d++)
-                canvas.DrawString(days[d], cellsLeft + d * ColPitch, 0, CellWidth, HeaderHeight, HorizontalAlignment.Center, VerticalAlignment.Center);
-        }
     }
 }
 
@@ -235,7 +114,7 @@ public sealed class VolnoBoardView : GraphicsView
 /// Row geometry of the leave board for one name-column width: each person's name wrapped to the column, and every
 /// row as tall as its name needs (at least <see cref="VolnoBoardView.CellHeight"/>). Shared by the three layers.
 /// </summary>
-internal sealed class VolnoLayout
+internal sealed class VolnoLayout : IBoardRowsLayout
 {
     public const float NameFont = 10;
     private const float MinCappedNameWidth = 24;

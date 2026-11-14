@@ -1,6 +1,3 @@
-using System.Net.Http.Json;
-using System.Text;
-using System.Text.Json;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Domain.ValueObjects;
@@ -9,21 +6,12 @@ using SecureApp.Presentation.Transport;
 namespace SecureApp.Presentation.Library;
 
 /// <inheritdoc cref="IContactDirectoryService"/>
-/// <remarks>
-/// Lives in Presentation (not Data), same reasoning as <see cref="HttpSharedLibraryService"/> —
-/// needs <c>HttpClient</c> + relay endpoint/device-identity configuration. The device-auth header
-/// helper and ws-&gt;http rewrite are shared via <see cref="RelayHttp"/>.
-/// </remarks>
-public sealed class HttpContactDirectoryService : IContactDirectoryService
+/// <remarks>Endpoint, device auth and sending come from <see cref="RelayServiceBase"/>.</remarks>
+public sealed class HttpContactDirectoryService : RelayServiceBase, IContactDirectoryService
 {
-    private static readonly JsonSerializerOptions HttpJsonOptions = new(JsonSerializerDefaults.Web);
-
     private readonly ICurrentUserService _currentUserService;
     private readonly IMessagingService _messagingService;
-    private readonly ISecureVaultKeyStore _vault;
-    private readonly ITransportSettingsRepository _transportSettingsRepository;
     private readonly ISharedLibraryService _sharedLibraryService;
-    private readonly HttpClient _httpClient = SecureApp.Presentation.Transport.RelayHttp.CreateClient();
 
     public HttpContactDirectoryService(
         ICurrentUserService currentUserService,
@@ -31,11 +19,10 @@ public sealed class HttpContactDirectoryService : IContactDirectoryService
         ISecureVaultKeyStore vault,
         ITransportSettingsRepository transportSettingsRepository,
         ISharedLibraryService sharedLibraryService)
+        : base(vault, transportSettingsRepository)
     {
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         _messagingService = messagingService ?? throw new ArgumentNullException(nameof(messagingService));
-        _vault = vault ?? throw new ArgumentNullException(nameof(vault));
-        _transportSettingsRepository = transportSettingsRepository ?? throw new ArgumentNullException(nameof(transportSettingsRepository));
         _sharedLibraryService = sharedLibraryService ?? throw new ArgumentNullException(nameof(sharedLibraryService));
     }
 
@@ -51,8 +38,6 @@ public sealed class HttpContactDirectoryService : IContactDirectoryService
         await _currentUserService.InitializeAsync(ct);
 
         var publicKey = await _messagingService.GetLocalIdentityPublicKeyAsync(ct);
-        var endpoint = await GetHttpEndpointAsync(ct);
-        var uri = new Uri(endpoint, "directory/publish");
 
         // AppVersion (2026-10-01) — "1.29 (32)" display+build, so the admin's member screen can spot
         // an outdated device without having to ask ("jakou verzi appky mas?") every time something
@@ -71,67 +56,32 @@ public sealed class HttpContactDirectoryService : IContactDirectoryService
         // breaks for them.
         var hasSharedLibraryKey = await _sharedLibraryService.HasSharedKeyAsync(ct);
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, uri)
+        await SendOrThrowAsync(HttpMethod.Post, "directory/publish", new
         {
-            Content = JsonContent.Create(
-                new
-                {
-                    DisplayName = _currentUserService.Current.DisplayName,
-                    PublicKeyBase64 = Convert.ToBase64String(publicKey),
-                    AppVersion = appVersion,
-                    FormalName = string.IsNullOrWhiteSpace(formalName) ? null : formalName,
-                    Platform = Microsoft.Maui.Devices.DeviceInfo.Current.Platform.ToString(),
-                    HasSharedLibraryKey = hasSharedLibraryKey,
-                },
-                options: HttpJsonOptions)
-        };
-        await AddDeviceAuthAsync(request, ct);
-        using var response = await _httpClient.SendAsync(request, ct);
-        response.EnsureSuccessStatusCode();
+            DisplayName = _currentUserService.Current.DisplayName,
+            PublicKeyBase64 = Convert.ToBase64String(publicKey),
+            AppVersion = appVersion,
+            FormalName = string.IsNullOrWhiteSpace(formalName) ? null : formalName,
+            Platform = Microsoft.Maui.Devices.DeviceInfo.Current.Platform.ToString(),
+            HasSharedLibraryKey = hasSharedLibraryKey,
+        }, ct);
     }
 
     public async Task<IReadOnlyList<DirectoryMember>> ListMembersAsync(CancellationToken ct = default)
     {
-        var endpoint = await GetHttpEndpointAsync(ct);
-        var uri = new Uri(endpoint, "directory/members");
-
-        using var request = new HttpRequestMessage(HttpMethod.Get, uri);
-        await AddDeviceAuthAsync(request, ct);
-        using var response = await _httpClient.SendAsync(request, ct);
-        response.EnsureSuccessStatusCode();
-
-        var dtos = await response.Content.ReadFromJsonAsync<List<DirectoryMemberDto>>(HttpJsonOptions, ct) ?? [];
+        var dtos = await GetJsonAsync<List<DirectoryMemberDto>>("directory/members", ct) ?? [];
         return dtos.Select(d => new DirectoryMember(d.DeviceId, d.DisplayName, Convert.FromBase64String(d.PublicKeyBase64), d.FormalName)).ToList();
     }
 
     public async Task<IReadOnlyDictionary<string, DateTimeOffset>> GetLastSeenAsync(CancellationToken ct = default)
     {
-        var endpoint = await GetHttpEndpointAsync(ct);
-        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(endpoint, "directory/last-seen"));
-        await AddDeviceAuthAsync(request, ct);
-        using var response = await _httpClient.SendAsync(request, ct);
-        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return new Dictionary<string, DateTimeOffset>(); // older relay
-        response.EnsureSuccessStatusCode();
-
-        var dtos = await response.Content.ReadFromJsonAsync<List<DirectoryLastSeenDto>>(HttpJsonOptions, ct) ?? [];
+        // An older relay without the route answers 404 — treated as "no data".
+        var dtos = await GetJsonAsync<List<DirectoryLastSeenDto>>("directory/last-seen", ct, notFoundAsDefault: true) ?? [];
         return dtos.GroupBy(d => d.PublicKeyBase64).ToDictionary(g => g.Key, g => g.Max(d => d.LastActiveAtUtc));
     }
 
-    public async Task LinkArimContactAsync(Guid arimContactId, CancellationToken ct = default)
-    {
-        var endpoint = await GetHttpEndpointAsync(ct);
-        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(endpoint, "directory/link-arim-contact"))
-        {
-            Content = JsonContent.Create(new { ArimContactId = arimContactId }, options: HttpJsonOptions)
-        };
-        await AddDeviceAuthAsync(request, ct);
-        using var response = await _httpClient.SendAsync(request, ct);
-        response.EnsureSuccessStatusCode();
-    }
-
-    private Task<Uri> GetHttpEndpointAsync(CancellationToken ct) => RelayHttp.GetHttpEndpointAsync(_transportSettingsRepository, ct);
-
-    private Task AddDeviceAuthAsync(HttpRequestMessage request, CancellationToken ct) => RelayHttp.AddDeviceAuthAsync(request, _transportSettingsRepository, _vault, ct);
+    public Task LinkArimContactAsync(Guid arimContactId, CancellationToken ct = default)
+        => SendOrThrowAsync(HttpMethod.Post, "directory/link-arim-contact", new { ArimContactId = arimContactId }, ct);
 
     private sealed record DirectoryLastSeenDto(string PublicKeyBase64, DateTimeOffset LastActiveAtUtc);
 

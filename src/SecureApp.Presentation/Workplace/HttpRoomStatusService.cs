@@ -1,6 +1,3 @@
-using System.Net.Http.Json;
-using System.Text;
-using System.Text.Json;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Domain.ValueObjects;
@@ -9,119 +6,30 @@ using SecureApp.Presentation.Transport;
 namespace SecureApp.Presentation.Workplace;
 
 /// <inheritdoc cref="IRoomStatusService"/>
-/// <remarks>
-/// Lives in Presentation, same reasoning as every other Http*Service here — needs <c>HttpClient</c>
-/// + relay endpoint/device-identity configuration. Endpoint lookup and device-auth headers come from
-/// <see cref="RelayHttp"/>, shared by every Http*Service here.
-/// </remarks>
-public sealed class HttpRoomStatusService : IRoomStatusService
+/// <remarks>Endpoint, device auth and sending come from <see cref="RelayServiceBase"/>.</remarks>
+public sealed class HttpRoomStatusService(ISecureVaultKeyStore vault, ITransportSettingsRepository transportSettingsRepository)
+    : RelayServiceBase(vault, transportSettingsRepository), IRoomStatusService
 {
-    private static readonly JsonSerializerOptions HttpJsonOptions = new(JsonSerializerDefaults.Web);
-
-    private readonly ISecureVaultKeyStore _vault;
-    private readonly ITransportSettingsRepository _transportSettingsRepository;
-    private readonly HttpClient _httpClient = SecureApp.Presentation.Transport.RelayHttp.CreateClient();
-
-    public HttpRoomStatusService(ISecureVaultKeyStore vault, ITransportSettingsRepository transportSettingsRepository)
-    {
-        _vault = vault ?? throw new ArgumentNullException(nameof(vault));
-        _transportSettingsRepository = transportSettingsRepository ?? throw new ArgumentNullException(nameof(transportSettingsRepository));
-    }
-
     public async Task<IReadOnlyList<RoomStatus>> ListAsync(CancellationToken ct = default)
     {
-        var endpoint = await GetHttpEndpointAsync(ct);
-        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(endpoint, "room-status"));
-        await AddDeviceAuthAsync(request, ct);
-        using var response = await _httpClient.SendAsync(request, ct);
-        response.EnsureSuccessStatusCode();
-
-        var dtos = await response.Content.ReadFromJsonAsync<List<RoomStatusDto>>(HttpJsonOptions, ct) ?? [];
+        var dtos = await GetJsonAsync<List<RoomStatusDto>>("room-status", ct) ?? [];
         return dtos.Select(d => new RoomStatus(d.WorkplaceId, d.WorkplaceName, d.StatusText, d.UpdatedByDisplayName, d.UpdatedAtUtc, d.NoteText)).ToList();
     }
 
-    public async Task<bool> SetStatusAsync(Guid workplaceId, string workplaceName, string? statusText, string? noteText = null, CancellationToken ct = default)
-    {
-        try
-        {
-            var endpoint = await GetHttpEndpointAsync(ct);
-            using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(endpoint, "room-status"))
-            {
-                Content = JsonContent.Create(new { WorkplaceId = workplaceId, WorkplaceName = workplaceName, StatusText = statusText, NoteText = noteText }, options: HttpJsonOptions)
-            };
-            await AddDeviceAuthAsync(request, ct);
-            using var response = await _httpClient.SendAsync(request, ct);
-            return response.IsSuccessStatusCode;
-        }
-        catch
-        {
-            return false;
-        }
-    }
+    public Task<bool> SetStatusAsync(Guid workplaceId, string workplaceName, string? statusText, string? noteText = null, CancellationToken ct = default)
+        => TrySendAsync(HttpMethod.Post, "room-status", new { WorkplaceId = workplaceId, WorkplaceName = workplaceName, StatusText = statusText, NoteText = noteText }, ct);
 
     public async Task<IReadOnlyList<string>> GetStatusOptionsAsync(CancellationToken ct = default)
-    {
-        var endpoint = await GetHttpEndpointAsync(ct);
-        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(endpoint, "room-status/options"));
-        await AddDeviceAuthAsync(request, ct);
-        using var response = await _httpClient.SendAsync(request, ct);
-        response.EnsureSuccessStatusCode();
+        => await GetJsonAsync<List<string>>("room-status/options", ct) ?? [];
 
-        return await response.Content.ReadFromJsonAsync<List<string>>(HttpJsonOptions, ct) ?? [];
-    }
-
-    public async Task<bool> SetStatusOptionsAsync(IReadOnlyList<string> options, CancellationToken ct = default)
-    {
-        try
-        {
-            var endpoint = await GetHttpEndpointAsync(ct);
-            using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(endpoint, "room-status/options"))
-            {
-                Content = JsonContent.Create(new { Options = options }, options: HttpJsonOptions)
-            };
-            await AddDeviceAuthAsync(request, ct);
-            using var response = await _httpClient.SendAsync(request, ct);
-            return response.IsSuccessStatusCode;
-        }
-        catch
-        {
-            return false;
-        }
-    }
+    public Task<bool> SetStatusOptionsAsync(IReadOnlyList<string> options, CancellationToken ct = default)
+        => TrySendAsync(HttpMethod.Post, "room-status/options", new { Options = options }, ct);
 
     public async Task<IReadOnlyList<string>> GetNoteOptionsAsync(CancellationToken ct = default)
-    {
-        var endpoint = await GetHttpEndpointAsync(ct);
-        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(endpoint, "room-status/notes"));
-        await AddDeviceAuthAsync(request, ct);
-        using var response = await _httpClient.SendAsync(request, ct);
-        response.EnsureSuccessStatusCode();
+        => await GetJsonAsync<List<string>>("room-status/notes", ct) ?? [];
 
-        return await response.Content.ReadFromJsonAsync<List<string>>(HttpJsonOptions, ct) ?? [];
-    }
-
-    public async Task<bool> SetNoteOptionsAsync(IReadOnlyList<string> options, CancellationToken ct = default)
-    {
-        try
-        {
-            var endpoint = await GetHttpEndpointAsync(ct);
-            using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(endpoint, "room-status/notes"))
-            {
-                Content = JsonContent.Create(new { Options = options }, options: HttpJsonOptions)
-            };
-            await AddDeviceAuthAsync(request, ct);
-            using var response = await _httpClient.SendAsync(request, ct);
-            return response.IsSuccessStatusCode;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private Task<Uri> GetHttpEndpointAsync(CancellationToken ct) => RelayHttp.GetHttpEndpointAsync(_transportSettingsRepository, ct);
-
-    private Task AddDeviceAuthAsync(HttpRequestMessage request, CancellationToken ct) => RelayHttp.AddDeviceAuthAsync(request, _transportSettingsRepository, _vault, ct);
+    public Task<bool> SetNoteOptionsAsync(IReadOnlyList<string> options, CancellationToken ct = default)
+        => TrySendAsync(HttpMethod.Post, "room-status/notes", new { Options = options }, ct);
 
     private sealed record RoomStatusDto(Guid WorkplaceId, string WorkplaceName, string StatusText, string UpdatedByDisplayName, DateTimeOffset UpdatedAtUtc, string NoteText);
 }

@@ -8,17 +8,6 @@ using Font = Microsoft.Maui.Graphics.Font;
 
 namespace SecureApp.Presentation.Controls;
 
-/// <summary>Which part of the position board a <see cref="PositionsBoardView"/> instance draws — same split as <see cref="VolnoBoardLayer"/>.</summary>
-public enum PositionsBoardLayer
-{
-    /// <summary>The day cells with their person chips (scrolls natively inside the page's ScrollView; takes the taps).</summary>
-    Body,
-    /// <summary>The workplace-name column, kept pinned on the left by translating it vertically with the scroll.</summary>
-    Names,
-    /// <summary>The day header, kept pinned on top by translating it horizontally with the scroll.</summary>
-    Header,
-}
-
 /// <summary>
 /// The "Pozice" roster board drawn on a canvas (2026-10-24, user: opening it from Nástěnka took ~1 s every
 /// time, while switching Pozice/Volno inside the page was instant). The page is rebuilt on every open and
@@ -29,53 +18,19 @@ public enum PositionsBoardLayer
 /// Same three-layer structure as <see cref="VolnoBoardView"/>: the body scrolls natively, the names and
 /// header overlays are translated by the page's code-behind. The body takes taps through a
 /// TapGestureRecognizer (not GraphicsView's own touch events, which would compete with the ScrollView's
-/// pan) and hit-tests them against the chip rectangles from <see cref="PositionsLayout"/>.
+/// pan) and hit-tests them against the chip rectangles from <see cref="PositionsLayout"/>. Sizing, zoom, the name cap,
+/// the name column and the header are shared with the Volno board in <see cref="BoardLayerView"/>.
 /// </summary>
-public sealed class PositionsBoardView : GraphicsView
+public sealed class PositionsBoardView : BoardLayerView
 {
-    public static readonly BindableProperty LayerProperty = BindableProperty.Create(
-        nameof(Layer), typeof(PositionsBoardLayer), typeof(PositionsBoardView), PositionsBoardLayer.Body, propertyChanged: OnDataChanged);
-
     public static readonly BindableProperty RowsProperty = BindableProperty.Create(
         nameof(Rows), typeof(IReadOnlyList<OpicentrumRosterRowItem>), typeof(PositionsBoardView), null, propertyChanged: OnDataChanged);
-
-    public static readonly BindableProperty DayHeadersProperty = BindableProperty.Create(
-        nameof(DayHeaders), typeof(IReadOnlyList<string>), typeof(PositionsBoardView), null, propertyChanged: OnDataChanged);
-
-    public static readonly BindableProperty MaxNamesWidthProperty = BindableProperty.Create(
-        nameof(MaxNamesWidth), typeof(float), typeof(PositionsBoardView), float.PositiveInfinity, propertyChanged: OnDataChanged);
-
-    public PositionsBoardLayer Layer
-    {
-        get => (PositionsBoardLayer)GetValue(LayerProperty);
-        set => SetValue(LayerProperty, value);
-    }
 
     public IReadOnlyList<OpicentrumRosterRowItem>? Rows
     {
         get => (IReadOnlyList<OpicentrumRosterRowItem>?)GetValue(RowsProperty);
         set => SetValue(RowsProperty, value);
     }
-
-    public IReadOnlyList<string>? DayHeaders
-    {
-        get => (IReadOnlyList<string>?)GetValue(DayHeadersProperty);
-        set => SetValue(DayHeadersProperty, value);
-    }
-
-    /// <summary>
-    /// Largest on-screen width the pinned room-name column may take (user: "sloupec se saly... max do 1/5 sirky
-    /// displeje"); past it, zooming wraps the room names onto more lines instead of widening the column.
-    /// <see cref="float.PositiveInfinity"/> (the default) means no cap.
-    /// </summary>
-    public float MaxNamesWidth
-    {
-        get => (float)GetValue(MaxNamesWidthProperty);
-        set => SetValue(MaxNamesWidthProperty, value);
-    }
-
-    /// <summary>The name column's width cap in board units at <paramref name="zoom"/>, for <see cref="PositionsLayout.For"/>.</summary>
-    internal static float NameWidthCap(float maxNamesWidth, float zoom) => maxNamesWidth / zoom - PositionsLayout.Gap;
 
     /// <summary>Raised on the body layer when a person chip is tapped.</summary>
     public event EventHandler<OpicentrumRosterPersonChip>? ChipTapped;
@@ -84,7 +39,6 @@ public sealed class PositionsBoardView : GraphicsView
     public event EventHandler? Drawn;
 
     private PositionsLayout? _layout;
-    private bool _drawLogged;
 
     public PositionsBoardView()
     {
@@ -94,42 +48,17 @@ public sealed class PositionsBoardView : GraphicsView
         GestureRecognizers.Add(tap);
     }
 
-    private static void OnDataChanged(BindableObject bindable, object oldValue, object newValue) => ((PositionsBoardView)bindable).Refresh();
-
-    private void Refresh()
+    // All three layers need the layout: the name column's width follows the workplace names and the zoom cap.
+    protected override (float CellsLeft, float ColumnPitch, float Height, float HeaderHeight) RebuildLayout(float zoom)
     {
-        var dayCount = DayHeaders?.Count ?? 0;
-
-        // All three layers need the layout: the name column's width follows the workplace names and the zoom cap.
-        var zoom = BoardZoom.Value;
         _layout = Rows is null ? null : PositionsLayout.For(Rows, NameWidthCap(MaxNamesWidth, zoom));
-        var cellsLeft = _layout?.CellsLeft ?? PositionsLayout.DefaultNameWidth + PositionsLayout.Gap;
-        var totalWidth = cellsLeft + dayCount * (PositionsLayout.ColWidth + PositionsLayout.Gap);
-        var totalHeight = _layout?.Height ?? PositionsLayout.RowsTop;
-
-        switch (Layer)
-        {
-            case PositionsBoardLayer.Body:
-                WidthRequest = totalWidth * zoom;
-                HeightRequest = totalHeight * zoom;
-                break;
-            case PositionsBoardLayer.Names:
-                WidthRequest = cellsLeft * zoom;
-                HeightRequest = totalHeight * zoom;
-                break;
-            case PositionsBoardLayer.Header:
-                WidthRequest = totalWidth * zoom;
-                HeightRequest = PositionsLayout.HeaderHeight * zoom;
-                break;
-        }
-
-        _drawLogged = false;
-        Invalidate();
+        return (_layout?.CellsLeft ?? PositionsLayout.DefaultNameWidth + Gap, PositionsLayout.ColWidth + Gap,
+            _layout?.Height ?? PositionsLayout.RowsTop, PositionsLayout.HeaderHeight);
     }
 
     private void OnTapped(object? sender, TappedEventArgs e)
     {
-        if (Layer != PositionsBoardLayer.Body || _layout is null || e.GetPosition(this) is not { } point) return;
+        if (Layer != BoardLayer.Body || _layout is null || e.GetPosition(this) is not { } point) return;
 
         // A little slack around the chip: it is only ~20 dp tall.
         const float slack = 3;
@@ -144,21 +73,6 @@ public sealed class PositionsBoardView : GraphicsView
         }
     }
 
-    protected override void OnHandlerChanged()
-    {
-        base.OnHandlerChanged();
-        if (Application.Current is not { } app) return;
-        app.RequestedThemeChanged -= OnThemeChanged;
-        BoardZoom.Changed -= Refresh;
-        if (Handler is not null)
-        {
-            app.RequestedThemeChanged += OnThemeChanged;
-            BoardZoom.Changed += Refresh;
-        }
-    }
-
-    private void OnThemeChanged(object? sender, AppThemeChangedEventArgs e) => Invalidate();
-
     private sealed class BoardDrawable(PositionsBoardView owner) : IDrawable
     {
         private static readonly Color DutyChipBackground = Color.FromArgb("#A65F5F");
@@ -167,29 +81,29 @@ public sealed class PositionsBoardView : GraphicsView
         {
             var sw = Stopwatch.StartNew();
             var zoom = BoardZoom.Value;
-            var dark = Application.Current?.RequestedTheme == AppTheme.Dark;
-            var pageBackground = dark ? BoardCanvas.Resource("Gray950", Colors.Black) : BoardCanvas.Resource("White", Colors.White);
+            var (dark, pageBackground, text) = ThemeColors();
             var cardStroke = dark ? BoardCanvas.Resource("Gray600", Colors.DimGray) : BoardCanvas.Resource("Gray100", Colors.LightGray);
             var chipBackground = dark ? BoardCanvas.Resource("SurfaceAltDark", Colors.DimGray) : BoardCanvas.Resource("SurfaceAlt", Colors.LightGray);
-            var text = dark ? Colors.White : Colors.Black;
 
             canvas.Scale(zoom, zoom);
             switch (owner.Layer)
             {
-                case PositionsBoardLayer.Body when owner._layout is { } layout:
+                case BoardLayer.Body when owner._layout is { } layout:
                     DrawBody(canvas, layout, pageBackground, cardStroke, chipBackground, text);
                     break;
-                case PositionsBoardLayer.Names when owner._layout is { } layout && owner.Rows is { } rows:
-                    DrawNames(canvas, layout, rows, pageBackground, text);
+                case BoardLayer.Names when owner._layout is { } layout:
+                    // A long workplace name ("Anest. ambulance") wraps onto several lines instead of forcing a wide name column.
+                    DrawNameColumn(canvas, layout, Font.DefaultBold, PositionsLayout.NameFont, pageBackground, text);
                     break;
-                case PositionsBoardLayer.Header when owner.DayHeaders is { } days:
-                    DrawHeader(canvas, days, owner._layout?.CellsLeft ?? PositionsLayout.DefaultNameWidth + PositionsLayout.Gap, pageBackground, text);
+                case BoardLayer.Header when owner.DayHeaders is { } days:
+                    DrawDayHeader(canvas, days, owner._layout?.CellsLeft ?? PositionsLayout.DefaultNameWidth + Gap,
+                        PositionsLayout.ColWidth, PositionsLayout.HeaderHeight, PositionsLayout.NameFont, pageBackground, text);
                     break;
             }
 
-            if (!owner._drawLogged && owner.Layer == PositionsBoardLayer.Body && owner._layout is { } drawn)
+            if (!owner.DrawLogged && owner.Layer == BoardLayer.Body && owner._layout is { } drawn)
             {
-                owner._drawLogged = true;
+                owner.DrawLogged = true;
                 AppLog.Metric("opicentrum.positions.draw", sw.Elapsed.TotalMilliseconds, "ms", ("cells", drawn.Cells.Count), ("chips", drawn.Chips.Count));
                 owner.Drawn?.Invoke(owner, EventArgs.Empty);
             }
@@ -225,36 +139,6 @@ public sealed class PositionsBoardView : GraphicsView
             }
         }
 
-        private static void DrawNames(ICanvas canvas, PositionsLayout layout, IReadOnlyList<OpicentrumRosterRowItem> rows, Color pageBackground, Color text)
-        {
-            canvas.FillColor = pageBackground;
-            canvas.FillRectangle(0, 0, layout.CellsLeft, layout.Height);
-
-            canvas.Font = Font.DefaultBold;
-            canvas.FontSize = PositionsLayout.NameFont;
-            canvas.FontColor = text;
-            // A long workplace name ("Anest. ambulance") wraps onto several lines instead of forcing a wide name column.
-            for (var r = 0; r < rows.Count; r++)
-            {
-                var lines = layout.NameLines[r];
-                var top = layout.RowTops[r] + (layout.RowHeights[r] - lines.Length * layout.NameLineHeight) / 2;
-                for (var i = 0; i < lines.Length; i++)
-                    canvas.DrawString(lines[i], 0, top + i * layout.NameLineHeight, layout.NameWidth, layout.NameLineHeight, HorizontalAlignment.Left, VerticalAlignment.Center);
-            }
-        }
-
-        private static void DrawHeader(ICanvas canvas, IReadOnlyList<string> days, float cellsLeft, Color pageBackground, Color text)
-        {
-            canvas.FillColor = pageBackground;
-            canvas.FillRectangle(0, 0, cellsLeft + days.Count * (PositionsLayout.ColWidth + PositionsLayout.Gap), PositionsLayout.HeaderHeight);
-
-            canvas.Font = Font.DefaultBold;
-            canvas.FontSize = PositionsLayout.NameFont;
-            canvas.FontColor = text;
-            for (var d = 0; d < days.Count; d++)
-                canvas.DrawString(days[d], cellsLeft + d * (PositionsLayout.ColWidth + PositionsLayout.Gap), 0, PositionsLayout.ColWidth, PositionsLayout.HeaderHeight,
-                    HorizontalAlignment.Center, VerticalAlignment.Center);
-        }
     }
 }
 
@@ -264,7 +148,7 @@ public sealed class PositionsBoardView : GraphicsView
 /// every cell of a row as tall as the row's tallest one. The chips inside the cells are placed once per data
 /// set; only the name column (and so the row heights) is redone for each name-column width, see <see cref="For"/>.
 /// </summary>
-internal sealed class PositionsLayout
+internal sealed class PositionsLayout : IBoardRowsLayout
 {
     /// <summary>Width of the name column when there is nothing to measure yet; the real one follows the workplace names (see <see cref="NameWidth"/>).</summary>
     public const float DefaultNameWidth = 84;
@@ -273,7 +157,7 @@ internal sealed class PositionsLayout
     private const float MinCappedNameWidth = 24;
     private const int NameMaxLines = 2;
     public const float ColWidth = 140;
-    public const float Gap = 2;
+    public const float Gap = BoardLayerView.Gap;
     public const float HeaderHeight = 20;
     public const float RowsTop = HeaderHeight + Gap;
 
