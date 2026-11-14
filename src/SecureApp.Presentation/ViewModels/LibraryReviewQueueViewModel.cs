@@ -10,6 +10,7 @@ namespace SecureApp.Presentation.ViewModels;
 /// <summary>
 /// Document Library review queue (2026-10-01, the content-approval workflow) — lists every document
 /// currently awaiting review and lets a Reviewer/Admin device open, approve, or reject the submission.
+/// Shown as the "Ke schválení" card on LibraryManagePage (2026-11-14; was its own page before).
 /// Opening a pending item reuses <see cref="ISharedLibraryService.DownloadAndImportAsync"/> + the
 /// existing <see cref="DocumentViewerPage"/> verbatim (zero new viewer code) — the pending version's
 /// own (unlisted) library file is just an ordinary library file to that machinery.

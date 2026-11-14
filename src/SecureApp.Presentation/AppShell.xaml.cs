@@ -82,10 +82,6 @@ public partial class AppShell : Shell
 		Routing.RegisterRoute(nameof(CmsImageViewerPage), typeof(CmsImageViewerPage));
 		Routing.RegisterRoute(nameof(ChangelogPage), typeof(ChangelogPage));
 
-		// Document Library review queue (2026-10-01) — reached via the "📋 Ke schválení" button on
-		// LibraryManagePage, Reviewer/Admin devices only (LibraryViewModel.IsDocumentReviewer gates the button).
-		Routing.RegisterRoute(nameof(LibraryReviewQueuePage), typeof(LibraryReviewQueuePage));
-
 		// CMS annotation moderation queue (CMS_PLAN.md, phase 5) — reached via "📋 Otevřít frontu" on
 		// RedakcePage, Admin/Modifier only (RedakceViewModel.CanAssignCms gates the button).
 		Routing.RegisterRoute(nameof(CmsAnnotationQueuePage), typeof(CmsAnnotationQueuePage));
@@ -96,8 +92,8 @@ public partial class AppShell : Shell
 		// Admin/Modifier overview of unfinished and waiting documents (2026-10-26), from Redakce.
 		Routing.RegisterRoute(nameof(InProgressDocumentsPage), typeof(InProgressDocumentsPage));
 
-		// Upload/drafts/review-queue entry (2026-10-02) — reached via the "✏ Spravovat" button on
-		// LibraryPage (LibraryViewModel.CanManageLibrary gates the button).
+		// Upload, drafts and the document review queue (2026-10-02; queue inline since 2026-11-14) —
+		// reached via Redakce → "Obsah knihovny".
 		Routing.RegisterRoute(nameof(LibraryManagePage), typeof(LibraryManagePage));
 
 		// Sub-category detail, reached by tapping a card on LibraryPage's browse grid (2026-10-02).

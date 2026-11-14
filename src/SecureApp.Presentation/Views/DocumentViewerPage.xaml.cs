@@ -9,6 +9,7 @@ public partial class DocumentViewerPage : ContentPage
 {
 	private readonly DocumentViewerViewModel _viewModel;
 	private ToolbarItem? _editItem;
+	private ToolbarItem? _moreItem;
 
 	// Pinch-to-zoom + one-finger pan + double-tap reset on the page image: shared with the CMS image
 	// viewer (Controls/PinchZoomController holds the tuned gesture math and its history).
@@ -55,6 +56,14 @@ public partial class DocumentViewerPage : ContentPage
 			var desktop = DeviceInfo.Idiom == DeviceIdiom.Desktop;
 			ZoomBar.IsVisible = _viewModel.IsCms && desktop;
 
+			// 2026-11-14 (user: "text je hnusny… maximálně přehledný"): a CMS document reads edge to edge
+			// (CmsDocumentView keeps its own 16-px gutter instead of 20 + 16), and on a phone the
+			// Přejmenovat/Stáhnout actions move into one "⋯" menu so the text gets the whole screen.
+			var compactMenu = _viewModel.IsCms && !desktop;
+			RootGrid.Padding = _viewModel.IsCms ? new Thickness(0, 0, 0, desktop ? 12 : 4) : new Thickness(20);
+			BottomBar.Margin = _viewModel.IsCms ? new Thickness(16, 0) : new Thickness(0);
+			BottomBar.IsVisible = !compactMenu;
+
 			// "Upravit" opens the PC editor on this document (CMS_PLAN.md, phase 2a).
 			if (_editItem is null)
 			{
@@ -62,7 +71,15 @@ public partial class DocumentViewerPage : ContentPage
 				_editItem.Clicked += async (_, _) =>
 					await Infrastructure.ShellNavigation.GoToAsync($"{nameof(CmsEditorPage)}?documentId={_viewModel.DocumentId}");
 			}
+			if (_moreItem is null)
+			{
+				_moreItem = new ToolbarItem { Text = "⋯" };
+				_moreItem.Clicked += OnMoreClicked;
+			}
+			ToolbarItems.Remove(RenameItem);
+			ToolbarItems.Remove(_moreItem);
 			ToolbarItems.Remove(_editItem);
+			ToolbarItems.Add(compactMenu ? _moreItem : RenameItem);
 			if (_viewModel.IsCms && desktop) ToolbarItems.Add(_editItem);
 		}
 
@@ -216,6 +233,15 @@ public partial class DocumentViewerPage : ContentPage
 		{
 			await DisplayAlertAsync("Poznámka", ex.Message, "OK");
 		}
+	}
+
+	/// <summary>Phone CMS reader's "⋯" menu (2026-11-14): the same two actions as the toolbar/bottom bar elsewhere.</summary>
+	private async void OnMoreClicked(object? sender, EventArgs e)
+	{
+		const string rename = "✏ Přejmenovat", download = "⬇ Stáhnout";
+		var choice = await DisplayActionSheetAsync(_viewModel.Title, "Zrušit", null, _viewModel.CanDownload ? [rename, download] : [rename]);
+		if (choice == rename) OnRenameClicked(sender, e);
+		else if (choice == download) await _viewModel.DownloadCommand.ExecuteAsync(null);
 	}
 
 	/// <summary>2026-09-30, user's own ask — rename this document from the viewer itself.</summary>

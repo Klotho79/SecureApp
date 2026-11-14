@@ -68,6 +68,20 @@ Zbývá: ověření na reálných zařízeních (vzhled, výkon, zda klepnutí n
 - **2c — IMPLEMENTOVÁNO (1.74):** editorská práva per dokument a per člen (e-mail), jen PC; relay `cms_document_editors`, `/cms/editors*`, `/cms/members`; v Redakci karty „Výukové materiály“, „Moje zadání“, „Zadání dokumentů“; grant zaniká schválením. Ověřeno testy na dočasné DB, celý tok se druhým účtem (Viewer) ještě ne.
 - Známá omezení: video se nahrává bez překódování (fáze 3), nejde vložit obrázek mezi dva sloupce přetažením z plochy, žádné undo mimo vestavěné v prohlížeči, bez potvrzení při zavření s neuloženými změnami jen obecné varování.
 
+### Čitelnost dokumentů — 1. fáze (2026-11-14, NEVYDÁNO)
+Podnět: „text je hnusný“. Vložený text skončil jako jeden odstavec bez konců řádků.
+- **Oprava editoru:** „📝 Upravit“ otevíral na PC každý existující dokument prázdný. MAUI na Windows obaluje skript do `eval('…')` a escapuje jen apostrofy, takže `\"` z JSONu rozbil volání `editor.load`. `CmsEditorPage.Js()` proto předává řetězce v base64.
+- **Chytré vkládání a „✨ Upravit strukturu“** (`cms-editor.html`, `window.cmsStructure`): převádí prostý text i HTML z Wordu, Google Docs a prohlížeče na nadpisy, seznamy a odstavce. Rozdělí i dříve slepený text („anestetikemCo“, „amputaceKI:“). Krátké výrazy se smíšenými velkými a malými písmeny (SpO2, PaCO2, mmHg, ProSeal) nechá být. „Upravit strukturu“ jde vrátit (↶ Vrátit).
+- **Formát dokumentu zůstává beze změny** (heading/paragraph/list), takže dokumenty přečtou i starší verze aplikace.
+- **Čtečka:**
+  - nadpisy patkovým písmem a s mezerou nad sekcí;
+  - lepivý řádek štítků sekcí (klepnutí na štítek skočí na sekci, aktivní štítek sleduje posun);
+  - odstavce začínající CAVE / Pozor / Upozornění jsou v oranžovém rámečku, Pozn. / Tip v modrém;
+  - `\n` v textu se zobrazí jako nový řádek;
+  - na telefonu se Přejmenovat a Stáhnout přesunou do menu ⋯ a text vede přes celou šířku.
+- **Mezery na PC:** WinUI při měření zahazovalo mezery na konci slov a slova splývala („Tojsoualejelita“). Mezera je teď padding štítku.
+- **Ověřeno:** node a headless Edge testy; na PC v Debug buildu editor (načtení, Upravit strukturu) a čtečka (štítky, rámečky, úzké okno). Menu ⋯ na telefonu zatím neověřeno.
+
 ### Fáze 2 — Editor na PC
 - WebView2 + TipTap, vlastní bloky: odstavec, nadpis, seznam, obrázek, video, řádek se sloupci; drag & drop.
 - Panel vlastností bloku, osnova, náhled „Mobil“ s přepínačem šířek.

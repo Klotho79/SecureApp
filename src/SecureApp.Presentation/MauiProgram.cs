@@ -300,9 +300,8 @@ public static class MauiProgram
 		builder.Services.AddTransient<AcuteStateReferenceViewModel>();
 		builder.Services.AddTransient<AcuteStateReferencePage>();
 
-		// Document Library content-approval review queue (2026-10-01).
+		// Document Library content-approval review queue (2026-10-01) — a card on LibraryManagePage since 2026-11-14.
 		builder.Services.AddTransient<LibraryReviewQueueViewModel>();
-		builder.Services.AddTransient<LibraryReviewQueuePage>();
 
 		// CMS annotation moderation queue (CMS_PLAN.md, phase 5).
 		builder.Services.AddTransient<CmsAnnotationQueueViewModel>();

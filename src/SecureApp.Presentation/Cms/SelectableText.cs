@@ -20,28 +20,63 @@ internal sealed class SelectableText : ContentView
 
     public event Action<SelectableText, int>? TokenTapped;
 
-    public SelectableText(string blockId, string blockPlain, IReadOnlyList<CmsTextRun> runs, int baseOffset, double fontSize, bool bold)
+    /// <summary>Vertical padding per word label, as a fraction of the font size — the line spacing of body text (≈1.45). Markers beside the text (list bullets) use the same value so they sit on its first line.</summary>
+    public const double LinePadding = 0.12;
+
+    /// <summary>Gap after a word, as a fraction of the font size (≈ the advance of a space in Open Sans).</summary>
+    private const double SpaceWidth = 0.27;
+
+    /// <param name="style">Applied to every word label (heading font/colour); null keeps the defaults.</param>
+    public SelectableText(string blockId, string blockPlain, IReadOnlyList<CmsTextRun> runs, int baseOffset, double fontSize, bool bold, Action<Label>? style = null)
     {
         BlockId = blockId;
         BlockPlain = blockPlain;
         Tokens = CmsText.Tokenize(runs, baseOffset);
 
-        var flex = new FlexLayout { Wrap = Microsoft.Maui.Layouts.FlexWrap.Wrap, Direction = Microsoft.Maui.Layouts.FlexDirection.Row };
+        // '\n' in the text is a hard line break (2026-11-14: the editor keeps line ends now) — one wrapping
+        // row per line, stacked. A token carries its surrounding whitespace, so a break can sit before its
+        // word (a run starting with '\n') or after it.
+        var lines = new VerticalStackLayout();
+        var flex = NewRow();
+        lines.Children.Add(flex);
+        void Break(int count)
+        {
+            for (var n = 0; n < count; n++)
+            {
+                if (flex.Children.Count == 0) flex.HeightRequest = fontSize * 0.6; // blank line
+                flex = NewRow();
+                lines.Children.Add(flex);
+            }
+        }
+
         _labels = new Label[Tokens.Count];
         for (var i = 0; i < Tokens.Count; i++)
         {
             var token = Tokens[i];
+            var wordStart = token.Text.Length - token.Text.TrimStart().Length;
+            var wordEnd = wordStart;
+            while (wordEnd < token.Text.Length && !char.IsWhiteSpace(token.Text[wordEnd])) wordEnd++;
+            if (token.IsWord) Break(token.Text[..wordStart].Count(c => c == '\n'));
+
             var attrs = bold || token.Marks.Contains("bold") ? FontAttributes.Bold : FontAttributes.None;
             if (token.Marks.Contains("italic")) attrs |= FontAttributes.Italic;
 
+            // The space after a word is right padding, not text: WinUI drops trailing whitespace when it
+            // measures a label, which glued every word together on the PC ("Tojsoualejelita"). Padding
+            // also keeps a selection highlight continuous across words.
+            var hasSpaceAfter = token.IsWord && wordEnd < token.Text.Length;
+            // A space that opens a run ("Dávka:" bold + " 20 mL") belongs to the next word's token.
+            var hasSpaceBefore = token.IsWord && wordStart > 0 && flex.Children.Count > 0 && i > 0 && !char.IsWhiteSpace(Tokens[i - 1].Text[^1]);
             var label = new Label
             {
-                Text = token.Text,
+                Text = token.IsWord ? token.Text[wordStart..wordEnd] : string.Empty,
                 FontSize = fontSize,
                 FontAttributes = attrs,
                 LineBreakMode = LineBreakMode.NoWrap,
+                Padding = new Thickness(hasSpaceBefore ? fontSize * SpaceWidth : 0, fontSize * LinePadding, hasSpaceAfter ? fontSize * SpaceWidth : 0, fontSize * LinePadding),
                 TextDecorations = token.Marks.Contains("underline") ? TextDecorations.Underline : TextDecorations.None
             };
+            style?.Invoke(label);
             if (token.IsWord)
             {
                 var index = i;
@@ -50,10 +85,15 @@ internal sealed class SelectableText : ContentView
                 label.GestureRecognizers.Add(tap);
             }
             _labels[i] = label;
-            flex.Children.Add(label);
+            if (label.Text.Length > 0) flex.Children.Add(label);
+
+            Break((token.IsWord ? token.Text[wordEnd..] : token.Text).Count(c => c == '\n'));
         }
-        Content = flex;
+        if (flex.Children.Count == 0 && lines.Children.Count > 1) lines.Children.Remove(flex); // trailing break
+        Content = lines.Children.Count == 1 ? flex : lines;
     }
+
+    private static FlexLayout NewRow() => new() { Wrap = Microsoft.Maui.Layouts.FlexWrap.Wrap, Direction = Microsoft.Maui.Layouts.FlexDirection.Row };
 
     private static readonly Color MarkColor = Color.FromArgb("#55FACC15");
 

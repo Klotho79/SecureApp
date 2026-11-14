@@ -96,8 +96,10 @@ public sealed class HttpLibraryReviewService : ILibraryReviewService
         using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(endpoint, "library-documents/pending"));
         await AddDeviceAuthAsync(request, ct);
         using var response = await _httpClient.SendAsync(request, ct);
+        // 2026-11-14: used to return an empty list here, which looked exactly like "nothing to approve"
+        // to a local Admin the relay doesn't (yet) know as Admin/reviewer — say what's wrong instead.
         if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
-            return []; // not a reviewer/admin — treat as an empty queue rather than throwing
+            throw new InvalidOperationException("server vás zatím nevede jako recenzenta ani admina. Zapněte si „Reviewer dokumentů“ (nebo roli Admin) v Nastavení → Admin → Členové.");
         response.EnsureSuccessStatusCode();
 
         var dtos = await response.Content.ReadFromJsonAsync<List<LibraryDocumentDto>>(HttpJsonOptions, ct) ?? [];

@@ -10,7 +10,7 @@ namespace SecureApp.Domain.Interfaces.Services;
 /// <c>/v1/chat/completions</c>), and produces a brand-new interleaved PDF (original page image, then
 /// its translated-text page, repeated for every page) that is uploaded as a new private library file,
 /// wrapped in a new Draft <see cref="LibraryDocumentSummary"/>, and immediately submitted for review —
-/// landing in the existing <c>LibraryReviewQueuePage</c> with zero new viewer code.
+/// landing in the existing review queue ("Ke schválení" on LibraryManagePage) with zero new viewer code.
 ///
 /// Lives in Domain as a pure port (only BCL/Domain types in this interface); the only implementation
 /// (<c>LocalAiLibraryTranslationService</c>) is in Presentation because it needs <c>HttpClient</c> +

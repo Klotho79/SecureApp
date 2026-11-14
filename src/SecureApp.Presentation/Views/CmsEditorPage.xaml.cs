@@ -324,7 +324,16 @@ public partial class CmsEditorPage : ContentPage, IQueryAttributable
 
     private Task<string?> RunJsAsync(string script) => Editor.EvaluateJavaScriptAsync(script);
 
-    private static string Js(string value) => JsonSerializer.Serialize(value);
+    /// <summary>
+    /// A JS expression that evaluates to <paramref name="value"/>. On Windows, MAUI wraps every
+    /// EvaluateJavaScriptAsync script in <c>eval('…')</c> and escapes only single quotes, so the
+    /// backslashes of a JSON string literal (<c>\"</c>, <c>\n</c>) were consumed on the way and the
+    /// inner call died with a swallowed SyntaxError. That is why "📝 Upravit" opened every existing
+    /// document EMPTY on the PC (found 2026-11-14). Base64 has no quotes or backslashes, so it passes
+    /// through intact; the page decodes it as UTF-8.
+    /// </summary>
+    private static string Js(string value) =>
+        $"decodeURIComponent(escape(atob(\"{Convert.ToBase64String(Encoding.UTF8.GetBytes(value))}\")))";
 
     private void SetStatus(string message, bool error = false)
     {

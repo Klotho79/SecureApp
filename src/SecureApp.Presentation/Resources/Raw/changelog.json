@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.1.36",
+    "code": 142,
+    "date": "14. 11. 2026",
+    "items": [
+      "Výukové materiály se čtou přehledněji: nadpisy sekcí, nahoře štítky sekcí (klepnutím skočíte na sekci), odstavce začínající CAVE / Pozor v oranžovém rámečku a Pozn. / Tip v modrém, na telefonu text přes celou šířku a Přejmenovat / Stáhnout v menu ⋯.",
+      "Editor na PC: vložený text (i z Wordu) se sám rozdělí na nadpisy, seznamy a odstavce; tlačítko „✨ Upravit strukturu“ opraví dříve slepený text a jde vrátit.",
+      "Opraveno: „📝 Upravit“ otevíral na PC existující dokument prázdný; na PC splývala slova v dokumentech (chyběly mezery).",
+      "Schvalování dokumentů: seznam „Ke schválení“ je přímo na stránce Redakce → Obsah knihovny a admin ho vidí vždy; když server přístup odmítne, aplikace napíše, jak ho zapnout."
+    ]
+  },
+  {
     "version": "0.1.35",
     "code": 141,
     "date": "14. 11. 2026",

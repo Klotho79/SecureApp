@@ -26,6 +26,13 @@ public sealed class CmsAnnotationPanel : ContentView
     public CmsAnnotationPanel()
     {
         _toggle.Clicked += (_, _) => { _expanded = !_expanded; Refresh(); };
+        // Collapsed it is a thin bar under the text, not a second toolbar (2026-11-14, reading layout).
+        _toggle.BackgroundColor = Colors.Transparent;
+        _toggle.BorderWidth = 0;
+        _toggle.FontSize = 13;
+        _toggle.Padding = new Thickness(6, 2);
+        _toggle.MinimumHeightRequest = 32;
+        _toggle.SetAppThemeColor(Button.TextColorProperty, Color.FromArgb("#14688A"), Color.FromArgb("#7FCBE8"));
         _showHidden.Toggled += (_, _) => Refresh();
 
         var hiddenRow = new HorizontalStackLayout { Spacing = 6, Children = { _showHidden, new Label { Text = "Zobrazit ignorované", VerticalOptions = LayoutOptions.Center, FontSize = 12 } } };
@@ -33,6 +40,7 @@ public sealed class CmsAnnotationPanel : ContentView
         _body = new Border
         {
             StrokeThickness = 1,
+            StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 10 },
             Padding = new Thickness(12, 8),
             Content = new VerticalStackLayout { Spacing = 6, Children = { _toggle, hiddenRow, _scroll } }
         };
@@ -54,6 +62,7 @@ public sealed class CmsAnnotationPanel : ContentView
         var hiddenCount = _items.Count(a => a.HiddenByMe);
         _toggle.Text = $"💬 Poznámky ({visible.Count}){(hiddenCount > 0 ? $" · ignorováno {hiddenCount}" : "")}  {(_expanded ? "▾" : "▸")}";
         _scroll.IsVisible = _expanded;
+        _body.Padding = _expanded ? new Thickness(12, 8) : new Thickness(6, 0);
         ((HorizontalStackLayout)((VerticalStackLayout)_body.Content!).Children[1]).IsVisible = _expanded && hiddenCount > 0;
         if (!_expanded) return;
 

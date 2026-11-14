@@ -24,7 +24,7 @@ public interface ILibraryReviewService
     /// <summary>Every document this device created or submitted — the "Moje koncepty" list.</summary>
     Task<IReadOnlyList<LibraryDocumentSummary>> GetMyDocumentsAsync(CancellationToken ct = default);
 
-    /// <summary>Every document currently awaiting review — only meaningful for a device with review capability; the relay itself also enforces this.</summary>
+    /// <summary>Every document currently awaiting review — only for a device with review capability; the relay enforces this and the call throws (with a how-to-fix message) when it refuses.</summary>
     Task<IReadOnlyList<LibraryDocumentSummary>> GetPendingReviewAsync(CancellationToken ct = default);
 
     /// <summary>Every document still being written or waiting for review, from every author, with the author's name — the Admin/Modifier overview (2026-10-26); empty for anyone else.</summary>

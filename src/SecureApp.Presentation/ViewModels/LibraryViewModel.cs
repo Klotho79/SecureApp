@@ -171,7 +171,7 @@ public sealed partial class LibraryViewModel : ObservableObject, Translation.ILi
     [ObservableProperty]
     public partial bool HasMyDocuments { get; set; }
 
-    /// <summary>Whether THIS device may review other members' submissions — gates the "📋 Ke schválení" entry point. Read fresh on every page appearance, not cached, since an admin can grant/revoke it at any time.</summary>
+    /// <summary>Whether THIS device gets the "Ke schválení" card on LibraryManagePage (Reviewer switch, relay-assigned Admin, or local Admin) — see <see cref="RefreshReviewWorkflowStateAsync"/>. Read fresh on every page appearance, not cached, since an admin can grant/revoke it at any time.</summary>
     [ObservableProperty]
     public partial bool IsDocumentReviewer { get; set; }
 
@@ -362,7 +362,13 @@ public sealed partial class LibraryViewModel : ObservableObject, Translation.ILi
     /// </summary>
     public async Task RefreshReviewWorkflowStateAsync()
     {
-        CanModifyContent = RoleAccessPolicy.IsAllowed(_rolePreviewService.Resolve(_currentUserService.Current.Role), RbacAction.UploadLibraryFile);
+        var localRole = _rolePreviewService.Resolve(_currentUserService.Current.Role);
+        CanModifyContent = RoleAccessPolicy.IsAllowed(localRole, RbacAction.UploadLibraryFile);
+        // 2026-11-14 (user: "Není tam schválení dokumentů… a už vůbec seznam"): a local Admin always gets
+        // the review card. If the relay doesn't know them as Admin/reviewer yet, the card's own error
+        // text says how to fix it, instead of the queue silently not existing.
+        var isLocalAdmin = localRole == SecureApp.Domain.Enums.Role.Admin;
+        IsDocumentReviewer = isLocalAdmin;
         try
         {
             // Network + mapping on a worker thread, assignments back on the UI thread (see LoadAsync).
@@ -370,9 +376,12 @@ public sealed partial class LibraryViewModel : ObservableObject, Translation.ILi
             {
                 var policy = await _devicePolicyService.GetMyPolicyAsync();
                 var mine = await _libraryReviewService.GetMyDocumentsAsync();
-                return (policy.IsDocumentReviewer, mine.Select(ToDraftItem).ToList());
+                // Same rule the relay's /library-documents/pending and /review enforce: a reviewer OR a
+                // relay-assigned Admin.
+                var canReview = policy.IsDocumentReviewer || policy.Role == SecureApp.Domain.Enums.Role.Admin;
+                return (canReview, mine.Select(ToDraftItem).ToList());
             });
-            IsDocumentReviewer = isReviewer;
+            IsDocumentReviewer = isReviewer || isLocalAdmin;
             MyDocuments = new ObservableCollection<LibraryDocumentDraftItem>(drafts);
             HasMyDocuments = MyDocuments.Count > 0;
         }
