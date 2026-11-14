@@ -43,6 +43,7 @@ internal sealed class SelectableText : ContentView
         {
             for (var n = 0; n < count; n++)
             {
+                if (flex.Children.Count == 0 && lines.Children.Count == 1) return; // nothing above yet: a leading break is noise
                 if (flex.Children.Count == 0) flex.HeightRequest = fontSize * 0.6; // blank line
                 flex = NewRow();
                 lines.Children.Add(flex);
@@ -89,8 +90,21 @@ internal sealed class SelectableText : ContentView
 
             Break((token.IsWord ? token.Text[wordEnd..] : token.Text).Count(c => c == '\n'));
         }
-        if (flex.Children.Count == 0 && lines.Children.Count > 1) lines.Children.Remove(flex); // trailing break
-        Content = lines.Children.Count == 1 ? flex : lines;
+        // Trailing breaks (text saved with a final "\n", e.g. Chromium's trailing <br>) leave empty rows:
+        // drop them, then show the remaining row itself. 0.1.36 showed the dropped EMPTY row here, so a
+        // paragraph ending in "\n" vanished completely (found 2026-11-14 on "Blok N.Femoralis").
+        while (lines.Children.Count > 1 && lines.Children[^1] is FlexLayout { Children.Count: 0 })
+            lines.Children.RemoveAt(lines.Children.Count - 1);
+        if (lines.Children.Count == 1)
+        {
+            var only = (View)lines.Children[0];
+            lines.Children.Clear();
+            Content = only;
+        }
+        else
+        {
+            Content = lines;
+        }
     }
 
     private static FlexLayout NewRow() => new() { Wrap = Microsoft.Maui.Layouts.FlexWrap.Wrap, Direction = Microsoft.Maui.Layouts.FlexDirection.Row };

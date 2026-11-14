@@ -71,9 +71,10 @@ figcaption{font-style:italic;font-size:.85em;text-align:center;color:var(--mute)
    A "line" is {runs:[{t,marks?}], hint:null|{heading:n}|{list:'ul'|'ol'}, html?:true}. */
 window.cmsStructure=(function(){
 'use strict';
-const BULLET_RE=/^\s*(?:[•●▪◦‣⁃►▸■□○·]\s*|[-–—*]\s+|[o§]\t)/;
+// Word pastes its bullet as "⦁" (U+2981) + tab — what "Blok N.Femoralis" actually stores — not "•".
+const BULLET_RE=/^\s*(?:[•●▪◦‣⁃►▸■□○·⦁∙]\s*|[-–—*]\s+|[o§]\t)/;
 const ORDERED_RE=/^\s*(\d{1,2}|[a-z])[.)]\s+/;
-const CUT_BULLETS='•●▪◦‣⁃►▸■';
+const CUT_BULLETS='•●▪◦‣⁃►▸■⦁∙';
 const WARN_RE=/^\s*!*\s*(cave|pozor|upozornění|varování|nebezpečí)(?=[\s:!,.;–-]|$)/iu;
 const INFO_RE=/^\s*(pozn\.?|poznámka|tip)(?=[\s:!,.;–-]|$)/iu;
 const LABEL_RE=/^(\p{Lu}[^:!?;\n]{0,38}?):\s*(\S.*)$/u;
@@ -115,7 +116,18 @@ function recoverLines(rs){
   const at=[...cuts.keys()].sort((x,y)=>x-y), lines=[];let start=0;
   for(const i of at){lines.push(sliceRuns(rs,start,i));start=i+cuts.get(i);}
   lines.push(sliceRuns(rs,start,p.length));
-  return lines.map(trimRuns).filter(x=>plainOf(x).trim()).map(runs=>({runs,hint:null}));
+  return lines.map(trimRuns).flatMap(splitDashList).filter(x=>plainOf(x).trim()).map(runs=>({runs,hint:null}));
+}
+/** "Sono anatomie: - vždy jít… - nerv leží… - cílem…" is a list typed on one line: cut before every
+    spaced hyphen after the colon (an en dash "–" inside an item and "10-15" stay untouched). */
+function splitDashList(rs){
+  const p=plainOf(rs),m=/:\s+-\s/.exec(p);if(!m)return [rs];
+  const cuts=[];const re=/\s-\s/g;re.lastIndex=m.index;let x;
+  while((x=re.exec(p)))cuts.push(x.index+1);
+  const out=[];let start=0;
+  for(const c of cuts){out.push(trimRuns(sliceRuns(rs,start,c)));start=c;}
+  out.push(trimRuns(sliceRuns(rs,start,p.length)));
+  return out;
 }
 
 /** Clipboard HTML (Word, browsers, Google Docs) to lines with heading/list hints and bold/italic/underline kept. */

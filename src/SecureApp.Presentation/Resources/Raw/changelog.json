@@ -1,5 +1,14 @@
 [
   {
+    "version": "0.1.37",
+    "code": 143,
+    "date": "14. 11. 2026",
+    "items": [
+      "Opraveno: odstavec, který končil zalomením řádku, se ve výukovém dokumentu nezobrazil (v 0.1.36 tak zmizel text dokumentu „Blok N.Femoralis“).",
+      "„✨ Upravit strukturu“ rozpozná i odrážky vložené z Wordu (⦁) a seznam psaný pomlčkami za dvojtečkou („Sono anatomie: - … - …“)."
+    ]
+  },
+  {
     "version": "0.1.36",
     "code": 142,
     "date": "14. 11. 2026",

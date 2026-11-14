@@ -81,6 +81,7 @@ Podnět: „text je hnusný“. Vložený text skončil jako jeden odstavec bez 
   - na telefonu se Přejmenovat a Stáhnout přesunou do menu ⋯ a text vede přes celou šířku.
 - **Mezery na PC:** WinUI při měření zahazovalo mezery na konci slov a slova splývala („Tojsoualejelita“). Mezera je teď padding štítku.
 - **Ověřeno:** node a headless Edge testy; na PC v Debug buildu editor (načtení, Upravit strukturu) a čtečka (štítky, rámečky, úzké okno). Menu ⋯ na telefonu zatím neověřeno.
+- **0.1.37 (oprava 0.1.36):** odstavec končící `\n` se nezobrazil, protože `SelectableText` po odebrání prázdného posledního řádku ukázal právě ten prázdný řádek. „Upravit strukturu“ zná i Wordovou odrážku „⦁“ + tab a seznam psaný pomlčkami za dvojtečkou. Ověřeno na skutečném textu „Blok N.Femoralis“ (7 sekcí).
 
 ### Fáze 2 — Editor na PC
 - WebView2 + TipTap, vlastní bloky: odstavec, nadpis, seznam, obrázek, video, řádek se sloupci; drag & drop.
