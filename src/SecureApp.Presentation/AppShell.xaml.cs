@@ -173,6 +173,11 @@ public partial class AppShell : Shell
 	protected override void OnNavigated(ShellNavigatedEventArgs args)
 	{
 		base.OnNavigated(args);
+#if WINDOWS
+		// A pushed page can bring a new back button into the title bar — tint it too (see TitleBarBackButtonTint).
+		var window = Window?.Handler?.PlatformView as Microsoft.UI.Xaml.Window;
+		Dispatcher.Dispatch(() => SecureApp.Presentation.Infrastructure.TitleBarBackButtonTint.Apply(window));
+#endif
 		if (CurrentItem?.CurrentItem?.CurrentItem is not { } content) return;
 		_tabHistory.Remove(content);
 		_tabHistory.Add(content);

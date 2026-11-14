@@ -70,6 +70,9 @@ public static class MauiProgram
 		// thing being wrapped — Controls' append then ran MapIsFocused OUTSIDE our try/catch. See
 		// InputFocusCrashGuard's own remarks.
 		InputFocusCrashGuard.Register();
+#if WINDOWS
+		TitleBarBackButtonTint.Register(builder);
+#endif
 
 #if DEBUG
 		builder.Logging.AddDebug();

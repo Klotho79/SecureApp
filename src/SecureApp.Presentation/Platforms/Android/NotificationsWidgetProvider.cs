@@ -70,12 +70,14 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
     }
 
     private const string ActionToggleMode = "com.companyname.secureapp.presentation.WIDGET_TOGGLE_MODE";
-    private const string ActionCalendarPrev = "com.companyname.secureapp.presentation.WIDGET_CAL_PREV";
-    private const string ActionCalendarNext = "com.companyname.secureapp.presentation.WIDGET_CAL_NEXT";
-    private const string ActionCalendarToday = "com.companyname.secureapp.presentation.WIDGET_CAL_TODAY";
+    // The header's ‹ title › arrows: a month in the calendar view, a day in the Služby view (see StepOffset).
+    private const string ActionNavPrev = "com.companyname.secureapp.presentation.WIDGET_CAL_PREV";
+    private const string ActionNavNext = "com.companyname.secureapp.presentation.WIDGET_CAL_NEXT";
+    private const string ActionNavToday = "com.companyname.secureapp.presentation.WIDGET_CAL_TODAY";
     private const string ShowDutyPreferenceKey = "widget_show_duty"; // legacy 2-state switch, still read once so an existing widget keeps its view
     private const string ModePreferenceKey = "widget_mode";
     private const string CalendarOffsetPreferenceKey = "widget_calendar_month_offset";
+    private const string DutyDayOffsetPreferenceKey = "widget_duty_day_offset";
 
     // 2026-10-27, user's ask: "další v pořadí bude tedy kalendář, rozpis, služby, kalendář" — the one tap
     // target cycles Kalendář → Rozpis → Služby → Kalendář. Rozpis stays the default for a widget that never toggled.
@@ -83,6 +85,10 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
     private const int ModeRozpis = 1;
     private const int ModeDuty = 2;
     private const int MaxCalendarMonthOffset = 12;
+    // 2026-11-13, user's ask: "kdo sloužil včera a bude sloužit zítra a dál". DutyRosterStore keeps a week back,
+    // and the sync reaches to the end of next month.
+    private const int MinDutyDayOffset = -7;
+    private const int MaxDutyDayOffset = 60;
 
     private static int GetMode()
     {
@@ -95,6 +101,9 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
     private static int GetCalendarOffset() =>
         Math.Clamp(Microsoft.Maui.Storage.Preferences.Default.Get(CalendarOffsetPreferenceKey, 0), -MaxCalendarMonthOffset, MaxCalendarMonthOffset);
 
+    private static int GetDutyDayOffset() =>
+        Math.Clamp(Microsoft.Maui.Storage.Preferences.Default.Get(DutyDayOffsetPreferenceKey, 0), MinDutyDayOffset, MaxDutyDayOffset);
+
     /// <summary>True when <paramref name="action"/> was one of this widget's own in-place taps (state changed, redraw needed).</summary>
     private static bool HandleLocalAction(string? action)
     {
@@ -104,20 +113,37 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
             case ActionToggleMode:
                 var next = (GetMode() + 1) % 3;
                 preferences.Set(ModePreferenceKey, next);
-                preferences.Set(CalendarOffsetPreferenceKey, 0);
+                ResetOffsets();
                 return true;
-            case ActionCalendarPrev:
-                preferences.Set(CalendarOffsetPreferenceKey, Math.Max(-MaxCalendarMonthOffset, GetCalendarOffset() - 1));
+            case ActionNavPrev:
+                StepOffset(-1);
                 return true;
-            case ActionCalendarNext:
-                preferences.Set(CalendarOffsetPreferenceKey, Math.Min(MaxCalendarMonthOffset, GetCalendarOffset() + 1));
+            case ActionNavNext:
+                StepOffset(+1);
                 return true;
-            case ActionCalendarToday:
-                preferences.Set(CalendarOffsetPreferenceKey, 0);
+            case ActionNavToday:
+                ResetOffsets();
                 return true;
             default:
                 return false;
         }
+    }
+
+    /// <summary>The arrows page by month in the calendar view and by day in the Služby view.</summary>
+    private static void StepOffset(int step)
+    {
+        var preferences = Microsoft.Maui.Storage.Preferences.Default;
+        if (GetMode() == ModeDuty)
+            preferences.Set(DutyDayOffsetPreferenceKey, Math.Clamp(GetDutyDayOffset() + step, MinDutyDayOffset, MaxDutyDayOffset));
+        else
+            preferences.Set(CalendarOffsetPreferenceKey, Math.Clamp(GetCalendarOffset() + step, -MaxCalendarMonthOffset, MaxCalendarMonthOffset));
+    }
+
+    private static void ResetOffsets()
+    {
+        var preferences = Microsoft.Maui.Storage.Preferences.Default;
+        preferences.Set(CalendarOffsetPreferenceKey, 0);
+        preferences.Set(DutyDayOffsetPreferenceKey, 0);
     }
 
     /// <summary>The Kalendář → Rozpis → Služby switch and the calendar's month arrows — flip the stored state and redraw in place, never opening the app.</summary>
@@ -283,9 +309,10 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
     }
 
     /// <summary>
-    /// Rozpis ⇄ Služby (2026-09-26, user's ask): the card shows either the 5-day rozpis or today's full
-    /// duty list ("Pozice: Jméno", from the last Opicentrum sync — see DutyRosterStore). The toggle
-    /// label names the other view and fires a broadcast back to this provider, not an app launch.
+    /// Rozpis ⇄ Služby (2026-09-26, user's ask): the card shows either the 5-day rozpis or one day's full
+    /// duty list ("Pozice: Jméno", from the last Opicentrum sync — see DutyRosterStore), today unless the
+    /// header arrows moved it. The toggle label names the other view and fires a broadcast back to this
+    /// provider, not an app launch.
     /// </summary>
     private static void ApplyMode(Context context, RemoteViews views, DateOnly today)
     {
@@ -308,24 +335,36 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
         foreach (var rowId in DayRowIds)
             views.SetViewVisibility(rowId, rowsVisibility);
         views.SetViewVisibility(Resource.Id.widget_calendar, mode == ModeCalendar ? global::Android.Views.ViewStates.Visible : global::Android.Views.ViewStates.Gone);
-        // INVISIBLE (not Gone) so the header's spare width stays and Kontakty keeps its right edge.
-        views.SetViewVisibility(Resource.Id.widget_cal_nav, mode == ModeCalendar ? global::Android.Views.ViewStates.Visible : global::Android.Views.ViewStates.Invisible);
+        // ‹ title › — the month in the calendar view, the day in the Služby view. INVISIBLE (not Gone) in the
+        // Rozpis view so the header's spare width stays and Kontakty keeps its right edge.
+        views.SetViewVisibility(Resource.Id.widget_cal_nav, mode != ModeRozpis ? global::Android.Views.ViewStates.Visible : global::Android.Views.ViewStates.Invisible);
+        views.SetOnClickPendingIntent(Resource.Id.widget_cal_prev, NavBroadcast(context, ActionNavPrev));
+        views.SetOnClickPendingIntent(Resource.Id.widget_cal_next, NavBroadcast(context, ActionNavNext));
+        views.SetOnClickPendingIntent(Resource.Id.widget_cal_title, NavBroadcast(context, ActionNavToday));
         views.SetViewVisibility(Resource.Id.widget_duty_list, showDuty ? global::Android.Views.ViewStates.Visible : global::Android.Views.ViewStates.Gone);
         if (!showDuty) return;
+
+        // Any day from a week back to the end of next month (2026-11-13, user's ask: "kdo sloužil včera a bude
+        // sloužit zítra a dál") — the arrows step one day, tapping the date jumps back to today.
+        var dayOffset = GetDutyDayOffset();
+        var day = today.AddDays(dayOffset);
+        views.SetTextViewText(Resource.Id.widget_cal_title, DutyDayTitle(day, dayOffset));
 
         // PICC doctor (2026-10-12, user's own ask: "aktualni lekar by byl videt ve wigetu jako
         // posledni jako PICC") — appended as one more duty-list row rather than a new always-visible
         // UI element, so "poslední" (last) is literal and no widget_notifications.xml layout change
         // was needed. Public to every device (PiccRosterStore caches only the doctor, never nurses —
         // see that store's own remarks), and only shown when it's actually for TODAY.
-        var entries = DutyRosterStore.Get(today).ToList();
-        if (PiccRosterStore.GetTodayDoctorName() is { } piccDoctor && entries.Count < MaxDutyRows)
+        var entries = DutyRosterStore.Get(day).ToList();
+        if (dayOffset == 0 && PiccRosterStore.GetTodayDoctorName() is { } piccDoctor && entries.Count < MaxDutyRows)
             entries.Add(new DutyEntry("PICC", piccDoctor));
 
         if (entries.Count == 0)
         {
             views.SetViewVisibility(DutyRowIds[0], global::Android.Views.ViewStates.Visible);
-            views.SetTextViewText(DutyTextIds[0], "Služby na dnešek zatím nejsou načtené — otevřete Rozpis v aplikaci.");
+            views.SetTextViewText(DutyTextIds[0], dayOffset == 0
+                ? "Služby na dnešek zatím nejsou načtené — otevřete Rozpis v aplikaci."
+                : "Služby na tento den nejsou načtené.");
             views.SetViewVisibility(DutyPhoneIds[0], global::Android.Views.ViewStates.Gone);
             for (var j = 1; j < MaxDutyRows; j++)
                 views.SetViewVisibility(DutyRowIds[j], global::Android.Views.ViewStates.Gone);
@@ -426,9 +465,6 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
         var byDate = assignments.GroupBy(a => a.Date).ToDictionary(g => g.Key, g => g.OrderBy(CalendarRank).ThenBy(a => a.CreatedAtUtc).First());
 
         views.SetTextViewText(Resource.Id.widget_cal_title, $"{CzechMonthNames[shown.Month - 1]} {shown.Year}");
-        views.SetOnClickPendingIntent(Resource.Id.widget_cal_prev, CalendarBroadcast(context, ActionCalendarPrev));
-        views.SetOnClickPendingIntent(Resource.Id.widget_cal_next, CalendarBroadcast(context, ActionCalendarNext));
-        views.SetOnClickPendingIntent(Resource.Id.widget_cal_title, CalendarBroadcast(context, ActionCalendarToday));
 
         views.SetInt(Resource.Id.widget_cal_legend_duty, "setTextColor", DutyFill);
         views.SetInt(Resource.Id.widget_cal_legend_vacation, "setTextColor", VacationFill);
@@ -467,11 +503,24 @@ public sealed class NotificationsWidgetProvider : AppWidgetProvider
         }
     }
 
-    private static PendingIntent? CalendarBroadcast(Context context, string action)
+    private static PendingIntent? NavBroadcast(Context context, string action)
     {
         var intent = new Intent(context, typeof(NotificationsWidgetProvider));
         intent.SetAction(action);
         return PendingIntent.GetBroadcast(context, action.GetHashCode(), intent, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
+    }
+
+    /// <summary>"Včera 12.11." / "Dnes 13.11." / "Zítra 14.11.", any other day "Po 17.11.".</summary>
+    private static string DutyDayTitle(DateOnly day, int offset)
+    {
+        var name = offset switch
+        {
+            -1 => "Včera",
+            0 => "Dnes",
+            1 => "Zítra",
+            _ => CzechDayAbbreviations[((int)day.DayOfWeek + 6) % 7],
+        };
+        return $"{name} {day.Day}.{day.Month}.";
     }
 
     /// <summary>Ordinary work days stay unfilled so the special days stand out. Priority: the day's own entry (duty, leave, trip …), then a public holiday, then the weekend grey.</summary>

@@ -1,5 +1,14 @@
 [
   {
+    "version": "0.1.33",
+    "code": 139,
+    "date": "14. 11. 2026",
+    "items": [
+      "Widget → Služby: šipkami ‹ › v horním řádku se dá přepnout na včerejší, zítřejší a další dny (týden dozadu až do konce příštího měsíce); klepnutím na datum zpět na dnešek.",
+      "PC: návratová šipka vlevo nahoře je světlá, na tmavém záhlaví okna je dobře vidět."
+    ]
+  },
+  {
     "version": "0.1.32",
     "code": 138,
     "date": "13. 11. 2026",
