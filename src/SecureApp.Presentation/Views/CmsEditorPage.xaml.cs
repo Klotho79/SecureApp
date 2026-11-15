@@ -39,6 +39,11 @@ public partial class CmsEditorPage : ContentPage, IQueryAttributable
     private CmsDocument? _original;
     private bool _loaded;
     private bool _saving;
+    /// <summary>"Uložit beze změny" was chosen once: do not ask about formatting again in this editor session.</summary>
+    private bool _formatDeclined;
+
+    private const string FormatAndSave = "✨ Sformátovat a uložit";
+    private const string SaveAsIs = "Uložit beze změny";
 
     public CmsEditorPage(
         IDocumentRepository documents, ICryptoService crypto, ICurrentUserService currentUser,
@@ -253,6 +258,21 @@ public partial class CmsEditorPage : ContentPage, IQueryAttributable
         SaveButton.IsEnabled = false;
         try
         {
+            // User 2026-11-15: "dokument neni sformatovan, asi pred ulozenim dej tlacitko sformatovat". Text pasted
+            // from Word before smart paste is one run-on paragraph and the toolbar button went unnoticed, so the
+            // offer comes at the moment of saving. Uložit only stores a draft; the result is visible right away.
+            if (!_formatDeclined
+                && int.TryParse((await RunJsAsync("editor.structureCount()"))?.Trim('"'), out var unformatted)
+                && unformatted > 0)
+            {
+                var choice = await DisplayActionSheetAsync(
+                    "Část textu není rozdělená na nadpisy a odrážky (typicky text vložený z Wordu). Sformátovat ji před uložením?",
+                    "Zpět", null, FormatAndSave, SaveAsIs);
+                if (choice == FormatAndSave) await RunJsAsync("editor.restructure()");
+                else if (choice == SaveAsIs) _formatDeclined = true;
+                else return;
+            }
+
             var encoded = (await Editor.EvaluateJavaScriptAsync("editor.getJson()"))?.Trim('"');
             if (string.IsNullOrEmpty(encoded)) throw new InvalidOperationException("Editor nevrátil žádná data.");
             var json = Encoding.UTF8.GetString(Convert.FromBase64String(encoded));

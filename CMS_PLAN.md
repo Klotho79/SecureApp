@@ -82,6 +82,7 @@ Podnět: „text je hnusný“. Vložený text skončil jako jeden odstavec bez 
 - **Mezery na PC:** WinUI při měření zahazovalo mezery na konci slov a slova splývala („Tojsoualejelita“). Mezera je teď padding štítku.
 - **Ověřeno:** node a headless Edge testy; na PC v Debug buildu editor (načtení, Upravit strukturu) a čtečka (štítky, rámečky, úzké okno). Menu ⋯ na telefonu zatím neověřeno.
 - **0.1.37 (oprava 0.1.36):** odstavec končící `\n` se nezobrazil, protože `SelectableText` po odebrání prázdného posledního řádku ukázal právě ten prázdný řádek. „Upravit strukturu“ zná i Wordovou odrážku „⦁“ + tab a seznam psaný pomlčkami za dvojtečkou. Ověřeno na skutečném textu „Blok N.Femoralis“ (7 sekcí).
+- **0.1.38 (2026-11-15):** 0.1.37 se na relay nedostala, jde v 0.1.38. Uživatel po aktualizaci: „dokument není sformátován, asi před uložením dej tlačítko sformátovat… kopíroval jsem text z Wordu, byly tam odrážky“. Tlačítko přejmenováno na „✨ Sformátovat“, svítí (`.due`), dokud `structurePlan()` něco najde; `editor.structureCount()` / `editor.restructure()` volá `CmsEditorPage.OnSaveClicked` a před uložením nabídne „✨ Sformátovat a uložit“ / „Uložit beze změny“ / „Zpět“. Vložení ze skutečného Wordu (schránka přes Word COM, HTML i čistý text) dávalo správnou strukturu už v 0.1.36; chyběla jen „⦁“ ve starém uloženém textu.
 
 ### Fáze 2 — Editor na PC
 - WebView2 + TipTap, vlastní bloky: odstavec, nadpis, seznam, obrázek, video, řádek se sloupci; drag & drop.

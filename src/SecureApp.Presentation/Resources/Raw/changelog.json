@@ -1,5 +1,14 @@
 [
   {
+    "version": "0.1.38",
+    "code": 144,
+    "date": "15. 11. 2026",
+    "items": [
+      "Editor na PC: tlačítko „✨ Upravit strukturu“ se jmenuje „✨ Sformátovat“ a po otevření dokumentu se rozsvítí, když text ještě není rozdělený na nadpisy a odrážky (typicky text vložený z Wordu ve starší verzi).",
+      "Při „💾 Uložit“ se editor u takového textu zeptá, jestli ho má před uložením sformátovat („✨ Sformátovat a uložit“ / „Uložit beze změny“)."
+    ]
+  },
+  {
     "version": "0.1.37",
     "code": 143,
     "date": "14. 11. 2026",

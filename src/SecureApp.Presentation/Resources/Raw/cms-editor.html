@@ -42,6 +42,8 @@ figcaption{font-style:italic;font-size:.85em;text-align:center;color:var(--mute)
 .blk.co-info{background:#e1edfa;box-shadow:inset 3px 0 0 #1565c0}
 @media (prefers-color-scheme:dark){.blk.co-warn{background:#3a2c10;box-shadow:inset 3px 0 0 #e5a845}.blk.co-info{background:#122a40;box-shadow:inset 3px 0 0 #64b5f6}}
 #toast{display:none;position:fixed;left:50%;bottom:40px;transform:translateX(-50%);z-index:20;max-width:min(560px,calc(100% - 32px));background:var(--fg);color:var(--bg);padding:9px 14px;border-radius:8px;font-size:13px;line-height:1.4;box-shadow:0 4px 16px rgba(0,0,0,.25)}
+/* Lit while some paragraph is still a run-on wall that Sformátovat would split (user missed the plain button). */
+#restructure.due{background:var(--acc);color:#fff;border-color:var(--acc)}
 .badge{position:fixed;right:10px;bottom:8px;font-size:12px;color:var(--mute);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:2px 8px}
 </style>
 </head>
@@ -57,8 +59,8 @@ figcaption{font-style:italic;font-size:.85em;text-align:center;color:var(--mute)
   <button data-add="ol">1. Seznam</button>
   <button data-add="row">▥ Sloupce</button>
   <span class="sep"></span>
-  <button id="restructure" title="Rozdělí slepený text na nadpisy, seznamy a odstavce (CAVE/Pozor zůstane jako zvýrazněné upozornění)">✨ Upravit strukturu</button>
-  <button id="undo" hidden title="Obnoví stav před Upravit strukturu">↶ Vrátit</button>
+  <button id="restructure" title="Rozdělí slepený text (např. vložený z Wordu) na nadpisy, odrážky a odstavce (CAVE/Pozor zůstane jako zvýrazněné upozornění)">✨ Sformátovat</button>
+  <button id="undo" hidden title="Obnoví stav před Sformátovat">↶ Vrátit</button>
 </div>
 <div id="wrap"><div id="stage"><input id="title" placeholder="Název dokumentu"><div class="drop" id="root"></div></div></div>
 <div class="badge" id="badge"></div>
@@ -417,7 +419,7 @@ document.addEventListener('keydown',e=>{
       e.preventDefault();const prev=b.previousElementSibling;b.remove();ensureOne(parent);const f=prev&&$('[contenteditable]:last-of-type',prev);if(f)focusEnd(f);}
   }
 });
-/* ---------- smart paste & "Upravit strukturu" (2026-11-14, user: "text je hnusny") ---------- */
+/* ---------- smart paste & "✨ Sformátovat" (2026-11-14 as "Upravit strukturu", user: "text je hnusny") ---------- */
 const S=window.cmsStructure;
 function toast(msg){const t=$('#toast');t.textContent=msg;t.style.display='block';clearTimeout(toast._t);toast._t=setTimeout(()=>{t.style.display='none';},7000);}
 function markCallouts(){$$('.blk[data-type=paragraph]',root).forEach(b=>{const k=S.calloutKind($('.txt',b).textContent);b.classList.toggle('co-warn',k==='warn');b.classList.toggle('co-info',k==='info');});}
@@ -465,28 +467,44 @@ document.addEventListener('paste',e=>{
   if(!models.length)return;
   if(models.length===1&&models[0].type==='paragraph'){inline(models[0].text);return;}
   if(!$('#title').value.trim()){const h=models.find(m=>m.type==='heading'&&m.level===1);if(h)$('#title').value=S.sentenceCase(S.plainOf(h.text));}
-  pasteBlocks(host,models);
+  pasteBlocks(host,models);markDue();
   toast('Vložený text je rozdělený na nadpisy, seznamy a odstavce. Zkontrolujte ho.');
 });
 
 let undoJson=null;
 function snapshot(){return JSON.stringify({title:$('#title').value,blocks:$$(':scope>.blk',root).map(toModel)});}
-/** Re-splits paragraphs saved before smart paste (one run-on paragraph per document) into headings / lists / paragraphs. */
-function restructure(){
-  const before=snapshot(),firstTop=$(':scope>.blk',root);let changed=0;
+/** The paragraphs Sformátovat would split (saved before smart paste: one run-on paragraph per document), with their new blocks. Changes nothing. */
+function structurePlan(){
+  const firstTop=$(':scope>.blk',root),plan=[];
   [root,...$$('.cell>.drop',root)].forEach(c=>{
     $$(':scope>.blk[data-type=paragraph]',c).forEach(b=>{
       const rs=runs($('.txt',b)),src=S.plainOf(rs);if(!src.trim())return;
       const models=S.classify(S.recoverLines(rs),{atStart:c===root&&b===firstTop});
       if(!models.length||(models.length===1&&models[0].type==='paragraph'&&S.plainOf(models[0].text)===src))return;
-      models[0].id=b.dataset.id;   // the first piece keeps the block id annotations are anchored to
-      b.replaceWith(...models.map(fromModel));changed++;
+      plan.push({b,models});
     });
-    mergeLists(c);
   });
-  if(!changed){toast('Text už je rozdělený do nadpisů a odstavců, nebylo co upravit.');return;}
-  undoJson=before;$('#undo').hidden=false;layout();markCallouts();
-  toast('Hotovo, upraveno '+changed+(changed===1?' místo':changed<5?' místa':' míst')+'. Zkontrolujte výsledek, „↶ Vrátit“ obnoví původní stav.');
+  return plan;
+}
+/** Lights the button while there is something to format; announce=true also says so (on opening a document). */
+function markDue(announce){
+  const n=structurePlan().length;$('#restructure').classList.toggle('due',n>0);
+  if(n&&announce)toast('Text dokumentu není rozdělený na nadpisy a odrážky. Klikněte na „✨ Sformátovat“.');
+}
+/** Re-splits run-on paragraphs into headings / lists / paragraphs. Returns how many places changed. */
+function restructure(){
+  const plan=structurePlan();
+  if(!plan.length){toast('Text už je rozdělený do nadpisů a odstavců, nebylo co upravit.');return 0;}
+  const before=snapshot();
+  plan.forEach(({b,models})=>{
+    models[0].id=b.dataset.id;   // the first piece keeps the block id annotations are anchored to
+    b.replaceWith(...models.map(fromModel));
+  });
+  [root,...$$('.cell>.drop',root)].forEach(mergeLists);
+  undoJson=before;$('#undo').hidden=false;layout();markCallouts();markDue();
+  const n=plan.length;
+  toast('Hotovo, upraveno '+n+(n===1?' místo':n<5?' místa':' míst')+'. Zkontrolujte výsledek, „↶ Vrátit“ obnoví původní stav.');
+  return n;
 }
 document.addEventListener('input',()=>{clearTimeout(markCallouts._t);markCallouts._t=setTimeout(markCallouts,250);
   if(undoJson){undoJson=null;$('#undo').hidden=true;}});   // after further edits a restore would throw them away
@@ -495,7 +513,7 @@ $('#bar').addEventListener('mousedown',e=>{if(e.target.closest('button'))e.preve
 $('#bar').addEventListener('click',e=>{
   const bt=e.target.closest('button');if(!bt)return;
   if(bt.id==='restructure'){restructure();return;}
-  if(bt.id==='undo'){if(undoJson){window.editor.load(undoJson);undoJson=null;bt.hidden=true;toast('Vráceno do původního stavu.');}return;}
+  if(bt.id==='undo'){if(undoJson){window.editor.load(undoJson);undoJson=null;bt.hidden=true;toast('Vráceno do původního stavu.');}return;}   // load() lights ✨ again
   if(bt.dataset.cmd){document.execCommand(bt.dataset.cmd);return;}
   const a=bt.dataset.add; if(!a)return;
   insertAfter(a==='paragraph'?textBlock('paragraph'):a==='heading'?textBlock('heading',1):a==='ul'?listBlock(false):a==='ol'?listBlock(true):rowBlock([6,6]));
@@ -519,8 +537,11 @@ window.editor={
   load(jsonText){
     const d=JSON.parse(jsonText); $('#title').value=d.title||''; root.innerHTML='';
     (d.blocks&&d.blocks.length?d.blocks:[{type:'paragraph',id:uid(),text:[{t:''}]}]).forEach(m=>root.append(fromModel(m)));
-    layout();markCallouts();
+    layout();markCallouts();markDue(true);
   },
+  /** Host asks before saving ("před uložením dej tlačítko sformátovat", 2026-11-15). */
+  structureCount(){return structurePlan().length;},
+  restructure(){return restructure();},
   getJson(){return b64(JSON.stringify({title:$('#title').value.trim(),blocks:$$(':scope>.blk',root).map(toModel)}));},
   insertImage(id,url,aspect){previews[id]=url;insertAfter(imageBlock({mediaId:id,aspectRatio:aspect}));layout();},
   insertVideo(id,name,aspect,posterId,posterUrl,durationSec){previews[posterId]=posterUrl;insertAfter(videoBlock({mediaId:id,aspectRatio:aspect,name,posterMediaId:posterId,durationSec}));layout();},
