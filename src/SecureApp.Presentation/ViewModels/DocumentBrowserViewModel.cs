@@ -27,6 +27,7 @@ public sealed partial class DocumentBrowserViewModel : ObservableObject
     private readonly ICurrentUserService _currentUserService;
     private readonly IDiagnosticsReporter _diagnosticsReporter;
     private readonly RolePreviewService _rolePreviewService;
+    private readonly Library.LibraryMirrorSync _mirror;
 
     private readonly Stack<(Guid? FolderId, string FolderName)> _breadcrumb = new();
     private Guid? _currentFolderId;
@@ -76,8 +77,10 @@ public sealed partial class DocumentBrowserViewModel : ObservableObject
         IDocumentImportService importService,
         ICurrentUserService currentUserService,
         IDiagnosticsReporter diagnosticsReporter,
-        RolePreviewService rolePreviewService)
+        RolePreviewService rolePreviewService,
+        Library.LibraryMirrorSync mirror)
     {
+        _mirror = mirror ?? throw new ArgumentNullException(nameof(mirror));
         _documentRepository = documentRepository ?? throw new ArgumentNullException(nameof(documentRepository));
         _folderRepository = folderRepository ?? throw new ArgumentNullException(nameof(folderRepository));
         _importService = importService ?? throw new ArgumentNullException(nameof(importService));
@@ -100,8 +103,19 @@ public sealed partial class DocumentBrowserViewModel : ObservableObject
 
     partial void OnIsImportingChanged(bool value) => CanImport = !value;
 
+    /// <summary>
+    /// Shows what is stored right away, then brings it in line with the relay (2026-11-16, see
+    /// <see cref="Library.LibraryMirrorSync"/>) and shows the list again only if that changed anything.
+    /// </summary>
     [RelayCommand]
     private async Task LoadAsync()
+    {
+        await LoadLocalAsync();
+        if (await _mirror.SyncAsync(TimeSpan.FromSeconds(30)))
+            await LoadLocalAsync();
+    }
+
+    private async Task LoadLocalAsync()
     {
         IsLoading = true;
         try
@@ -110,7 +124,8 @@ public sealed partial class DocumentBrowserViewModel : ObservableObject
             CanModifyContent = RoleAccessPolicy.IsAllowed(_rolePreviewService.Resolve(_currentUserService.Current.Role), RbacAction.CreateFolder);
 
             var folderEntities = await _folderRepository.GetChildrenAsync(_currentFolderId);
-            var documentEntities = await _documentRepository.GetByFolderAsync(_currentFolderId);
+            // Metadata only — a mirrored library can hold big PDFs, and a listing never needs their content.
+            var documentEntities = await _documentRepository.GetInfosByFolderAsync(_currentFolderId);
 
             Folders = new ObservableCollection<DocumentFolderItem>(
                 folderEntities.OrderBy(f => f.Name, StringComparer.CurrentCultureIgnoreCase)
@@ -164,7 +179,9 @@ public sealed partial class DocumentBrowserViewModel : ObservableObject
 
         try
         {
-            var folder = new DocumentFolder(name, _currentFolderId);
+            // The root of Dokumenty mirrors the relay; own folders live under "Moje" (2026-11-16).
+            var parent = _currentFolderId ?? await Library.LibraryMirrorSync.EnsurePersonalFolderAsync(_folderRepository);
+            var folder = new DocumentFolder(name, parent);
             await _folderRepository.AddAsync(folder);
             StatusErrorMessage = null;
             await LoadAsync();

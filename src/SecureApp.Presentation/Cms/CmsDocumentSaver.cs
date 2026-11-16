@@ -18,6 +18,9 @@ public sealed class CmsDocumentSaver
 {
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
+    /// <summary>A stored <c>.cmsdoc</c>'s decrypted bytes back to its content tree (null when it isn't one).</summary>
+    public static CmsDocument? Parse(byte[] json) => JsonSerializer.Deserialize<CmsDocument>(json, Json);
+
     /// <summary>Why the last save could not stage its server draft (null = it did). The local copy is saved either way.</summary>
     public string? LastStageError { get; private set; }
 
@@ -82,7 +85,16 @@ public sealed class CmsDocumentSaver
         var saved = await _import.ImportAsync(stream, SafeFileName(title) + ".cmsdoc", null, null, ct);
 
         if (originalLocalDocumentId is { } oldId && oldId != saved.Id)
-            await _documents.DeleteAsync(oldId, ct);
+        {
+            try
+            {
+                await _documents.DeleteAsync(oldId, ct);
+            }
+            catch (Domain.Exceptions.DocumentNotFoundException)
+            {
+                // Already removed meanwhile (LibraryMirrorSync) — must not stop the draft from being staged below.
+            }
+        }
 
         // The local copy is already safe; a relay problem must not make the author think the edit was lost.
         progress?.Report("Ukládám koncept na server…");

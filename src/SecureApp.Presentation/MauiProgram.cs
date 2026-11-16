@@ -183,6 +183,8 @@ public static class MauiProgram
 		// Shared community file library, hosted on the relay (see DEVELOPMENT_PLAN.md's note) —
 		// same registration shape as IMessageTransport above, same reasoning.
 		builder.Services.AddSingleton<ISharedLibraryService, HttpSharedLibraryService>();
+		// Dokumenty = a mirror of the relay library (2026-11-16); singleton so its one-at-a-time gate is shared.
+		builder.Services.AddSingleton<SecureApp.Presentation.Library.LibraryMirrorSync>();
 
 		// Lets an Admin-role device mint relay invite codes in-app instead of SSH+curl on the Pi.
 		builder.Services.AddSingleton<IRelayAdminService, HttpRelayAdminService>();

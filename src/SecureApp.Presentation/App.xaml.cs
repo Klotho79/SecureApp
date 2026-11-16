@@ -1056,6 +1056,12 @@ public partial class App : Application
 			// Best-effort — retried next sweep, ~3 min.
 		}
 
+		// Dokumenty mirrors the relay library (2026-11-16): a newly approved version, a new document or a
+		// newly received key shows up on every device without anyone opening anything. At most every 15 min;
+		// the check itself is one small list request. Never throws; not awaited, so a long download can't hold
+		// up the chat recovery below.
+		_ = services.GetRequiredService<SecureApp.Presentation.Library.LibraryMirrorSync>().SyncAsync(TimeSpan.FromMinutes(15));
+
 		// Invites a resync could not hand to the relay (it was down at that moment) go out now — before
 		// anything below, so they reach the peer ahead of any message retried in this same sweep.
 		try { await SessionRecoveryHelper.FlushPendingInvitesAsync(transport, sessionRepository); }

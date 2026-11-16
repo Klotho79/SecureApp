@@ -40,7 +40,7 @@ public partial class LibraryPage : ContentPage
 
     private void OnResultSelected(object? sender, SelectionChangedEventArgs e)
     {
-        ResultsView.SelectedItem = null;
+        if (sender is CollectionView list) list.SelectedItem = null; // search list or a category's own files
         if (e.CurrentSelection.FirstOrDefault() is LibraryFileItem item)
             _viewModel.OpenFileCommand.Execute(item);
     }

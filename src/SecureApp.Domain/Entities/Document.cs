@@ -78,4 +78,11 @@ public sealed class Document : Entity
         Title = newTitle;
         Touch();
     }
+
+    /// <summary>Moves the document into another folder (null = the root).</summary>
+    public void MoveToFolder(Guid? folderId)
+    {
+        FolderId = folderId;
+        Touch();
+    }
 }

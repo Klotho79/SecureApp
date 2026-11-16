@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.1.39",
+    "code": 145,
+    "date": "16. 11. 2026",
+    "items": [
+      "Soubory → Dokumenty jsou na každém zařízení přesně to, co je schválené na serveru — každý dokument jednou, vždy poslední schválená verze, stažené dopředu (fungují i bez připojení; soubory nad 25 MB počkají na Wi-Fi). Aktualizuje se samo při otevření Dokumentů a na pozadí.",
+      "Vlastní soubory (importy, koncepty z editoru, otevřené přílohy z chatu, vlastní složky) jsou ve složce „Moje“; nic vlastního se nemaže.",
+      "Knihovna: dokumenty uložené přímo v kategorii (např. „Výukové materiály“) jsou vidět bez hledání.",
+      "Hledání v knihovně najde dokument podle slov v libovolném pořadí, bez ohledu na diakritiku a tečky („blok n femoralis“ najde „Blok N.Femoralis“).",
+      "Otevřený dokument se sám přepne na novější schválenou verzi, pokud nějaká vyšla."
+    ]
+  },
+  {
     "version": "0.1.38",
     "code": 144,
     "date": "15. 11. 2026",

@@ -12,6 +12,38 @@
          genuinely redundant second "Knihovna" header stacked above it. Same pattern Nástěnka/Chaty/
          Kontakty already use for the same reason. -->
 
+    <ContentPage.Resources>
+        <!-- One file card, shared by the search list and a category's own files (2026-11-16). -->
+        <DataTemplate x:Key="LibraryFileCardTemplate" x:DataType="vm:LibraryFileItem">
+            <Border Style="{StaticResource CardBorder}" Margin="0" Padding="12,10">
+                <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="10">
+
+                    <Border Grid.Column="0" WidthRequest="32" HeightRequest="32" Padding="0" StrokeShape="RoundRectangle 8" Stroke="Transparent" BackgroundColor="{AppThemeBinding Light={StaticResource AccentSoft}, Dark={StaticResource AccentSoftDark}}" VerticalOptions="Center">
+                        <Label Text="📄" FontSize="12" HorizontalOptions="Center" VerticalOptions="Center" />
+                    </Border>
+
+                    <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                        <Label Text="{Binding FileName}" FontSize="11" FontAttributes="Bold" LineBreakMode="TailTruncation" />
+                        <Label Text="{Binding FolderPath}" IsVisible="{Binding HasFolder}" FontSize="9" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" LineBreakMode="TailTruncation" />
+                        <Label Text="{Binding SizeAndDateText}" FontSize="8.5" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
+                    </VerticalStackLayout>
+
+                    <!-- Admin-only local-AI PDF translation (2026-10-05). -->
+                    <Button Grid.Column="2" Text="🌐" BackgroundColor="Transparent" Padding="4,0" VerticalOptions="Center"
+                            IsVisible="{Binding CanTranslate}"
+                            Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibraryViewModel}}, Path=TranslateCommand}"
+                            CommandParameter="{Binding .}" />
+
+                    <Button Grid.Column="3" Text="🗑" BackgroundColor="Transparent" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" Padding="4,0" VerticalOptions="Center"
+                            IsVisible="{Binding IsMine}"
+                            Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibraryViewModel}}, Path=DeleteCommand}"
+                            CommandParameter="{Binding .}" />
+
+                    <Label Grid.Column="4" Text="›" FontSize="16" VerticalOptions="Center" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </ContentPage.Resources>
 
     <Grid RowDefinitions="Auto,*" Padding="16" RowSpacing="14">
 
@@ -185,6 +217,20 @@
                             </CollectionView.ItemTemplate>
                         </CollectionView>
 
+                        <!-- Files filed directly under this category, outside any sub-category (2026-11-16,
+                             see LibraryViewModel.CategoryFiles) — e.g. every Redakce document in "Výukové
+                             materiály", which otherwise showed an empty page. -->
+                        <CollectionView
+                            ItemsSource="{Binding CategoryFiles}"
+                            IsVisible="{Binding ShowCategoryFiles}"
+                            ItemTemplate="{StaticResource LibraryFileCardTemplate}"
+                            SelectionMode="Single"
+                            SelectionChanged="OnResultSelected">
+                            <CollectionView.ItemsLayout>
+                                <LinearItemsLayout Orientation="Vertical" ItemSpacing="8" />
+                            </CollectionView.ItemsLayout>
+                        </CollectionView>
+
                     </VerticalStackLayout>
 
                     <!-- Search mode — a plain cross-category file list, icon + title + chevron row. -->
@@ -199,44 +245,13 @@
                             TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
 
                         <CollectionView
-                            x:Name="ResultsView"
                             ItemsSource="{Binding Results}"
+                            ItemTemplate="{StaticResource LibraryFileCardTemplate}"
                             SelectionMode="Single"
                             SelectionChanged="OnResultSelected">
                             <CollectionView.ItemsLayout>
                                 <LinearItemsLayout Orientation="Vertical" ItemSpacing="8" />
                             </CollectionView.ItemsLayout>
-                            <CollectionView.ItemTemplate>
-                                <DataTemplate x:DataType="vm:LibraryFileItem">
-                                    <Border Style="{StaticResource CardBorder}" Margin="0" Padding="12,10">
-                                        <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="10">
-
-                                            <Border Grid.Column="0" WidthRequest="32" HeightRequest="32" Padding="0" StrokeShape="RoundRectangle 8" Stroke="Transparent" BackgroundColor="{AppThemeBinding Light={StaticResource AccentSoft}, Dark={StaticResource AccentSoftDark}}" VerticalOptions="Center">
-                                                <Label Text="📄" FontSize="12" HorizontalOptions="Center" VerticalOptions="Center" />
-                                            </Border>
-
-                                            <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
-                                                <Label Text="{Binding FileName}" FontSize="11" FontAttributes="Bold" LineBreakMode="TailTruncation" />
-                                                <Label Text="{Binding FolderPath}" IsVisible="{Binding HasFolder}" FontSize="9" TextColor="{AppThemeBinding Light={StaticResource AccentStrong}, Dark={StaticResource AccentStrongDark}}" LineBreakMode="TailTruncation" />
-                                                <Label Text="{Binding SizeAndDateText}" FontSize="8.5" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
-                                            </VerticalStackLayout>
-
-                                            <!-- Admin-only local-AI PDF translation (2026-10-05). -->
-                                            <Button Grid.Column="2" Text="🌐" BackgroundColor="Transparent" Padding="4,0" VerticalOptions="Center"
-                                                    IsVisible="{Binding CanTranslate}"
-                                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibraryViewModel}}, Path=TranslateCommand}"
-                                                    CommandParameter="{Binding .}" />
-
-                                            <Button Grid.Column="3" Text="🗑" BackgroundColor="Transparent" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" Padding="4,0" VerticalOptions="Center"
-                                                    IsVisible="{Binding IsMine}"
-                                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibraryViewModel}}, Path=DeleteCommand}"
-                                                    CommandParameter="{Binding .}" />
-
-                                            <Label Grid.Column="4" Text="›" FontSize="16" VerticalOptions="Center" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
-                                        </Grid>
-                                    </Border>
-                                </DataTemplate>
-                            </CollectionView.ItemTemplate>
                         </CollectionView>
 
                         <!-- Translation progress (2026-10-05) — a real fractional progress, not the generic DelayedActivityIndicator spinner, mirroring IUpdateService.DownloadUpdateAsync's own precedent. -->

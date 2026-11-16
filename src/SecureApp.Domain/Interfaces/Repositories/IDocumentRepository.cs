@@ -10,6 +10,10 @@ public interface IDocumentRepository
     Task<Document?> GetBySourceLibraryFileIdAsync(Guid libraryFileId, CancellationToken ct = default);
 
     Task<IReadOnlyList<Document>> GetByFolderAsync(Guid? folderId, CancellationToken ct = default);
+
+    /// <summary>Metadata only (no content) of the documents in one folder (null = the root) — see <see cref="ValueObjects.DocumentInfo"/>.</summary>
+    Task<IReadOnlyList<ValueObjects.DocumentInfo>> GetInfosByFolderAsync(Guid? folderId, CancellationToken ct = default);
+
     Task<IReadOnlyList<Document>> GetAllAsync(CancellationToken ct = default);
     Task AddAsync(Document document, CancellationToken ct = default);
     Task UpdateAsync(Document document, CancellationToken ct = default);

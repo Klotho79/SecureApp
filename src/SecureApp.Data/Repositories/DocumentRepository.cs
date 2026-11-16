@@ -46,6 +46,23 @@ public sealed class DocumentRepository : IDocumentRepository
         return rows.Select(ToEntity).ToList();
     }
 
+    public async Task<IReadOnlyList<DocumentInfo>> GetInfosByFolderAsync(Guid? folderId, CancellationToken ct = default)
+    {
+        const string columns = "SELECT id, title, file_name, document_type, folder_id, source_library_file_id, is_favorite FROM documents";
+        var connection = await _connectionFactory.GetConnectionAsync(ct);
+        var rows = folderId is null
+            ? await connection.QueryAsync<DocumentRow>(columns + " WHERE folder_id IS NULL")
+            : await connection.QueryAsync<DocumentRow>(columns + " WHERE folder_id = ?", folderId.Value.ToString());
+        return rows.Select(row => new DocumentInfo(
+            Guid.Parse(row.Id),
+            row.Title,
+            row.FileName,
+            (DocumentType)row.DocumentType,
+            row.FolderId is null ? null : Guid.Parse(row.FolderId),
+            row.SourceLibraryFileId is null ? null : Guid.Parse(row.SourceLibraryFileId),
+            row.IsFavorite != 0)).ToList();
+    }
+
     public async Task<IReadOnlyList<Document>> GetAllAsync(CancellationToken ct = default)
     {
         var connection = await _connectionFactory.GetConnectionAsync(ct);

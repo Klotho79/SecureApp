@@ -35,13 +35,15 @@ public sealed partial class DocumentBrowserViewModel
         IsImporting = true;
         StatusErrorMessage = null;
         var failures = new List<string>();
+        // The root of Dokumenty mirrors the relay; own imports land in "Moje" (2026-11-16, see LibraryMirrorSync).
+        var target = _currentFolderId ?? await Library.LibraryMirrorSync.EnsurePersonalFolderAsync(_folderRepository);
 
         foreach (var file in files)
         {
             try
             {
                 await using var stream = await file.OpenReadAsync();
-                await _importService.ImportAsync(stream, file.FileName, _currentFolderId);
+                await _importService.ImportAsync(stream, file.FileName, target);
             }
             catch (Exception ex)
             {

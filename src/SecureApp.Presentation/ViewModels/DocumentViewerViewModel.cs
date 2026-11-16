@@ -26,6 +26,8 @@ public sealed partial class DocumentViewerViewModel : ObservableObject, IQueryAt
     private readonly IDocumentRenderingService _renderingService;
     private readonly ICryptoService _crypto;
     private readonly IDocumentDownloadLogService _downloadLog;
+    private readonly ISharedLibraryService _libraryService;
+    private readonly ILibraryReviewService _libraryReviewService;
 
     private Guid _documentId;
 
@@ -132,12 +134,16 @@ public sealed partial class DocumentViewerViewModel : ObservableObject, IQueryAt
         IDocumentRepository documentRepository,
         IDocumentRenderingService renderingService,
         ICryptoService crypto,
-        IDocumentDownloadLogService downloadLog)
+        IDocumentDownloadLogService downloadLog,
+        ISharedLibraryService libraryService,
+        ILibraryReviewService libraryReviewService)
     {
+        _libraryReviewService = libraryReviewService ?? throw new ArgumentNullException(nameof(libraryReviewService));
         _documentRepository = documentRepository ?? throw new ArgumentNullException(nameof(documentRepository));
         _renderingService = renderingService ?? throw new ArgumentNullException(nameof(renderingService));
         _crypto = crypto ?? throw new ArgumentNullException(nameof(crypto));
         _downloadLog = downloadLog ?? throw new ArgumentNullException(nameof(downloadLog));
+        _libraryService = libraryService ?? throw new ArgumentNullException(nameof(libraryService));
 
         Title = "Dokument";
         PageIndicatorText = string.Empty;
@@ -184,11 +190,11 @@ public sealed partial class DocumentViewerViewModel : ObservableObject, IQueryAt
             }
             if (document.DocumentType == DocumentType.Cms)
             {
-                var json = await _crypto.DecryptAsync(document.EncryptedContent);
-                CmsModel = System.Text.Json.JsonSerializer.Deserialize<SecureApp.Domain.ValueObjects.CmsDocument>(
-                    json, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+                CmsModel = ParseCms(await _crypto.DecryptAsync(document.EncryptedContent));
                 IsCms = CmsModel is not null;
                 if (!IsCms) ErrorMessage = "Dokument má neplatný obsah.";
+                else if (document.SourceLibraryFileId is { } sourceLibraryFileId)
+                    _ = SwitchToNewerLibraryVersionAsync(document, sourceLibraryFileId, CmsModel!.DocumentId);
                 return;
             }
             if (document.DocumentType == DocumentType.Other)
@@ -218,6 +224,52 @@ public sealed partial class DocumentViewerViewModel : ObservableObject, IQueryAt
         finally
         {
             IsLoading = false;
+        }
+    }
+
+    private static SecureApp.Domain.ValueObjects.CmsDocument? ParseCms(byte[] json) => Cms.CmsDocumentSaver.Parse(json);
+
+    /// <summary>
+    /// 2026-11-16 (user: "Pořád je dokument rozházený" — a phone kept showing Blok N.Femoralis as it was
+    /// before it was reformatted and re-approved): a local copy of a library file is reused by its library-file
+    /// id (<see cref="ISharedLibraryService.DownloadAndImportAsync"/>), but approving a new version publishes it
+    /// under a NEW file id and unlists the old one — so every route that opens the old copy (Dokumenty, an old
+    /// chat link) kept showing the superseded text for good. The local copy still shows instantly; meanwhile
+    /// the relay is asked which file is the document's currently approved version (the library document id IS
+    /// <see cref="SecureApp.Domain.ValueObjects.CmsDocument.DocumentId"/>, see CmsDocumentSaver), and when that
+    /// is a different file, it is imported and shown instead. Still current, unknown, or offline: nothing changes.
+    /// </summary>
+    private async Task SwitchToNewerLibraryVersionAsync(Document local, Guid sourceLibraryFileId, Guid cmsDocumentId)
+    {
+        static void Outcome(string outcome) => SecureApp.Presentation.Infrastructure.AppLog.Event("doc.cms-version-check", ("outcome", outcome));
+        try
+        {
+            var detail = await _libraryReviewService.GetDetailAsync(cmsDocumentId);
+            if (detail.Document.CurrentLibraryFileId is not { } currentFileId) { Outcome("unpublished"); return; }
+            if (currentFileId == sourceLibraryFileId) { Outcome("current"); return; }
+
+            var imported = await _libraryService.DownloadAndImportAsync(currentFileId);
+            var model = imported.DocumentType == DocumentType.Cms ? ParseCms(await _crypto.DecryptAsync(imported.EncryptedContent)) : null;
+            if (model is null || model.DocumentId != cmsDocumentId) { Outcome("other-document"); return; }
+            if (_documentId != local.Id) { Outcome("moved-on"); return; }
+
+            _documentId = imported.Id;
+            Title = imported.Title;
+            CmsModel = model;
+            Outcome("switched");
+
+            // The superseded library copy would only show up again in Dokumenty — it can always be downloaded again.
+            try { await _documentRepository.DeleteAsync(local.Id); }
+            catch (DocumentNotFoundException) { }
+        }
+        catch (InvalidOperationException ex)
+        {
+            // The relay doesn't know this document (a pre-workflow file) — the local copy is all there is.
+            SecureApp.Presentation.Infrastructure.AppLog.Event("doc.cms-version-check", ("outcome", "unknown"), ("why", ex.Message));
+        }
+        catch (Exception ex)
+        {
+            SecureApp.Presentation.Infrastructure.AppLog.Error("DocumentViewer.NewerVersion", "checking for a newer library version failed", ex);
         }
     }
 

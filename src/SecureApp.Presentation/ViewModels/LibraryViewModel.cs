@@ -117,6 +117,23 @@ public sealed partial class LibraryViewModel : ObservableObject, Translation.ILi
     [ObservableProperty]
     public partial bool HasSubcategories { get; set; }
 
+    /// <summary>
+    /// Files filed directly under the selected top category, outside any sub-category (2026-11-16, a new
+    /// member "nevidí soubory ani dokumenty"): every Redakce document is published straight into the top
+    /// folder "Výukové materiály", which has no sub-categories, so its page showed nothing at all and the
+    /// documents were reachable only by typing a search. Listed under the sub-category cards with the same
+    /// card as the search results; fetched together with <see cref="Subcategories"/>.
+    /// </summary>
+    [ObservableProperty]
+    public partial ObservableCollection<LibraryFileItem> CategoryFiles { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasCategoryFiles { get; set; }
+
+    /// <summary><see cref="HasCategoryFiles"/> outside a text search — while searching, the search list already shows the same files.</summary>
+    [ObservableProperty]
+    public partial bool ShowCategoryFiles { get; set; }
+
     /// <summary>True once a real top category (not "Vše") is picked — gates both the sub-category grid and the "add sub-category" tile.</summary>
     [ObservableProperty]
     public partial bool IsTopCategorySelected { get; set; }
@@ -215,7 +232,8 @@ public sealed partial class LibraryViewModel : ObservableObject, Translation.ILi
         Categories = [];
         CategoryChips = [];
         Subcategories = [];
-        AcuteStates = ["DAS algoritmy (dýchací cesty)", "Protokol masivní transfuze", "Sepse", "Maligní hypertermie", "Bronchospazmus", "Laryngospazmus"];
+        CategoryFiles = [];
+        AcuteStates =["DAS algoritmy (dýchací cesty)", "Protokol masivní transfuze", "Sepse", "Maligní hypertermie", "Bronchospazmus", "Laryngospazmus"];
         NastrojeTools =
         [
             new("🧮", "GCS — Glasgowská stupnice vědomí", OpenGcsCalculatorCommand),
@@ -228,6 +246,10 @@ public sealed partial class LibraryViewModel : ObservableObject, Translation.ILi
     }
 
     partial void OnSearchQueryChanged(string value) => IsSearching = !string.IsNullOrWhiteSpace(value);
+
+    partial void OnIsSearchingChanged(bool value) => ShowCategoryFiles = HasCategoryFiles && !value;
+
+    partial void OnHasCategoryFilesChanged(bool value) => ShowCategoryFiles = value && !IsSearching;
 
     partial void OnStatusErrorMessageChanged(string? value)
     {
@@ -291,18 +313,19 @@ public sealed partial class LibraryViewModel : ObservableObject, Translation.ILi
                 // network round trip to the relay, so the number is expected to run much higher — logged
                 // for visibility/trending, not held to that local-query target.
                 var sw = System.Diagnostics.Stopwatch.StartNew();
-                var results = await _libraryService.SearchAsync(query, folder);
+                var fetched = await _libraryService.SearchAsync(folderPath: folder);
+                var results = query is null ? fetched : fetched.Where(f => MatchesQuery(f, query)).ToList();
                 Infrastructure.AppLog.Metric("search_latency.library", sw.Elapsed.TotalMilliseconds, "ms", ("resultCount", results.Count));
 
                 var myDeviceId = (await _transportSettingsRepository.GetAsync())?.AssignedDeviceId;
                 var items = results.Select(r => ToItem(r, myDeviceId, canTranslate)).ToList();
 
-                // With no query and no folder filter the search above already IS the unfiltered fetch the
-                // category row needs — reuse it instead of asking the relay for the same list twice.
+                // With no folder filter the fetch above already IS the unfiltered list the category row
+                // needs — reuse it instead of asking the relay for the same list twice.
                 List<string>? categoryNames = null;
                 if (refreshExtras)
                 {
-                    var all = query is null && folder is null ? results : await _libraryService.SearchAsync();
+                    var all = folder is null ? fetched : await _libraryService.SearchAsync();
                     categoryNames = BuildCategoryNames(all);
                 }
 
@@ -531,6 +554,9 @@ public sealed partial class LibraryViewModel : ObservableObject, Translation.ILi
     /// <summary>Sub-categories already fetched per top category — shown instantly on the next switch, then quietly re-checked.</summary>
     private readonly Dictionary<string, List<SubcategoryItem>> _subcategoryCache = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Same as <see cref="_subcategoryCache"/>, for <see cref="CategoryFiles"/>.</summary>
+    private readonly Dictionary<string, List<LibraryFileItem>> _categoryFilesCache = new(StringComparer.OrdinalIgnoreCase);
+
     private CancellationTokenSource? _subcategoriesCts;
 
     private void ShowSubcategories(string category)
@@ -541,6 +567,7 @@ public sealed partial class LibraryViewModel : ObservableObject, Translation.ILi
         {
             Subcategories = [];
             HasSubcategories = false;
+            SetCategoryFiles([]);
             return;
         }
 
@@ -555,22 +582,45 @@ public sealed partial class LibraryViewModel : ObservableObject, Translation.ILi
             HasSubcategories = false;
         }
 
+        SetCategoryFiles(_categoryFilesCache.TryGetValue(category, out var cachedFiles) ? cachedFiles : []);
+
         _ = RefreshSubcategoriesAsync(category);
     }
+
+    private void SetCategoryFiles(List<LibraryFileItem> files)
+    {
+        CategoryFiles = new ObservableCollection<LibraryFileItem>(files);
+        HasCategoryFiles = files.Count > 0;
+    }
+
+    /// <summary>What a card shows — <see cref="LibraryFileItem"/>'s own equality compares its Tags list by reference, so it can't tell "unchanged" apart.</summary>
+    private static bool SameCards(List<LibraryFileItem> a, List<LibraryFileItem> b) =>
+        a.Select(f => (f.Id, f.FileName, f.SizeAndDateText)).SequenceEqual(b.Select(f => (f.Id, f.FileName, f.SizeAndDateText)));
 
     /// <summary>Best-effort, same posture as <see cref="RefreshReviewWorkflowStateAsync"/> — a failure here must never block browsing. Runs on a worker thread; a newer call (another tile tapped) cancels this one.</summary>
     private async Task RefreshSubcategoriesAsync(string category)
     {
         _subcategoriesCts?.Cancel();
         var cts = _subcategoriesCts = new CancellationTokenSource();
+        var canTranslate = CanTranslateDocuments;
 
         try
         {
-            var items = await Task.Run(async () =>
+            var (items, files) = await Task.Run(async () =>
             {
                 var myDeviceId = (await _transportSettingsRepository.GetAsync(cts.Token))?.AssignedDeviceId;
-                var summaries = await _libraryService.ListSubcategoriesAsync(category, cts.Token);
-                return summaries.Select(s => ToSubcategoryItem(s, myDeviceId)).ToList();
+                var subcategoriesTask = _libraryService.ListSubcategoriesAsync(category, cts.Token);
+                // The relay matches folderPath as a substring, so this also returns the sub-categories'
+                // own files ("{category}/{sub}") — only the ones filed directly under the category stay.
+                var filesTask = _libraryService.SearchAsync(folderPath: category, ct: cts.Token);
+                var summaries = await subcategoriesTask;
+                var fileSummaries = await filesTask;
+                return (
+                    summaries.Select(s => ToSubcategoryItem(s, myDeviceId)).ToList(),
+                    fileSummaries
+                        .Where(f => string.Equals(f.FolderPath?.Trim(), category, StringComparison.OrdinalIgnoreCase))
+                        .Select(f => ToItem(f, myDeviceId, canTranslate))
+                        .ToList());
             }, cts.Token);
 
             if (cts.IsCancellationRequested)
@@ -579,14 +629,18 @@ public sealed partial class LibraryViewModel : ObservableObject, Translation.ILi
             }
 
             // Unchanged since last time: leave the grid alone (no re-render, no flicker).
-            if (_subcategoryCache.TryGetValue(category, out var old) && old.SequenceEqual(items))
+            if (!(_subcategoryCache.TryGetValue(category, out var old) && old.SequenceEqual(items)))
             {
-                return;
+                _subcategoryCache[category] = items;
+                Subcategories = new ObservableCollection<SubcategoryItem>(items);
+                HasSubcategories = items.Count > 0;
             }
 
-            _subcategoryCache[category] = items;
-            Subcategories = new ObservableCollection<SubcategoryItem>(items);
-            HasSubcategories = items.Count > 0;
+            if (!(_categoryFilesCache.TryGetValue(category, out var oldFiles) && SameCards(oldFiles, files)))
+            {
+                _categoryFilesCache[category] = files;
+                SetCategoryFiles(files);
+            }
         }
         catch (OperationCanceledException)
         {
@@ -596,6 +650,20 @@ public sealed partial class LibraryViewModel : ObservableObject, Translation.ILi
         {
             _ = _diagnosticsReporter.ReportAsync(DiagnosticLogLevel.Warning, $"Nepodařilo se načíst podkategorie pro '{category}'.", nameof(LibraryViewModel), ex);
         }
+    }
+
+    /// <summary>
+    /// Every word of the query appears somewhere in the file name or its tags, ignoring case, diacritics and
+    /// punctuation (2026-11-16, a new member typed "blok n femoralis" and found nothing: the relay matched the
+    /// whole query as one substring, and the file is "Blok N.Femoralis.cmsdoc" — a dot where he typed a space).
+    /// Done here, over the folder's listed files, instead of the relay's single LIKE.
+    /// </summary>
+    private static bool MatchesQuery(SharedLibraryFileSummary file, string query)
+    {
+        var haystack = Workplace.OpicentrumParsing.NormalizeName(file.FileName + " " + string.Join(' ', file.Tags));
+        return Workplace.OpicentrumParsing.NormalizeName(query)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .All(word => haystack.Contains(word, StringComparison.Ordinal));
     }
 
     private static SubcategoryItem ToSubcategoryItem(LibrarySubcategorySummary summary, Guid? myDeviceId) => new(
@@ -634,6 +702,12 @@ public sealed partial class LibraryViewModel : ObservableObject, Translation.ILi
             await _libraryService.DeleteAsync(item.Id);
             Results = new ObservableCollection<LibraryFileItem>(Results.Where(r => r.Id != item.Id));
             IsEmpty = Results.Count == 0;
+            var remaining = CategoryFiles.Where(f => f.Id != item.Id).ToList();
+            SetCategoryFiles(remaining);
+            if (IsTopCategorySelected && SelectedCategory is { } category)
+            {
+                _categoryFilesCache[category] = remaining;
+            }
         }
         catch (Exception ex)
         {

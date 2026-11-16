@@ -30,4 +30,14 @@ public sealed class DocumentFolder : Entity
         Name = newName;
         Touch();
     }
+
+    /// <summary>Moves the folder under another one (null = the root).</summary>
+    public void MoveTo(Guid? parentFolderId)
+    {
+        if (parentFolderId == Id)
+            throw new ArgumentException("A folder cannot contain itself.", nameof(parentFolderId));
+
+        ParentFolderId = parentFolderId;
+        Touch();
+    }
 }
