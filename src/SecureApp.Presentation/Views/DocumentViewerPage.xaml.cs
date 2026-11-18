@@ -35,6 +35,7 @@ public partial class DocumentViewerPage : ContentPage
 		AnnotationPanel.DeleteRequested += OnAnnotationDelete;
 		AnnotationPanel.ProposeRequested += OnAnnotationPropose;
 		AnnotationPanel.ModerateRequested += OnAnnotationModerate;
+		ApplyLayout();
 	}
 
 	protected override void OnAppearing()
@@ -50,44 +51,70 @@ public partial class DocumentViewerPage : ContentPage
 	/// <summary>A fresh page always starts unzoomed — a leftover zoom/pan from the previous page would land the new page's content half off-screen.</summary>
 	private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
 	{
-		// Zoom buttons are a PC affordance (phones pinch); shown only for CMS documents on desktop.
-		if (e.PropertyName == nameof(DocumentViewerViewModel.IsCms))
-		{
-			var desktop = DeviceInfo.Idiom == DeviceIdiom.Desktop;
-			ZoomBar.IsVisible = _viewModel.IsCms && desktop;
-
-			// 2026-11-14 (user: "text je hnusny… maximálně přehledný"): a CMS document reads edge to edge
-			// (CmsDocumentView keeps its own 16-px gutter instead of 20 + 16), and on a phone the
-			// Přejmenovat/Stáhnout actions move into one "⋯" menu so the text gets the whole screen.
-			var compactMenu = _viewModel.IsCms && !desktop;
-			RootGrid.Padding = _viewModel.IsCms ? new Thickness(0, 0, 0, desktop ? 12 : 4) : new Thickness(20);
-			BottomBar.Margin = _viewModel.IsCms ? new Thickness(16, 0) : new Thickness(0);
-			BottomBar.IsVisible = !compactMenu;
-
-			// "Upravit" opens the PC editor on this document (CMS_PLAN.md, phase 2a).
-			if (_editItem is null)
-			{
-				_editItem = new ToolbarItem { Text = "📝 Upravit" };
-				_editItem.Clicked += async (_, _) =>
-					await Infrastructure.ShellNavigation.GoToAsync($"{nameof(CmsEditorPage)}?documentId={_viewModel.DocumentId}");
-			}
-			if (_moreItem is null)
-			{
-				_moreItem = new ToolbarItem { Text = "⋯" };
-				_moreItem.Clicked += OnMoreClicked;
-			}
-			ToolbarItems.Remove(RenameItem);
-			ToolbarItems.Remove(_moreItem);
-			ToolbarItems.Remove(_editItem);
-			ToolbarItems.Add(compactMenu ? _moreItem : RenameItem);
-			if (_viewModel.IsCms && desktop) ToolbarItems.Add(_editItem);
-		}
+		if (e.PropertyName is nameof(DocumentViewerViewModel.IsCms) or nameof(DocumentViewerViewModel.IsPagedDocument))
+			ApplyLayout();
 
 		if (e.PropertyName == nameof(DocumentViewerViewModel.CmsModel) && _viewModel.CmsModel is not null)
 			_ = ReloadAnnotationsAsync();
 
 		if (e.PropertyName == nameof(DocumentViewerViewModel.CurrentPageImage))
 			_zoom.Reset();
+	}
+
+	/// <summary>
+	/// 2026-11-14 (user: "text je hnusny… maximálně přehledný"): a CMS document reads edge to edge
+	/// (CmsDocumentView keeps its own 16-px gutter instead of 20 + 16), and on a phone the
+	/// Přejmenovat/Stáhnout actions move into one "⋯" menu so the text gets the whole screen.
+	/// 2026-11-16 (user: "když otevřeš soubor DOAC, je dokument miniaturní a tlačítka obrovská"): the same on a
+	/// phone for every document type, not only CMS — a PDF page used to get 20 px of padding on each side and a
+	/// row of four full-size buttons (⬅ Předchozí / Stránka x z y / ⬇ Stáhnout / Další ➡) that wrapped on a narrow
+	/// screen and squeezed the page; now the page goes edge to edge and the pager is just ‹ Stránka x z y ›.
+	/// </summary>
+	private void ApplyLayout()
+	{
+		var desktop = DeviceInfo.Idiom == DeviceIdiom.Desktop;
+		var cms = _viewModel.IsCms;
+
+		// Zoom buttons are a PC affordance (phones pinch); shown only for CMS documents on desktop.
+		ZoomBar.IsVisible = cms && desktop;
+
+		RootGrid.Padding = desktop
+			? (cms ? new Thickness(0, 0, 0, 12) : new Thickness(20))
+			: new Thickness(0, 0, 0, 4);
+		BottomBar.Margin = cms || !desktop ? new Thickness(16, 0) : new Thickness(0);
+
+		// Phone: Stáhnout lives in the "⋯" menu; the bar stays only to page through a multi-page document.
+		DownloadButton.IsVisible = desktop;
+		BottomBar.IsVisible = desktop || _viewModel.IsPagedDocument && !cms;
+		if (!desktop)
+		{
+			PreviousButton.Text = "‹";
+			NextButton.Text = "›";
+			foreach (var pager in new[] { PreviousButton, NextButton })
+			{
+				pager.FontSize = 22;
+				pager.Padding = new Thickness(18, 0);
+				pager.MinimumHeightRequest = 40;
+			}
+		}
+
+		// "Upravit" opens the PC editor on this document (CMS_PLAN.md, phase 2a).
+		if (_editItem is null)
+		{
+			_editItem = new ToolbarItem { Text = "📝 Upravit" };
+			_editItem.Clicked += async (_, _) =>
+				await Infrastructure.ShellNavigation.GoToAsync($"{nameof(CmsEditorPage)}?documentId={_viewModel.DocumentId}");
+		}
+		if (_moreItem is null)
+		{
+			_moreItem = new ToolbarItem { Text = "⋯" };
+			_moreItem.Clicked += OnMoreClicked;
+		}
+		ToolbarItems.Remove(RenameItem);
+		ToolbarItems.Remove(_moreItem);
+		ToolbarItems.Remove(_editItem);
+		ToolbarItems.Add(desktop ? RenameItem : _moreItem);
+		if (cms && desktop) ToolbarItems.Add(_editItem);
 	}
 
 	// --- Annotations (CMS_PLAN.md, phase 4) ---

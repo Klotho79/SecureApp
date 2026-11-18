@@ -16,8 +16,9 @@
         <ToolbarItem x:Name="RenameItem" Text="✏ Přejmenovat" Clicked="OnRenameClicked" />
     </ContentPage.ToolbarItems>
 
-    <!-- Padding/BottomBar are re-set in code for CMS documents (2026-11-14): the reader keeps its own
-         16-px gutter, and on a phone Přejmenovat/Stáhnout move into a "⋯" menu. -->
+    <!-- Padding/BottomBar are re-set in code (DocumentViewerPage.ApplyLayout): a CMS document keeps its own
+         16-px gutter; on a phone every document reads edge to edge, Přejmenovat/Stáhnout sit in a "⋯" menu
+         and the pager shrinks to ‹ › (2026-11-16). -->
     <Grid x:Name="RootGrid" RowDefinitions="*,Auto" Padding="20" RowSpacing="10">
 
         <Grid Grid.Row="0">
@@ -96,7 +97,7 @@
             TranslationY="-28" />
 
         <Grid x:Name="BottomBar" Grid.Row="1" ColumnDefinitions="Auto,*,Auto,Auto">
-            <Button Grid.Column="0" Text="⬅ Předchozí" Command="{Binding PreviousPageCommand}" IsEnabled="{Binding CanGoToPreviousPage}" IsVisible="{Binding IsPagedDocument}" />
+            <Button x:Name="PreviousButton" Grid.Column="0" Text="⬅ Předchozí" Command="{Binding PreviousPageCommand}" IsEnabled="{Binding CanGoToPreviousPage}" IsVisible="{Binding IsPagedDocument}" />
             <Label
                 Grid.Column="1"
                 Text="{Binding PageIndicatorText}"
@@ -108,8 +109,8 @@
                 <Label Text="{Binding CmsZoom, StringFormat='{0:P0}'}" VerticalOptions="Center" />
                 <Button Text="+" Style="{StaticResource SecondaryButton}" Command="{Binding ZoomInCommand}" />
             </HorizontalStackLayout>
-            <Button Grid.Column="2" Text="⬇ Stáhnout" Style="{StaticResource SecondaryButton}" Command="{Binding DownloadCommand}" IsEnabled="{Binding CanDownload}" />
-            <Button Grid.Column="3" Text="Další ➡" Command="{Binding NextPageCommand}" IsEnabled="{Binding CanGoToNextPage}" IsVisible="{Binding IsPagedDocument}" />
+            <Button x:Name="DownloadButton" Grid.Column="2" Text="⬇ Stáhnout" Style="{StaticResource SecondaryButton}" Command="{Binding DownloadCommand}" IsEnabled="{Binding CanDownload}" />
+            <Button x:Name="NextButton" Grid.Column="3" Text="Další ➡" Command="{Binding NextPageCommand}" IsEnabled="{Binding CanGoToNextPage}" IsVisible="{Binding IsPagedDocument}" />
         </Grid>
     </Grid>
 </ContentPage>

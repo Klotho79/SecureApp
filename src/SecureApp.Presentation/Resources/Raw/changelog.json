@@ -1,5 +1,14 @@
 [
   {
+    "version": "0.1.40",
+    "code": 146,
+    "date": "18. 11. 2026",
+    "items": [
+      "Telefon: PDF a obrázky (např. DOAC) se zobrazují přes celou šířku displeje místo malé stránky s velkými tlačítky.",
+      "Přejmenovat a Stáhnout jsou na telefonu v menu „⋯“ nahoře u všech dokumentů; dole zůstává jen malé listování ‹ Stránka 1 z 2 ›."
+    ]
+  },
+  {
     "version": "0.1.39",
     "code": 145,
     "date": "16. 11. 2026",
