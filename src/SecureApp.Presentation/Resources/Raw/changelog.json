@@ -1,5 +1,21 @@
 [
   {
+    "version": "0.1.41",
+    "code": 147,
+    "date": "18. 11. 2026",
+    "items": [
+      "Soubory → Dokumenty ukazují vše, co je na serveru, ale stahují soubor až při prvním otevření (☁ = ještě není v zařízení). Pak se otevírá rychle i bez připojení. Stažení všeho předem: Nastavení → Systém → Knihovna → „Stáhnout vše dopředu“.",
+      "Knihovna i Dokumenty u každého souboru píšou, co se stane po klepnutí: „☁ stáhne se při otevření“, „⏳ stahuje se…“, „✓ v zařízení“, u zabalených souborů (zip, docx…) „nelze otevřít v appce“.",
+      "Nová role Redaktor: jako Viewer, navíc píše a upravuje výukové dokumenty (editor na PC) a schvaluje je (ne své vlastní).",
+      "Schválení dokumentu vyžaduje jeho zařazení do Knihovny: kategorie a podkategorie, případně i další úroveň (např. Výuka › Anestezie › Regionální).",
+      "Knihovna má třetí úroveň: podkategorie může mít vlastní podkategorie. V Redakci → Kategorie knihovny se do nich vstupuje tlačítkem ›.",
+      "Admin, Modifier a Redaktor zakládají a mažou větve Knihovny (smazat jde jen prázdnou větev) a přesouvají výukové materiály mezi větvemi tlačítkem 📂 u souboru.",
+      "Admin a Modifier mohou smazat jakýkoli materiál v Knihovně (🗑, s potvrzením); smazaný zmizí i ze všech zařízení. Výukový dokument z Redakce se tím vrátí autorovi jako zamítnutý a jeho verze zůstanou.",
+      "Nový člen už nemůže dostat roli Admin, jen Modifier, Viewer nebo Redaktor.",
+      "Opicentrum na telefonu: tlačítko Obnovit nahradilo klepnutí na nápis Opicentrum. Řádek pod ním ukazuje, kdy byl rozpis obnoven (zelený = lze obnovit hned)."
+    ]
+  },
+  {
     "version": "0.1.40",
     "code": 146,
     "date": "18. 11. 2026",

@@ -869,14 +869,35 @@ app.MapDelete("/library/files/{id:guid}", (Guid id, HttpRequest request, RelayDa
     if (!TryGetAdminOrDevice(request, adminSecret, db, out var callerDeviceId, out var isAdmin))
         return Results.Unauthorized();
 
-    if (!db.TryDeleteLibraryFile(id, callerDeviceId, isAdmin))
+    // 2026-11-18 (user: deleting teaching materials — "Admin i Modifier"): Admin and Modifier delete any material,
+    // everyone else only what they uploaded.
+    var mayDeleteAny = isAdmin || IsAdminOrModifier(db, callerDeviceId);
+
+    // A teaching document's approved version is withdrawn, not destroyed: back to its author, versions kept.
+    if (db.GetLibraryDocumentByCurrentFile(id) is { } document)
+    {
+        if (!mayDeleteAny && document.CreatedByDeviceId != callerDeviceId)
+            return Results.NotFound();
+        return db.WithdrawLibraryDocument(document.Id, callerDeviceId) ? Results.NoContent() : Results.NotFound();
+    }
+
+    if (!db.TryDeleteLibraryFile(id, callerDeviceId, mayDeleteAny))
         return Results.NotFound();
+    db.AddRemovedLibraryFile(id);
 
     var path = db.GetLibraryFilePath(id);
     if (File.Exists(path))
         File.Delete(path);
 
     return Results.NoContent();
+});
+
+// Library files taken out of the library (2026-11-18) — devices drop their local copies of exactly these.
+app.MapGet("/library/removed", (HttpRequest request, RelayDatabase db) =>
+{
+    if (!TryGetDeviceAuth(request, db, out _))
+        return Results.Unauthorized();
+    return Results.Ok(db.GetRemovedLibraryFiles());
 });
 
 // Promote a private chat attachment to the community library (2026-09-14, 2.3 "move from local archive
@@ -901,13 +922,33 @@ app.MapPost("/library/files/{id:guid}/publish", (Guid id, HttpRequest request, R
 
 app.MapPost("/library/subcategories", (HttpRequest request, CreateLibrarySubcategoryRequest body, RelayDatabase db) =>
 {
-    if (!TryGetDeviceAuth(request, db, out var deviceId))
+    // 2026-11-18: also the admin secret (setting up the structure without an open app), owned by OwnerDeviceId; a
+    // device needs a role that manages the library structure (Admin, Modifier, Redaktor).
+    if (!TryGetAdminOrDevice(request, adminSecret, db, out var callerDeviceId, out var isAdmin))
         return Results.Unauthorized();
-    if (string.IsNullOrWhiteSpace(body.ParentCategory) || string.IsNullOrWhiteSpace(body.Name))
-        return Results.BadRequest("ParentCategory and Name are both required.");
+    if (!isAdmin && !CanManageLibraryStructure(db, callerDeviceId))
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+    if (string.IsNullOrWhiteSpace(body.ParentCategory) || string.IsNullOrWhiteSpace(body.Name) || body.Name.Contains('/'))
+        return Results.BadRequest("ParentCategory and Name are both required; Name may not contain '/'.");
+    if (NormalizeLibraryFolder($"{body.ParentCategory}/{body.Name}") is null)
+        return Results.BadRequest("A branch may sit at most three levels below its category.");
 
-    var record = db.CreateLibrarySubcategory(body.ParentCategory, body.Name.Trim(), deviceId);
+    var owner = callerDeviceId != Guid.Empty ? callerDeviceId : isAdmin ? body.OwnerDeviceId ?? Guid.Empty : Guid.Empty;
+    var record = db.CreateLibrarySubcategory(NormalizeLibraryFolder(body.ParentCategory)!, body.Name.Trim(), owner);
     return Results.Ok(ToLibrarySubcategoryDto(record));
+});
+
+// Move a teaching material to another branch (2026-11-18, user: "přesouvat výukové materiály" — Admin, Modifier, Redaktor).
+app.MapPost("/library/files/{id:guid}/move", (Guid id, HttpRequest request, MoveLibraryFileRequest body, RelayDatabase db) =>
+{
+    if (!TryGetAdminOrDevice(request, adminSecret, db, out var callerDeviceId, out var isAdmin))
+        return Results.Unauthorized();
+    if (!isAdmin && !CanManageLibraryStructure(db, callerDeviceId))
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+    if (NormalizeLibraryFolder(body.FolderPath) is not { } folderPath)
+        return Results.BadRequest("FolderPath must be 'Category' plus at most three '/Subcategory' levels.");
+
+    return db.MoveLibraryFile(id, folderPath) ? Results.NoContent() : Results.NotFound();
 });
 
 app.MapGet("/library/subcategories", (HttpRequest request, RelayDatabase db, string? parent) =>
@@ -925,7 +966,14 @@ app.MapDelete("/library/subcategories/{id:guid}", (Guid id, HttpRequest request,
     if (!TryGetAdminOrDevice(request, adminSecret, db, out var callerDeviceId, out var isAdmin))
         return Results.Unauthorized();
 
-    return db.TryDeleteLibrarySubcategory(id, callerDeviceId, isAdmin) ? Results.NoContent() : Results.NotFound();
+    // 2026-11-18: Admin, Modifier and Redaktor delete any branch (not only their own) — but only an empty one, so no
+    // file, link or deeper branch is ever left unreachable.
+    if (db.GetLibrarySubcategory(id) is not { } branch)
+        return Results.NotFound();
+    if (db.IsLibraryBranchInUse(id, $"{branch.ParentCategory}/{branch.Name}"))
+        return Results.Conflict("The branch is not empty.");
+    var mayDeleteAny = isAdmin || CanManageLibraryStructure(db, callerDeviceId);
+    return db.TryDeleteLibrarySubcategory(id, callerDeviceId, mayDeleteAny) ? Results.NoContent() : Results.NotFound();
 });
 
 app.MapPost("/library/links", (HttpRequest request, CreateLibraryLinkRequest body, RelayDatabase db) =>
@@ -964,7 +1012,8 @@ app.MapDelete("/library/links/{id:guid}", (Guid id, HttpRequest request, RelayDa
 // LibraryReviewPolicy.CanReview (self-review is never allowed, regardless of capability).
 
 // --- CMS per-document editor grants (phase 2c). An explicit Viewer (device_policy role 2) may only
-// stage/submit a document while holding an active grant on it; Admin/Modifier/unset keep today's behaviour.
+// stage/submit a document while holding an active grant on it; Admin/Modifier/unset keep today's behaviour, and a
+// Redaktor (role 3, 2026-11-18) edits any teaching document like a Modifier.
 // Granting and revoking is Admin or Modifier only; a grant ends on its own when the document is approved.
 
 static bool CanEditCmsDocument(RelayDatabase db, Guid deviceId, Guid documentId) =>
@@ -1196,7 +1245,7 @@ app.MapGet("/library-documents/pending", (HttpRequest request, RelayDatabase db)
         return Results.Unauthorized();
 
     var policy = db.GetDevicePolicy(deviceId);
-    if (policy is not { } p || (!p.DocumentReviewer && p.Role != 0))
+    if (policy is not { } p || !LibraryReviewPolicy.MayReview(ToRole(p.Role), p.DocumentReviewer))
         return Results.StatusCode(StatusCodes.Status403Forbidden);
 
     return Results.Ok(db.SearchPendingLibraryDocuments().Select(ToLibraryDocumentDto).ToList());
@@ -1210,7 +1259,7 @@ app.MapGet("/library-documents/in-progress", (HttpRequest request, RelayDatabase
         return Results.Unauthorized();
 
     var policy = db.GetDevicePolicy(deviceId);
-    if (policy is not { } p || (!p.DocumentReviewer && p.Role is not (0 or 1)))
+    if (policy is not { } p || (!p.DocumentReviewer && p.Role is not (0 or 1 or 3))) // 3 = Redaktor (2026-11-18)
         return Results.StatusCode(StatusCodes.Status403Forbidden);
 
     return Results.Ok(db.SearchInProgressLibraryDocuments()
@@ -1242,10 +1291,8 @@ app.MapPost("/library-documents/{id:guid}/review", (Guid id, HttpRequest request
         return Results.NotFound();
 
     var policy = db.GetDevicePolicy(reviewerDeviceId);
-    var isReviewer = policy?.DocumentReviewer ?? false;
-    var isAdmin = policy?.Role == 0;
     var submitterId = doc.SubmittedByDeviceId ?? doc.CreatedByDeviceId;
-    if (!LibraryReviewPolicy.CanReview(isReviewer, isAdmin, reviewerDeviceId.ToString(), submitterId.ToString()))
+    if (!LibraryReviewPolicy.CanReview(ToRole(policy?.Role), policy?.DocumentReviewer ?? false, reviewerDeviceId.ToString(), submitterId.ToString()))
         return Results.StatusCode(StatusCodes.Status403Forbidden);
 
     var approve = string.Equals(body.Decision, "Approved", StringComparison.OrdinalIgnoreCase);
@@ -1255,8 +1302,13 @@ app.MapPost("/library-documents/{id:guid}/review", (Guid id, HttpRequest request
     if (reject && string.IsNullOrWhiteSpace(body.Comment))
         return Results.BadRequest("Comment is required when rejecting.");
 
+    // Placement on approval (2026-11-18): "{Kategorie}" plus up to three sub-category levels (e.g. "Výuka/Anestezie/Regionální").
+    string? folderPath = null;
+    if (approve && body.FolderPath is not null && (folderPath = NormalizeLibraryFolder(body.FolderPath)) is null)
+        return Results.BadRequest("FolderPath must be 'Category' plus at most three '/Subcategory' levels.");
+
     var result = approve
-        ? db.ApproveLibraryDocumentVersion(id, reviewerDeviceId, body.Comment)
+        ? db.ApproveLibraryDocumentVersion(id, reviewerDeviceId, body.Comment, folderPath)
         : db.RejectLibraryDocumentVersion(id, reviewerDeviceId, body.Comment!);
 
     return result is null ? Results.Conflict("Document is not currently awaiting review.") : Results.NoContent();
@@ -2024,6 +2076,24 @@ static async Task WriteFileAtomicAsync(string path, Func<Stream, Task> write)
 
 /// <summary>Admin or Modifier (device_policy role 0/1) — the gate for notice-board posts, the Opicentrum boards, room-status options and CMS editor assignment.</summary>
 static bool IsAdminOrModifier(RelayDatabase db, Guid deviceId) => db.GetDevicePolicy(deviceId)?.Role is 0 or 1;
+
+/// <summary>Creating/deleting library branches and moving teaching materials (2026-11-18): Admin, Modifier, Redaktor — the app's own RoleAccessPolicy.</summary>
+static bool CanManageLibraryStructure(RelayDatabase db, Guid deviceId) =>
+    deviceId != Guid.Empty && ToRole(db.GetDevicePolicy(deviceId)?.Role) is { } role
+    && SecureApp.Domain.Policies.RoleAccessPolicy.IsAllowed(role, SecureApp.Domain.Enums.RbacAction.ManageLibraryStructure);
+
+/// <summary>A library folder path — "{Kategorie}" plus at most three "/{Podkategorie}" levels, every part trimmed and non-empty — or null when it isn't one.</summary>
+static string? NormalizeLibraryFolder(string? requested)
+{
+    if (string.IsNullOrWhiteSpace(requested) || requested.Length > 300)
+        return null;
+    var parts = requested.Split('/').Select(p => p.Trim()).ToArray();
+    return parts.Length is < 1 or > 4 || parts.Any(string.IsNullOrEmpty) ? null : string.Join('/', parts);
+}
+
+/// <summary>The relay stores the app's <see cref="SecureApp.Domain.Enums.Role"/> as its number; null = no role assigned. An unknown number counts as none.</summary>
+static SecureApp.Domain.Enums.Role? ToRole(int? role) =>
+    role is { } r && Enum.IsDefined(typeof(SecureApp.Domain.Enums.Role), r) ? (SecureApp.Domain.Enums.Role)r : null;
 
 /// <summary>picc_team member or Admin — the gate for the PICC roster pointer and status writes.</summary>
 static bool IsPiccTeamOrAdmin(RelayDatabase db, Guid deviceId) =>

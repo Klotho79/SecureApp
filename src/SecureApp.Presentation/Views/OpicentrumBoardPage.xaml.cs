@@ -24,6 +24,20 @@ public partial class OpicentrumBoardPage : ContentPage
         PositionsBoard.SizeChanged += (_, _) => UpdateNamesWidthCaps();
         VolnoBoard.SizeChanged += (_, _) => UpdateNamesWidthCaps();
         UpdateNamesWidthCaps();
+        ApplyPhoneTitle();
+    }
+
+    /// <summary>
+    /// Phone: no Obnovit button — tapping the "Opicentrum" title refreshes the open board, and the line under it says
+    /// when that board was updated (2026-11-18, user's ask). The PC keeps the button.
+    /// </summary>
+    private void ApplyPhoneTitle()
+    {
+        if (DeviceInfo.Idiom != DeviceIdiom.Phone) return;
+
+        ((Layout)RefreshButton.Parent).Remove(RefreshButton);
+        TitleRefreshStatus.SetBinding(IsVisibleProperty, nameof(OpicentrumBoardViewModel.IsAccessGranted));
+        TitleBlock.GestureRecognizers.Add(new TapGestureRecognizer { Command = _viewModel.RefreshCurrentCommand });
     }
 
     private readonly BoardPinchZoom _positionsPinch;

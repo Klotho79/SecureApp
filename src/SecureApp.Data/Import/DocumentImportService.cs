@@ -55,7 +55,8 @@ public sealed class DocumentImportService : IDocumentImportService
         return document;
     }
 
-    private static DocumentType ClassifyByExtension(string fileName) => Path.GetExtension(fileName).ToLowerInvariant() switch
+    /// <summary>Public so Dokumenty can label a library file it hasn't downloaded yet with the same type it will get on import.</summary>
+    public static DocumentType ClassifyByExtension(string fileName) => Path.GetExtension(fileName).ToLowerInvariant() switch
     {
         ".pdf" => DocumentType.Pdf,
         ".png" or ".jpg" or ".jpeg" or ".gif" or ".bmp" or ".webp" or ".tif" or ".tiff" => DocumentType.Image,

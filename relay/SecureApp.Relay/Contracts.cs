@@ -259,12 +259,17 @@ public sealed record CreateLibraryDocumentRequest(string Title, string FolderPat
 public sealed record AddLibraryDocumentVersionRequest(Guid LibraryFileId, string? ChangeNote);
 
 /// <summary>A reviewer's decision on a document's current pending version. <c>Comment</c> is required when <c>Decision</c> is "Rejected".</summary>
-public sealed record ReviewLibraryDocumentRequest(string Decision, string? Comment);
+/// <summary><paramref name="FolderPath"/> (2026-11-18): where an approved document is filed in the library ("{Kategorie}" plus up to three "/{Podkategorie}" levels) — the reviewer places it there on approval. Null keeps its current folder (older apps).</summary>
+public sealed record ReviewLibraryDocumentRequest(string Decision, string? Comment, string? FolderPath = null);
 
 /// <summary>One library sub-category (2026-10-02) — see RelayDatabase's own schema remarks.</summary>
 public sealed record LibrarySubcategoryDto(Guid Id, string ParentCategory, string Name, Guid CreatedByDeviceId, DateTimeOffset CreatedAtUtc);
 
-public sealed record CreateLibrarySubcategoryRequest(string ParentCategory, string Name);
+/// <summary>POST /library/files/{id}/move (2026-11-18): the branch a teaching material moves to.</summary>
+public sealed record MoveLibraryFileRequest(string FolderPath);
+
+/// <summary><paramref name="OwnerDeviceId"/> (2026-11-18): only honoured on an admin-secret call — whose device the sub-category belongs to (may delete it in the app); a device call always owns what it creates.</summary>
+public sealed record CreateLibrarySubcategoryRequest(string ParentCategory, string Name, Guid? OwnerDeviceId = null);
 
 /// <summary>One external link filed under a sub-category.</summary>
 public sealed record LibraryLinkDto(Guid Id, Guid SubcategoryId, string Title, string Url, Guid CreatedByDeviceId, DateTimeOffset CreatedAtUtc);

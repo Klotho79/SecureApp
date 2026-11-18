@@ -598,7 +598,7 @@ public sealed partial class MemberPolicyItem : ObservableObject
     public ICommand? ShowEventsCommand { get; }
 
     /// <summary>Picker source: index 0 = "ponechat na zařízení" (null), then the three real roles.</summary>
-    public IReadOnlyList<string> RoleChoices { get; } = ["Neurčeno (ponechat)", "Admin", "Modifier", "Viewer"];
+    public IReadOnlyList<string> RoleChoices { get; } = ["Neurčeno (ponechat)", "Admin", "Modifier", "Viewer", "Redaktor"];
 
     [ObservableProperty]
     public partial int SelectedRoleIndex { get; set; }
@@ -632,8 +632,8 @@ public sealed partial class MemberPolicyItem : ObservableObject
     /// <summary>Maps <see cref="SelectedRoleIndex"/> back to the domain role (index 0 => null = unmanaged).</summary>
     public Role? SelectedRole
     {
-        get => SelectedRoleIndex switch { 1 => Role.Admin, 2 => Role.Modifier, 3 => Role.Viewer, _ => (Role?)null };
-        set => SelectedRoleIndex = value switch { Role.Admin => 1, Role.Modifier => 2, Role.Viewer => 3, _ => 0 };
+        get => SelectedRoleIndex switch { 1 => Role.Admin, 2 => Role.Modifier, 3 => Role.Viewer, 4 => Role.Redaktor, _ => (Role?)null };
+        set => SelectedRoleIndex = value switch { Role.Admin => 1, Role.Modifier => 2, Role.Viewer => 3, Role.Redaktor => 4, _ => 0 };
     }
 
     public IReadOnlyList<string> HiddenTabs

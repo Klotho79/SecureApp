@@ -46,6 +46,10 @@
 
         <Grid Grid.Row="2">
             <controls:DelayedActivityIndicator IsBusy="{Binding IsImporting}" HorizontalOptions="Center" />
+            <HorizontalStackLayout IsVisible="{Binding IsDownloading}" Spacing="8" HorizontalOptions="Center">
+                <ActivityIndicator IsRunning="{Binding IsDownloading}" HeightRequest="18" WidthRequest="18" VerticalOptions="Center" />
+                <Label Text="{Binding DownloadingText}" FontSize="12" VerticalOptions="Center" />
+            </HorizontalStackLayout>
             <Label
                 Text="{Binding StatusErrorMessage}"
                 IsVisible="{Binding HasStatusError}"
@@ -107,7 +111,12 @@
                                 <Border Style="{StaticResource CardBorder}">
                                     <Grid ColumnDefinitions="Auto,*,Auto">
                                         <Label Grid.Column="0" Text="{Binding Icon}" FontSize="16" Margin="0,0,12,0" VerticalOptions="Center" />
-                                        <Label Grid.Column="1" Text="{Binding Title}" VerticalOptions="Center" FontSize="13" />
+                                        <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Center">
+                                            <Label Text="{Binding Title}" FontSize="13" />
+                                            <!-- What a tap does (2026-11-18): "☁ na serveru · stáhne se při otevření · 234 kB",
+                                                 "⏳ stahuje se…", or "nelze otevřít v appce" (zip & co. — see LibraryFileAvailability). -->
+                                            <Label Text="{Binding Detail}" IsVisible="{Binding HasDetail}" FontSize="10" TextColor="Gray" />
+                                        </VerticalStackLayout>
                                         <Label Grid.Column="2" Text="★" TextColor="Goldenrod" IsVisible="{Binding IsFavorite}" VerticalOptions="Center" />
                                     </Grid>
                                 </Border>

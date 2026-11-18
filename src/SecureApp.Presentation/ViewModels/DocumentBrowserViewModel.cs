@@ -6,6 +6,7 @@ using SecureApp.Domain.Enums;
 using SecureApp.Domain.Interfaces.Repositories;
 using SecureApp.Domain.Interfaces.Services;
 using SecureApp.Domain.Policies;
+using SecureApp.Domain.ValueObjects;
 using SecureApp.Presentation.Infrastructure;
 
 namespace SecureApp.Presentation.ViewModels;
@@ -28,6 +29,7 @@ public sealed partial class DocumentBrowserViewModel : ObservableObject
     private readonly IDiagnosticsReporter _diagnosticsReporter;
     private readonly RolePreviewService _rolePreviewService;
     private readonly Library.LibraryMirrorSync _mirror;
+    private readonly ISharedLibraryService _libraryService;
 
     private readonly Stack<(Guid? FolderId, string FolderName)> _breadcrumb = new();
     private Guid? _currentFolderId;
@@ -52,6 +54,13 @@ public sealed partial class DocumentBrowserViewModel : ObservableObject
 
     [ObservableProperty]
     public partial bool IsImporting { get; set; }
+
+    /// <summary>A library file not on the device yet is being fetched for its first open.</summary>
+    [ObservableProperty]
+    public partial bool IsDownloading { get; set; }
+
+    [ObservableProperty]
+    public partial string? DownloadingText { get; set; }
 
     [ObservableProperty]
     public partial bool CanImport { get; set; }
@@ -78,9 +87,11 @@ public sealed partial class DocumentBrowserViewModel : ObservableObject
         ICurrentUserService currentUserService,
         IDiagnosticsReporter diagnosticsReporter,
         RolePreviewService rolePreviewService,
-        Library.LibraryMirrorSync mirror)
+        Library.LibraryMirrorSync mirror,
+        ISharedLibraryService libraryService)
     {
         _mirror = mirror ?? throw new ArgumentNullException(nameof(mirror));
+        _libraryService = libraryService ?? throw new ArgumentNullException(nameof(libraryService));
         _documentRepository = documentRepository ?? throw new ArgumentNullException(nameof(documentRepository));
         _folderRepository = folderRepository ?? throw new ArgumentNullException(nameof(folderRepository));
         _importService = importService ?? throw new ArgumentNullException(nameof(importService));
@@ -131,9 +142,17 @@ public sealed partial class DocumentBrowserViewModel : ObservableObject
                 folderEntities.OrderBy(f => f.Name, StringComparer.CurrentCultureIgnoreCase)
                     .Select(f => new DocumentFolderItem(f.Id, f.Name)));
 
-            Documents = new ObservableCollection<DocumentItem>(
-                documentEntities.OrderBy(d => d.Title, StringComparer.CurrentCultureIgnoreCase)
-                    .Select(d => new DocumentItem(d.Id, d.Title, d.DocumentType, d.IsFavorite, IconFor(d.DocumentType))));
+            var items = documentEntities.Select(LocalItem).ToList();
+
+            // The root lists the whole library; a file not on the device yet shows ☁ and is fetched on its first
+            // open (2026-11-18, see LibraryMirrorSync).
+            if (_currentFolderId is null)
+            {
+                var held = documentEntities.Where(d => d.SourceLibraryFileId is not null).Select(d => d.SourceLibraryFileId!.Value).ToHashSet();
+                items.AddRange(_mirror.LastListing.Where(f => !held.Contains(f.Id)).Select(RemoteItem));
+            }
+
+            Documents = new ObservableCollection<DocumentItem>(items.OrderBy(d => d.Title, StringComparer.CurrentCultureIgnoreCase));
 
             IsEmpty = Folders.Count == 0 && Documents.Count == 0;
         }
@@ -240,8 +259,23 @@ public sealed partial class DocumentBrowserViewModel : ObservableObject
         }
     }
 
+    private static DocumentItem LocalItem(Domain.ValueObjects.DocumentInfo d) =>
+        new(d.Id, d.Title, d.DocumentType, d.IsFavorite, IconFor(d.DocumentType),
+            Detail: d.DocumentType == DocumentType.Other ? "Nelze otevřít v appce — otevře se v jiné aplikaci" : null);
+
+    private static DocumentItem RemoteItem(SharedLibraryFileSummary file)
+    {
+        var type = SecureApp.Data.Import.DocumentImportService.ClassifyByExtension(file.FileName);
+        return new DocumentItem(Guid.Empty, Path.GetFileNameWithoutExtension(file.FileName), type, false, IconFor(type),
+            RemoteLibraryFileId: file.Id, Detail: RemoteDetail(file));
+    }
+
+    private static string RemoteDetail(SharedLibraryFileSummary file) =>
+        $"{Library.LibraryFileAvailability.Hint(file.FileName, onDevice: false)} · {Library.LibraryFileAvailability.FormatSize(file.SizeBytes)}";
+
     private static string IconFor(DocumentType documentType) => documentType switch
     {
+        DocumentType.Cms => "📝",
         DocumentType.Pdf => "📕",
         DocumentType.Image => "🖼",
         DocumentType.Spreadsheet => "📊",
@@ -253,4 +287,8 @@ public sealed partial class DocumentBrowserViewModel : ObservableObject
 
 public sealed record DocumentFolderItem(Guid Id, string Name);
 
-public sealed record DocumentItem(Guid Id, string Title, DocumentType DocumentType, bool IsFavorite, string Icon);
+/// <summary>A local document, or (<see cref="RemoteLibraryFileId"/> set) a library file not downloaded yet.</summary>
+public sealed record DocumentItem(Guid Id, string Title, DocumentType DocumentType, bool IsFavorite, string Icon, Guid? RemoteLibraryFileId = null, string? Detail = null)
+{
+    public bool HasDetail => Detail is not null;
+}

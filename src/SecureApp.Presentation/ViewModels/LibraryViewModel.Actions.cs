@@ -54,14 +54,66 @@ public sealed partial class LibraryViewModel
         if (item is null) return;
 
         StatusErrorMessage = null;
+        // The card says "⏳ stahuje se…" while a file not on the device yet is fetched (2026-11-18).
+        if (item.OpenHint?.StartsWith('☁') == true) ReplaceCard(item, item with { OpenHint = "⏳ stahuje se…" });
         try
         {
             var document = await _libraryService.DownloadAndImportAsync(item.Id);
+            ReplaceCard(item, item with { OpenHint = Library.LibraryFileAvailability.Hint(item.FileName, onDevice: true) });
             await Shell.Current.GoToAsync($"{nameof(DocumentViewerPage)}?documentId={document.Id}", animate: false); // uniform with chat opens
         }
         catch (Exception ex)
         {
+            ReplaceCard(item, item);
             StatusErrorMessage = $"Nepodařilo se otevřít '{item.FileName}': {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// 📂 (2026-11-18, user: "přesouvat výukové materiály" — Admin, Modifier, Redaktor): pick the new branch the same way
+    /// as when approving, move it on the relay, then reload what's on screen.
+    /// </summary>
+    [RelayCommand]
+    private async Task MoveFileAsync(LibraryFileItem? item)
+    {
+        if (item is null || !CanMoveMaterials || Shell.Current?.CurrentPage is not { } page) return;
+
+        StatusErrorMessage = null;
+        try
+        {
+            var target = await Library.LibraryPlacementPicker.PickAsync(page, _libraryService, $"Přesunout „{item.FileName}“", item.FolderPath);
+            if (target is null || string.Equals(target, item.FolderPath, StringComparison.OrdinalIgnoreCase)) return;
+
+            await _libraryService.MoveFileAsync(item.Id, target);
+            await LoadAsync(showSpinner: false, refreshExtras: true);
+            if (IsTopCategorySelected && SelectedCategory is { } category)
+            {
+                _categoryFilesCache.Remove(category);
+                await RefreshSubcategoriesAsync(category);
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusErrorMessage = $"„{item.FileName}“ se nepodařilo přesunout: {ex.Message}";
+        }
+    }
+
+    /// <summary>🗑 asks first (2026-11-18 — Admin and Modifier delete anyone's material), then the plain delete.</summary>
+    [RelayCommand]
+    private async Task ConfirmDeleteAsync(LibraryFileItem? item)
+    {
+        if (item is null || Shell.Current?.CurrentPage is not { } page) return;
+        if (!await Library.LibraryFileAvailability.ConfirmDeleteAsync(page, item.FileName)) return;
+        await DeleteAsync(item);
+    }
+
+    /// <summary>Swaps the card for the same file in place, in whichever list shows it.</summary>
+    private void ReplaceCard(LibraryFileItem original, LibraryFileItem updated)
+    {
+        foreach (var list in new[] { Results, CategoryFiles })
+        {
+            for (var i = 0; i < list.Count; i++)
+                if (list[i].Id == original.Id) list[i] = updated;
         }
     }
 

@@ -140,7 +140,7 @@ public sealed class HttpLibraryReviewService : ILibraryReviewService
             dto.Reviews.Select(r => new LibraryDocumentReviewEntry(r.Id, r.LibraryDocumentId, r.VersionId, r.ReviewerDeviceId.ToString(), r.Decision, r.Comment, r.DecidedAtUtc)).ToList());
     }
 
-    public async Task ReviewAsync(Guid documentId, bool approve, string? comment, CancellationToken ct = default)
+    public async Task ReviewAsync(Guid documentId, bool approve, string? comment, CancellationToken ct = default, string? folderPath = null)
     {
         if (!approve && string.IsNullOrWhiteSpace(comment))
             throw new InvalidOperationException("Při zamítnutí je komentář povinný.");
@@ -148,12 +148,12 @@ public sealed class HttpLibraryReviewService : ILibraryReviewService
         var endpoint = await GetHttpEndpointAsync(ct);
         using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(endpoint, $"library-documents/{documentId}/review"))
         {
-            Content = JsonContent.Create(new { Decision = approve ? "Approved" : "Rejected", Comment = comment }, options: HttpJsonOptions),
+            Content = JsonContent.Create(new { Decision = approve ? "Approved" : "Rejected", Comment = comment, FolderPath = approve ? folderPath : null }, options: HttpJsonOptions),
         };
         await AddDeviceAuthAsync(request, ct);
         using var response = await _httpClient.SendAsync(request, ct);
         if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
-            throw new InvalidOperationException("Nemáte oprávnění tento dokument schvalovat (buď nejste Reviewer, nebo jde o váš vlastní návrh).");
+            throw new InvalidOperationException("Nemáte oprávnění tento dokument schvalovat (nejste Admin, Redaktor ani Reviewer, nebo jde o váš vlastní návrh).");
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             throw new InvalidOperationException("Tento dokument na relay serveru už neexistuje.");
         response.EnsureSuccessStatusCode();

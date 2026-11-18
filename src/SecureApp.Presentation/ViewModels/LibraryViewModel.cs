@@ -28,6 +28,7 @@ public sealed partial class LibraryViewModel : ObservableObject, Translation.ILi
     private readonly ITransportSettingsRepository _transportSettingsRepository;
     private readonly ILibraryTranslationService _libraryTranslationService;
     private readonly RolePreviewService _rolePreviewService;
+    private readonly Library.LibraryMirrorSync _mirror;
 
     [ObservableProperty]
     public partial string SearchQuery { get; set; }
@@ -205,6 +206,13 @@ public sealed partial class LibraryViewModel : ObservableObject, Translation.ILi
     [ObservableProperty]
     public partial string? TranslationStatusText { get; set; }
 
+    /// <summary>📂 on every file card: move a teaching material to another branch — Admin, Modifier, Redaktor (2026-11-18).</summary>
+    [ObservableProperty]
+    public partial bool CanMoveMaterials { get; set; }
+
+    /// <summary>🗑 on every file card, not only one's own uploads — Admin and Modifier (2026-11-18, user: "Admin i Modifier").</summary>
+    private bool CanDeleteAnyMaterial => RoleAccessPolicy.IsAllowed(_rolePreviewService.Resolve(_currentUserService.Current.Role), RbacAction.DeleteLibraryFile);
+
     public LibraryViewModel(
         ISharedLibraryService libraryService,
         ICurrentUserService currentUserService,
@@ -213,8 +221,10 @@ public sealed partial class LibraryViewModel : ObservableObject, Translation.ILi
         IDevicePolicyService devicePolicyService,
         ITransportSettingsRepository transportSettingsRepository,
         ILibraryTranslationService libraryTranslationService,
-        RolePreviewService rolePreviewService)
+        RolePreviewService rolePreviewService,
+        Library.LibraryMirrorSync mirror)
     {
+        _mirror = mirror ?? throw new ArgumentNullException(nameof(mirror));
         _libraryService = libraryService ?? throw new ArgumentNullException(nameof(libraryService));
         _currentUserService = currentUserService ?? throw new ArgumentNullException(nameof(currentUserService));
         _diagnosticsReporter = diagnosticsReporter ?? throw new ArgumentNullException(nameof(diagnosticsReporter));
@@ -298,8 +308,10 @@ public sealed partial class LibraryViewModel : ObservableObject, Translation.ILi
 
         StatusErrorMessage = null;
         CanModifyContent = RoleAccessPolicy.IsAllowed(_rolePreviewService.Resolve(_currentUserService.Current.Role), RbacAction.UploadLibraryFile);
+        CanMoveMaterials = RoleAccessPolicy.IsAllowed(_rolePreviewService.Resolve(_currentUserService.Current.Role), RbacAction.ManageLibraryStructure);
         CanTranslateDocuments = ComputeCanTranslateDocuments();
         var canTranslate = CanTranslateDocuments;
+        var canDeleteAny = CanDeleteAnyMaterial;
         var query = string.IsNullOrWhiteSpace(SearchQuery) ? null : SearchQuery;
         var folder = string.IsNullOrWhiteSpace(FolderFilter) ? null : FolderFilter;
         var loadedOk = false;
@@ -318,7 +330,8 @@ public sealed partial class LibraryViewModel : ObservableObject, Translation.ILi
                 Infrastructure.AppLog.Metric("search_latency.library", sw.Elapsed.TotalMilliseconds, "ms", ("resultCount", results.Count));
 
                 var myDeviceId = (await _transportSettingsRepository.GetAsync())?.AssignedDeviceId;
-                var items = results.Select(r => ToItem(r, myDeviceId, canTranslate)).ToList();
+                var held = await _mirror.GetHeldLibraryFileIdsAsync();
+                var items = results.Select(r => ToItem(r, myDeviceId, canTranslate, held, canDeleteAny)).ToList();
 
                 // With no folder filter the fetch above already IS the unfiltered list the category row
                 // needs — reuse it instead of asking the relay for the same list twice.
@@ -390,7 +403,7 @@ public sealed partial class LibraryViewModel : ObservableObject, Translation.ILi
         // 2026-11-14 (user: "Není tam schválení dokumentů… a už vůbec seznam"): a local Admin always gets
         // the review card. If the relay doesn't know them as Admin/reviewer yet, the card's own error
         // text says how to fix it, instead of the queue silently not existing.
-        var isLocalAdmin = localRole == SecureApp.Domain.Enums.Role.Admin;
+        var isLocalAdmin = localRole is SecureApp.Domain.Enums.Role.Admin or SecureApp.Domain.Enums.Role.Redaktor; // Redaktor reviews by role too
         IsDocumentReviewer = isLocalAdmin;
         try
         {
@@ -399,9 +412,9 @@ public sealed partial class LibraryViewModel : ObservableObject, Translation.ILi
             {
                 var policy = await _devicePolicyService.GetMyPolicyAsync();
                 var mine = await _libraryReviewService.GetMyDocumentsAsync();
-                // Same rule the relay's /library-documents/pending and /review enforce: a reviewer OR a
-                // relay-assigned Admin.
-                var canReview = policy.IsDocumentReviewer || policy.Role == SecureApp.Domain.Enums.Role.Admin;
+                // Same rule the relay's /library-documents/pending and /review enforce (one shared policy): a reviewer,
+                // a relay-assigned Admin, or a Redaktor (2026-11-18).
+                var canReview = LibraryReviewPolicy.MayReview(policy.Role, policy.IsDocumentReviewer);
                 return (canReview, mine.Select(ToDraftItem).ToList());
             });
             IsDocumentReviewer = isReviewer || isLocalAdmin;
@@ -430,42 +443,15 @@ public sealed partial class LibraryViewModel : ObservableObject, Translation.ILi
     };
 
     /// <summary>
-    /// A starting structure so the chip row isn't empty before anyone has uploaded anything — the
-    /// 5 top-level sections from the reference mockup (2026-10-02). Not exclusive: any other folder
-    /// name typed on upload shows up as its own chip too (see RefreshCategoriesAsync below), this is
-    /// just a floor, not a ceiling. Worth making admin-editable later rather than a hardcoded list,
-    /// if the community's categories evolve.
-    /// </summary>
-    private static readonly string[] SeedCategories = ["Doporučení", "Resuscitace", "Postupy", "Výuka", "Nástroje"];
-
-    /// <summary>
     /// Unfiltered fetch, deliberately separate from the (possibly filtered) Results above — the
     /// chip row needs to keep showing every category that exists regardless of which one is
     /// currently selected, not just whichever one the active filter happens to match.
     /// </summary>
     private static List<string> BuildCategoryNames(IReadOnlyList<SharedLibraryFileSummary> all)
     {
-        // Only the segment before the first '/' — a sub-category file's FolderPath is
-        // "{Top}/{Sub}" (2026-10-02), and without this split that whole two-segment string would
-        // show up as its own ad-hoc top-level chip instead of folding into its real parent.
-        var uploadedFolders = all
-            .Select(f => f.FolderPath)
-            .Where(f => !string.IsNullOrWhiteSpace(f))
-            .Select(f => f!.Split('/', 2)[0]);
-
-        // SeedCategories keep their own fixed mockup order (Doporučení, Resuscitace, Postupy,
-        // Výuka, Nástroje) rather than being re-sorted alphabetically — only a genuinely new,
-        // community-typed folder name (not one of the five) falls back to alphabetical, appended
-        // after them since it has no defined place in that order.
-        var extraFolders = uploadedFolders
-            .Where(f => !SeedCategories.Contains(f, StringComparer.OrdinalIgnoreCase))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(f => f, StringComparer.OrdinalIgnoreCase);
-
-        var distinctFolders = SeedCategories.Concat(extraFolders).ToList();
-
+        // Seed categories in their fixed mockup order, then any other top folder alphabetically (Library.LibraryStructure).
         var names = new List<string> { "Vše" };
-        names.AddRange(distinctFolders);
+        names.AddRange(Library.LibraryStructure.TopCategories(all));
         return names;
     }
 
@@ -595,7 +581,7 @@ public sealed partial class LibraryViewModel : ObservableObject, Translation.ILi
 
     /// <summary>What a card shows — <see cref="LibraryFileItem"/>'s own equality compares its Tags list by reference, so it can't tell "unchanged" apart.</summary>
     private static bool SameCards(List<LibraryFileItem> a, List<LibraryFileItem> b) =>
-        a.Select(f => (f.Id, f.FileName, f.SizeAndDateText)).SequenceEqual(b.Select(f => (f.Id, f.FileName, f.SizeAndDateText)));
+        a.Select(f => (f.Id, f.FileName, f.SizeAndDateText, f.OpenHint)).SequenceEqual(b.Select(f => (f.Id, f.FileName, f.SizeAndDateText, f.OpenHint)));
 
     /// <summary>Best-effort, same posture as <see cref="RefreshReviewWorkflowStateAsync"/> — a failure here must never block browsing. Runs on a worker thread; a newer call (another tile tapped) cancels this one.</summary>
     private async Task RefreshSubcategoriesAsync(string category)
@@ -603,6 +589,7 @@ public sealed partial class LibraryViewModel : ObservableObject, Translation.ILi
         _subcategoriesCts?.Cancel();
         var cts = _subcategoriesCts = new CancellationTokenSource();
         var canTranslate = CanTranslateDocuments;
+        var canDeleteAny = CanDeleteAnyMaterial;
 
         try
         {
@@ -615,11 +602,12 @@ public sealed partial class LibraryViewModel : ObservableObject, Translation.ILi
                 var filesTask = _libraryService.SearchAsync(folderPath: category, ct: cts.Token);
                 var summaries = await subcategoriesTask;
                 var fileSummaries = await filesTask;
+                var held = await _mirror.GetHeldLibraryFileIdsAsync(cts.Token);
                 return (
                     summaries.Select(s => ToSubcategoryItem(s, myDeviceId)).ToList(),
                     fileSummaries
                         .Where(f => string.Equals(f.FolderPath?.Trim(), category, StringComparison.OrdinalIgnoreCase))
-                        .Select(f => ToItem(f, myDeviceId, canTranslate))
+                        .Select(f => ToItem(f, myDeviceId, canTranslate, held, canDeleteAny))
                         .ToList());
             }, cts.Token);
 
@@ -672,7 +660,7 @@ public sealed partial class LibraryViewModel : ObservableObject, Translation.ILi
         summary.Name,
         myDeviceId is { } id && string.Equals(summary.CreatedByDeviceId, id.ToString(), StringComparison.OrdinalIgnoreCase));
 
-    private static LibraryFileItem ToItem(SharedLibraryFileSummary summary, Guid? myDeviceId, bool canTranslateDocuments)
+    private static LibraryFileItem ToItem(SharedLibraryFileSummary summary, Guid? myDeviceId, bool canTranslateDocuments, HashSet<Guid> held, bool canDeleteAny = false)
     {
         var hasFolder = !string.IsNullOrWhiteSpace(summary.FolderPath);
         var sizeAndDate = $"{FormatSize(summary.SizeBytes)} · Aktualizováno {summary.UploadedAtUtc.LocalDateTime:g}";
@@ -690,7 +678,10 @@ public sealed partial class LibraryViewModel : ObservableObject, Translation.ILi
             summary.Tags.Count > 0,
             sizeAndDate,
             isMine,
-            canTranslateDocuments && summary.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase));
+            canTranslateDocuments && summary.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase),
+            Library.LibraryFileAvailability.Hint(summary.FileName, held.Contains(summary.Id)),
+            // 2026-11-18: Admin and Modifier delete any material (the relay checks the same), everyone else their own.
+            isMine || canDeleteAny);
     }
 
     [RelayCommand]
@@ -729,7 +720,14 @@ public sealed partial class LibraryViewModel : ObservableObject, Translation.ILi
 /// accent-colored category line and the tags as individual chips, matching the redesign mockup
 /// (https://claude.ai/code/artifact/7a7bebe1-6ea6-4df1-9908-b9bbdc900ccf) instead of one flat gray line.
 /// </summary>
-public sealed record LibraryFileItem(Guid Id, string FileName, string? FolderPath, bool HasFolder, IReadOnlyList<LibraryTagItem> Tags, bool HasTags, string SizeAndDateText, bool IsMine, bool CanTranslate = false);
+public sealed record LibraryFileItem(Guid Id, string FileName, string? FolderPath, bool HasFolder, IReadOnlyList<LibraryTagItem> Tags, bool HasTags, string SizeAndDateText, bool IsMine, bool CanTranslate = false, string? OpenHint = null, bool CanDelete = false)
+{
+    /// <summary>A teaching document from Redakce — deleting it withdraws it from the library (back to its author) rather than destroying it.</summary>
+    public bool IsTeachingDocument => FileName.EndsWith(".cmsdoc", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>What a tap does — "☁ na serveru · stáhne se při otevření", "✓ v zařízení", "nelze otevřít v appce" (2026-11-18, <see cref="Library.LibraryFileAvailability"/>).</summary>
+    public bool HasOpenHint => OpenHint is not null;
+}
 
 /// <summary>Wraps a plain tag string only so it has a stable reference type for BindableLayout's ItemsSource — a bare List&lt;string&gt; binds fine too, but this keeps the DataTemplate's x:DataType explicit rather than implicitly "x:String".</summary>
 public sealed record LibraryTagItem(string Label);

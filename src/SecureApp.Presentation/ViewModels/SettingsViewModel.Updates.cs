@@ -113,7 +113,9 @@ public sealed partial class SettingsViewModel
     /// defaulting to Modifier, the same safe floor <c>CurrentUserService</c> already bootstraps a
     /// new device to locally.
     /// </summary>
-    public IReadOnlyList<string> NewMemberRoleChoices { get; } = ["Modifier", "Viewer", "Admin"];
+    /// <remarks>2026-11-18: Admin removed — the user's standing rule "nový člen nebude nikdy admin" (an existing
+    /// member can still be made Admin in Správa členů); Redaktor added with the new role.</remarks>
+    public IReadOnlyList<string> NewMemberRoleChoices { get; } = ["Modifier", "Viewer", "Redaktor"];
 
     [ObservableProperty]
     public partial int NewMemberRoleIndex { get; set; } = 0;
@@ -121,7 +123,7 @@ public sealed partial class SettingsViewModel
     private SecureApp.Domain.Enums.Role NewMemberRole => NewMemberRoleIndex switch
     {
         1 => SecureApp.Domain.Enums.Role.Viewer,
-        2 => SecureApp.Domain.Enums.Role.Admin,
+        2 => SecureApp.Domain.Enums.Role.Redaktor,
         _ => SecureApp.Domain.Enums.Role.Modifier,
     };
 

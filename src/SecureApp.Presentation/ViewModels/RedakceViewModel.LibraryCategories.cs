@@ -15,11 +15,6 @@ namespace SecureApp.Presentation.ViewModels;
 /// </summary>
 public sealed partial class RedakceViewModel
 {
-    /// <summary>Same floor-not-ceiling seed list as <see cref="LibraryViewModel"/>'s own — duplicated
-    /// on purpose, two small independently-readable lists beat reaching a shared static across
-    /// ViewModels for five strings.</summary>
-    private static readonly string[] LibrarySeedCategories = ["Doporučení", "Resuscitace", "Postupy", "Výuka", "Nástroje"];
-
     [ObservableProperty]
     public partial ObservableCollection<string> LibraryTopCategories { get; set; }
 
@@ -53,32 +48,62 @@ public sealed partial class RedakceViewModel
 
     partial void OnHasLibrarySubcategoriesChanged(bool value) => HasNoLibrarySubcategories = !value;
 
-    partial void OnSelectedLibraryTopCategoryChanged(string? value) => _ = RefreshLibrarySubcategoriesAsync();
+    /// <summary>
+    /// Whose sub-categories are listed/added: the picked top category, or one of its sub-categories after "›" — a third
+    /// level such as Výuka › Anestezie › Regionální (2026-11-18). Same relay table, the parent is just this path.
+    /// </summary>
+    [ObservableProperty]
+    public partial string? LibraryParentPath { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsInLibrarySubcategory { get; set; }
+
+    [ObservableProperty]
+    public partial string LibraryParentPathText { get; set; } = string.Empty;
+
+
+    partial void OnSelectedLibraryTopCategoryChanged(string? value) => LibraryParentPath = value;
+
+    partial void OnLibraryParentPathChanged(string? value)
+    {
+        IsInLibrarySubcategory = value?.Contains('/') == true;
+        LibraryParentPathText = value?.Replace("/", " › ") ?? string.Empty;
+        _ = RefreshLibrarySubcategoriesAsync();
+    }
+
+    [RelayCommand]
+    private void OpenLibrarySubcategory(SubcategoryItem? item)
+    {
+        if (item is null) return;
+        var path = $"{item.ParentCategory}/{item.Name}";
+        if (path.Split('/').Length >= Library.LibraryPlacementPicker.MaxDepth)
+        {
+            LibraryCategoriesStatusText = "Hlouběji už podkategorie nejdou (nejvýš kategorie a tři úrovně).";
+            return;
+        }
+        LibraryCategoriesStatusText = null;
+        LibraryParentPath = path;
+    }
+
+    [RelayCommand]
+    private void LibraryParentUp()
+    {
+        if (LibraryParentPath is not { } path || !path.Contains('/')) return;
+        LibraryCategoriesStatusText = null;
+        LibraryParentPath = path[..path.LastIndexOf('/')];
+    }
 
     /// <summary>Best-effort, same posture as the rest of this page's background extras — a failure
     /// here must never block Redakce from loading. Only called for a Modifier/Admin
     /// (<see cref="CanManageLibrary"/>); a Viewer has nothing to manage here.</summary>
     private async Task RefreshLibraryCategoriesAsync()
     {
-        if (!CanManageLibrary) return;
+        if (!CanManageLibraryStructure) return;
         try
         {
             var all = await _sharedLibraryService.SearchAsync();
-            // Only the segment before the first '/' — a sub-category file's FolderPath is
-            // "{Top}/{Sub}", matching LibraryViewModel.RefreshCategoriesAsync's own split.
-            var topLevelFolders = all
-                .Select(f => f.FolderPath)
-                .Where(f => !string.IsNullOrWhiteSpace(f))
-                .Select(f => f!.Split('/', 2)[0]);
-
-            // Seed categories keep their fixed mockup order, same as LibraryViewModel's own —
-            // only a genuinely new, community-typed folder name falls back to alphabetical.
-            var extraFolders = topLevelFolders
-                .Where(f => !LibrarySeedCategories.Contains(f, StringComparer.OrdinalIgnoreCase))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(f => f, StringComparer.OrdinalIgnoreCase);
-
-            var names = LibrarySeedCategories.Concat(extraFolders).ToList();
+            // Seed categories in their fixed order, then any other top folder (the same list Knihovna shows).
+            var names = Library.LibraryStructure.TopCategories(all);
 
             LibraryTopCategories = new ObservableCollection<string>(names);
             // Assigning a first selection already triggers OnSelectedLibraryTopCategoryChanged →
@@ -97,7 +122,7 @@ public sealed partial class RedakceViewModel
 
     private async Task RefreshLibrarySubcategoriesAsync()
     {
-        if (SelectedLibraryTopCategory is null)
+        if (LibraryParentPath is not { } parent)
         {
             LibrarySubcategories = [];
             HasLibrarySubcategories = false;
@@ -108,10 +133,12 @@ public sealed partial class RedakceViewModel
         try
         {
             var myDeviceId = (await _transportSettingsRepository.GetAsync())?.AssignedDeviceId;
-            var items = await _sharedLibraryService.ListSubcategoriesAsync(SelectedLibraryTopCategory);
+            var items = await _sharedLibraryService.ListSubcategoriesAsync(parent);
+            if (parent != LibraryParentPath) return; // moved elsewhere meanwhile
+            // Admin/Modifier/Redaktor delete any (empty) branch, not only their own (2026-11-18; the relay checks both).
             LibrarySubcategories = new ObservableCollection<SubcategoryItem>(items.Select(s => new SubcategoryItem(
                 s.Id, s.ParentCategory, s.Name,
-                myDeviceId is { } id && string.Equals(s.CreatedByDeviceId, id.ToString(), StringComparison.OrdinalIgnoreCase))));
+                CanManageLibraryStructure || myDeviceId is { } id && string.Equals(s.CreatedByDeviceId, id.ToString(), StringComparison.OrdinalIgnoreCase))));
             HasLibrarySubcategories = LibrarySubcategories.Count > 0;
         }
         catch (Exception ex)
@@ -133,7 +160,7 @@ public sealed partial class RedakceViewModel
     [RelayCommand]
     private async Task AddLibrarySubcategoryAsync()
     {
-        if (SelectedLibraryTopCategory is null)
+        if (LibraryParentPath is not { } parent)
         {
             LibraryCategoriesStatusText = "Nejprve vyberte kategorii.";
             return;
@@ -143,11 +170,16 @@ public sealed partial class RedakceViewModel
             LibraryCategoriesStatusText = "Zadejte název podkategorie.";
             return;
         }
+        if (NewLibrarySubcategoryNameText.Contains('/'))
+        {
+            LibraryCategoriesStatusText = "Název podkategorie nesmí obsahovat lomítko „/“.";
+            return;
+        }
 
         LibraryCategoriesStatusText = null;
         try
         {
-            await _sharedLibraryService.CreateSubcategoryAsync(SelectedLibraryTopCategory, NewLibrarySubcategoryNameText.Trim());
+            await _sharedLibraryService.CreateSubcategoryAsync(parent, NewLibrarySubcategoryNameText.Trim());
             NewLibrarySubcategoryNameText = string.Empty;
             await RefreshLibrarySubcategoriesAsync();
         }

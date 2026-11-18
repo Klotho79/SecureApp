@@ -477,6 +477,18 @@
                     </VerticalStackLayout>
                 </Border>
 
+                <!-- Dokumenty v zařízení (2026-11-18, user's call): default = download on first open. -->
+                <Border Style="{StaticResource CardBorder}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Dokumenty v zařízení" Style="{StaticResource SectionHeader}" Margin="0" />
+                        <Grid ColumnDefinitions="*,Auto">
+                            <Label Grid.Column="0" Text="Stáhnout vše dopředu" VerticalOptions="Center" FontAttributes="Bold" />
+                            <Switch Grid.Column="1" IsToggled="{Binding IsLibraryPrefetchAll}" />
+                        </Grid>
+                        <Label Text="Vypnuto: Soubory → Dokumenty ukazují vše, co je na serveru (☁ = ještě není v zařízení), a soubor se stáhne při prvním otevření — pak se otevírá rychle i bez připojení. Zapnuto: stáhne se všechno předem (soubory nad 25 MB jen přes Wi-Fi). Už stažené soubory zůstávají. Platí jen pro toto zařízení." FontSize="9.5" TextColor="Gray" />
+                    </VerticalStackLayout>
+                </Border>
+
                 <!-- Správa kategorií knihovny přesunuta do Redakce (2026-10-13, user's own ask:
                      "V nastaveni sytem kategorie knihovny patri taky do redakce"). -->
                 </VerticalStackLayout>

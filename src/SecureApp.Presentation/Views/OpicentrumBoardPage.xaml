@@ -14,9 +14,20 @@
          width first; the title takes what is left and is shortened rather than pushing Obnovit off the screen. -->
     <Shell.TitleView>
         <Grid ColumnDefinitions="{OnIdiom Phone='*,Auto,Auto,Auto', Default='Auto,Auto,Auto,Auto'}" ColumnSpacing="6" VerticalOptions="Center">
-            <Label Grid.Column="0" Text="Opicentrum" FontSize="{OnIdiom Phone=14, Default=16}" FontAttributes="Bold" VerticalOptions="Center"
-                   Margin="{OnIdiom Phone='0', Default='0,0,6,0'}" LineBreakMode="TailTruncation"
-                   TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource SecondaryDarkText}}" />
+            <!-- On a phone the title IS the refresh (2026-11-18, user: "zruš tlačítko obnovit, obnov při klepnutí na
+                 nápis Opicentrum"): the second line says when the open board was updated, green = tap refreshes now,
+                 grey = too soon. Wired in code-behind (OpicentrumBoardPage.ApplyPhoneTitle); the PC keeps the button. -->
+            <VerticalStackLayout x:Name="TitleBlock" Grid.Column="0" Spacing="0" VerticalOptions="Center" Margin="{OnIdiom Phone='0', Default='0,0,6,0'}">
+                <Label Text="Opicentrum" FontSize="{OnIdiom Phone=14, Default=16}" FontAttributes="Bold" LineBreakMode="TailTruncation"
+                       TextColor="{AppThemeBinding Light={StaticResource Black}, Dark={StaticResource SecondaryDarkText}}" />
+                <Label x:Name="TitleRefreshStatus" Text="{Binding RefreshStatusText}" FontSize="9" LineBreakMode="TailTruncation" IsVisible="False" TextColor="Gray">
+                    <Label.Triggers>
+                        <DataTrigger TargetType="Label" Binding="{Binding CanRefresh}" Value="True">
+                            <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Success}, Dark={StaticResource SuccessDark}}" />
+                        </DataTrigger>
+                    </Label.Triggers>
+                </Label>
+            </VerticalStackLayout>
             <Button Grid.Column="1" Text="Pozice" Style="{StaticResource SubTabButton}" Margin="0" Padding="{OnIdiom Phone='8,4', Default='10,6'}"
                     VerticalOptions="Center" IsVisible="{Binding IsAccessGranted}"
                     Command="{Binding SelectSubTabCommand}" CommandParameter="0">
@@ -39,7 +50,7 @@
             </Button>
             <!-- One Obnovit for whichever tab is open (2026-11-07): second line = when the board was last updated; green =
                  a refresh is allowed now, grey = too soon after the last update (OpicentrumBoardViewModel.Refresh.cs). -->
-            <Button Grid.Column="3" Text="{Binding RefreshButtonText}" Style="{StaticResource SubTabButton}" Margin="0" VerticalOptions="Center"
+            <Button x:Name="RefreshButton" Grid.Column="3" Text="{Binding RefreshButtonText}" Style="{StaticResource SubTabButton}" Margin="0" VerticalOptions="Center"
                     FontSize="10" Padding="{OnIdiom Phone='6,2', Default='8,2'}" LineBreakMode="WordWrap" IsVisible="{Binding IsAccessGranted}"
                     Command="{Binding RefreshCurrentCommand}" IsEnabled="{Binding CanRefresh}">
                 <Button.Triggers>
@@ -83,7 +94,7 @@
             <Label Grid.Row="2" Text="{Binding PositionsErrorText}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" IsVisible="{Binding HasPositionsError}" LineBreakMode="WordWrap" />
 
             <controls:DelayedActivityIndicator Grid.Row="3" IsBusy="{Binding IsPositionsLoading}" HorizontalOptions="Center" VerticalOptions="Center" />
-            <Label Grid.Row="3" Text="Pro tento týden zatím nejsou data — stiskněte Obnovit." FontSize="10" TextColor="Gray" HorizontalOptions="Center" VerticalOptions="Center" IsVisible="{Binding ShowNoPositionsData}" />
+            <Label Grid.Row="3" Text="{OnIdiom Phone='Pro tento týden zatím nejsou data — klepněte na nápis Opicentrum.', Default='Pro tento týden zatím nejsou data — stiskněte Obnovit.'}" FontSize="10" TextColor="Gray" HorizontalOptions="Center" VerticalOptions="Center" IsVisible="{Binding ShowNoPositionsData}" />
 
             <!-- Pannable board — ScrollView(Both) gives the "window bigger than the display, can pan
                  around" the user asked for. 2026-10-24: drawn on canvases (PositionsBoardView) instead of
@@ -109,7 +120,7 @@
             <Label Grid.Row="0" Text="{Binding VolnoErrorText}" FontSize="9.5" TextColor="{AppThemeBinding Light={StaticResource Danger}, Dark={StaticResource DangerDark}}" IsVisible="{Binding HasVolnoError}" LineBreakMode="WordWrap" />
 
             <controls:DelayedActivityIndicator Grid.Row="1" IsBusy="{Binding IsVolnoLoading}" HorizontalOptions="Center" VerticalOptions="Center" />
-            <Label Grid.Row="1" Text="Zatím žádná data — stiskněte Obnovit." FontSize="10" TextColor="Gray" HorizontalOptions="Center" VerticalOptions="Center" IsVisible="{Binding HasNoVolnoData}" />
+            <Label Grid.Row="1" Text="{OnIdiom Phone='Zatím žádná data — klepněte na nápis Opicentrum.', Default='Zatím žádná data — stiskněte Obnovit.'}" FontSize="10" TextColor="Gray" HorizontalOptions="Center" VerticalOptions="Center" IsVisible="{Binding HasNoVolnoData}" />
 
             <!-- Read-only this round — see OpicentrumBoardViewModel.Volno.cs's own remarks. -->
             <!-- 2026-10-24: drawn on canvases (VolnoBoardView) instead of ~1 740 Labels. The body scrolls

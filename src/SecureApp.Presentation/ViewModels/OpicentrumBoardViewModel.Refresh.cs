@@ -35,11 +35,22 @@ public sealed partial class OpicentrumBoardViewModel
         }
     }
 
+    /// <summary>Phone: the line under the "Opicentrum" title, which is itself the refresh (2026-11-18).</summary>
+    public string RefreshStatusText
+    {
+        get
+        {
+            if (IsRefreshing) return "Obnovuji…";
+            return CurrentUpdatedAt is { } updated ? $"⟳ {FormatRelativeTime(updated)}" : "⟳ klepni pro obnovení";
+        }
+    }
+
     /// <summary>Called by the page's timer (and on every state change) so the age text and the allowed/blocked colour stay current.</summary>
     public void NotifyRefreshState()
     {
         OnPropertyChanged(nameof(CanRefresh));
         OnPropertyChanged(nameof(RefreshButtonText));
+        OnPropertyChanged(nameof(RefreshStatusText));
     }
 
     [RelayCommand]

@@ -33,6 +33,9 @@ public interface ILibraryReviewService
     /// <summary>Full detail (versions + review history) for one document.</summary>
     Task<LibraryDocumentDetail> GetDetailAsync(Guid documentId, CancellationToken ct = default);
 
-    /// <summary>Approves (publishes) or rejects the document's current pending version. <paramref name="comment"/> is required when rejecting.</summary>
-    Task ReviewAsync(Guid documentId, bool approve, string? comment, CancellationToken ct = default);
+    /// <summary>
+    /// Approves (publishes) or rejects the document's current pending version. <paramref name="comment"/> is required when rejecting.
+    /// <paramref name="folderPath"/> (2026-11-18): where the approved document is filed — "{Kategorie}" or "{Kategorie}/{Podkategorie}".
+    /// </summary>
+    Task ReviewAsync(Guid documentId, bool approve, string? comment, CancellationToken ct = default, string? folderPath = null);
 }

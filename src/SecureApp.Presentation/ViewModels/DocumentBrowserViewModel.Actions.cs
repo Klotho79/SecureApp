@@ -63,8 +63,41 @@ public sealed partial class DocumentBrowserViewModel
     {
         if (document is null) return;
 
+        var documentId = document.Id;
+        if (document.RemoteLibraryFileId is { } libraryFileId)
+        {
+            // First open of a library file (2026-11-18): fetch it into the root once; from then on it opens
+            // straight from the device, offline too.
+            if (IsDownloading) return;
+            IsDownloading = true;
+            DownloadingText = $"Stahuji „{document.Title}“…";
+            StatusErrorMessage = null;
+            var index = Documents.IndexOf(document);
+            if (index >= 0) Documents[index] = document with { Detail = "⏳ stahuje se…" };
+            try
+            {
+                documentId = (await _libraryService.DownloadAndImportAsync(libraryFileId)).Id;
+            }
+            catch (HttpRequestException)
+            {
+                StatusErrorMessage = $"„{document.Title}“ ještě není v tomto zařízení a teď se nedá stáhnout — zkontrolujte připojení.";
+                return;
+            }
+            catch (Exception ex)
+            {
+                StatusErrorMessage = $"„{document.Title}“ se nepodařilo stáhnout: {ex.Message}";
+                return;
+            }
+            finally
+            {
+                IsDownloading = false;
+                if (index >= 0 && index < Documents.Count && Documents[index].RemoteLibraryFileId == libraryFileId)
+                    Documents[index] = document; // back to "☁ … stáhne se při otevření" until the list reloads
+            }
+        }
+
         // animate:false (2026-09-13) — uniform with chat opens; drops the push slide that made opening a
         // photo/document jank the same way the chat did.
-        await Shell.Current.GoToAsync($"{nameof(DocumentViewerPage)}?documentId={document.Id}", animate: false);
+        await Shell.Current.GoToAsync($"{nameof(DocumentViewerPage)}?documentId={documentId}", animate: false);
     }
 }

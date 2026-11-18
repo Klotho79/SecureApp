@@ -45,6 +45,9 @@ public sealed class HttpSharedLibraryService : ISharedLibraryService
     // arbitrarily large transfers.
     private readonly HttpClient _httpClient = SecureApp.Presentation.Transport.RelayHttp.CreateClient(TimeSpan.FromMinutes(5));
 
+    /// <summary>Response header on GET library/files/{id}: "none" = the body is the plain file (see DownloadDecryptedAsync).</summary>
+    public const string PlainContentHeader = "X-Library-Encryption";
+
     public HttpSharedLibraryService(
         ICryptoService crypto,
         ISecureVaultKeyStore vault,
@@ -179,6 +182,15 @@ public sealed class HttpSharedLibraryService : ISharedLibraryService
             : $"{libraryFileId:N}.bin";
 
         var wireBytes = await response.Content.ReadAsByteArrayAsync(ct);
+
+        // 2026-11-18 (user: library files no longer encrypted; personal documents and chat stay encrypted): a file the
+        // relay marks as stored in the clear is the file itself. Read first, so that every device already understands
+        // such files before the relay starts storing them that way; a relay that doesn't send the header stores
+        // ciphertext only.
+        if (response.Headers.TryGetValues(PlainContentHeader, out var encodingValues)
+            && string.Equals(encodingValues.FirstOrDefault(), "none", StringComparison.OrdinalIgnoreCase))
+            return (wireBytes, fileName);
+
         var (nonce, authTag, cipherText) = SharedKeyWire.Split(wireBytes, "Stažený soubor ze sdílené knihovny je příliš krátký, aby mohl obsahovat platná data.");
 
         var key = await GetSharedKeyAsync(ct);
@@ -202,6 +214,8 @@ public sealed class HttpSharedLibraryService : ISharedLibraryService
         using var request = new HttpRequestMessage(HttpMethod.Delete, uri);
         await AddDeviceAuthAsync(request, ct);
         using var response = await _httpClient.SendAsync(request, ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            throw new InvalidOperationException("soubor už v knihovně není, nebo ho smí smazat jen Admin, Modifier či ten, kdo ho nahrál.");
         response.EnsureSuccessStatusCode();
     }
 
@@ -260,6 +274,39 @@ public sealed class HttpSharedLibraryService : ISharedLibraryService
         using var request = new HttpRequestMessage(HttpMethod.Delete, uri);
         await AddDeviceAuthAsync(request, ct);
         using var response = await _httpClient.SendAsync(request, ct);
+        // 2026-11-18: only an empty branch may go, and only for Admin/Modifier/Redaktor (or whoever created it).
+        if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
+            throw new InvalidOperationException("větev není prázdná — nejdřív z ní přesuňte soubory, odkazy a podkategorie.");
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            throw new InvalidOperationException("větev už neexistuje, nebo ji smí smazat jen Admin, Modifier, Redaktor či ten, kdo ji založil.");
+        response.EnsureSuccessStatusCode();
+    }
+
+    public async Task<IReadOnlyList<Guid>> ListRemovedAsync(CancellationToken ct = default)
+    {
+        var endpoint = await GetHttpEndpointAsync(ct);
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(endpoint, "library/removed"));
+        await AddDeviceAuthAsync(request, ct);
+        using var response = await _httpClient.SendAsync(request, ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            return []; // a relay from before 2026-11-18
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<List<Guid>>(HttpJsonOptions, ct) ?? [];
+    }
+
+    public async Task MoveFileAsync(Guid libraryFileId, string folderPath, CancellationToken ct = default)
+    {
+        var endpoint = await GetHttpEndpointAsync(ct);
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(endpoint, $"library/files/{libraryFileId}/move"))
+        {
+            Content = JsonContent.Create(new { FolderPath = folderPath }, options: HttpJsonOptions),
+        };
+        await AddDeviceAuthAsync(request, ct);
+        using var response = await _httpClient.SendAsync(request, ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+            throw new InvalidOperationException("přesouvat materiály smí jen Admin, Modifier nebo Redaktor.");
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            throw new InvalidOperationException("soubor už v knihovně není.");
         response.EnsureSuccessStatusCode();
     }
 

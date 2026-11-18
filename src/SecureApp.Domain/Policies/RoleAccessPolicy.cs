@@ -24,9 +24,12 @@ public static class RoleAccessPolicy
 {
     public static bool IsAllowed(Role role, RbacAction action) => (role, action) switch
     {
-        (Role.Viewer, RbacAction.RecordLogbookProcedure) => true,
-        (Role.Viewer, RbacAction.ViewLogbookStatistics) => true,
-        (Role.Viewer, _) => false,
+        (Role.Viewer or Role.Redaktor, RbacAction.RecordLogbookProcedure) => true,
+        (Role.Viewer or Role.Redaktor, RbacAction.ViewLogbookStatistics) => true,
+        // Redaktor (2026-11-18) = Viewer + teaching documents: writes/edits them here, approves them via LibraryReviewPolicy.
+        (Role.Redaktor, RbacAction.AuthorCmsDocument) => true,
+        (Role.Redaktor, RbacAction.ManageLibraryStructure) => true,
+        (Role.Viewer or Role.Redaktor, _) => false,
         (Role.Admin, _) => true,
         (Role.Modifier, _) => true,
         _ => false
@@ -46,7 +49,7 @@ public static class RoleAccessPolicy
     {
         if (actorRole == Role.Admin) return true;
         if (isOwnMessage) return true;
-        // Non-own message: only a Modifier may delete it, and only if a Viewer sent it.
-        return actorRole == Role.Modifier && senderRole == Role.Viewer;
+        // Non-own message: only a Modifier may delete it, and only if a Viewer (or a Redaktor, Viewer-level for chat) sent it.
+        return actorRole == Role.Modifier && senderRole is Role.Viewer or Role.Redaktor;
     }
 }

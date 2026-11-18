@@ -125,7 +125,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     /// <summary>Picker items for the preview switcher below — "Vlastní role" (no override) plus every non-Admin role; mirrors <see cref="RolePreviewService.PreviewRole"/>.</summary>
     [ObservableProperty]
-    public partial ObservableCollection<string> PreviewRoleOptions { get; set; } = ["Vlastní role (Admin)", "Modifier", "Viewer"];
+    public partial ObservableCollection<string> PreviewRoleOptions { get; set; } = ["Vlastní role (Admin)", "Modifier", "Redaktor", "Viewer"];
 
     [ObservableProperty]
     public partial string SelectedPreviewRoleOption { get; set; } = "Vlastní role (Admin)";
@@ -138,6 +138,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         var role = value switch
         {
             "Modifier" => Role.Modifier,
+            "Redaktor" => Role.Redaktor,
             "Viewer" => Role.Viewer,
             _ => (Role?)null,
         };
@@ -411,10 +412,11 @@ public sealed partial class SettingsViewModel : ObservableObject
         // CommunityToolkit's generated setter skips the change notification entirely when nothing
         // actually changed, so the partial method (and anything it sets) never runs on first load.
         IsAdmin = SelectedRole == Role.Admin;
-        AvailableRoles = IsAdmin ? Enum.GetValues<Role>() : [Role.Modifier, Role.Viewer];
+        AvailableRoles = IsAdmin ? Enum.GetValues<Role>() : [Role.Modifier, Role.Redaktor, Role.Viewer];
         SelectedPreviewRoleOption = _rolePreviewService.PreviewRole switch
         {
             Role.Modifier => "Modifier",
+            Role.Redaktor => "Redaktor",
             Role.Viewer => "Viewer",
             _ => "Vlastní role (Admin)",
         };
@@ -428,6 +430,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         RefreshTunnelStatus();
         if (IsAdmin)
             LoadScreenCaptureState();
+        LoadLibraryPrefetch();
         IsSaved = false;
         ErrorMessage = null;
         IsLogbookVisible = Preferences.Default.Get(AppShell.LogbookVisibilityPreferenceKey, false);

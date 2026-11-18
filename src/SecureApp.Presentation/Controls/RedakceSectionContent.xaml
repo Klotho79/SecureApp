@@ -144,12 +144,18 @@
                 </VerticalStackLayout>
             </VerticalStackLayout>
 
-            <!-- Kategorie knihovny (Modifier/Admin) -->
+            <!-- Kategorie knihovny (Admin/Modifier/Redaktor, 2026-11-18) — branches; only an empty one can be deleted. -->
             <VerticalStackLayout Spacing="8" IsVisible="{Binding IsLibraryCategoriesSection}">
-                <VerticalStackLayout Spacing="8" IsVisible="{Binding CanManageLibrary}">
-                    <Label Text="Podkategorie se otevírají a procházejí v Knihovně — přidávání a mazání je tady." FontSize="9.5" TextColor="Gray" />
+                <VerticalStackLayout Spacing="8" IsVisible="{Binding CanManageLibraryStructure}">
+                    <Label Text="Podkategorie (větve) se otevírají a procházejí v Knihovně — přidávání a mazání je tady, › otevře větve uvnitř. Smazat jde jen prázdná větev; materiály se přesouvají v Knihovně tlačítkem 📂." FontSize="9.5" TextColor="Gray" />
 
                     <Picker ItemsSource="{Binding LibraryTopCategories}" SelectedItem="{Binding SelectedLibraryTopCategory}" Title="Kategorie" />
+
+                    <!-- Inside a sub-category (2026-11-18, third level, e.g. Výuka › Anestezie › Regionální): where we are + back up. -->
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" IsVisible="{Binding IsInLibrarySubcategory}">
+                        <Button Grid.Column="0" Text="⬅ Výš" Style="{StaticResource SecondaryButton}" Padding="10,4" MinimumHeightRequest="30" Command="{Binding LibraryParentUpCommand}" />
+                        <Label Grid.Column="1" Text="{Binding LibraryParentPathText}" FontSize="10.5" FontAttributes="Bold" VerticalOptions="Center" LineBreakMode="TailTruncation" />
+                    </Grid>
 
                     <controls:DelayedActivityIndicator IsBusy="{Binding IsLoadingLibrarySubcategories}" HorizontalOptions="Center" />
                     <Label Text="Tato kategorie zatím nemá žádné podkategorie." FontSize="9.5" TextColor="Gray" IsVisible="{Binding HasNoLibrarySubcategories}" />
@@ -161,11 +167,15 @@
                         <CollectionView.ItemTemplate>
                             <DataTemplate x:DataType="vm:SubcategoryItem">
                                 <Border Style="{StaticResource CardBorder}" Margin="0" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
-                                    <Grid ColumnDefinitions="*,Auto">
+                                    <Grid ColumnDefinitions="*,Auto,Auto">
                                         <Label Grid.Column="0" Text="{Binding Name}" FontSize="10.5" VerticalOptions="Center" />
                                         <Button Grid.Column="1" Text="🗑" BackgroundColor="Transparent" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" Padding="4,0"
                                                 IsVisible="{Binding CanDelete}"
                                                 Command="{Binding Source={RelativeSource AncestorType={x:Type vm:RedakceViewModel}}, Path=DeleteLibrarySubcategoryCommand}"
+                                                CommandParameter="{Binding .}" />
+                                        <!-- › = its own sub-categories (2026-11-18) -->
+                                        <Button Grid.Column="2" Text="›" BackgroundColor="Transparent" FontSize="16" Padding="8,0"
+                                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:RedakceViewModel}}, Path=OpenLibrarySubcategoryCommand}"
                                                 CommandParameter="{Binding .}" />
                                     </Grid>
                                 </Border>

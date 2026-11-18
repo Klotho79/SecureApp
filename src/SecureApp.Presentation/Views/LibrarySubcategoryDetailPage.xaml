@@ -22,6 +22,27 @@
                     <Button Grid.Column="1" Text="🔗 Přidat odkaz" Style="{StaticResource SecondaryButton}" Command="{Binding AddLinkCommand}" />
                 </Grid>
 
+                <!-- Sub-categories of this sub-category (2026-11-18, e.g. Výuka › Anestezie › Celková / Sedace / Regionální) -->
+                <VerticalStackLayout Spacing="8" IsVisible="{Binding HasChildren}">
+                    <Label Text="Podkategorie" Style="{StaticResource SectionHeader}" Margin="0" FontSize="11" />
+                    <VerticalStackLayout BindableLayout.ItemsSource="{Binding Children}" Spacing="6">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="vm:SubcategoryItem">
+                                <Border Style="{StaticResource CardBorder}" Margin="0" Padding="12,10">
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibrarySubcategoryDetailViewModel}}, Path=OpenChildCommand}" CommandParameter="{Binding .}" />
+                                    </Border.GestureRecognizers>
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                                        <Label Grid.Column="0" Text="📂" FontSize="14" VerticalOptions="Center" />
+                                        <Label Grid.Column="1" Text="{Binding Name}" FontSize="11" FontAttributes="Bold" VerticalOptions="Center" LineBreakMode="TailTruncation" />
+                                        <Label Grid.Column="2" Text="›" FontSize="14" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" VerticalOptions="Center" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+
                 <!-- Links -->
                 <VerticalStackLayout Spacing="8" IsVisible="{Binding HasLinks}">
                     <Label Text="Odkazy" Style="{StaticResource SectionHeader}" Margin="0" FontSize="11" />
@@ -62,24 +83,30 @@
                         <BindableLayout.ItemTemplate>
                             <DataTemplate x:DataType="vm:LibraryFileItem">
                                 <Border Style="{StaticResource CardBorder}" Margin="0" Padding="12,10">
-                                    <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="10">
+                                    <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto" ColumnSpacing="10">
                                         <Border Grid.Column="0" WidthRequest="32" HeightRequest="32" Padding="0" StrokeShape="RoundRectangle 8" Stroke="Transparent" BackgroundColor="{AppThemeBinding Light={StaticResource AccentSoft}, Dark={StaticResource AccentSoftDark}}" VerticalOptions="Center">
                                             <Label Text="📄" FontSize="12" HorizontalOptions="Center" VerticalOptions="Center" />
                                         </Border>
                                         <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
                                             <Label Text="{Binding FileName}" FontSize="11" FontAttributes="Bold" LineBreakMode="TailTruncation" />
                                             <Label Text="{Binding SizeAndDateText}" FontSize="8.5" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" />
+                                            <Label Text="{Binding OpenHint}" IsVisible="{Binding HasOpenHint}" FontSize="9" TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
                                         </VerticalStackLayout>
                                         <!-- Admin-only local-AI PDF translation (2026-10-05). -->
                                         <Button Grid.Column="2" Text="🌐" BackgroundColor="Transparent" Padding="4,0" VerticalOptions="Center"
                                                 IsVisible="{Binding CanTranslate}"
                                                 Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibrarySubcategoryDetailViewModel}}, Path=TranslateCommand}"
                                                 CommandParameter="{Binding .}" />
-                                        <Button Grid.Column="3" Text="🗑" BackgroundColor="Transparent" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" Padding="4,0" VerticalOptions="Center"
-                                                IsVisible="{Binding IsMine}"
+                                        <!-- Move to another branch (2026-11-18) — Admin/Modifier/Redaktor. -->
+                                        <Button Grid.Column="3" Text="📂" BackgroundColor="Transparent" Padding="4,0" VerticalOptions="Center"
+                                                IsVisible="{Binding Source={RelativeSource AncestorType={x:Type vm:LibrarySubcategoryDetailViewModel}}, Path=CanMoveMaterials}"
+                                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibrarySubcategoryDetailViewModel}}, Path=MoveFileCommand}"
+                                                CommandParameter="{Binding .}" />
+                                        <Button Grid.Column="4" Text="🗑" BackgroundColor="Transparent" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}" Padding="4,0" VerticalOptions="Center"
+                                                IsVisible="{Binding CanDelete}"
                                                 Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibrarySubcategoryDetailViewModel}}, Path=DeleteFileCommand}"
                                                 CommandParameter="{Binding .}" />
-                                        <Label Grid.Column="4" Text="›" FontSize="16" VerticalOptions="Center" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}">
+                                        <Label Grid.Column="5" Text="›" FontSize="16" VerticalOptions="Center" TextColor="{AppThemeBinding Light={StaticResource Gray400}, Dark={StaticResource Gray300}}">
                                             <Label.GestureRecognizers>
                                                 <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:LibrarySubcategoryDetailViewModel}}, Path=OpenFileCommand}" CommandParameter="{Binding .}" />
                                             </Label.GestureRecognizers>

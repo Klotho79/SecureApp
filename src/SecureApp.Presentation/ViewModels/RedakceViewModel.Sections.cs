@@ -72,7 +72,7 @@ public sealed partial class RedakceViewModel
             : CanManageRoomStatusOptions ? RoomStatusSection
             : HasMyAssignments ? MyAssignmentsSection
             : CanAssignCms ? CmsAssignSection
-            : CanManageLibrary ? LibraryCategoriesSection
+            : CanManageLibraryStructure ? LibraryCategoriesSection
             : null;
     }
 

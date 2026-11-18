@@ -89,10 +89,18 @@ public sealed partial class LibraryReviewQueueViewModel : ObservableObject
         if (item is null) return;
 
         StatusErrorMessage = null;
+        if (Shell.Current?.CurrentPage is not { } page) return;
         try
         {
-            var comment = await (Shell.Current?.CurrentPage?.DisplayPromptAsync("Schválit a publikovat", "Volitelný komentář:") ?? Task.FromResult<string?>(null));
-            await _libraryReviewService.ReviewAsync(item.Id, approve: true, comment);
+            // 2026-11-18 (user: "při schvalování ho musí umístit do struktury dokumentů"): no approval without a place.
+            var folderPath = await Library.LibraryPlacementPicker.PickAsync(page, _sharedLibraryService, $"Zařadit „{item.Title}“", item.FolderPath);
+            if (folderPath is null) return;
+
+            var comment = await page.DisplayPromptAsync("Schválit a publikovat",
+                $"Zařadit do: {Library.LibraryPlacementPicker.Display(folderPath)}\n\nVolitelný komentář:", accept: "Schválit", cancel: "Zrušit");
+            if (comment is null) return; // Zrušit
+
+            await _libraryReviewService.ReviewAsync(item.Id, approve: true, comment, folderPath: folderPath);
             await LoadAsync();
         }
         catch (Exception ex)
@@ -100,6 +108,7 @@ public sealed partial class LibraryReviewQueueViewModel : ObservableObject
             StatusErrorMessage = $"Schválení '{item.Title}' se nezdařilo: {ex.Message}";
         }
     }
+
 
     [RelayCommand]
     private async Task RejectAsync(ReviewQueueItem? item)

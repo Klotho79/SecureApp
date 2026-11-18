@@ -75,6 +75,12 @@ public interface ISharedLibraryService
 
     Task DeleteSubcategoryAsync(Guid id, CancellationToken ct = default);
 
+    /// <summary>Files a listed library file (a teaching material) under another branch — Admin, Modifier, Redaktor (2026-11-18).</summary>
+    Task MoveFileAsync(Guid libraryFileId, string folderPath, CancellationToken ct = default);
+
+    /// <summary>Library files taken out of the library (deleted, or a teaching document withdrawn) — devices drop their copies (2026-11-18). Empty from a relay that doesn't know them yet.</summary>
+    Task<IReadOnlyList<Guid>> ListRemovedAsync(CancellationToken ct = default);
+
     Task<LibraryLinkSummary> CreateLinkAsync(Guid subcategoryId, string title, string url, CancellationToken ct = default);
 
     Task<IReadOnlyList<LibraryLinkSummary>> ListLinksAsync(Guid subcategoryId, CancellationToken ct = default);

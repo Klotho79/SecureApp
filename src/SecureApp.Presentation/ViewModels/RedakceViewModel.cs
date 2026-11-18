@@ -75,6 +75,14 @@ public sealed partial class RedakceViewModel : ObservableObject
     [ObservableProperty]
     public partial bool CanAuthorCms { get; set; }
 
+    /// <summary>"Obsah knihovny" (drafts + "Ke schválení"): Admin/Modifier, and a Redaktor, who approves there (2026-11-18). Upload and categories stay <see cref="CanManageLibrary"/>.</summary>
+    [ObservableProperty]
+    public partial bool CanOpenLibraryContent { get; set; }
+
+    /// <summary>"Kategorie knihovny": create and delete branches — Admin, Modifier, Redaktor (2026-11-18, <see cref="RbacAction.ManageLibraryStructure"/>).</summary>
+    [ObservableProperty]
+    public partial bool CanManageLibraryStructure { get; set; }
+
     /// <summary>True once loaded and none of the cards above apply — a plain Viewer with no editorial role sees this instead of an empty page.</summary>
     [ObservableProperty]
     public partial bool HasNoEditorialAccess { get; set; }
@@ -93,7 +101,7 @@ public sealed partial class RedakceViewModel : ObservableObject
     {
         ShowOperationsGroup = CanPostToBoard || CanManageRoomStatusOptions || CanManageLogbook;
         ShowDocumentsGroup = CanAuthorCms || HasMyAssignments || CanAssignCms || CanSeeInProgressDocuments;
-        ShowLibraryGroup = CanManageLibrary;
+        ShowLibraryGroup = CanManageLibrary || CanOpenLibraryContent || CanManageLibraryStructure;
     }
 
     partial void OnBoardStatusTextChanged(string? value) => HasBoardStatus = !string.IsNullOrEmpty(value);
@@ -135,7 +143,7 @@ public sealed partial class RedakceViewModel : ObservableObject
         // this also keeps a page reached any other way (widget, old shortcut) empty.
         if (DeviceInfo.Idiom != DeviceIdiom.Desktop && role != Role.Admin)
         {
-            CanPostToBoard = CanSeeInProgressDocuments = CanManageRoomStatusOptions = CanManageLogbook = CanManageLibrary = CanAuthorCms = false;
+            CanPostToBoard = CanSeeInProgressDocuments = CanManageRoomStatusOptions = CanManageLogbook = CanManageLibrary = CanAuthorCms = CanOpenLibraryContent = CanManageLibraryStructure = false;
             CanAssignCms = HasMyAssignments = false;
             HasNoEditorialAccess = true;
             UpdateGroupVisibility();
@@ -146,7 +154,7 @@ public sealed partial class RedakceViewModel : ObservableObject
         // own remarks) — mirrored here, same as it was in SettingsViewModel before this moved.
         CanPostToBoard = role is Role.Admin or Role.Modifier;
         if (CanPostToBoard) _ = RefreshBoardPostsAsync(); // best-effort, must not delay the page
-        CanSeeInProgressDocuments = role is Role.Admin or Role.Modifier;
+        CanSeeInProgressDocuments = role is Role.Admin or Role.Modifier or Role.Redaktor; // the relay's /library-documents/in-progress gate
 
         // Same role gate POST /room-status/options already enforces server-side (see
         // IRoomStatusService's own remarks).
@@ -180,17 +188,20 @@ public sealed partial class RedakceViewModel : ObservableObject
 
         // Same gate the Library browse page's own add button used to use (see
         // RedakceViewModel.LibraryCategories.cs's own remarks on where this moved from).
-        CanManageLibrary = role != Role.Viewer;
+        // Explicit since the Redaktor role (2026-11-18) — "not Viewer" would have let a Redaktor upload files and edit categories.
+        CanManageLibrary = role is Role.Admin or Role.Modifier;
+        CanOpenLibraryContent = CanManageLibrary || role == Role.Redaktor;
+        CanManageLibraryStructure = RoleAccessPolicy.IsAllowed(role, RbacAction.ManageLibraryStructure);
         // CMS authoring is PC-only (CMS_PLAN.md); the editor page re-checks the role itself.
-        CanAuthorCms = CanManageLibrary && DeviceInfo.Idiom == DeviceIdiom.Desktop;
-        if (CanManageLibrary)
+        CanAuthorCms = RoleAccessPolicy.IsAllowed(role, RbacAction.AuthorCmsDocument) && DeviceInfo.Idiom == DeviceIdiom.Desktop;
+        if (CanManageLibraryStructure)
         {
             await RefreshLibraryCategoriesAsync();
         }
 
         await LoadCmsAssignmentsAsync(role);
 
-        HasNoEditorialAccess = !CanPostToBoard && !CanSeeInProgressDocuments &&!CanManageRoomStatusOptions && !CanManageLogbook && !CanManageLibrary && !CanAuthorCms && !HasMyAssignments;
+        HasNoEditorialAccess = !CanPostToBoard && !CanSeeInProgressDocuments &&!CanManageRoomStatusOptions && !CanManageLogbook && !CanManageLibrary && !CanOpenLibraryContent && !CanManageLibraryStructure && !CanAuthorCms && !HasMyAssignments;
         UpdateGroupVisibility();
         SelectDefaultSection();
     }

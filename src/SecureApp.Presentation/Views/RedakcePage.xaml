@@ -66,9 +66,9 @@
 
                 <!-- ===== Knihovna ===== -->
                 <Label Text="KNIHOVNA" Style="{StaticResource RedakceGroupLabel}" IsVisible="{Binding ShowLibraryGroup}" />
-                <controls:RedakceTile Icon="📚" Title="Obsah knihovny" Subtitle="Nahrát soubory, koncepty a schvalování" IsVisible="{Binding CanManageLibrary}"
+                <controls:RedakceTile Icon="📚" Title="Obsah knihovny" Subtitle="Nahrát soubory, koncepty a schvalování" IsVisible="{Binding CanOpenLibraryContent}"
                                       Command="{Binding OpenLibraryManageCommand}" />
-                <controls:RedakceTile Icon="🗂" Title="Kategorie knihovny" Subtitle="Přidat, přejmenovat a třídit kategorie" IsVisible="{Binding CanManageLibrary}"
+                <controls:RedakceTile Icon="🗂" Title="Kategorie knihovny" Subtitle="Přidat a mazat větve (podkategorie)" IsVisible="{Binding CanManageLibraryStructure}"
                                       Command="{Binding OpenSectionCommand}" CommandParameter="library" />
 
             </VerticalStackLayout>
@@ -110,9 +110,9 @@
                                                   Command="{Binding OpenCmsAnnotationQueueCommand}" />
 
                         <Label Text="KNIHOVNA" Style="{StaticResource RedakceGroupLabel}" Margin="12,14,0,4" IsVisible="{Binding ShowLibraryGroup}" />
-                        <controls:RedakceMenuItem Icon="📚" Title="Obsah knihovny" OpensWindow="True" IsVisible="{Binding CanManageLibrary}"
+                        <controls:RedakceMenuItem Icon="📚" Title="Obsah knihovny" OpensWindow="True" IsVisible="{Binding CanOpenLibraryContent}"
                                                   Command="{Binding OpenLibraryManageCommand}" />
-                        <controls:RedakceMenuItem Icon="🗂" Title="Kategorie knihovny" IsVisible="{Binding CanManageLibrary}" IsSelected="{Binding IsLibraryCategoriesSection}"
+                        <controls:RedakceMenuItem Icon="🗂" Title="Kategorie knihovny" IsVisible="{Binding CanManageLibraryStructure}" IsSelected="{Binding IsLibraryCategoriesSection}"
                                                   Command="{Binding SelectSectionCommand}" CommandParameter="library" />
 
                         <Label Text="↗ otevře se v samostatném okně" FontSize="10" Margin="12,22,0,0"

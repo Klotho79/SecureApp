@@ -100,7 +100,7 @@ public partial class CmsEditorPage : ContentPage, IQueryAttributable
         await _currentUser.InitializeAsync();
         var role = _rolePreview.Resolve(_currentUser.Current.Role);
         // An assigned editor (even a Viewer) may open the editor; the relay enforces the actual grant.
-        if (_assignedDocumentId is null && !RoleAccessPolicy.IsAllowed(role, RbacAction.UploadLibraryFile))
+        if (_assignedDocumentId is null && !RoleAccessPolicy.IsAllowed(role, RbacAction.AuthorCmsDocument))
         {
             await DisplayAlertAsync("Editor", "Vaše role nemůže vytvářet ani upravovat dokumenty.", "OK");
             await Shell.Current.GoToAsync("..");

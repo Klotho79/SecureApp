@@ -262,6 +262,16 @@ public sealed class RelayDatabase
         if (!ColumnExists(connection, "library_files", "is_listed"))
             Execute(connection, "ALTER TABLE library_files ADD COLUMN is_listed INTEGER NOT NULL DEFAULT 1");
 
+        // 2026-11-18: library files taken out of the library (deleted, or a teaching document withdrawn) — devices drop
+        // their local copies of exactly these, so Dokumenty keeps mirroring the relay. A private chat attachment is
+        // never listed here, so its local copy is never touched.
+        Execute(connection, """
+            CREATE TABLE IF NOT EXISTS library_removed_files (
+                id                       TEXT PRIMARY KEY NOT NULL,
+                removed_at_utc           TEXT NOT NULL
+            )
+            """);
+
         // device_secret holds the new device's PLAINTEXT bearer secret once approved — unlike
         // `devices.secret_hash` (salted + HMAC-hashed, never recoverable), this one genuinely needs
         // to be readable back out, since it's the only channel that ever hands the secret to the
@@ -1326,7 +1336,67 @@ public sealed class RelayDatabase
         return results;
     }
 
-    /// <summary>Deletes nothing (returns false) unless the caller created it or <paramref name="isAdminOverride"/> is set — same cooperative-role trust as <see cref="TryDeleteLibraryFile"/>. Does not touch any files/links already filed under it; they just become unreachable from the browse grid until a new sub-category with the same name is created (or an admin re-creates it).</summary>
+    public LibrarySubcategoryRecord? GetLibrarySubcategory(Guid id)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id, parent_category, name, created_by_device_id, created_at_utc FROM library_subcategories WHERE id = @id";
+        command.Parameters.AddWithValue("@id", id.ToString());
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+            return null;
+        return new LibrarySubcategoryRecord(
+            Guid.Parse((string)reader["id"]),
+            (string)reader["parent_category"],
+            (string)reader["name"],
+            Guid.Parse((string)reader["created_by_device_id"]),
+            DateTimeOffset.Parse((string)reader["created_at_utc"], CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>
+    /// 2026-11-18: whether a library branch still holds anything — a listed file filed in it or deeper, a sub-category
+    /// under it, or a link of its own. A branch is only deleted empty, so nothing ever becomes unreachable.
+    /// </summary>
+    public bool IsLibraryBranchInUse(Guid subcategoryId, string folderPath)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        // substr instead of LIKE: a name may contain '_' or '%'.
+        command.CommandText = """
+            SELECT
+              EXISTS(SELECT 1 FROM library_files WHERE is_listed = 1
+                     AND (folder_path = @path OR substr(folder_path, 1, length(@path) + 1) = @path || '/'))
+              OR EXISTS(SELECT 1 FROM library_subcategories
+                        WHERE parent_category = @path OR substr(parent_category, 1, length(@path) + 1) = @path || '/')
+              OR EXISTS(SELECT 1 FROM library_links WHERE subcategory_id = @id)
+            """;
+        command.Parameters.AddWithValue("@path", folderPath);
+        command.Parameters.AddWithValue("@id", subcategoryId.ToString());
+        return Convert.ToInt64(command.ExecuteScalar()) != 0;
+    }
+
+    /// <summary>
+    /// 2026-11-18 ("přesouvat výukové materiály"): files a listed library file under another folder, and the teaching
+    /// document whose current version it is along with it. False when there is no such listed file.
+    /// </summary>
+    public bool MoveLibraryFile(Guid id, string folderPath)
+    {
+        using var connection = OpenConnection();
+        using var transaction = connection.BeginTransaction();
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "UPDATE library_files SET folder_path = @folder WHERE id = @id AND is_listed = 1";
+        command.Parameters.AddWithValue("@folder", folderPath);
+        command.Parameters.AddWithValue("@id", id.ToString());
+        if (command.ExecuteNonQuery() == 0)
+            return false;
+        Execute(connection, transaction, "UPDATE library_documents SET folder_path = @folder WHERE current_library_file_id = @id",
+            ("@folder", folderPath), ("@id", id.ToString()));
+        transaction.Commit();
+        return true;
+    }
+
+    /// <summary>Deletes nothing (returns false) unless the caller created it or <paramref name="isAdminOverride"/> is set — same cooperative-role trust as <see cref="TryDeleteLibraryFile"/>. Does not touch any files/links already filed under it — callers check <see cref="IsLibraryBranchInUse"/> first (2026-11-18), so only an empty branch goes.</summary>
     public bool TryDeleteLibrarySubcategory(Guid id, Guid callerDeviceId, bool isAdminOverride)
     {
         using var connection = OpenConnection();
@@ -1867,7 +1937,8 @@ public sealed class RelayDatabase
     /// and advances current_version_id/current_library_file_id. Records the decision in
     /// library_document_reviews. Returns null if the document doesn't exist or isn't PendingReview.
     /// </summary>
-    public LibraryDocumentRecord? ApproveLibraryDocumentVersion(Guid documentId, Guid reviewerDeviceId, string? comment)
+    /// <summary><paramref name="folderPath"/> (2026-11-18): files the approved document — and its now-listed library file — under that library folder; null keeps the current one.</summary>
+    public LibraryDocumentRecord? ApproveLibraryDocumentVersion(Guid documentId, Guid reviewerDeviceId, string? comment, string? folderPath = null)
     {
         using var connection = OpenConnection();
         using var transaction = connection.BeginTransaction();
@@ -1886,6 +1957,14 @@ public sealed class RelayDatabase
         Execute(connection, transaction,
             "UPDATE library_documents SET status = 'Published', current_version_id = @versionId, current_library_file_id = @fileId, updated_at_utc = @now WHERE id = @id",
             ("@id", documentId.ToString()), ("@versionId", latestVersion.Id.ToString()), ("@fileId", latestVersion.LibraryFileId.ToString()), ("@now", Format(now)));
+
+        if (folderPath is not null)
+        {
+            Execute(connection, transaction, "UPDATE library_documents SET folder_path = @folder WHERE id = @id",
+                ("@id", documentId.ToString()), ("@folder", folderPath));
+            Execute(connection, transaction, "UPDATE library_files SET folder_path = @folder WHERE id = @id",
+                ("@id", latestVersion.LibraryFileId.ToString()), ("@folder", folderPath));
+        }
 
         InsertReview(connection, transaction, documentId, latestVersion.Id, reviewerDeviceId, "Approved", comment, now);
 
@@ -1921,6 +2000,61 @@ public sealed class RelayDatabase
         var result = GetLibraryDocument(connection, transaction, documentId);
         transaction.Commit();
         return result;
+    }
+
+    /// <summary>The teaching document whose currently approved version is this library file, if any.</summary>
+    public LibraryDocumentRecord? GetLibraryDocumentByCurrentFile(Guid libraryFileId)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id FROM library_documents WHERE current_library_file_id = @file LIMIT 1";
+        command.Parameters.AddWithValue("@file", libraryFileId.ToString());
+        return command.ExecuteScalar() is string id ? GetLibraryDocument(connection, null, Guid.Parse(id)) : null;
+    }
+
+    /// <summary>
+    /// 2026-11-18 (Admin/Modifier delete a teaching material): a teaching document is taken out of the library rather
+    /// than destroyed — its file is unlisted, it goes back to its author as rejected with the reason, and every version
+    /// stays, so the author can fix and resubmit it. Devices drop their copies (<see cref="GetRemovedLibraryFiles"/>).
+    /// </summary>
+    public bool WithdrawLibraryDocument(Guid documentId, Guid byDeviceId)
+    {
+        using var connection = OpenConnection();
+        using var transaction = connection.BeginTransaction();
+        var existing = GetLibraryDocument(connection, transaction, documentId);
+        if (existing is not { Status: "Published", CurrentLibraryFileId: { } fileId, CurrentVersionId: { } versionId })
+            return false;
+
+        var now = DateTimeOffset.UtcNow;
+        Execute(connection, transaction, "UPDATE library_files SET is_listed = 0 WHERE id = @id", ("@id", fileId.ToString()));
+        Execute(connection, transaction,
+            "UPDATE library_documents SET status = 'Rejected', current_version_id = NULL, current_library_file_id = NULL, updated_at_utc = @now WHERE id = @id",
+            ("@id", documentId.ToString()), ("@now", Format(now)));
+        InsertReview(connection, transaction, documentId, versionId, byDeviceId, "Rejected", "Staženo z knihovny (smazáno).", now);
+        Execute(connection, transaction, "INSERT OR IGNORE INTO library_removed_files (id, removed_at_utc) VALUES (@id, @now)",
+            ("@id", fileId.ToString()), ("@now", Format(now)));
+        transaction.Commit();
+        return true;
+    }
+
+    public void AddRemovedLibraryFile(Guid id)
+    {
+        using var connection = OpenConnection();
+        Execute(connection, "INSERT OR IGNORE INTO library_removed_files (id, removed_at_utc) VALUES (@id, @now)",
+            ("@id", id.ToString()), ("@now", Format(DateTimeOffset.UtcNow)));
+    }
+
+    /// <summary>Every library file ever taken out of the library — small (a few per month at most), so always sent whole.</summary>
+    public IReadOnlyList<Guid> GetRemovedLibraryFiles()
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id FROM library_removed_files";
+        var ids = new List<Guid>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            ids.Add(Guid.Parse(reader.GetString(0)));
+        return ids;
     }
 
     private static void InsertReview(SqliteConnection connection, SqliteTransaction transaction, Guid documentId, Guid versionId, Guid reviewerDeviceId, string decision, string? comment, DateTimeOffset now)
