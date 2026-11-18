@@ -783,13 +783,34 @@ app.MapPost("/directory/link-arim-contact", (HttpRequest request, LinkArimContac
     return Results.Ok();
 });
 
-app.MapPost("/admin/devices/{id:guid}/deregister", (Guid id, HttpRequest request, RelayDatabase db) =>
+app.MapPost("/admin/devices/{id:guid}/deregister", async (Guid id, HttpRequest request, RelayDatabase db) =>
 {
     if (!IsAdminAuthorized(request, adminSecret))
         return Results.Unauthorized();
 
-    db.DeregisterDevice(id);
-    return Results.Ok();
+    var wgClients = db.DeregisterDevice(id);
+
+    // 2026-11-18: the device's own VPN tunnel stops too — disabled, not deleted, so wg-easy can switch it back on.
+    // Best-effort: wg-easy unreachable must not undo the deregistration itself.
+    var disabled = 0;
+    if (wgClients.Count > 0 && !string.IsNullOrEmpty(wgEasyUrl) && !string.IsNullOrEmpty(wgEasyPassword))
+    {
+        try
+        {
+            using var wg = new HttpClient { BaseAddress = new Uri(wgEasyUrl), Timeout = TimeSpan.FromSeconds(10) };
+            wg.DefaultRequestHeaders.Add("Authorization", wgEasyPassword);
+            foreach (var client in wgClients)
+            {
+                using var response = await wg.PostAsync($"api/wireguard/client/{client}/disable", null);
+                if (response.IsSuccessStatusCode) disabled++;
+            }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            app.Logger.LogWarning(ex, "Deregister {DeviceId}: disabling its WireGuard peer failed", id);
+        }
+    }
+    return Results.Ok(new { WireGuardPeersDisabled = disabled });
 });
 
 app.MapPost("/library/files", async (HttpRequest request, RelayDatabase db) =>

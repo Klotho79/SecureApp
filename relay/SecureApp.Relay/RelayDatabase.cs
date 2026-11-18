@@ -100,10 +100,14 @@ public sealed class RelayDatabase
     /// <summary>Where shared-library ciphertext blobs live on disk — metadata is in SQLite (<c>library_files</c>), content is not, so a large file never bloats the SQLite file/WAL.</summary>
     public string LibraryFilesDirectory { get; }
 
+    /// <summary>Where a deregistered device's own logs are kept (2026-11-18) — next to the database, never served.</summary>
+    private readonly string _archiveDirectory;
+
     public RelayDatabase(IConfiguration configuration)
     {
         var dbPath = configuration["SECUREAPP_RELAY_DB_PATH"] ?? Path.Combine(AppContext.BaseDirectory, "relay.db3");
         _connectionString = $"Data Source={dbPath}";
+        _archiveDirectory = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(dbPath)) ?? AppContext.BaseDirectory, "archive", "deregistered");
 
         LibraryFilesDirectory = configuration["SECUREAPP_RELAY_LIBRARY_DIR"] ?? Path.Combine(AppContext.BaseDirectory, "library-files");
         Directory.CreateDirectory(LibraryFilesDirectory);
@@ -1036,13 +1040,80 @@ public sealed class RelayDatabase
     /// it as recipient (exactly the stuck-forever queue the original incident left behind). Idempotent
     /// — deregistering an already-gone or never-existing id is a harmless no-op, not an error, so a
     /// double-tap or a stale admin list never throws.
+    /// <para>
+    /// 2026-11-18 (a removed member still "hung" on the relay: his role, e-mail link, library-key copy, approved
+    /// activation request and logs all stayed, and his VPN profile kept working): everything tied to the device goes
+    /// too — role/policy, e-mail link, wrapped library key, its activation request, its WireGuard link — and its own
+    /// logs are moved into <c>archive/deregistered</c> next to the database first. Works on an id whose
+    /// <c>devices</c> row is already gone, so an earlier, partial deregistration can be finished by running it again.
+    /// Returns the wg-easy peer ids that belonged to the device, for the caller to disable.
+    /// </para>
     /// </summary>
-    public void DeregisterDevice(Guid deviceId)
+    public IReadOnlyList<string> DeregisterDevice(Guid deviceId)
     {
+        var id = deviceId.ToString();
         using var connection = OpenConnection();
-        Execute(connection, "DELETE FROM outbox WHERE recipient_device_id = @id", ("@id", deviceId.ToString()));
-        Execute(connection, "DELETE FROM directory_entries WHERE device_id = @id", ("@id", deviceId.ToString()));
-        Execute(connection, "DELETE FROM devices WHERE id = @id", ("@id", deviceId.ToString()));
+        ArchiveDeviceLogs(connection, deviceId);
+
+        var wgClients = new List<string>();
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "SELECT wg_client_id FROM device_wireguard_peers WHERE device_id = @id";
+            command.Parameters.AddWithValue("@id", id);
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+                wgClients.Add(reader.GetString(0));
+        }
+
+        using var transaction = connection.BeginTransaction();
+        foreach (var sql in new[]
+        {
+            "DELETE FROM outbox WHERE recipient_device_id = @id",
+            "DELETE FROM directory_entries WHERE device_id = @id",
+            "DELETE FROM devices WHERE id = @id",
+            "DELETE FROM device_policy WHERE device_id = @id",
+            "DELETE FROM device_emails WHERE device_id = @id",
+            "DELETE FROM wrapped_library_keys WHERE recipient_device_id = @id",
+            "DELETE FROM activation_requests WHERE assigned_device_id = @id",
+            "DELETE FROM device_wireguard_peers WHERE device_id = @id",
+            "DELETE FROM device_app_logs WHERE device_id = @id",
+            "DELETE FROM diagnostic_logs WHERE device_id = @id",
+        })
+            Execute(connection, transaction, sql, ("@id", id));
+        // Housekeeping: a parked onboarding role is only ever honoured within 48 h (TryConsumePendingMemberRole).
+        Execute(connection, transaction, "DELETE FROM pending_member_roles WHERE created_at_utc < @cutoff",
+            ("@cutoff", Format(DateTimeOffset.UtcNow - TimeSpan.FromHours(48))));
+        transaction.Commit();
+        return wgClients;
+    }
+
+    /// <summary>Writes the device's own app/diagnostic logs to <c>archive/deregistered/{id}-{time}.json</c> (nothing when it has none).</summary>
+    private void ArchiveDeviceLogs(SqliteConnection connection, Guid deviceId)
+    {
+        var archive = new Dictionary<string, List<Dictionary<string, object?>>>();
+        foreach (var table in new[] { "device_app_logs", "diagnostic_logs" })
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = $"SELECT * FROM {table} WHERE device_id = @id";
+            command.Parameters.AddWithValue("@id", deviceId.ToString());
+            using var reader = command.ExecuteReader();
+            var rows = new List<Dictionary<string, object?>>();
+            while (reader.Read())
+            {
+                var row = new Dictionary<string, object?>();
+                for (var i = 0; i < reader.FieldCount; i++)
+                    row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
+                rows.Add(row);
+            }
+            if (rows.Count > 0)
+                archive[table] = rows;
+        }
+        if (archive.Count == 0)
+            return;
+
+        Directory.CreateDirectory(_archiveDirectory);
+        var path = Path.Combine(_archiveDirectory, $"{deviceId:N}-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}.json");
+        File.WriteAllText(path, JsonSerializer.Serialize(archive));
     }
 
     public (Guid DeviceId, string Secret, string RecoveryToken) CreateDevice(string displayName)
