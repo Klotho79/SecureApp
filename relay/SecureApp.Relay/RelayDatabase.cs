@@ -837,6 +837,18 @@ public sealed class RelayDatabase
                 created_at_utc  TEXT NOT NULL
             )
             """);
+        // 2026-11-18: a token now knows its device, so deregistering a member also takes away its silent way back in
+        // (/self-register). Existing tokens are matched to their device by name where that is unambiguous.
+        if (!ColumnExists(connection, "device_recovery_tokens", "device_id"))
+        {
+            Execute(connection, "ALTER TABLE device_recovery_tokens ADD COLUMN device_id TEXT NULL");
+            Execute(connection, """
+                UPDATE device_recovery_tokens
+                   SET device_id = (SELECT d.id FROM devices d WHERE d.display_name = device_recovery_tokens.display_name)
+                 WHERE device_id IS NULL
+                   AND (SELECT count(*) FROM devices d WHERE d.display_name = device_recovery_tokens.display_name) = 1
+                """);
+        }
 
         // activation_requests.device_recovery_token mirrors device_secret right above (same column,
         // same reasoning: PLAINTEXT and recoverable, because this is the one-shot channel that hands the
@@ -1078,6 +1090,8 @@ public sealed class RelayDatabase
             "DELETE FROM device_wireguard_peers WHERE device_id = @id",
             "DELETE FROM device_app_logs WHERE device_id = @id",
             "DELETE FROM diagnostic_logs WHERE device_id = @id",
+            // ...and its silent way back in: no /self-register with this device's recovery token.
+            "DELETE FROM device_recovery_tokens WHERE device_id = @id",
         })
             Execute(connection, transaction, sql, ("@id", id));
         // Housekeeping: a parked onboarding role is only ever honoured within 48 h (TryConsumePendingMemberRole).
@@ -1129,7 +1143,7 @@ public sealed class RelayDatabase
             "INSERT INTO devices (id, secret_salt, secret_hash, display_name, created_at_utc) VALUES (@id, @salt, @hash, @name, @created)",
             ("@id", deviceId.ToString()), ("@salt", salt), ("@hash", hash), ("@name", displayName), ("@created", Format(DateTimeOffset.UtcNow)));
 
-        var recoveryToken = MintRecoveryToken(connection, displayName);
+        var recoveryToken = MintRecoveryToken(connection, displayName, deviceId);
 
         return (deviceId, secret, recoveryToken);
     }
@@ -1142,17 +1156,17 @@ public sealed class RelayDatabase
         command.CommandText = "SELECT display_name FROM devices WHERE id = @id";
         command.Parameters.AddWithValue("@id", deviceId.ToString());
         var displayName = command.ExecuteScalar() as string ?? "Unknown";
-        return MintRecoveryToken(connection, displayName);
+        return MintRecoveryToken(connection, displayName, deviceId);
     }
 
-    /// <summary>Inserts a fresh recovery token row (see device_recovery_tokens' own schema remarks) and returns the RAW token — never stored raw itself, only its hash.</summary>
-    private static string MintRecoveryToken(SqliteConnection connection, string displayName)
+    /// <summary>Inserts a fresh recovery token row (see device_recovery_tokens' own schema remarks) and returns the RAW token — never stored raw itself, only its hash. <paramref name="deviceId"/> (2026-11-18) lets <see cref="DeregisterDevice"/> revoke it.</summary>
+    private static string MintRecoveryToken(SqliteConnection connection, string displayName, Guid deviceId)
     {
         var token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
         var tokenHash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
         Execute(connection,
-            "INSERT INTO device_recovery_tokens (token_hash, display_name, created_at_utc) VALUES (@hash, @name, @created)",
-            ("@hash", tokenHash), ("@name", displayName), ("@created", Format(DateTimeOffset.UtcNow)));
+            "INSERT INTO device_recovery_tokens (token_hash, display_name, created_at_utc, device_id) VALUES (@hash, @name, @created, @device)",
+            ("@hash", tokenHash), ("@name", displayName), ("@created", Format(DateTimeOffset.UtcNow)), ("@device", deviceId.ToString()));
         return token;
     }
 

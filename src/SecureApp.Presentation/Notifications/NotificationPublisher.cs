@@ -131,6 +131,25 @@ public static class NotificationPublisher
         return notification.Id;
     }
 
+    /// <summary>
+    /// A new member asks for access (2026-11-18) — only the admin's device raises this (<c>App.SyncAccessRequestsAsync</c>).
+    /// System category like every other admin notice, so it stays out of the Důležité count; the OS notification still shows.
+    /// </summary>
+    public static Task PublishAccessRequestAsync(
+        INotificationRepository notificationRepository,
+        string displayName,
+        string email,
+        INativeNotificationService? nativeNotificationService = null,
+        CancellationToken ct = default)
+    {
+        var notification = new Notification(
+            title: "Žádost o přístup",
+            body: $"{displayName} ({email}) čeká na schválení — Nastavení → Admin → Členové.",
+            category: NotificationCategory.System,
+            priority: NotificationPriority.Normal);
+        return TryAddAsync(notificationRepository, notification, nativeNotificationService, ct);
+    }
+
     /// <summary>A notice-board message from an Admin/Modifier (2026-09-24) — surfaced on the Nástěnka like everything else. Important priority: a board post is a deliberate broadcast to the whole team and is meant to stand out, unlike routine System notifications.</summary>
     public static Task PublishBoardMessageAsync(
         INotificationRepository notificationRepository,

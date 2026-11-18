@@ -460,11 +460,13 @@ public sealed partial class SettingsViewModel : ObservableObject
             && Uri.TryCreate(RelayEndpointText, UriKind.Absolute, out var resumedEndpoint))
         {
             _pendingActivationRequestId = pendingRequestId;
-            ActivationStatusText = "Aktivace probíhá…";
+            ActivationStatusText = AwaitingApprovalText;
             StartActivationPolling(resumedEndpoint);
         }
 
         HasSharedLibraryKey = await _sharedLibraryService.HasSharedKeyAsync();
+        if (IsAdmin)
+            _ = LoadAccessRequestsAsync(); // the "Žádosti o přístup" card (2026-11-18)
 
         // Diagnostic log auto-loads here since it needs no admin secret — LoadDiagnosticLogAsync
         // already catches its own failures into DiagnosticLogErrorMessage rather than throwing, so
@@ -795,7 +797,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             // without needing any new relay round-trip.
             await _currentUserService.UpdateProfileAsync(null, null, null, ActivationEmailText);
             ProfileEmail = ActivationEmailText;
-            ActivationStatusText = "Aktivace probíhá…";
+            ActivationStatusText = AwaitingApprovalText;
             StartActivationPolling(endpoint);
         }
         catch (Exception ex)
@@ -807,6 +809,9 @@ public sealed partial class SettingsViewModel : ObservableObject
             IsBusyWithRelay = false;
         }
     }
+
+    /// <summary>2026-11-18: requests wait for the admin now; the app keeps asking in the background (App.ResumePendingActivationAsync).</summary>
+    private const string AwaitingApprovalText = "Žádost odeslána — čeká na schválení administrátorem. Po schválení se zařízení připojí samo, appku můžete mezitím zavřít.";
 
     /// <summary>Ticks every few seconds until the admin decides — see <c>IMessageTransport.PollActivationAsync</c>'s remarks for why one call here does double duty as both "check status" and "finish registering" on Approved.</summary>
     private void StartActivationPolling(Uri endpoint)

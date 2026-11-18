@@ -726,6 +726,41 @@
                 </VerticalStackLayout>
 
                 <VerticalStackLayout Spacing="12" IsVisible="{Binding IsAdminMembersSubTab}">
+                <!-- Žádosti o přístup (2026-11-18) — a new member waits here for the admin; see SettingsViewModel.AccessRequests. -->
+                <Border Style="{StaticResource CardBorder}">
+                    <VerticalStackLayout Spacing="8">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <Label Grid.Column="0" Text="{Binding AccessRequests.Count, StringFormat='Žádosti o přístup ({0})'}" Style="{StaticResource SectionHeader}" Margin="0" VerticalOptions="Center" />
+                            <Button Grid.Column="1" Text="⟳" Style="{StaticResource SecondaryButton}" Padding="10,2" MinimumHeightRequest="30" Command="{Binding LoadAccessRequestsCommand}" />
+                        </Grid>
+                        <Label Text="Nikdo nečeká na schválení." IsVisible="{Binding HasNoAccessRequests}" FontSize="9.5" TextColor="Gray" />
+                        <Label Text="Vyberte roli a schvalte — appka novému členovi sama zařídí připojení. Admin se novému členovi dát nedá." IsVisible="{Binding HasAccessRequests}" FontSize="9.5" TextColor="Gray" />
+                        <VerticalStackLayout BindableLayout.ItemsSource="{Binding AccessRequests}" Spacing="8">
+                            <BindableLayout.ItemTemplate>
+                                <DataTemplate x:DataType="vm:AccessRequestItem">
+                                    <Border Style="{StaticResource CardBorder}" Margin="0" BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceAlt}, Dark={StaticResource SurfaceAltDark}}">
+                                        <VerticalStackLayout Spacing="6">
+                                            <Label Text="{Binding DisplayName}" FontSize="11" FontAttributes="Bold" />
+                                            <Label Text="{Binding Email, StringFormat='✉ {0}'}" FontSize="10" />
+                                            <Label Text="{Binding CreatedText}" FontSize="9" TextColor="Gray" />
+                                            <Picker Title="Role" ItemsSource="{Binding RoleChoices}" SelectedIndex="{Binding RoleIndex}" />
+                                            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                                                <Button Grid.Column="0" Text="✓ Schválit"
+                                                        Command="{Binding Source={RelativeSource AncestorType={x:Type vm:SettingsViewModel}}, Path=ApproveAccessRequestCommand}"
+                                                        CommandParameter="{Binding .}" />
+                                                <Button Grid.Column="1" Text="✕ Zamítnout" Style="{StaticResource SecondaryButton}"
+                                                        Command="{Binding Source={RelativeSource AncestorType={x:Type vm:SettingsViewModel}}, Path=RejectAccessRequestCommand}"
+                                                        CommandParameter="{Binding .}" />
+                                            </Grid>
+                                        </VerticalStackLayout>
+                                    </Border>
+                                </DataTemplate>
+                            </BindableLayout.ItemTemplate>
+                        </VerticalStackLayout>
+                        <Label Text="{Binding AccessRequestsStatusText}" IsVisible="{Binding HasAccessRequestsStatus}" FontSize="9.5" LineBreakMode="WordWrap" />
+                    </VerticalStackLayout>
+                </Border>
+
                 <!-- Členové (2026-10-17: sloučeno s dřívější samostatnou záložkou "Zařízení", user's
                      own ask) — vyberte člena z rolovacího menu, uvidíte jeho sdílený e-mail jednou
                      nahoře a VŠECHNA jeho zařízení pod tím, každé s rolí/viditelností záložek i se

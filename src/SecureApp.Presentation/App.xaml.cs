@@ -408,6 +408,10 @@ public partial class App : Application
 								ScheduleNextConnectAttempt();
 						}
 
+						// Not connected because the admin hasn't approved this device yet: keep asking (2026-11-18).
+						if (!transport.IsConnected)
+							await ResumePendingActivationAsync(services, transport);
+
 					// A periodic swap above is not a reconnect after an outage — only a real one triggers the extra sweep.
 					var justReconnected = !wasConnected && transport.IsConnected;
 					var sweepDue = DateTimeOffset.UtcNow - lastStaleSweep >= _staleSessionSweepInterval;
@@ -429,6 +433,8 @@ public partial class App : Application
 							await ReportPendingCrashAsync(services);
 							if (SweepStepDue(nameof(SyncAdminAlertsAsync), TimeSpan.FromMinutes(5), justReconnected))
 								await SyncAdminAlertsAsync(services);
+							if (SweepStepDue(nameof(SyncAccessRequestsAsync), TimeSpan.FromMinutes(5), justReconnected))
+								await SyncAccessRequestsAsync(services);
 						// Both feed only the Android widget (PiccRosterStore / ContactPhoneCache are read nowhere else), and
 						// change rarely — so not on Windows at all, and on Android not on every ~3-minute sweep.
 #if ANDROID
@@ -1392,6 +1398,79 @@ public partial class App : Application
 			prefs.Set(AdminAlertGroupsPreferenceKey, System.Text.Json.JsonSerializer.Serialize(trimmed));
 		}
 		catch { /* best-effort */ }
+	}
+
+	private const string AccessRequestsNotifiedPreferenceKey = "access_requests_notified";
+
+	/// <summary>
+	/// Admin only (2026-11-18): a new member's access request reaches the admin as a notification — once per request —
+	/// so nobody waits on an approval the admin doesn't know about. The decision itself is in Nastavení → Admin → Členové.
+	/// </summary>
+	private static async Task SyncAccessRequestsAsync(IServiceProvider services)
+	{
+		try
+		{
+			using var scope = services.CreateScope();
+			var currentUser = scope.ServiceProvider.GetRequiredService<ICurrentUserService>();
+			await currentUser.InitializeAsync();
+			if (currentUser.Current.Role != Role.Admin) return;
+			if ((await scope.ServiceProvider.GetRequiredService<ITransportSettingsRepository>().GetAsync())?.EndpointUri is not { } endpoint) return;
+
+			var pending = await scope.ServiceProvider.GetRequiredService<IRelayAdminService>().GetPendingAccessRequestsAsync(endpoint);
+			var prefs = Microsoft.Maui.Storage.Preferences.Default;
+			var notified = prefs.Get(AccessRequestsNotifiedPreferenceKey, string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries).ToHashSet();
+			var notifications = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
+			var native = services.GetService<INativeNotificationService>();
+			foreach (var request in pending.Where(r => !notified.Contains(r.Id.ToString("N"))))
+				await NotificationPublisher.PublishAccessRequestAsync(notifications, request.DisplayName, request.Email, native);
+
+			// Only still-pending ids are kept — a decided request drops out on its own.
+			prefs.Set(AccessRequestsNotifiedPreferenceKey, string.Join(',', pending.Select(r => r.Id.ToString("N"))));
+		}
+		catch (Exception ex)
+		{
+			AppLog.Warning(nameof(SyncAccessRequestsAsync), "checking access requests failed", ex);
+		}
+	}
+
+	private static DateTimeOffset _lastActivationResumeUtc = DateTimeOffset.MinValue;
+
+	/// <summary>
+	/// A not-yet-approved device (2026-11-18 — requests now wait for the admin): asks every 30 s whether its request was
+	/// decided, with or without Nastavení open, and on approval stores the credentials so the next tick connects — the
+	/// new member never has to come back and press anything.
+	/// </summary>
+	private static async Task ResumePendingActivationAsync(IServiceProvider services, IMessageTransport transport)
+	{
+		if (DateTimeOffset.UtcNow - _lastActivationResumeUtc < TimeSpan.FromSeconds(30)) return;
+		_lastActivationResumeUtc = DateTimeOffset.UtcNow;
+		try
+		{
+			using var scope = services.CreateScope();
+			var settings = scope.ServiceProvider.GetRequiredService<ITransportSettingsRepository>();
+			if (await settings.GetAsync() is not { PendingActivationRequestId: { } requestId, EndpointUri: { } endpoint } configuration) return;
+
+			var status = await transport.PollActivationAsync(endpoint, requestId);
+			if (status == ActivationRequestStatus.Approved)
+			{
+				AppLog.Event("activation.approved");
+				RequestImmediateReconnect();
+			}
+			else if (status == ActivationRequestStatus.Rejected)
+			{
+				configuration.SetPendingActivationRequest(null);
+				await settings.SaveAsync(configuration);
+				AppLog.Event("activation.rejected");
+			}
+		}
+		catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+		{
+			// offline — next tick
+		}
+		catch (Exception ex)
+		{
+			AppLog.Warning(nameof(ResumePendingActivationAsync), "checking the pending activation failed", ex);
+		}
 	}
 
 	/// <summary>

@@ -71,4 +71,12 @@ public interface IRelayAdminService
 
     /// <summary>Document Library approval-decision audit log search (2026-10-01) — <paramref name="query"/> matches a document's title as a substring, case-insensitive; null/empty returns every logged review decision, newest first. The approval-workflow twin of <see cref="SearchDocumentDownloadsAsync"/>.</summary>
     Task<IReadOnlyList<ValueObjects.LibraryDocumentReviewEntry>> SearchLibraryDocumentAuditAsync(Uri endpoint, string adminSecret, string? query, CancellationToken ct = default);
+
+    /// <summary>New members waiting for approval (2026-11-18) — from the admin's own device, no admin secret.</summary>
+    Task<IReadOnlyList<ValueObjects.AccessRequest>> GetPendingAccessRequestsAsync(Uri endpoint, CancellationToken ct = default);
+
+    /// <summary>Lets the new member in with <paramref name="role"/> — Modifier, Viewer or Redaktor; the relay refuses Admin.</summary>
+    Task ApproveAccessRequestAsync(Uri endpoint, Guid requestId, Enums.Role role, CancellationToken ct = default);
+
+    Task RejectAccessRequestAsync(Uri endpoint, Guid requestId, CancellationToken ct = default);
 }

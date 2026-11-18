@@ -265,6 +265,9 @@ public sealed record ReviewLibraryDocumentRequest(string Decision, string? Comme
 /// <summary>One library sub-category (2026-10-02) — see RelayDatabase's own schema remarks.</summary>
 public sealed record LibrarySubcategoryDto(Guid Id, string ParentCategory, string Name, Guid CreatedByDeviceId, DateTimeOffset CreatedAtUtc);
 
+/// <summary>POST /admin/activation-requests/{id}/approve (2026-11-18): the new member's role — 1 Modifier, 2 Viewer, 3 Redaktor; never 0 Admin.</summary>
+public sealed record ApproveActivationRequestBody(int? Role);
+
 /// <summary>POST /library/files/{id}/move (2026-11-18): the branch a teaching material moves to.</summary>
 public sealed record MoveLibraryFileRequest(string FolderPath);
 

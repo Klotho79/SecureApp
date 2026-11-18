@@ -360,6 +360,7 @@ public sealed partial class SettingsViewModel
         IsLoadingMembers = true;
         try
         {
+            _ = LoadAccessRequestsAsync(); // the "Žádosti o přístup" card above the members (2026-11-18)
             var managed = await _relayAdminService.GetManagedDevicesAsync(endpoint);
             var registered = await _relayAdminService.GetRegisteredDevicesAsync(endpoint);
             var registeredById = registered.ToDictionary(d => d.Id);

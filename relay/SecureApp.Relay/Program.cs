@@ -663,23 +663,11 @@ app.MapPost("/activation/request", (CreateActivationRequestRequest body, HttpCon
 
     var requestId = db.CreateActivationRequest(body.DisplayName, body.Email, body.KeyFingerprint);
 
-    // 2026-09-19 (user's own explicit call, after being shown the tradeoff: an open relay endpoint
-    // is baked into the shared APK, so anyone who ever gets the install file could self-register)
-    // — auto-approve every activation request immediately instead of waiting on an admin's manual
-    // decision. The only remaining gate is who receives the install link at all. Reuses the exact
-    // same device-creation path a manual /admin/activation-requests/{id}/approve already used, so
-    // the client's existing PollActivationAsync loop needs no changes — it just sees "Approved" on
-    // its very next poll instead of staying "Pending" indefinitely.
-    var approved = db.ApproveActivationRequest(requestId);
-
-    // 2026-10-14 — apply whatever role an admin parked for this name when they created this
-    // member's WireGuard access (see /admin/wireguard/clients above and pending_member_roles' own
-    // schema remarks). Best-effort by design: no match (name mismatch, nothing was ever parked, or
-    // it went stale) just leaves the device Unmanaged, exactly like before this existed — an admin
-    // can still fix it in "Správa členů".
-    if (approved is { } device && db.TryConsumePendingMemberRole(body.DisplayName) is { } pendingRole)
-        db.SetDevicePolicy(device.DeviceId, pendingRole, new List<string>());
-
+    // 2026-11-18 (user: "uživatel vytvoří účet a já ho schválím, vše ostatní udělá appka" — chosen together with
+    // dropping the library's encryption, which leaves device auth as the only gate): the request now WAITS for an
+    // admin (POST /admin/activation-requests/{id}/approve, from the admin's own device), instead of the
+    // auto-approval of 2026-09-19 that let anyone holding the APK in. The client's PollActivationAsync loop already
+    // handles Pending; an admin device is told about the request by its own background sweep.
     return Results.Ok(new CreateActivationRequestResponse(requestId));
 });
 
@@ -716,15 +704,24 @@ app.MapGet("/admin/activation-requests", (HttpRequest request, RelayDatabase db)
     return Results.Ok(pending.Select(r => new ActivationRequestSummary(r.Id, r.DisplayName, r.Email, r.KeyFingerprint, r.CreatedAtUtc)).ToList());
 });
 
-app.MapPost("/admin/activation-requests/{id:guid}/approve", (Guid id, HttpRequest request, RelayDatabase db) =>
+// 2026-11-18: the admin's own device may decide (no admin secret to type), and the new member gets a role right away
+// — Modifier, Viewer or Redaktor, never Admin (the user's rule "nový člen nebude nikdy admin"). No role given: the one
+// parked for this name when the admin created the member's WireGuard access, else Modifier.
+app.MapPost("/admin/activation-requests/{id:guid}/approve", (Guid id, HttpRequest request, ApproveActivationRequestBody? body, RelayDatabase db) =>
 {
-    if (!IsAdminAuthorized(request, adminSecret))
+    if (!IsAdminAuthorizedOrAdminDevice(request, adminSecret, db))
         return Results.Unauthorized();
+    if (body?.Role is { } requestedRole && requestedRole is not (1 or 2 or 3))
+        return Results.BadRequest("Role must be Modifier (1), Viewer (2) or Redaktor (3) — a new member is never Admin.");
 
+    var pending = db.GetActivationRequest(id);
     var approved = db.ApproveActivationRequest(id);
-    if (approved is null)
+    if (approved is not { } device)
         return Results.Conflict("This request no longer exists or was already decided.");
 
+    var parked = pending is not null ? db.TryConsumePendingMemberRole(pending.DisplayName) : null;
+    var role = body?.Role ?? (parked is 1 or 2 or 3 ? parked.Value : 1);
+    db.SetDevicePolicy(device.DeviceId, role, new List<string>());
     return Results.Ok();
 });
 
@@ -750,7 +747,7 @@ app.MapGet("/identity-backup/{lookupKey}", (string lookupKey, RelayDatabase db) 
 
 app.MapPost("/admin/activation-requests/{id:guid}/reject", (Guid id, HttpRequest request, RelayDatabase db) =>
 {
-    if (!IsAdminAuthorized(request, adminSecret))
+    if (!IsAdminAuthorizedOrAdminDevice(request, adminSecret, db))
         return Results.Unauthorized();
 
     if (!db.RejectActivationRequest(id))

@@ -228,6 +228,54 @@ public sealed class HttpRelayAdminService : IRelayAdminService
 
     private sealed record WireGuardClientResult(string ConfigurationText, string? PickupCode);
 
+    // --- Access requests (2026-11-18): new members wait for the admin, who decides from their own device.
+
+    public async Task<IReadOnlyList<SecureApp.Domain.ValueObjects.AccessRequest>> GetPendingAccessRequestsAsync(Uri endpoint, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(ToHttpUri(endpoint), "admin/activation-requests"));
+        await AddDeviceAuthAsync(request, ct);
+        using var response = await _httpClient.SendAsync(request, ct);
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+            throw new InvalidOperationException("Toto zařízení nemá roli Admin na relay serveru.");
+        response.EnsureSuccessStatusCode();
+        var items = await response.Content.ReadFromJsonAsync<List<ActivationRequestSummary>>(HttpJsonOptions, ct) ?? [];
+        return items.Select(r => new SecureApp.Domain.ValueObjects.AccessRequest(r.Id, r.DisplayName, r.Email, r.CreatedAtUtc)).ToList();
+    }
+
+    public async Task ApproveAccessRequestAsync(Uri endpoint, Guid requestId, SecureApp.Domain.Enums.Role role, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+        if (role == SecureApp.Domain.Enums.Role.Admin)
+            throw new InvalidOperationException("Nový člen nemůže dostat roli Admin.");
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(ToHttpUri(endpoint), $"admin/activation-requests/{requestId}/approve"))
+        {
+            Content = JsonContent.Create(new { Role = (int)role }, options: HttpJsonOptions),
+        };
+        await AddDeviceAuthAsync(request, ct);
+        await SendDecisionAsync(request, ct);
+    }
+
+    public async Task RejectAccessRequestAsync(Uri endpoint, Guid requestId, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(ToHttpUri(endpoint), $"admin/activation-requests/{requestId}/reject"));
+        await AddDeviceAuthAsync(request, ct);
+        await SendDecisionAsync(request, ct);
+    }
+
+    private async Task SendDecisionAsync(HttpRequestMessage request, CancellationToken ct)
+    {
+        using var response = await _httpClient.SendAsync(request, ct);
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+            throw new InvalidOperationException("Toto zařízení nemá roli Admin na relay serveru.");
+        if (response.StatusCode == HttpStatusCode.Conflict)
+            throw new InvalidOperationException("O žádosti už bylo rozhodnuto (nebo ji žadatel zrušil).");
+        response.EnsureSuccessStatusCode();
+    }
+
+    private sealed record ActivationRequestSummary(Guid Id, string DisplayName, string Email, string? KeyFingerprint, DateTimeOffset CreatedAtUtc);
+
     private sealed record InviteResponse(string Code, DateTimeOffset ExpiresAtUtc);
 
     /// <summary>Mirrors the relay's own <c>SecureApp.Relay.Contracts.RegisteredDeviceSummary</c> (2.1, 2026-09-17) — duplicated rather than shared, since this Presentation-layer client has no project reference to the Relay's own assembly (same reasoning as <see cref="InviteResponse"/> already established for the invite-code response shape).</summary>

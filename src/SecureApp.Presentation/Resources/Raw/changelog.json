@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.1.42",
+    "code": 148,
+    "date": "18. 11. 2026",
+    "items": [
+      "Nové členy schvaluje admin: nový uživatel v appce požádá o přístup a admin ho v Nastavení → Admin → Členové → „Žádosti o přístup“ schválí jako Modifier, Viewer nebo Redaktor (nikdy Admin), nebo žádost zamítne.",
+      "Admin dostane o každé nové žádosti upozornění.",
+      "Žadatel vidí „čeká na schválení administrátorem“; po schválení se zařízení připojí samo — appku může mezitím zavřít, při dalším spuštění se připojí.",
+      "Odregistrovaný člen ztratí na serveru všechno — roli, klíče, VPN tunel i možnost se potichu vrátit; jeho logy se archivují."
+    ]
+  },
+  {
     "version": "0.1.41",
     "code": 147,
     "date": "18. 11. 2026",
