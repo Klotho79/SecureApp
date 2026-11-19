@@ -1,5 +1,13 @@
 [
   {
+    "version": "0.1.43",
+    "code": 149,
+    "date": "19. 11. 2026",
+    "items": [
+      "Nové zařízení se teď samo přednastaví na veřejnou adresu serveru (funguje i mimo domácí síť/VPN) — už nastavená zařízení se nijak nemění."
+    ]
+  },
+  {
     "version": "0.1.42",
     "code": 148,
     "date": "18. 11. 2026",

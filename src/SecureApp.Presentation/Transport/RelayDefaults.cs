@@ -5,12 +5,22 @@ namespace SecureApp.Presentation.Transport;
 /// make every device type the address in by hand. <c>SettingsViewModel</c> pre-fills the relay
 /// address field with this the first time a device opens Settings (before anything has been saved
 /// to <c>ITransportSettingsRepository</c> yet); it stays freely editable afterward, this is only a
-/// default. Update this if the Pi's LAN address ever changes — mirrors the address hard-coded into
-/// <c>relay/SecureApp.Relay/docker-compose.yml</c>'s port binding, keep the two in sync.
+/// default.
 /// </summary>
 internal static class RelayDefaults
 {
-    public const string DefaultEndpoint = "ws://192.168.50.8:8080";
+    /// <summary>
+    /// 2026-11-19: switched from the home-LAN address (<c>ws://192.168.50.8:8080</c>) to the public
+    /// TLS endpoint, now that WAN 443 is confirmed port-forwarded and reachable from outside the
+    /// LAN/VPN (verified from a phone on mobile data). A brand-new device (e.g. a work PC with no
+    /// admin rights to install the WireGuard client) can now register on first launch with no manual
+    /// endpoint edit and no tunnel at all. Existing devices already on the LAN address are unaffected
+    /// — this only changes what a device with no saved config yet starts from; the tunnel is still
+    /// used wherever it's already set up (<c>App.MigrateToPublicEndpointAsync</c>/
+    /// <c>FallBackToLegacyEndpointAsync</c> handle switching between the two for already-registered
+    /// devices).
+    /// </summary>
+    public const string DefaultEndpoint = PublicEndpoint;
 
     /// <summary>
     /// The relay's public TLS address (static IP, self-signed cert pinned in <see cref="RelayTls"/>). A device that can

@@ -36,8 +36,8 @@
 		<!-- Versions — ApplicationVersion is the Android versionCode; bump it on every release build
 		     that should be offered as an update (the self-update system, 2026-09-23, compares this
 		     number, not ApplicationDisplayVersion, to decide "is there something newer"). -->
-		<ApplicationDisplayVersion>0.1.42</ApplicationDisplayVersion>
-		<ApplicationVersion>148</ApplicationVersion>
+		<ApplicationDisplayVersion>0.1.43</ApplicationDisplayVersion>
+		<ApplicationVersion>149</ApplicationVersion>
 
 		<!-- To develop, package, and publish an app to the Microsoft Store, see: https://aka.ms/MauiTemplateUnpackaged -->
 		<WindowsPackageType>None</WindowsPackageType>
@@ -85,6 +85,13 @@
 		     setup, then small framework-dependent packages for every update after that. -->
 		<SelfContained Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">false</SelfContained>
 		<WindowsAppSDKSelfContained Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">false</WindowsAppSDKSelfContained>
+
+		<!-- 2026-11-19: tried PublishReadyToRun (+ the RuntimeIdentifierOverride workaround for
+		     WindowsAppSDK#3337) to cut cold-start JIT work after a reboot/update (reported as 20-30s,
+		     fast every later launch same session). Neither produced an actual ReadyToRun-compiled
+		     assembly - checked the published DLL for the "RTR0" header directly, found none either
+		     way, build succeeds with no warning either. Reverted rather than ship a flag that silently
+		     does nothing; this needs more investigation before trying again, not a quick flag flip. -->
 
 		<!-- Native NuGet packages (SkiaSharp, WinUI, HarfBuzz, ANGLE) ship their own .pdb symbol
 		     files alongside their .dll, and publish copies them by default — ~250MB of debug

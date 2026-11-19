@@ -198,6 +198,74 @@ installer's own short progress UI, not a single headless command. `-RelayBaseUrl
 `http://192.168.50.8:8080`; override it if the target PC reaches the relay by a different address
 (e.g. over the WireGuard tunnel itself, once that part is already up).
 
+# No-admin install — work PC with no administrator rights
+
+`install-no-admin.ps1` (2026-11-19, user's own ask: "PC v praci" has no admin rights at all, and
+the user didn't want the Windows build to grow (self-contained would add ~150MB of .NET runtime to
+every single release, which also means ~150MB more written to the Pi's SD card on every release
+upload — a real wear concern on a card the user already worries about). Unlike
+`new-pc-onboarding.ps1`, this script **never elevates** — everything lands in the user's own
+profile (`%LOCALAPPDATA%\SecureApp\...` by default), nothing touches Program Files or the machine
+registry hive, and no WireGuard tunnel is installed — it targets a PC reaching the relay's PUBLIC
+endpoint directly (confirmed reachable from outside the LAN/VPN 2026-11-19).
+
+```powershell
+.\relay\ops\install-no-admin.ps1
+```
+
+**`install-no-admin.bat`** is the double-click launcher (same self-fetch trick as
+`new-pc-onboarding.bat` — downloads the current `.ps1` from the relay's generic
+`/download/ops/{name}` route every run, so re-uploading just the `.ps1` here keeps every already-
+distributed `.bat` copy current).
+
+**Not just a one-time install** — reworked 2026-11-19 per the user's own follow-up ("ať je to
+součástí spouštěcího souboru, co to zkontroluje a případně stáhne potřebné"): the Start Menu
+shortcut this script creates points at `Spustit-SecureApp.cmd`, which re-runs this same script
+(a cached local copy, not a re-download) on **every** launch before starting the app, not just the
+first one. That stays cheap day to day — every check is a local `Test-Path`/`Get-AppxPackage` call;
+network/download only happens on the (first, or any later broken-install) run where something is
+actually missing. This is a separate concern from the 20-30s cold-start time reported the same
+day — see [[project-windows-startup-latency]] — which is about the app's own startup work once it's
+already running, not this script.
+
+What it does, step by step — see the `.ps1`'s own header for the full reasoning and sources:
+0. Caches a copy of itself at `%LOCALAPPDATA%\SecureApp\app\install-no-admin.ps1` so every later
+   launch runs checks from disk — a normal day never needs the relay reachable just to open the app.
+1. **.NET Desktop Runtime 10**: installed user-locally via Microsoft's own `dotnet-install.ps1`
+   (officially documented as a non-admin install path) into `%LOCALAPPDATA%\SecureApp\dotnet`;
+   `DOTNET_ROOT` is then set as a **user** environment variable so the app's apphost finds it
+   without any registry entry (which only an elevated installer could write).
+2. **Windows App SDK Runtime 1.7**: runs the same installer `new-pc-onboarding.ps1` uses
+   (`/download/ops/windowsappruntimeinstall-x64.exe`), but without elevating first — per
+   Microsoft's own deployment guide, a non-elevated run registers the MSIX packages for the
+   current user only (the machine-wide path, and the admin requirement, only kicks in when already
+   elevated). **Not guaranteed on every PC** — a locked-down org policy can still block per-user
+   MSIX sideloading entirely; the script detects this and says so plainly instead of silently
+   failing later.
+3. **SecureApp itself**: downloads the ordinary `/download/windows` portable zip (same file the
+   relay already serves, no new upload step) into `%LOCALAPPDATA%\SecureApp\app`.
+4. The Start Menu shortcut (user scope, no admin) points at `Spustit-SecureApp.cmd`, which re-runs
+   step 0-3's checks from the local cached copy, then starts the app with `DOTNET_ROOT` set for
+   that process (a shortcut alone can't set an environment variable, which is why this indirection
+   exists at all).
+
+Steps 2 and 3 talk to the relay over its self-signed certificate, pinned by SHA-1 thumbprint
+(captured live 2026-11-19 — different from `RelayTls.PinnedPublicKeySha256Base64`, since Windows
+PowerShell 5.1's `X509Certificate2` has no `ExportSubjectPublicKeyInfo`; update the thumbprint in
+the script if the relay's certificate is ever regenerated) via a **compiled .NET delegate**
+(`Add-Type`), not a plain PowerShell scriptblock — a scriptblock assigned directly to
+`ServerCertificateValidationCallback` throws "There is no Runspace available to run scripts in
+this thread" once .NET invokes it from a non-interactive background thread (hit this for real
+while testing — every HTTPS call failed with a generic, misleading "connection closed" error with
+no hint of the actual cause).
+
+Upload both files to the relay's downloads dir once (same manual-scp hand-off as everything else
+under `/download/ops/`):
+
+```powershell
+scp -F "C:\Users\dvora\.ssh\config" relay\ops\install-no-admin.ps1 relay\ops\install-no-admin.bat secureapp-pi:~/SecureApp/relay/SecureApp.Relay/data/downloads/
+```
+
 # Backup — Pi data to the dev PC
 
 `backup-from-pi.ps1` (2026-09-23, user's own ask: don't lose community data or admin access if a
