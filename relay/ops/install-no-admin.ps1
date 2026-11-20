@@ -187,14 +187,22 @@ else {
     }
 }
 
-# --- 4. Start Menu zástupce (jednou - ukazuje na launcher, ten pak pouští TOTO skript při každém start) ---
+# --- 4. Start Menu zástupce (launcher se přepisuje při KAŽDÉM běhu - viz DOTNET_ROOT poznámka níže) ---
 $launcherPath = Join-Path $InstallDir "Spustit-SecureApp.cmd"
-if (-not (Test-Path $launcherPath)) {
-    @"
+# DOTNET_ROOT set here too, in plain batch, not just by this .ps1 a moment later (2026-11-20, real
+# bug found on "PC v praci": the app crashed instantly with ".NET Desktop Runtime chybí" even though
+# it WAS installed - the host couldn't see DOTNET_ROOT at all when launched via a brand-new process
+# tree from the shortcut). `set` in a plain .cmd is inherited by the powershell.exe it spawns no
+# matter what - no dependency on this script's own $env:DOTNET_ROOT assignment a few lines below, or
+# on the "User" env var write (SetEnvironmentVariable) having actually taken effect/propagated yet.
+# Always rewritten (not gated on Test-Path like before) so this fix reaches an install that already
+# has an old launcher - a fresh `install-no-admin.bat` run re-downloads this .ps1 and re-runs it, but
+# only rewrites $localCopyPath/this launcher if it's allowed to, which gating on Test-Path prevented.
+@"
 @echo off
+set "DOTNET_ROOT=$DotnetDir"
 powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "$localCopyPath" -InstallDir "$InstallDir" -DotnetDir "$DotnetDir" -RelayBaseUrl "$RelayBaseUrl" -Launch
 "@ | Set-Content -Path $launcherPath -Encoding ascii
-}
 
 function Set-SecureAppShortcut {
     param([string]$Path)
