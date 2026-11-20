@@ -196,17 +196,32 @@ powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "$localC
 "@ | Set-Content -Path $launcherPath -Encoding ascii
 }
 
-$startMenuDir = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs"
-$shortcutPath = Join-Path $startMenuDir "SecureApp.lnk"
-if (-not (Test-Path $shortcutPath)) {
+function Set-SecureAppShortcut {
+    param([string]$Path)
     $shell = New-Object -ComObject WScript.Shell
-    $shortcut = $shell.CreateShortcut($shortcutPath)
+    $shortcut = $shell.CreateShortcut($Path)
     $shortcut.TargetPath = $launcherPath
     $shortcut.WorkingDirectory = $InstallDir
     $shortcut.IconLocation = $secureAppExe
     $shortcut.Save()
+}
+
+$startMenuDir = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs"
+$shortcutPath = Join-Path $startMenuDir "SecureApp.lnk"
+if (-not (Test-Path $shortcutPath)) {
+    Set-SecureAppShortcut -Path $shortcutPath
     Write-Output "Zástupce vytvořen: $shortcutPath"
 }
+
+# Plocha (2026-11-20, user's own ask: "nevim kam [se nainstalovalo] a ikona na plose jiz byla ale ke
+# stare verzi" - this install is invisible without SOME icon the user actually sees; an old Desktop
+# shortcut from a previous manual install elsewhere is a DIFFERENT file at a different target, so it
+# was never going to be touched by anything this script does). Always (re)written, not gated on
+# Test-Path like the Start Menu one above - cheap, and self-heals if ever pointed somewhere stale.
+# Deliberately does NOT try to find/replace an old shortcut at a different, unknown location - if one
+# exists from before, delete it by hand once this new icon is confirmed working.
+$desktopPath = Join-Path ([Environment]::GetFolderPath("Desktop")) "SecureApp.lnk"
+Set-SecureAppShortcut -Path $desktopPath
 
 # --- 5. Spuštění appky (jen když o to launcher/Spustit-SecureApp.cmd požádal) ----------------------
 if ($Launch -and (Test-Path $secureAppExe)) {
@@ -214,3 +229,6 @@ if ($Launch -and (Test-Path $secureAppExe)) {
 }
 
 Write-Output "=== Hotovo ==="
+Write-Output "Nainstalováno do: $InstallDir"
+Write-Output "Zástupce: $desktopPath (Plocha) a $shortcutPath (nabídka Start)"
+Write-Output "Pokud na Ploše už byla STARÁ ikona SecureApp z dřívějška, ukazuje na jiné místo - smažte ji rukou, tahle nová je ta aktuální."
