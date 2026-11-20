@@ -179,7 +179,13 @@ app.MapGet("/download", () =>
     var onboardingBatPath = Path.Combine(downloadsDir, "new-pc-onboarding.bat");
     var onboardingAvailable = File.Exists(onboardingBatPath) && File.Exists(Path.Combine(downloadsDir, "new-pc-onboarding.ps1"));
 
-    return Results.Content(DownloadPageHtml(androidAvailable, androidSize, windowsAvailable, windowsSize, onboardingAvailable), "text/html; charset=utf-8");
+    // No-admin install (2026-11-19, user's own ask after typing the URL by hand on a work PC) — same
+    // manual-scp hand-off pattern as the two onboarding files above, just never elevates: no WireGuard,
+    // no UAC, everything goes into %LOCALAPPDATA%\SecureApp. See relay/ops/install-no-admin.ps1.
+    var noAdminBatPath = Path.Combine(downloadsDir, "install-no-admin.bat");
+    var noAdminAvailable = File.Exists(noAdminBatPath) && File.Exists(Path.Combine(downloadsDir, "install-no-admin.ps1"));
+
+    return Results.Content(DownloadPageHtml(androidAvailable, androidSize, windowsAvailable, windowsSize, onboardingAvailable, noAdminAvailable), "text/html; charset=utf-8");
 });
 
 app.MapGet("/download/android", () =>
@@ -2222,7 +2228,7 @@ static bool TryGetDeviceAuth(HttpRequest request, RelayDatabase db, out Guid dev
 }
 
 /// <summary>Plain, dependency-free HTML — no static-file middleware/Razor set up in this minimal-API project, and this is one small page, so an inline string is the simplest honest option.</summary>
-static string DownloadPageHtml(bool androidAvailable, string? androidSize, bool windowsAvailable, string? windowsSize, bool onboardingAvailable)
+static string DownloadPageHtml(bool androidAvailable, string? androidSize, bool windowsAvailable, string? windowsSize, bool onboardingAvailable, bool noAdminAvailable)
 {
     var androidSection = androidAvailable
         ? $"""<a class="btn" href="/download/android">Stáhnout pro Android ({androidSize})</a>"""
@@ -2260,6 +2266,18 @@ static string DownloadPageHtml(bool androidAvailable, string? androidSize, bool 
             """
         : "";
 
+    var noAdminSection = noAdminAvailable
+        ? $$"""
+            <h2>Firemní PC bez práv správce</h2>
+            <p class="muted">Pro počítač, kde nemáte admin práva ani VPN (instalace se neptá na heslo, nic nevyžaduje).</p>
+            <a class="btn" href="/download/ops/install-no-admin.bat">Stáhnout instalační .bat</a>
+            <ol>
+                <li>Stáhněte .bat tlačítkem výše a spusťte ho (dvojklik) — žádné okno správce se neobjeví.</li>
+                <li>Appka se nainstaluje do vašeho uživatelského profilu a vytvoří zástupce ve Start menu.</li>
+            </ol>
+            """
+        : "";
+
     return $$"""
         <!doctype html>
         <html lang="cs">
@@ -2289,6 +2307,7 @@ static string DownloadPageHtml(bool androidAvailable, string? androidSize, bool 
         </ol>
         {{windowsSection}}
         {{onboardingSection}}
+        {{noAdminSection}}
         </body>
         </html>
         """;
