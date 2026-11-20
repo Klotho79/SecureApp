@@ -7,11 +7,16 @@ rem current forever - any future fix to new-pc-onboarding.ps1 just needs re-uplo
 rem (see relay/ops/README.md), never a new copy of this launcher.
 setlocal enabledelayedexpansion
 
-set "RELAY=http://192.168.50.8:8080"
+rem Public endpoint (2026-11-20, was "http://192.168.50.8:8080" - LAN-only, unreachable from exactly
+rem the brand-new/work PC this script targets, see new-pc-onboarding.ps1's own header). Relay uses a
+rem self-signed cert (pinned thumbprint, see install-no-admin.ps1's Ensure-RelayTrust - keep this
+rem value in sync with that file); plain Invoke-WebRequest fails this very first fetch with
+rem "Nadrizene pripojeni bylo uzavreno..." without it.
+set "RELAY=https://212.111.15.246"
 set "PS1_TEMP=%TEMP%\new-pc-onboarding.ps1"
 
 echo Stahuji nejnovejsi instalacni skript z relay (%RELAY%)...
-powershell -NoProfile -Command "try { Invoke-WebRequest -Uri '%RELAY%/download/onboarding.ps1' -OutFile '%PS1_TEMP%' -UseBasicParsing } catch { Write-Output ('STAHOVANI SE NEZDARILO: ' + $_.Exception.Message); exit 1 }"
+powershell -NoProfile -Command "try { Add-Type -TypeDefinition 'using System;using System.Net.Security;using System.Security.Cryptography.X509Certificates;public static class RelayCertPin0{public static string Pin;public static bool Validate(object s,X509Certificate c,X509Chain ch,SslPolicyErrors e){if(e==SslPolicyErrors.None)return true;if(c==null)return false;var c2=new X509Certificate2(c);return string.Equals(c2.Thumbprint,Pin,StringComparison.OrdinalIgnoreCase);}}'; [RelayCertPin0]::Pin='1859C067B270FDC40B9924E08757BC0380108F47'; [System.Net.ServicePointManager]::SecurityProtocol=[System.Net.SecurityProtocolType]::Tls12; [System.Net.ServicePointManager]::ServerCertificateValidationCallback=[Delegate]::CreateDelegate([System.Net.Security.RemoteCertificateValidationCallback],[RelayCertPin0],'Validate'); Invoke-WebRequest -Uri '%RELAY%/download/onboarding.ps1' -OutFile '%PS1_TEMP%' -UseBasicParsing } catch { Write-Output ('STAHOVANI SE NEZDARILO: ' + $_.Exception.Message); exit 1 }"
 if errorlevel 1 (
     echo.
     echo Nepodarilo se stahnout instalacni skript z relay %RELAY%.

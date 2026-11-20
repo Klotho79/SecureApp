@@ -11,9 +11,13 @@ setlocal enabledelayedexpansion
 
 set "RELAY=https://212.111.15.246"
 set "PS1_TEMP=%TEMP%\install-no-admin.ps1"
+rem Relay uses a self-signed cert (pinned thumbprint, see install-no-admin.ps1's own Ensure-RelayTrust
+rem - keep this value in sync with that file). Plain Invoke-WebRequest fails this very first fetch
+rem with "Nadrizene pripojeni bylo uzavreno..." (confirmed 2026-11-20) since nothing has told .NET to
+rem trust it yet - this inline Add-Type sets up the same pinned validation before the download.
 
 echo Stahuji nejnovejsi instalacni skript z relay (%RELAY%)...
-powershell -NoProfile -Command "try { Invoke-WebRequest -Uri '%RELAY%/download/ops/install-no-admin.ps1' -OutFile '%PS1_TEMP%' -UseBasicParsing } catch { Write-Output ('STAHOVANI SE NEZDARILO: ' + $_.Exception.Message); exit 1 }"
+powershell -NoProfile -Command "try { Add-Type -TypeDefinition 'using System;using System.Net.Security;using System.Security.Cryptography.X509Certificates;public static class RelayCertPin0{public static string Pin;public static bool Validate(object s,X509Certificate c,X509Chain ch,SslPolicyErrors e){if(e==SslPolicyErrors.None)return true;if(c==null)return false;var c2=new X509Certificate2(c);return string.Equals(c2.Thumbprint,Pin,StringComparison.OrdinalIgnoreCase);}}'; [RelayCertPin0]::Pin='1859C067B270FDC40B9924E08757BC0380108F47'; [System.Net.ServicePointManager]::SecurityProtocol=[System.Net.SecurityProtocolType]::Tls12; [System.Net.ServicePointManager]::ServerCertificateValidationCallback=[Delegate]::CreateDelegate([System.Net.Security.RemoteCertificateValidationCallback],[RelayCertPin0],'Validate'); Invoke-WebRequest -Uri '%RELAY%/download/ops/install-no-admin.ps1' -OutFile '%PS1_TEMP%' -UseBasicParsing } catch { Write-Output ('STAHOVANI SE NEZDARILO: ' + $_.Exception.Message); exit 1 }"
 if errorlevel 1 (
     echo.
     echo Nepodarilo se stahnout instalacni skript z relay %RELAY%.

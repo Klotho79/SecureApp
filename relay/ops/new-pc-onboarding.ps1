@@ -51,13 +51,46 @@
 #     relay/ops/README.md's own note on where they came from.
 
 param(
-    [string]$RelayBaseUrl = "http://192.168.50.8:8080",
+    [string]$RelayBaseUrl = "https://212.111.15.246",
     [string]$InstallDir = "C:\SecureApp",
     [string]$ConfigPath = "",
     [string]$Code = ""
 )
 
 $ErrorActionPreference = "Stop"
+
+# This script is explicitly meant to run on a brand-new/work PC (see the header above) that has
+# NEITHER WireGuard NOR this app yet - so it cannot assume LAN/VPN reachability to the Pi's own
+# 192.168.50.8:8080 address, only the public internet. Default switched 2026-11-20 (was
+# "http://192.168.50.8:8080", unreachable from exactly the PC this script targets) to the relay's
+# public, self-signed-cert endpoint - same one RelayDefaults.PublicEndpoint/install-no-admin.ps1
+# already use. Same pinned-thumbprint trust as install-no-admin.ps1's own Ensure-RelayTrust (a
+# compiled .NET delegate, not a plain scriptblock - see that file's header for why a scriptblock
+# callback throws "no Runspace available" once the TLS handshake invokes it).
+function Ensure-RelayTrust {
+    if ($script:RelayTrustReady) { return }
+    if (-not $RelayBaseUrl.StartsWith("https://", [StringComparison]::OrdinalIgnoreCase)) { $script:RelayTrustReady = $true; return }
+
+    Add-Type -TypeDefinition @"
+using System;
+using System.Net.Security;
+using System.Security.Cryptography.X509Certificates;
+public static class RelayCertPin {
+    public static string PinnedThumbprint;
+    public static bool Validate(object sender, X509Certificate certificate, X509Chain chain, SslPolicyErrors sslPolicyErrors) {
+        if (sslPolicyErrors == SslPolicyErrors.None) return true;
+        if (certificate == null) return false;
+        var cert2 = new X509Certificate2(certificate);
+        return string.Equals(cert2.Thumbprint, PinnedThumbprint, StringComparison.OrdinalIgnoreCase);
+    }
+}
+"@
+    [RelayCertPin]::PinnedThumbprint = "1859C067B270FDC40B9924E08757BC0380108F47"
+    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+    [System.Net.ServicePointManager]::ServerCertificateValidationCallback =
+        [Delegate]::CreateDelegate([System.Net.Security.RemoteCertificateValidationCallback], [RelayCertPin], "Validate")
+    $script:RelayTrustReady = $true
+}
 
 # --- Self-elevate ------------------------------------------------------------
 $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -110,6 +143,7 @@ if ($hasDesktopRuntime) {
 }
 else {
     Write-Output ".NET Desktop Runtime 10 chybí - stahuji z relay ($RelayBaseUrl/download/ops/windowsdesktop-runtime-10.0-win-x64.exe)..."
+    Ensure-RelayTrust
     $dotnetInstaller = Join-Path $env:TEMP "windowsdesktop-runtime-10.0-win-x64.exe"
     Invoke-WebRequest -Uri "$RelayBaseUrl/download/ops/windowsdesktop-runtime-10.0-win-x64.exe" -OutFile $dotnetInstaller
     Start-Process -FilePath $dotnetInstaller -ArgumentList "/install", "/quiet", "/norestart" -Wait
@@ -123,6 +157,7 @@ if ($hasWindowsAppRuntime) {
 }
 else {
     Write-Output "Windows App SDK Runtime 1.7 chybí - stahuji z relay ($RelayBaseUrl/download/ops/windowsappruntimeinstall-x64.exe)..."
+    Ensure-RelayTrust
     $waInstaller = Join-Path $env:TEMP "windowsappruntimeinstall-x64.exe"
     Invoke-WebRequest -Uri "$RelayBaseUrl/download/ops/windowsappruntimeinstall-x64.exe" -OutFile $waInstaller
     Start-Process -FilePath $waInstaller -ArgumentList "--quiet" -Wait
@@ -137,6 +172,7 @@ if (Test-Path $secureAppExe) {
 }
 else {
     Write-Output "SecureApp chybí v $InstallDir - stahuji portable verzi z relay ($RelayBaseUrl/download/windows)..."
+    Ensure-RelayTrust
     $zipPath = Join-Path $env:TEMP "secureapp-windows-portable.zip"
     Invoke-WebRequest -Uri "$RelayBaseUrl/download/windows" -OutFile $zipPath
     New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
@@ -153,6 +189,7 @@ else {
 # --- 4. WireGuard tunnel import (optional) ---------------------------------------
 if ($Code) {
     Write-Output "Vyzvedávám WireGuard konfiguraci pomocí kódu..."
+    Ensure-RelayTrust
     try {
         $pickup = Invoke-RestMethod -Uri "$RelayBaseUrl/onboarding/pickup/$Code" -UseBasicParsing
     }
