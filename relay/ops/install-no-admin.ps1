@@ -106,19 +106,32 @@ if ($PSCommandPath -and (Resolve-Path $PSCommandPath -ErrorAction SilentlyContin
 }
 
 # --- 1. .NET Desktop Runtime 10 --------------------------------------------------------------------
+# Checks BOTH shared frameworks the app host actually needs (2026-11-20, real bug found on "PC v
+# praci": Microsoft.WindowsDesktop.App had landed (10.0.15) but Microsoft.NETCore.App was completely
+# missing - the app crashed instantly with ".NET Desktop Runtime 10.0.12" even though a NEWER
+# WindowsDesktop.App was present, because this check only ever looked at that one folder and never
+# noticed its dependency was gone. Most likely cause: that PC's flaky corporate network let the single
+# windowsdesktop-runtime zip's download report the right byte COUNT while still landing corrupted/
+# partial, which dotnet-install.ps1's own same-size check doesn't catch - fixed below by installing
+# the two shared frameworks as two separate, independently-retriable dotnet-install.ps1 calls instead
+# of relying on one zip to deliver both.
 function Test-DesktopRuntime {
-    $sharedDir = Join-Path $DotnetDir "shared\Microsoft.WindowsDesktop.App"
-    return (Test-Path $sharedDir) -and (Get-ChildItem $sharedDir -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "10.*" })
+    $desktopDir = Join-Path $DotnetDir "shared\Microsoft.WindowsDesktop.App"
+    $coreDir = Join-Path $DotnetDir "shared\Microsoft.NETCore.App"
+    $hasDesktop = (Test-Path $desktopDir) -and (Get-ChildItem $desktopDir -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "10.*" })
+    $hasCore = (Test-Path $coreDir) -and (Get-ChildItem $coreDir -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "10.*" })
+    return $hasDesktop -and $hasCore
 }
 
 if (Test-DesktopRuntime) {
     Write-Output ".NET Desktop Runtime 10: OK."
 }
 else {
-    Write-Output ".NET Desktop Runtime 10 chybí - stahuji instalační skript Microsoftu (dot.net, bez nutnosti admin práv)..."
+    Write-Output ".NET Desktop Runtime 10 chybí nebo neúplný - stahuji instalační skript Microsoftu (dot.net, bez nutnosti admin práv)..."
     $installScript = Join-Path $env:TEMP "dotnet-install.ps1"
     Invoke-WebRequest -Uri "https://dot.net/v1/dotnet-install.ps1" -OutFile $installScript -UseBasicParsing
     New-Item -ItemType Directory -Force -Path $DotnetDir | Out-Null
+    & $installScript -Channel "10.0" -Runtime "dotnet" -InstallDir $DotnetDir -NoPath
     & $installScript -Channel "10.0" -Runtime "windowsdesktop" -InstallDir $DotnetDir -NoPath
     Remove-Item $installScript -ErrorAction SilentlyContinue
     if (Test-DesktopRuntime) {
