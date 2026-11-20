@@ -29,7 +29,35 @@ public static class ActiveProfile
     public static bool RequiresLogin =>
         DeviceInfo.Current.Platform == DevicePlatform.WinUI
         && string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("SECUREAPP_DATA_DIR"))
-        && _current.Value is null;
+        && _current.Value is null
+        && !HasExistingUnprofiledInstall();
+
+    /// <summary>
+    /// 2026-11-20, real gap found: a fresh install (e.g. a second no-admin install of an already-
+    /// used machine, see relay/ops/install-no-admin.ps1) hit this login gate for the FIRST time ever
+    /// on a PC that already had a real, working, already-registered identity sitting in the plain
+    /// un-profiled <c>FileSystem.AppDataDirectory</c> — this feature's own picker only ever offers
+    /// "log in to an existing PROFILE" (none exist yet, so the list is empty) or "create a new one",
+    /// neither of which is "keep using what I already have", so the user was being pushed toward an
+    /// unwanted SECOND, blank identity/relay registration. This profile system is meant to be opt-in
+    /// for PCs genuinely shared by several people (see <see cref="ProfileRegistry"/>'s own remarks) —
+    /// it must never intercept an already-working single-user install that simply never happened to
+    /// create a profile before. Once someone HAS created at least one profile here, the normal gate
+    /// applies again (switching users on a PC that's already opted in still needs the full picker).
+    /// </summary>
+    private static bool HasExistingUnprofiledInstall()
+    {
+        try
+        {
+            if (ProfileRegistry.LoadAll().Count > 0) return false;
+            var path = new SecureApp.Data.DataStorageOptions(FileSystem.AppDataDirectory).DatabasePath;
+            return File.Exists(path);
+        }
+        catch
+        {
+            return false; // Best-effort — never let this suppress the real picker over an unreadable check.
+        }
+    }
 
     public static ProfileRegistry.Profile? Current => _current.Value;
 

@@ -1,5 +1,14 @@
 [
   {
+    "version": "0.1.44",
+    "code": 150,
+    "date": "20. 11. 2026",
+    "items": [
+      "Oprava instalace bez práv správce na firemním PC: appka už znovu nehlásí „.NET Desktop Runtime chybí“, pokud na PC existuje neúplně stažený runtime, a instalační skript ho sám dostáhne.",
+      "Nový PC, kde už existuje starší neprofilovaná instalace (data/registrace), se už neptá na vytvoření nového profilu — automaticky použije tu stávající identitu místo založení druhé, prázdné."
+    ]
+  },
+  {
     "version": "0.1.43",
     "code": 149,
     "date": "19. 11. 2026",
